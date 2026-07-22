@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, clipboard, Tray, nativeImage, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -20,13 +20,19 @@ const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
 
 const DEFAULTS = {
   server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '',
-  autoReconnect: true, maxAttempts: 3, keepAlive: true, proxyAll: false, customProxyDomain: '', startAtLogin: false,
+  autoReconnect: true, maxAttempts: 3, keepAlive: true, proxyAll: false, customProxyDomain: '', startAtLogin: false, autoConnect: true,
+  closeAction: 'ask',
   keepAliveUrl: 'http://hpc3login.hpc.hkust-gz.edu.cn/',
 };
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
 let win = null;
+let tray = null;
+let isQuitting = false;
+let closePromptOpen = false;
 let engine = null;
+let connectInFlight = null;
+let reconnectInFlight = null;
 let userDisconnected = false;
 let attempts = 0;
 const MAX_ATTEMPTS = 3;
@@ -120,18 +126,18 @@ function writeRunConf(s, pw, serverAddr) {
     `socks_bind = "127.0.0.1:${Number(s.port)}"`,
     `http_bind = "127.0.0.1:${Number(s.port) + 1}"`,
     'disable_zju_config = true',
-    'disable_zju_dns = true',
-    'skip_domain_resource = true',
+    'disable_zju_dns = false',
+    'skip_domain_resource = false',
+    'zju_dns_server = "auto"',
     `secondary_dns_server = "${esc(secDns)}"`,
   ];
-  if (s.customProxyDomain && String(s.customProxyDomain).trim())
-    lines.push(`custom_proxy_domain = "${esc(String(s.customProxyDomain).trim())}"`);
+  if (s.customProxyDomain && String(s.customProxyDomain).trim()) {
+    const domains = String(s.customProxyDomain).split(',').map((domain) => domain.trim()).filter(Boolean);
+    const values = domains.map((domain) => `"${esc(domain)}"`).join(', ');
+    if (values) lines.push(`custom_proxy_domain = [${values}]`);
+  }
   if (s.proxyAll) lines.push('proxy_all = true');
-  // Keep-alive: zju-connect SILENTLY disables keep-alive when disable_zju_dns=true
-  // AND no keep_alive_url is provided (engine.log: "Keep alive is disabled because
-  // remote DNS is disabled, and no KeepAliveURL is provided"). The session then
-  // idle-drops, so a later hpc3/hpc2 connect fails until a manual reconnect. Provide
-  // a campus-internal URL (reachable through the tunnel) to keep the session warm.
+  // Keep the campus session warm even when no traffic reaches the SOCKS listener.
   // The explicit keepAlive=false toggle still wins.
   if (s.keepAlive === false) {
     lines.push('disable_keep_alive = true');
@@ -146,6 +152,7 @@ function writeRunConf(s, pw, serverAddr) {
 function emit() {
   state.pacUrl = pacUrl();
   if (win && !win.isDestroyed()) win.webContents.send('status', { ...state, connectedAt });
+  updateTray();
 }
 
 // The gateway permits ONE session per account (Is_enable_mult_client=0). A second
@@ -166,6 +173,14 @@ function killStrayEngines() {
 }
 
 async function connect(isRetry) {
+  if (engine) return;
+  if (connectInFlight) return connectInFlight;
+  connectInFlight = connectOnce(isRetry);
+  try { return await connectInFlight; }
+  finally { connectInFlight = null; }
+}
+
+async function connectOnce(isRetry) {
   if (engine) return;
   if (!isRetry) { attempts = 0; userDisconnected = false; }
   const s = loadSettings();
@@ -231,6 +246,35 @@ async function connect(isRetry) {
   });
 }
 function disconnect() { userDisconnected = true; connectedAt = null; stopTelemetry(); if (engine) engine.kill(); }
+
+function waitForConnectionIdle(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (!connectInFlight && !engine) return resolve(true);
+      if (Date.now() >= deadline) return resolve(false);
+      setTimeout(poll, 50);
+    };
+    poll();
+  });
+}
+
+async function reconnect() {
+  if (reconnectInFlight) return reconnectInFlight;
+  reconnectInFlight = (async () => {
+    disconnect();
+    if (!await waitForConnectionIdle()) {
+      state.connecting = false;
+      state.lastError = '引擎未能停止，请退出程序后重试';
+      emit();
+      return { ok: false };
+    }
+    await connect();
+    return { ok: true };
+  })();
+  try { return await reconnectInFlight; }
+  finally { reconnectInFlight = null; }
+}
 
 // ---------- telemetry: latency + which apps use the SOCKS tunnel ----------
 const net = require('net');
@@ -378,7 +422,8 @@ ipcMain.handle('save', (_e, p) => {
   if (p && typeof p.customProxyDomain === 'string') next.customProxyDomain = p.customProxyDomain.trim();
   if (p && typeof p.keepAliveUrl === 'string') next.keepAliveUrl = p.keepAliveUrl.trim();
   if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
-  for (const b of ['autoReconnect', 'keepAlive', 'proxyAll', 'startAtLogin']) if (p && typeof p[b] === 'boolean') next[b] = p[b];
+  if (p && ['ask', 'minimize', 'quit'].includes(p.closeAction)) next.closeAction = p.closeAction;
+  for (const b of ['autoReconnect', 'keepAlive', 'proxyAll', 'startAtLogin', 'autoConnect']) if (p && typeof p[b] === 'boolean') next[b] = p[b];
   saveSettings(next);
   if (p && typeof p.password === 'string' && p.password.length) savePassword(p.password);
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
@@ -386,8 +431,22 @@ ipcMain.handle('save', (_e, p) => {
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
-ipcMain.handle('reconnect', async () => { disconnect(); setTimeout(() => connect(), 800); return { ok: true }; });
-ipcMain.handle('ssh-config', () => `ProxyCommand /usr/bin/nc -X 5 -x 127.0.0.1:${socksPort()} %h %p`);
+ipcMain.handle('reconnect', reconnect);
+ipcMain.handle('ssh-config', () => {
+  const port = socksPort();
+  const note = '# Direct Host blocks only; do not combine with ProxyJump.';
+  if (process.platform === 'win32') {
+    const roots = [
+      process.env.ProgramFiles,
+      process.env['ProgramFiles(x86)'],
+      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '',
+    ].filter(Boolean);
+    const candidates = roots.map((root) => path.join(root, 'Git', 'mingw64', 'bin', 'connect.exe'));
+    const connectExe = (candidates.find((candidate) => fs.existsSync(candidate)) || 'connect.exe').replace(/\\/g, '/');
+    return `${note}\nProxyCommand "${connectExe}" -S 127.0.0.1:${port} %h %p`;
+  }
+  return `${note}\nProxyCommand /usr/bin/nc -X 5 -x 127.0.0.1:${port} %h %p`;
+});
 ipcMain.handle('logout', () => {
   disconnect();
   try { fs.unlinkSync(CRED); } catch {}
@@ -408,6 +467,97 @@ ipcMain.handle('resize', (_e, h) => {
 });
 
 // ---------- window ----------
+function showWindow() {
+  if (!app.isReady()) return;
+  if (!win || win.isDestroyed()) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function updateTray() {
+  if (!tray || tray.isDestroyed()) return;
+  const status = state.connecting ? '连接中' : state.connected ? '已连接' : '未连接';
+  tray.setToolTip(`HKUST(GZ) Connect - ${status}`);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示主窗口', click: showWindow },
+    { label: `状态：${status}`, enabled: false },
+    { type: 'separator' },
+    { label: '退出程序', click: requestQuit },
+  ]));
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) return true;
+  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const image = nativeImage.createFromPath(path.join(__dirname, 'build', iconName));
+  if (image.isEmpty()) return false;
+  tray = new Tray(image);
+  tray.on('double-click', showWindow);
+  updateTray();
+  return true;
+}
+
+function hideToTray() {
+  if (!createTray()) return false;
+  if (win && !win.isDestroyed()) win.hide();
+  return true;
+}
+
+function rememberCloseAction(action) {
+  const next = loadSettings();
+  next.closeAction = action;
+  saveSettings(next);
+}
+
+function requestQuit() {
+  if (isQuitting) return;
+  isQuitting = true;
+  app.quit();
+}
+
+async function handleWindowClose(event) {
+  if (isQuitting) return;
+  event.preventDefault();
+
+  const action = loadSettings().closeAction;
+  if (action === 'quit') {
+    requestQuit();
+    return;
+  }
+  if (action === 'minimize') {
+    hideToTray();
+    return;
+  }
+  if (closePromptOpen || !win || win.isDestroyed()) return;
+
+  closePromptOpen = true;
+  try {
+    const result = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: '关闭 HKUST(GZ) Connect',
+      message: '关闭窗口时要执行什么操作？',
+      detail: '最小化到托盘会保持校园网络连接。',
+      buttons: ['最小化到托盘', '退出程序', '取消'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+      checkboxLabel: '记住我的选择（可在设置中更改）',
+      checkboxChecked: false,
+    });
+
+    if (result.response === 0) {
+      if (result.checkboxChecked) rememberCloseAction('minimize');
+      hideToTray();
+    } else if (result.response === 1) {
+      if (result.checkboxChecked) rememberCloseAction('quit');
+      requestQuit();
+    }
+  } finally {
+    closePromptOpen = false;
+  }
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 480,
@@ -426,15 +576,24 @@ function createWindow() {
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.on('close', handleWindowClose);
   win.on('closed', () => { win = null; });
 }
 
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.on('second-instance', showWindow);
 app.whenReady().then(() => {
   if (process.platform === 'darwin') Menu.setApplicationMenu(null);
   startPac();
+  createTray();
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  const settings = loadSettings();
+  if (settings.autoConnect !== false && settings.username && hasPassword()) setTimeout(() => connect(), 500);
+  app.on('activate', showWindow);
 });
-app.on('window-all-closed', () => { disconnect(); app.quit(); });
-app.on('before-quit', () => disconnect());
+app.on('window-all-closed', () => { /* Keep the tray process alive. */ });
+app.on('before-quit', () => {
+  isQuitting = true;
+  disconnect();
+  if (tray && !tray.isDestroyed()) tray.destroy();
+  tray = null;
+});

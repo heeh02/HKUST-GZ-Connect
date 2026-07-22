@@ -95,6 +95,7 @@
           <label class="sw"><span>自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
           <label class="sw"><span>开机自启</span><input type="checkbox" id="startAtLogin" /></label>
+          <label class="sw"><span>启动后自动连接</span><input type="checkbox" id="autoConnect" /></label>
         </div>
 
         <div class="card">
@@ -146,6 +147,17 @@
           <div class="card-title" style="margin-top:12px">网关</div>
           <input id="setServer" class="inp" spellcheck="false" />
           <p class="hint">一般不用改;默认 remote.hkust-gz.edu.cn。</p>
+        </div>
+        <div class="card">
+          <div class="card-title">窗口行为</div>
+          <div class="frow">
+            <label class="fk" for="closeAction">点击关闭按钮时</label>
+            <select id="closeAction" class="inp action-select">
+              <option value="ask">每次询问</option>
+              <option value="minimize">最小化到托盘</option>
+              <option value="quit">直接退出程序</option>
+            </select>
+          </div>
         </div>
         <button id="logoutBtn" class="danger">退出登录 / 切换账号</button>
         <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.3.8</span></div>

@@ -25,7 +25,7 @@ html, body {
 }
 body { display: flex; flex-direction: column; }
 [hidden] { display: none !important; }
-button, input, a, code { -webkit-app-region: no-drag; }
+button, input, select, a, code { -webkit-app-region: no-drag; }
 
 /* gold title bar with centered title; traffic lights sit on it */
 .titlebar {
@@ -41,6 +41,7 @@ button, input, a, code { -webkit-app-region: no-drag; }
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .inp.sm { width: 110px; padding: 7px 10px; }
+.inp.action-select { width: 190px; margin-left: auto; padding: 7px 10px; }
 .inp:focus { border-color: var(--gold-2); box-shadow: 0 0 0 3px rgba(200,148,10,.16); background: #fff; }
 .inp:disabled { opacity: .5; }
 .inp::placeholder { color: #b1bac8; }
