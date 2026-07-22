@@ -55,6 +55,7 @@ async function refreshState() {
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
+  $('autoConnect').checked = settings.autoConnect !== false;
   const mode = settings.dnsMode || 'auto';
   document.querySelectorAll('input[name="dns"]').forEach((r) => { r.checked = r.value === mode; });
   $('customDns').value = settings.customDns || ''; $('customDns').disabled = mode !== 'manual';
@@ -63,6 +64,7 @@ async function refreshState() {
   $('keepAlive').checked = settings.keepAlive !== false;
   $('acct').textContent = settings.username || '—';
   $('setServer').value = settings.server || 'remote.hkust-gz.edu.cn';
+  $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   return s;
 }
 
@@ -106,13 +108,20 @@ async function saveTower() {
     port: $('towerPort').value, dnsMode: dnsModeSel(), customDns: $('customDns').value.trim(),
     customProxyDomain: $('customProxyDomain').value.trim(), proxyAll: $('proxyAll').checked,
     keepAlive: $('keepAlive').checked, autoReconnect: $('autoReconnect').checked,
-    maxAttempts: Number($('maxAttempts').value) || 0, startAtLogin: $('startAtLogin').checked,
+    maxAttempts: Number($('maxAttempts').value) || 0, startAtLogin: $('startAtLogin').checked, autoConnect: $('autoConnect').checked,
   });
   await refreshState();
 }
 function flashSaved(msg) { $('towerSaved').textContent = msg || '已保存 ✓'; setTimeout(() => { $('towerSaved').textContent = ''; }, 1500); }
 $('towerSave').addEventListener('click', async () => { await saveTower(); flashSaved(); });
 $('towerReconnect').addEventListener('click', async () => { await saveTower(); flashSaved('重连中…'); window.api.reconnect(); });
+$('closeAction').addEventListener('change', async () => {
+  await window.api.save({ closeAction: $('closeAction').value });
+  settings.closeAction = $('closeAction').value;
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshState();
+});
 
 // copy + tools
 document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
