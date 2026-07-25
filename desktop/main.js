@@ -9,6 +9,8 @@ const http = require('http');
 const { spawn } = require('child_process');
 const { isValidPort, loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
 const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
+const { classifyEngineOutput } = require('./lib/engine-output');
+const { loadTrayImage } = require('./lib/tray-icon');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
 if (!app.requestSingleInstanceLock()) { app.quit(); }
@@ -127,14 +129,18 @@ async function connectOnce(isRetry) {
     '--socks-bind', `127.0.0.1:${Number(s.port)}`,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
   engine.stdin.end(`${s.username}\n${pw}\n`);
+  let diagnosticTail = '';
   const onData = (d) => {
     const t = d.toString();
     try { fs.appendFileSync(LOG, t); } catch {}
-    if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; attempts = 0; connectedAt = Date.now(); startTelemetry(); emit(); }
-    if (/Client IP assigned/.test(t)) { state.clientIp = '已分配'; emit(); }
-    if (/Login failed|Invalid username/.test(t)) state.lastError = '登录失败:账号或密码错误';
-    else if (/Not implemented auth/.test(t)) state.lastError = '网关鉴权方式不受支持(可能已改 SSO/MFA)';
-    else if (/address already in use|bind:/.test(t)) state.lastError = `端口 ${s.port} 被占用,请在控制塔换一个`;
+    diagnosticTail = (diagnosticTail + t).slice(-512);
+    if (/SOCKS5 server listening/.test(diagnosticTail)) {
+      state.connecting = false; state.connected = true; attempts = 0;
+      connectedAt = Date.now(); startTelemetry(); emit();
+    }
+    if (/Client IP assigned/.test(diagnosticTail)) { state.clientIp = '已分配'; emit(); }
+    const classifiedError = classifyEngineOutput(diagnosticTail, s.port);
+    if (classifiedError) state.lastError = classifiedError;
   };
   engine.stdout.on('data', onData);
   engine.stderr.on('data', onData);
@@ -415,7 +421,7 @@ function updateTray() {
 function createTray() {
   if (tray && !tray.isDestroyed()) return true;
   const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-  const image = nativeImage.createFromPath(path.join(__dirname, 'build', iconName));
+  const image = loadTrayImage(nativeImage, path.join(__dirname, 'build', iconName), process.platform);
   if (image.isEmpty()) return false;
   tray = new Tray(image);
   tray.on('double-click', showWindow);

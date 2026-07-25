@@ -210,6 +210,27 @@ substitute for the completed authorization record.
 - No credential, cookie, token, assigned address, packet, or capture entered
   the repository or a process argument.
 
+## 2026-07-25 — packaged desktop regression validation
+
+- Rebuilt and launched the version 1.0.0 Apple Silicon application bundle with
+  the packaged Rust engine and repository configuration.
+- The desktop application authenticated with the approved test account, showed
+  the connected state and assigned-address indicator, and exposed the configured
+  loopback-only SOCKS5 listener.
+- A single SOCKS5 connection to the dedicated campus SSH test endpoint returned
+  the public OpenSSH identification banner. No SSH authentication, command, or
+  file transfer was attempted.
+- The connection switch stopped the owned engine and removed the listener.
+  The already-running official EasyConnect monitor and agent proxy remained
+  running.
+- Constrained tray images to platform menu-bar dimensions and added a regression
+  test so a full-size application icon cannot occupy the macOS menu bar again.
+- Classified the native engine's authentication-failure diagnostic as terminal
+  so invalid credentials do not trigger repeated gateway login attempts.
+- Credentials were read only through the desktop system-protected store. They
+  were not printed, passed as process arguments, retained on the clipboard, or
+  added to the repository.
+
 ## Authorization note
 
 The requester stated they are school staff and explicitly authorized official

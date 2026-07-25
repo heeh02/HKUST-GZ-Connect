@@ -89,8 +89,12 @@ impl AuthenticatedEngineSession {
         form.values_mut().for_each(Zeroize::zeroize);
         let (login, _, _) = login_result?;
         let login = Zeroizing::new(login);
-        if auth_summary(&login, "engine password login")?.state != AuthState::Authenticated {
-            return Err(Error("gateway authentication failed".into()));
+        let login_summary = auth_summary(&login, "engine password login")?;
+        if login_summary.state != AuthState::Authenticated {
+            return Err(Error(format!(
+                "gateway authentication failed (error_code={}, state={:?})",
+                login_summary.error_code, login_summary.state
+            )));
         }
         let modern_session = ModernSessionId::from_login_xml(&login)?;
 

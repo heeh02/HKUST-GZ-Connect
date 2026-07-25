@@ -31,9 +31,32 @@ jobs:
         with:
           node-version: 20
 
+      - name: Verify release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          package_version="$(node -p "require('./desktop/package.json').version")"
+          test "v${package_version}" = "$GITHUB_REF_NAME"
+
       - name: Install deps
         working-directory: desktop
         run: npm ci
+
+      - name: Test desktop shell
+        working-directory: desktop
+        run: |
+          npm test
+          npm audit --audit-level=high
+          node --check main.js
+          node --check preload.js
+          node --check renderer/app.js
+
+      - name: Test independent Rust engine
+        working-directory: independent
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
 
       - name: Build independent engines (mac)
         if: matrix.platform == 'mac'
@@ -93,6 +116,12 @@ jobs:
             npx electron-builder --mac dmg --arm64 --x64 && break || { echo "dmg attempt $i failed, retrying"; sleep 8; }
           done
           ls release/*.dmg >/dev/null 2>&1 && echo "dmg built" || echo "::warning::dmg unavailable (CI hdiutil flake); zip shipped"
+          cd release
+          : > SHA256SUMS-macos.txt
+          for file in *.dmg *.zip; do
+            [ -f "$file" ] && shasum -a 256 "$file" >> SHA256SUMS-macos.txt
+          done
+          test -s SHA256SUMS-macos.txt
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'
@@ -110,6 +139,18 @@ jobs:
         working-directory: desktop
         run: npm run dist:win
 
+      - name: Generate Windows checksums
+        if: matrix.platform == 'win'
+        shell: pwsh
+        working-directory: desktop/release
+        run: |
+          $lines = Get-ChildItem -File *.exe | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $($_.Name)"
+          }
+          if (-not $lines) { throw "no Windows release artifact found" }
+          $lines | Set-Content -Encoding ascii SHA256SUMS-windows.txt
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -118,6 +159,7 @@ jobs:
             desktop/release/*.dmg
             desktop/release/*.zip
             desktop/release/*.exe
+            desktop/release/SHA256SUMS-*.txt
           if-no-files-found: warn
 
       - name: Attach to release
@@ -128,3 +170,4 @@ jobs:
             desktop/release/*.dmg
             desktop/release/*.zip
             desktop/release/*.exe
+            desktop/release/SHA256SUMS-*.txt
