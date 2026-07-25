@@ -339,11 +339,9 @@ mod tests {
             ("control.tar.gz", control),
             ("data.tar.gz", tar_gz(&binary_files)),
         ]);
-        let path = std::env::temp_dir().join(format!(
-            "ec-compat-test-{}-{}.deb",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("package")
-        ));
+        // Rust test names contain `::`, which is not a valid Windows filename.
+        // The process id is sufficient because this test creates one package.
+        let path = std::env::temp_dir().join(format!("ec-compat-test-{}.deb", std::process::id()));
         fs::write(&path, package).unwrap();
         let result = inspect_package(&path).unwrap();
         fs::remove_file(path).unwrap();
