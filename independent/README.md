@@ -1,0 +1,204 @@
+# Independent EasyConnect compatibility work
+
+This directory is a native Rust path toward an EasyConnect-compatible engine
+that does not build, download, link, or embed `zju-connect`. The legacy
+protocol work was behavior-derived from authorized official binaries and
+black-box tests. The modern protocol contract also uses a documented,
+license-compatible review of `zju-connect` v1.1.1 as a reference, followed by
+independent Rust implementation and official-client/live-gateway validation.
+Triton is intentionally not used: it is a GPU-kernel language, not a systems
+networking runtime.
+
+The current deliverable observes public gateway metadata, validates authorized
+official packages, implements authentication, and contains both the reviewed
+legacy TCP state machine and an isolated native implementation of the active
+modern TLS 1.1 transport. The modular runtime now includes bounded IPv4
+framing, a userspace TCP/UDP stack, VPN-side DNS, and a loopback SOCKS5
+frontend. An approved end-to-end run retrieved the SSH banner from the
+dedicated campus test endpoint. Sustained load, multi-flow behavior,
+sleep/resume, and reconnect canaries remain release gates.
+
+Module responsibilities and change rules are defined in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+## Safety boundary
+
+- TLS verification is mandatory. There is no `--insecure` mode.
+- Authentication responses are parsed in memory and discarded.
+- Snapshots exclude TWFID, CSRF values, RSA keys, cookies, tokens, passwords,
+  session identifiers, and raw response bodies.
+- Download URLs retain only host/path metadata; query strings, fragments, and
+  URL credentials are discarded.
+- The public Windows installer is streamed through SHA-256 without being saved.
+  The configured size ceiling prevents unbounded downloads.
+- Official Sangfor binaries, raw packet captures, and decompiler projects go in
+  ignored internal directories and must not be committed or redistributed.
+- Live testing must use approved test accounts and an isolated lab.
+
+## Commands
+
+Install Rust with `rustup`, then build the native tools once:
+
+```bash
+cd independent
+cargo build --locked --release
+cd ..
+```
+
+Collect a current sanitized snapshot:
+
+```bash
+independent/target/release/ec-watch collect \
+  --config independent/config/hkustgz.json \
+  --output independent/snapshots/live/current.json
+```
+
+Compare it with the reviewed baseline:
+
+```bash
+independent/target/release/ec-watch collect \
+  --config independent/config/hkustgz.json \
+  --output independent/snapshots/live/current.json \
+  --compare independent/baselines/hkustgz-production.json \
+  --diff-output independent/diffs/live/current.json \
+  --fail-on-change
+```
+
+Exit codes are `0` for success/no detected change, `1` for collection or parse
+failure, and `2` when `--fail-on-change` detects a compatibility change.
+
+Run offline tests:
+
+```bash
+cd independent
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+Run the credentialed behavior probe on macOS without putting either credential
+in process arguments or a repository file:
+
+```bash
+probe_account=$(awk -F'"' '/^username/{print $2; exit}' config.toml)
+{
+  printf '%s\n' "$probe_account"
+  security find-generic-password \
+    -s hkustgzconnect -a "$probe_account" -w
+} | independent/target/release/ec-probe \
+  --config independent/config/hkustgz.json \
+  --credentials-stdin \
+  --output independent/snapshots/live/auth-probe.json
+unset probe_account
+```
+
+The probe performs discovery, password configuration, one password
+authentication, structural inspection of configuration/resources, and logout.
+It outputs only status codes, booleans, sizes, and XML field names. It never
+serializes account identifiers, credentials, RSA/CSRF material, cookies,
+session identifiers, or response values.
+
+Add `--modern-tunnel-probe` only in an approved lab. It derives the in-memory
+48-byte token, verifies the special TLS server identity, requests a virtual
+address, establishes empty send and receive channels, closes all three, and
+logs out. It sends no IP packet and serializes no token or assigned address.
+The special service normally reuses the leaf certificate from the verified
+HTTPS connection. If it presents a distinct privately managed certificate,
+set `modern_tunnel.special_tls_leaf_sha256` only after an administrator verifies
+the observed SHA-256 fingerprint through the gateway management plane.
+
+Inspect an authorized official Linux package without extracting it into the
+repository:
+
+```bash
+independent/target/release/ec-binary-watch \
+  independent/artifacts/EasyConnect_x64_7_6_7_3.deb \
+  --output independent/snapshots/live/linux-official-binary.json
+```
+
+The binary observer records package/binary SHA-256 values and named capability
+booleans. It accepts uncompressed, gzip, xz, and zstd Debian tar members, so a
+packaging-only vendor update does not disable inspection. It does not copy
+arbitrary vendor strings or code into its output.
+
+Map protocol behavior markers and text-relative references in an authorized
+official executable:
+
+```bash
+independent/target/release/ec-protocol-map \
+  independent/artifacts/easyconnect-linux-7.6.7.3/package/usr/share/sangfor/EasyConnect/resources/bin/svpnservice \
+  --output independent/snapshots/live/linux-protocol-map.json
+```
+
+The protocol mapper emits hashes, marker counts, and `.text`-relative
+references only. It supports x86 and x86_64 and never emits vendor code or
+strings. The legacy handshake and `IPCP` frame behavior derived from the
+reviewed map is documented in
+`spec/PROTOCOL.md` and regression-tested with synthetic values.
+
+Validate the version adapter against an authorized official executable:
+
+```bash
+independent/target/release/ec-adapter-check \
+  independent/artifacts/easyconnect-linux-7.6.7.3/package/usr/share/sangfor/EasyConnect/resources/bin/svpnservice \
+  --output independent/snapshots/live/linux-preface-adapter.json \
+  --compare independent/baselines/easyconnect-linux-7.6.7.3-adapter.json \
+  --diff-output independent/diffs/live/linux-preface-adapter.json \
+  --fail-on-change
+```
+
+The adapter locates only call-referenced, structurally valid preface templates
+in the local executable. It handles reviewed x86_64 fixed templates and the
+reviewed x86 template whose 32-byte runtime region begins at offset 44. Raw
+preface bytes and runtime material never enter Git or the JSON report. Unknown
+architectures, ambiguous candidates, changed lengths, or malformed records
+fail closed. A reviewed hash difference exits with status `2`. Reviewed Linux
+and Windows L3 baselines are in `baselines/`.
+
+An approved lab may add `--tunnel-handshake <official-executable>` to
+`ec-probe`. This performs only a selected compatibility handshake and does not
+send an `IPCP` business frame. A server reset, closed response, or unsupported
+command is reported as incompatible; the probe still logs out and serializes
+no session binding, address, cookie, or credential. This option is a diagnostic
+gate, not a production tunnel.
+
+The modern transport's TLS 1.1 + RSA + RC4-SHA contract is obsolete
+cryptography forced by the gateway. It lives in one non-generic module,
+requires certificate/hostname verification or an administrator-approved pin,
+validates both Finished messages and every record MAC, and cannot be selected
+as a general TLS implementation.
+
+`ec-engine` is the maintained runtime. It accepts credentials only through
+standard input, keeps the authenticated HTTPS session and address lease alive,
+bridges EasyConnect IP packets into a userspace stack, resolves SOCKS domains
+through gateway-supplied VPN DNS, and exits when the data plane fails so its
+supervisor can reconnect the whole session.
+
+`Cargo.lock` and `rust-toolchain.toml` are committed. CI therefore tests a
+reviewed compiler/dependency graph instead of silently adopting new packages.
+Dependency or compiler upgrades must pass the same fixtures, live public
+metadata comparison, official-package comparison, provenance review, and
+license review before merge.
+
+Operational responses to repository deletion, vendor upgrades, certificate
+rotation, cryptographic migration, and full protocol replacement are defined
+in `UPGRADE_PLAYBOOK.md`.
+
+## Directory policy
+
+- `baselines/`: reviewed, sanitized metadata committed to Git.
+- `config/`: public endpoint definitions only.
+- `spec/`: behavior specifications and sanitized fixtures.
+- `cleanroom/`: authorization, provenance, and evidence records.
+- `artifacts/`: ignored official packages and extracted files.
+- `captures/`: ignored raw traffic and process traces.
+- `snapshots/live/`, `diffs/live/`: ignored CI/local results.
+- `target/`: ignored native build output.
+
+Updating a baseline requires a human review of the generated diff and evidence
+that the official client and independent implementation pass the compatibility
+test matrix. Never update a baseline merely to make CI green.
+
+The module manifest's MD5 values are compatibility identifiers supplied by the
+vendor, not a security trust decision. Artifact integrity monitoring uses
+SHA-256, and release approval must separately verify the vendor signature.

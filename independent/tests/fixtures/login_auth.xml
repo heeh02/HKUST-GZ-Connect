@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Auth>
+  <ErrorCode>1</ErrorCode>
+  <Message>login auth success</Message>
+  <CSRF_RAND_CODE>REDACTED</CSRF_RAND_CODE>
+  <StartAuth>1</StartAuth>
+  <TwfID>REDACTED</TwfID>
+  <RndImg>0</RndImg>
+  <Anonymous>0</Anonymous>
+  <Softkey>0</Softkey>
+  <enablethirdpartycert>0</enablethirdpartycert>
+  <enablewechatqrcode>0</enablewechatqrcode>
+  <Is_enable_mult_client>0</Is_enable_mult_client>
+  <Is_multclient_version>0</Is_multclient_version>
+  <DomainSSOEnable>0</DomainSSOEnable>
+  <DenyAccessWithoutCom>0</DenyAccessWithoutCom>
+  <DeviceType>ssl</DeviceType>
+  <RSA_ENCRYPT_KEY>REDACTED</RSA_ENCRYPT_KEY>
+  <RSA_ENCRYPT_EXP>65537</RSA_ENCRYPT_EXP>
+  <AllowBindSms>0</AllowBindSms>
+  <GMVERSION>1.1</GMVERSION>
+  <VPNVERSION>M7.6.8R2</VPNVERSION>
+  <SSLALGOR>1</SSLALGOR>
+  <EFlag>close</EFlag>
+</Auth>

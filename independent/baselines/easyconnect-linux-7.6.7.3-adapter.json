@@ -1,0 +1,27 @@
+{
+  "adapter": {
+    "architecture": "x86_64",
+    "client_ack": {
+      "length": 43,
+      "sha256": "cc8f5499f01e08ae2472db4d4bf32e3a4133d10e00fbab552cdf1fd78b226385"
+    },
+    "client_sync": {
+      "length": 82,
+      "materialization": {
+        "mode": "fixed"
+      },
+      "sha256": "8a555a2250b4cc9bbe991b4d378e961a092a6787df1c009edc59e4b63a5e9579"
+    },
+    "control": {
+      "client_message_length": 76,
+      "mode": "legacy",
+      "server_message_length": 40
+    }
+  },
+  "binary": {
+    "filename": "svpnservice",
+    "sha256": "3cc6d461539e37c4c89311d68fb1f8161f58d84a66732e847064cf1df9373ac5",
+    "text_sha256": "1ee1e5d1c64e9a280223499430ff3c9350a76594f79743db3e68e10bb9b0617e"
+  },
+  "schema_version": 1
+}

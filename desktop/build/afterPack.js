@@ -1,6 +1,6 @@
 'use strict';
 // Ad-hoc re-sign the whole .app AFTER electron-builder copies extraResources
-// (the bundled zju-connect engine). Without this the bundle seal is invalid once
+// (the bundled native Rust engine). Without this the bundle seal is invalid once
 // the engine is added, and Gatekeeper shows the harsh "is damaged" block with no
 // override. A VALID ad-hoc signature downgrades that to "cannot be verified",
 // which the user can bypass with right-click -> Open (no Terminal needed).

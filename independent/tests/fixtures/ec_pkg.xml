@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <mac>
+    <alias>mac_767</alias>
+    <version>7.6.7.4</version>
+    <info><custom>0</custom><link>https://demo:fake@download.example.edu/client.pkg?token=synthetic#fragment</link></info>
+  </mac>
+  <linux>
+    <deb>
+      <x86>
+        <alias>linux_767</alias>
+        <version>7.6.7.3</version>
+        <info><custom>0</custom><link></link></info>
+      </x86>
+      <x64>
+        <alias>linux_767</alias>
+        <version>7.6.7.3</version>
+        <info><custom>0</custom><link></link></info>
+      </x64>
+    </deb>
+  </linux>
+</root>

@@ -1,0 +1,65 @@
+name: EasyConnect compatibility watch
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 0 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: easyconnect-compatibility-watch
+  cancel-in-progress: false
+
+jobs:
+  offline-tests:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: independent
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint all targets
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run offline compatibility tests
+        run: cargo test --locked
+
+  live-compatibility:
+    if: github.event_name != 'pull_request'
+    needs: offline-tests
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: independent
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Build native observer
+        run: cargo build --locked --release --bin ec-watch
+      - name: Collect and compare sanitized metadata
+        run: |
+          target/release/ec-watch collect \
+            --config config/hkustgz.json \
+            --output snapshots/live/current.json \
+            --compare baselines/hkustgz-production.json \
+            --diff-output diffs/live/current.json \
+            --fail-on-change
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: easyconnect-compatibility-evidence
+          path: |
+            independent/snapshots/live/current.json
+            independent/diffs/live/current.json
+          if-no-files-found: warn
+          retention-days: 30

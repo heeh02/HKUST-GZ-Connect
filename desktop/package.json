@@ -1,11 +1,12 @@
 {
   "name": "hkustgzconnect",
-  "version": "0.3.8",
-  "description": "HKUST(GZ) campus SSL-VPN — native desktop client (engine: zju-connect)",
+  "version": "1.0.0",
+  "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
-  "license": "GPL-3.0-or-later",
+  "license": "GPL-3.0-only",
   "scripts": {
+    "test": "node --test",
     "start": "electron .",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
@@ -13,8 +14,11 @@
     "dist:linux": "electron-builder --linux"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8"
   },
   "build": {
     "appId": "cn.edu.hkust-gz.connect",
@@ -28,6 +32,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "lib/**/*",
       "renderer/**/*",
       "assets/**/*",
       "build/icon.ico",
@@ -37,7 +42,7 @@
       {
         "from": "engine",
         "to": "engine",
-        "filter": ["**/*"]
+        "filter": ["ec-engine-*", "ec-engine.exe", "hkustgz.json"]
       }
     ],
     "mac": {

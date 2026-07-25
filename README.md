@@ -1,135 +1,145 @@
-<div align="center">
+# HKUST(GZ) Connect
 
-<img src="desktop/assets/logo.svg" alt="HKUST(GZ)" height="84" />
+HKUST(GZ) EasyConnect-compatible client implemented with an independent,
+modular Rust engine.
 
-# hkustgzconnect
+The maintained runtime does not download, execute, link, or embed
+`zju-connect`. Protocol compatibility is derived from authorized analysis of
+official EasyConnect packages, documented black-box validation, and a
+license-recorded historical reference review. Official vendor binaries and
+test credentials are never committed.
 
-**香港科技大学(广州)校园 SSL-VPN 的跨平台原生客户端**
-Cross-platform native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
+## Current status
 
-**macOS**(Apple Silicon / Intel) · **Windows**(x64) · 纯原生 · 一键连接 · 直连校内 HPC
-零 Rosetta · 零 Docker · 不抢系统路由 · 与 Clash 等代理共存
+The Rust engine has passed an approved end-to-end test:
 
-![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%7C_Intel-000?logo=apple&logoColor=white)
-![Windows](https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&logoColor=white)
-![Engine](https://img.shields.io/badge/engine-zju--connect-44a)
-![License](https://img.shields.io/badge/License-GPL--3.0-blue)
+- password authentication;
+- verified modern session-token derivation;
+- TLS 1.1/RSA/RC4-SHA compatibility transport;
+- address-control, send, and receive channels;
+- IPv4 packet framing;
+- userspace TCP/IP;
+- VPN-side DNS;
+- loopback SOCKS5;
+- SSH banner retrieval from the repository's approved campus test endpoint;
+- clean logout.
 
-</div>
+The proprietary gateway still forces obsolete TLS 1.1/RC4 cryptography.
+Certificate verification, Finished verification, and record MAC validation
+remain mandatory; there is no insecure switch.
 
----
+## Modular architecture
 
-## 这是什么
+```text
+CLI / Electron
+    -> engine/session.rs       authentication and session lifetime
+    -> modern.rs               token and 64-byte control contract
+    -> special_tls11.rs        isolated vendor TLS compatibility backend
+    -> engine/data_plane.rs    address, send, receive channel ownership
+    -> engine/ip_packet.rs     bounded IPv4 validation and framing
+    -> engine/netstack.rs      userspace TCP/UDP stack
+    -> engine/dns.rs           DNS through the VPN
+    -> engine/socks.rs         loopback SOCKS5 frontend
+```
 
-学校的 EasyConnect 官方客户端又重又爱抢系统路由(把别的代理 / UDP 弄坏),在 Apple Silicon 上还得靠 x86 模拟。
-本项目用 [**zju-connect**](https://github.com/Mythologyli/zju-connect)(深信服 EasyConnect 协议的纯 Go 重实现)做引擎,
-封装成一个**跨平台桌面应用(macOS + Windows)**和一个**命令行工具**:登录后起一个本地 SOCKS5,把校内/HPC 流量(`10.120.0.0/16`)
-经隧道送进去,**其它流量完全不受影响、系统路由表不被碰**。同一套界面、同一个引擎,在 macOS 与 Windows 上一致。
+Compatibility observation, official-package inspection, protocol mapping, and
+runtime packet forwarding are separate modules. A vendor update should change
+one adapter or transport backend rather than the UI or local proxy.
 
-实测网关 `remote.hkust-gz.edu.cn` 为深信服 **M7.6.8R2**,鉴权是**纯 用户名+密码**(无 SSO/验证码/短信/分组),
-所以原生客户端可直接登录。
+## macOS CLI
 
-## 功能
+Copy the local identity template and set the username:
 
-- 🖥️ **跨平台** —— 同一套界面,**macOS**(Apple Silicon / Intel)与 **Windows**(x64)原生运行;Linux 可自行从源码构建
-- 🔐 **账号登录** —— 密码存系统安全区(macOS Keychain / Windows DPAPI),不落明文、不进 `ps`
-- 🔌 **一键连接开关**
-- 🎚️ **端口设置** —— SOCKS 端口可改(默认 `1080`)
-- 🌐 **浏览器一键直连** —— 内置 PAC(只让校园站走隧道、其余直连),一键复制 SOCKS/PAC 地址,或直接开一个独立 Chrome 访问校园网站
-- 🖥️ **HPC 直连** —— 配好 `ssh` 即可 `ssh hpc3`,`scp`/`rsync` 照常
-- 🧩 **与 Clash 等代理共存** —— 独立本地 SOCKS,不改系统代理/默认路由
-- 🔒 **单实例** —— 防止重复登录把自己的会话顶掉(网关每账号仅一会话)
-
-## 下载
-
-到 [Releases](../../releases) 下载:
-
-| 平台 | 文件 |
-|---|---|
-| macOS (Apple Silicon / Intel) | `hkustgzconnect-*-mac-*.zip`(下方一键脚本最省事;若有 `.dmg` 亦可) |
-| Windows (x64) | `hkustgzconnect-*-win-*.exe` |
-| Android | 🚧 二期(见 [`android/`](android/)) |
-
-### 首次打开(重要)
-
-本项目是个人工具,**未做 Apple 公证 / Windows 签名**(需付费证书),所以系统会拦一下。任选其一:
-
-**macOS — 一行命令安装(最省事,自动去隔离):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/heeh02/hkustgzconnect/main/desktop/scripts/install-mac.sh | bash
+cp config.toml.example config.toml
+./hkustgzconnect set-password
+./hkustgzconnect up
+./hkustgzconnect test
 ```
-**macOS — 或手动:** 把 app 拖进「应用程序」后,**右键点图标 → 打开 → 再点"打开"**(只需一次)。
-若仍提示"已损坏",在终端执行一次:
+
+The password is read from macOS Keychain and piped to `ec-engine` on standard
+input. It never appears in process arguments or a runtime configuration file.
+
+Useful commands:
+
 ```bash
-xattr -dr com.apple.quarantine /Applications/hkustgzconnect.app
+./hkustgzconnect status
+./hkustgzconnect logs
+./hkustgzconnect restart
+./hkustgzconnect down
 ```
 
-**Windows:** 双击 exe 若弹「Windows 已保护你的电脑」→ 点「更多信息」→「仍要运行」。
+## Native Rust build
 
-> 想做到**双击零提示**?需要 Apple 开发者证书($99/年)做公证 + Windows 代码签名证书。仓库 CI 已预留签名/公证位,配好证书 secret 即可自动出"下载即用"的安装包。
-
-## 使用(桌面)
-
-1. 打开 app → 填 **账号 / 密码** → 点 **连接**。
-2. 连上后状态变绿并显示校内 IP。HPC 走下面的 `ssh` 配置即可。
-
-### SSH 上 HPC
-`~/.ssh/config`(或 `~/.ssh/hkustgzconnect.conf` 由其 `Include`):
-```sshconfig
-Host hpc2 hpc3 *.hpc.hkust-gz.edu.cn 10.120.*
-    ProxyCommand /usr/bin/nc -X 5 -x 127.0.0.1:1080 %h %p
-```
-之后 `ssh hpc3` 自动经隧道。端口改了就把 `1080` 同步改掉。
-
-## 命令行版(CLI)
-
-仓库根目录的 [`hkustgzconnect`](hkustgzconnect) 是个零依赖的 macOS / Linux 控制脚本(Windows 请用桌面版;引擎同一个):
 ```bash
-cp config.toml.example config.toml   # 填 username
-./hkustgzconnect set-password         # 密码进 Keychain
-./hkustgzconnect up                   # 起隧道
-./hkustgzconnect status / test / down
-./hkustgzconnect install              # 开机自启(launchd)
+cd independent
+cargo build --locked --release --bin ec-engine
+cargo test --locked
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
 ```
-详见脚本内 `--help`。
 
-## 从源码构建
+Direct engine usage accepts credentials only on standard input:
+
+```bash
+printf '%s\n%s\n' "$VPN_USERNAME" "$VPN_PASSWORD" |
+  independent/target/release/ec-engine \
+    --config independent/config/hkustgz.json \
+    --credentials-stdin \
+    --socks-bind 127.0.0.1:1080
+```
+
+Do not put actual credentials in shell history; the example uses environment
+placeholders only.
+
+## Desktop
+
+For local development:
 
 ```bash
 cd desktop
-npm install
-bash scripts/fetch-engine.sh mac     # 或 win / linux,下载引擎二进制
-npm start                            # 本地运行
-npm run dist:mac                     # 打 dmg(产物在 desktop/release/)
-npm run dist:win                     # 打 exe
+bash scripts/build-engine.sh
+npm ci
+npm start
 ```
-CI:推一个 `v*` tag(或手动触发 [build workflow](.github/workflows/build.yml)),GitHub Actions 自动出 **dmg + exe** 并挂到 Release。
 
-## 架构
+Release CI builds `ec-engine` from this repository for macOS and Windows,
+packages it with the Electron UI, and never fetches an external VPN engine.
+The desktop stores passwords through the operating system's protected
+credential backend (macOS Keychain or Windows DPAPI). The independent 1.0
+upgrade intentionally does not migrate the previous weak local credential
+format, so desktop users sign in once after upgrading.
 
-```
-桌面 app (Electron)  ──spawn──>  zju-connect 引擎  ──EasyConnect──>  remote.hkust-gz.edu.cn
-   登录/开关/端口 UI              本地 SOCKS5 1080                       │
-                                      │                                  └─ 校内 / HPC 10.120/16
-   你的 ssh / app ──SOCKS──> 1080 ────┘
-```
-- 密码:UI → 系统安全区(safeStorage)→ 启动时写入 0600 临时 TOML 交给引擎,连接结束即删。
-- 引擎按 平台/架构 命名打包(`zju-connect-darwin-arm64` 等),app 内置对应二进制,运行时自动选。
+## Upgrade resistance
 
-## Roadmap
+Daily public monitoring compares gateway metadata, Windows module policy,
+official package identities, and compatibility baselines. Restricted canaries
+perform authentication and empty-channel validation without business traffic.
+Unknown protocol, certificate, authentication, or binary changes fail closed.
 
-- [x] 桌面 GUI(macOS dmg / Windows exe)— 登录 / 开关 / 端口
-- [x] CLI + 开机自启
-- [ ] **Android APK**(二期)— 用上游 gomobile AAR + `VpnService`,见 [`android/`](android/)
-- [ ] 系统托盘 / 菜单栏快捷开关
-- [ ] 引擎自动更新
+See:
 
-## 安全与隐私
+- [architecture and module ownership](independent/ARCHITECTURE.md)
+- [maintenance policy](independent/MAINTENANCE.md)
+- [upgrade and continuity playbook](independent/UPGRADE_PLAYBOOK.md)
+- [protocol specification](independent/spec/PROTOCOL.md)
+- [compatibility matrix](independent/spec/COMPATIBILITY_MATRIX.md)
+- [evidence log](independent/cleanroom/EVIDENCE_LOG.md)
 
-- 不收集任何数据;密码只存本机系统安全区,仅发往学校网关。
-- 仓库**不含**任何账号密码。
+No proprietary protocol can be guaranteed compatible forever. Continuity comes
+from early detection, isolated adapters, official-client parity testing,
+reproducible Rust dependencies, and a documented official-client fallback.
 
-## 致谢与许可
+## Security
 
-引擎:[Mythologyli/zju-connect](https://github.com/Mythologyli/zju-connect)(GPL‑3.0)。
-本项目同样以 **GPL‑3.0** 发布(见 [LICENSE](LICENSE))。logo 为香港科技大学(广州)校徽,版权归学校所有,仅作本校工具标识用途。
+- TLS verification cannot be disabled.
+- The SOCKS listener must bind to loopback.
+- Authentication and tunnel secrets are zeroized where practical.
+- Compatibility artifacts omit credentials, tokens, cookies, assigned
+  addresses, raw packets, and response bodies.
+- Official packages, extracted binaries, captures, live snapshots, and build
+  output are ignored.
+- Broader testing requires the authorization record in
+  `independent/cleanroom/AUTHORIZATION_TEMPLATE.md`.
+
+License: GPL-3.0.

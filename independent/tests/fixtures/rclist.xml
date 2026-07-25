@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resource>
+  <Dns data="synthetic-policy" dnsserver="192.0.2.53" filter="example.test"/>
+  <Other defaultRcId="resource-1"/>
+  <RcGroups>
+    <Group id="group-1" name="Synthetic group"/>
+  </RcGroups>
+  <Rcs>
+    <Rc id="resource-1" type="tcp" proto="tcp"
+        host="host.example.test" port="22" svc="ssh" rc_grp_id="group-1"
+        name="Synthetic SSH" note="ignored"/>
+    <Rc id="resource-2" type="web" proto="https"
+        host="web.example.test" port="443" svc="web" rc_grp_id="group-1"
+        name="Synthetic Web" note="ignored"/>
+  </Rcs>
+  <service>
+    <UserName>synthetic-user</UserName>
+    <LoginIp>192.0.2.99</LoginIp>
+  </service>
+</Resource>

@@ -1,11 +1,14 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, Menu, clipboard, Tray, nativeImage, dialog } = require('electron');
+const {
+  app, BrowserWindow, ipcMain, shell, Menu, clipboard, safeStorage,
+  Tray, nativeImage, dialog,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const dns = require('dns');
-const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { isValidPort, loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
+const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
 if (!app.requestSingleInstanceLock()) { app.quit(); }
@@ -14,16 +17,10 @@ if (!app.requestSingleInstanceLock()) { app.quit(); }
 const DATA = app.getPath('userData');
 const SETTINGS = path.join(DATA, 'settings.json');
 const CRED = path.join(DATA, 'cred.bin');
-const RUNCONF = path.join(DATA, 'runtime.toml');
 const LOG = path.join(DATA, 'engine.log');
 const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
+const GATEWAY_HOST = 'remote.hkust-gz.edu.cn';
 
-const DEFAULTS = {
-  server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '',
-  autoReconnect: true, maxAttempts: 3, keepAlive: true, proxyAll: false, customProxyDomain: '', startAtLogin: false, autoConnect: true,
-  closeAction: 'ask',
-  keepAliveUrl: 'http://hpc3login.hpc.hkust-gz.edu.cn/',
-};
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
 let win = null;
@@ -45,36 +42,14 @@ let state = { connected: false, connecting: false, clientIp: null, lastError: nu
 
 // ---------- settings & credentials ----------
 function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS, 'utf8')) }; }
-  catch { return { ...DEFAULTS }; }
+  return readSettings(SETTINGS);
 }
-function saveSettings(s) { fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2), { mode: 0o600 }); }
-// Local AES-256-GCM at-rest encryption with a per-install random key (0600 file).
-// Deliberately NOT macOS Keychain/safeStorage: an ad-hoc-signed app's signature
-// changes every build, so the Keychain treats each build as a new app and prompts
-// for access on every launch. File-based keeps it promptless; both files are 0600.
-const KEYFILE = path.join(DATA, 'key.bin');
-function getKey() {
-  try { const k = fs.readFileSync(KEYFILE); if (k.length === 32) return k; } catch {}
-  const k = crypto.randomBytes(32);
-  fs.writeFileSync(KEYFILE, k, { mode: 0o600 });
-  return k;
-}
+function saveSettings(settings) { writeSettings(SETTINGS, settings); }
 function savePassword(pw) {
-  if (!pw) return;
-  const iv = crypto.randomBytes(12);
-  const c = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
-  const enc = Buffer.concat([c.update(String(pw), 'utf8'), c.final()]);
-  fs.writeFileSync(CRED, Buffer.concat([iv, c.getAuthTag(), enc]), { mode: 0o600 });
+  return writePassword(CRED, pw, safeStorage, process.platform);
 }
 function loadPassword() {
-  try {
-    const buf = fs.readFileSync(CRED);
-    const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), enc = buf.subarray(28);
-    const d = crypto.createDecipheriv('aes-256-gcm', getKey(), iv);
-    d.setAuthTag(tag);
-    return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
-  } catch { return ''; }  // old safeStorage cred won't decrypt -> user re-logs in once
+  return readPassword(CRED, safeStorage, process.platform);
 }
 function hasPassword() { return !!loadPassword(); }  // true only if it actually decrypts
 function socksPort() { return Number(loadSettings().port) || 1080; }
@@ -84,69 +59,21 @@ function enginePath() {
   const plat = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
   const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
   const ext = plat === 'windows' ? '.exe' : '';
-  const named = `zju-connect-${plat}-${arch}${ext}`;
+  const named = `ec-engine-${plat}-${arch}${ext}`;
   const dir = app.isPackaged ? path.join(process.resourcesPath, 'engine') : path.join(__dirname, 'engine');
   const candidates = [
     path.join(dir, named),
-    path.join(dir, plat === 'windows' ? 'zju-connect.exe' : 'zju-connect'),
-    path.join(__dirname, '..', plat === 'windows' ? 'zju-connect.exe' : 'zju-connect'),
+    path.join(dir, plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
+    path.join(__dirname, '..', 'independent', 'target', 'release', plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
   ];
   return candidates.find((p) => fs.existsSync(p)) || candidates[0];
 }
 
-// Resolve the gateway via reliable public DNS so a broken/asleep system resolver
-// (e.g. 114.114.114.114 going unreachable after lid-sleep) can't break connecting.
-// Returns an IP to use directly as server_address; falls back to the hostname.
-async function resolveHost(host, s) {
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
-  const sets = [];
-  if (s && s.dnsMode === 'manual' && s.customDns) sets.push([s.customDns]);
-  sets.push(['223.5.5.5'], ['119.29.29.29'], ['180.76.76.76'], ['8.8.8.8']);
-  for (const servers of sets) {
-    try {
-      const r = new dns.Resolver({ tries: 1, timeout: 3000 });
-      r.setServers(servers);
-      const ips = await new Promise((res, rej) => r.resolve4(host, (e, a) => (e ? rej(e) : res(a))));
-      if (ips && ips.length) return ips[0];
-    } catch {}
-  }
-  try { return (await dns.promises.lookup(host, { family: 4 })).address; } catch {}
-  return host;
-}
-
-function writeRunConf(s, pw, serverAddr) {
-  const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const secDns = (s.dnsMode === 'manual' && s.customDns) ? s.customDns : '223.5.5.5';
-  const lines = [
-    'protocol = "easyconnect"',
-    `server_address = "${esc(serverAddr || s.server)}"`,
-    'server_port = 443',
-    `username = "${esc(s.username)}"`,
-    `password = "${esc(pw)}"`,
-    `socks_bind = "127.0.0.1:${Number(s.port)}"`,
-    `http_bind = "127.0.0.1:${Number(s.port) + 1}"`,
-    'disable_zju_config = true',
-    'disable_zju_dns = false',
-    'skip_domain_resource = false',
-    'zju_dns_server = "auto"',
-    `secondary_dns_server = "${esc(secDns)}"`,
-  ];
-  if (s.customProxyDomain && String(s.customProxyDomain).trim()) {
-    const domains = String(s.customProxyDomain).split(',').map((domain) => domain.trim()).filter(Boolean);
-    const values = domains.map((domain) => `"${esc(domain)}"`).join(', ');
-    if (values) lines.push(`custom_proxy_domain = [${values}]`);
-  }
-  if (s.proxyAll) lines.push('proxy_all = true');
-  // Keep the campus session warm even when no traffic reaches the SOCKS listener.
-  // The explicit keepAlive=false toggle still wins.
-  if (s.keepAlive === false) {
-    lines.push('disable_keep_alive = true');
-  } else {
-    const kaUrl = (typeof s.keepAliveUrl === 'string' && s.keepAliveUrl.trim()) || DEFAULTS.keepAliveUrl;
-    if (kaUrl) lines.push(`keep_alive_url = "${esc(kaUrl)}"`);
-  }
-  lines.push('');
-  fs.writeFileSync(RUNCONF, lines.join('\n'), { mode: 0o600 });
+function engineConfigPath() {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, 'engine', 'hkustgz.json')]
+    : [path.join(__dirname, '..', 'independent', 'config', 'hkustgz.json')];
+  return candidates.find((p) => fs.existsSync(p)) || candidates[0];
 }
 
 function emit() {
@@ -155,20 +82,17 @@ function emit() {
   updateTray();
 }
 
-// The gateway permits ONE session per account (Is_enable_mult_client=0). A second
-// zju-connect for the same account (the CLI/launchd autostart, or an orphan left by a
-// previous crash) kicks this one → the classic "无缘无故掉线". Kill any other engine
-// instance right before we start ours. Our own engine isn't spawned yet at call time.
+// The gateway permits one session per account. Stop an orphaned independent
+// engine before starting the new owned child.
 function killStrayEngines() {
   try {
     if (process.platform === 'win32')
-      // wildcard catches both zju-connect-windows-amd64.exe and the zju-connect.exe fallback
       require('child_process').execFileSync('powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Command',
-         "Get-Process -Name 'zju-connect*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
+         "Get-Process -Name 'ec-engine*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
         { stdio: 'ignore', timeout: 4000, windowsHide: true });
     else
-      require('child_process').execFileSync('pkill', ['-f', 'zju-connect'], { stdio: 'ignore', timeout: 3000 });
+      require('child_process').execFileSync('pkill', ['-f', 'ec-engine'], { stdio: 'ignore', timeout: 3000 });
   } catch {}
 }
 
@@ -188,22 +112,26 @@ async function connectOnce(isRetry) {
   if (!s.username || !pw) { state.connecting = false; state.lastError = '请先填写账号和密码'; emit(); return; }
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
-  const serverAddr = await resolveHost(s.server, s);
-  gatewayIp = serverAddr;
+  gatewayIp = GATEWAY_HOST;
   if (userDisconnected) { state.connecting = false; emit(); return; }
-  writeRunConf(s, pw, serverAddr);
   try { fs.writeFileSync(LOG, ''); } catch {}
   const bin = enginePath();
   if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
+  const engineConfig = engineConfigPath();
+  if (!fs.existsSync(engineConfig)) { state.connecting = false; state.lastError = '引擎配置缺失:' + engineConfig; emit(); return; }
 
   killStrayEngines(); // gateway = one session per account; clear any other engine first
-  engine = spawn(bin, ['-config', RUNCONF], { stdio: ['ignore', 'pipe', 'pipe'] });
+  engine = spawn(bin, [
+    '--config', engineConfig,
+    '--credentials-stdin',
+    '--socks-bind', `127.0.0.1:${Number(s.port)}`,
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  engine.stdin.end(`${s.username}\n${pw}\n`);
   const onData = (d) => {
     const t = d.toString();
     try { fs.appendFileSync(LOG, t); } catch {}
     if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; attempts = 0; connectedAt = Date.now(); startTelemetry(); emit(); }
-    const m = t.match(/Client IP:\s*([0-9.]+)/);
-    if (m) { state.clientIp = m[1]; emit(); }
+    if (/Client IP assigned/.test(t)) { state.clientIp = '已分配'; emit(); }
     if (/Login failed|Invalid username/.test(t)) state.lastError = '登录失败:账号或密码错误';
     else if (/Not implemented auth/.test(t)) state.lastError = '网关鉴权方式不受支持(可能已改 SSO/MFA)';
     else if (/address already in use|bind:/.test(t)) state.lastError = `端口 ${s.port} 被占用,请在控制塔换一个`;
@@ -217,7 +145,6 @@ async function connectOnce(isRetry) {
     engine = null;
     state.connected = false; state.clientIp = null; connectedAt = null;
     stopTelemetry();
-    try { fs.unlinkSync(RUNCONF); } catch {}
     const authErr = /账号或密码|鉴权/.test(state.lastError || '');
     const cfg = loadSettings();
     const autoOn = cfg.autoReconnect !== false;
@@ -302,16 +229,15 @@ function friendly(n) {
   if (/Lark|Feishu|飞书/.test(n)) return 'Lark/飞书';
   if (/firefox/i.test(n)) return 'Firefox';
   if (n === 'ssh' || n === 'sshd') return 'SSH';
-  if (/^(curl|wget|nc|python|node)$/.test(n)) return n;
+  if (/^(curl|wget|nc|node)$/.test(n)) return n;
   return n;
 }
-const isValidPort = (p) => Number.isInteger(p) && p >= 1025 && p <= 65534;
 async function listTunnelApps(P, enginePid, appPid) {
   if (!isValidPort(P)) return { connCount: 0, apps: [] };
-  const ports = new Set([P, P + 1]); // SOCKS + HTTP
+  const ports = new Set([P]);
   try {
     if (process.platform === 'win32') {
-      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{$_.RemotePort -eq ${P} -or $_.RemotePort -eq ${P + 1}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
+      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{$_.RemotePort -eq ${P}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
       const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 4000);
       let arr = []; try { const j = JSON.parse(out); arr = Array.isArray(j) ? j : [j]; } catch {}
       const apps = arr.filter((a) => a && a.Pid !== enginePid && a.Pid !== appPid)
@@ -415,17 +341,16 @@ ipcMain.handle('get-state', () => ({
 ipcMain.handle('save', (_e, p) => {
   const next = { ...loadSettings() };
   if (p && p.username != null) next.username = String(p.username);
-  if (p && p.server) next.server = String(p.server).trim();
   if (p && p.port != null) { const n = Number(p.port); if (isValidPort(n)) next.port = n; }
-  if (p && p.dnsMode) next.dnsMode = p.dnsMode;
-  if (p && typeof p.customDns === 'string') next.customDns = p.customDns.trim();
-  if (p && typeof p.customProxyDomain === 'string') next.customProxyDomain = p.customProxyDomain.trim();
-  if (p && typeof p.keepAliveUrl === 'string') next.keepAliveUrl = p.keepAliveUrl.trim();
   if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
   if (p && ['ask', 'minimize', 'quit'].includes(p.closeAction)) next.closeAction = p.closeAction;
-  for (const b of ['autoReconnect', 'keepAlive', 'proxyAll', 'startAtLogin', 'autoConnect']) if (p && typeof p[b] === 'boolean') next[b] = p[b];
+  for (const b of ['autoReconnect', 'startAtLogin', 'autoConnect']) {
+    if (p && typeof p[b] === 'boolean') next[b] = p[b];
+  }
   saveSettings(next);
-  if (p && typeof p.password === 'string' && p.password.length) savePassword(p.password);
+  if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
+    return { ok: false, error: '系统安全存储不可用，密码未保存' };
+  }
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
   return { ok: true };
 });

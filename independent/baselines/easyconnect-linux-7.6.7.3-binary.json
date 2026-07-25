@@ -1,0 +1,90 @@
+{
+  "binaries": {
+    "CSClient": {
+      "capabilities": {
+        "auth.configuration_endpoint": false,
+        "auth.logout_endpoint": true,
+        "auth.resource_endpoint": false,
+        "auth.session_identifier": true,
+        "l3.command_tunnel": false,
+        "l3.handshake.client_message": false,
+        "l3.handshake.server_message": false,
+        "l3.handshake.tls_ack": false,
+        "l3.handshake.tls_syn": false,
+        "l3.new_connection": false,
+        "l3.reconnect": false,
+        "l3.tcp_keepalive": true,
+        "l3.udp_tunnel": false
+      },
+      "sha256": "f26dd3babbc74607ffa2efcc195d56775dd599c6455deebfac70f48fdae2fdfd",
+      "size": 3690672
+    },
+    "ECAgent": {
+      "capabilities": {
+        "auth.configuration_endpoint": true,
+        "auth.logout_endpoint": true,
+        "auth.resource_endpoint": true,
+        "auth.session_identifier": true,
+        "l3.command_tunnel": false,
+        "l3.handshake.client_message": false,
+        "l3.handshake.server_message": false,
+        "l3.handshake.tls_ack": false,
+        "l3.handshake.tls_syn": false,
+        "l3.new_connection": false,
+        "l3.reconnect": false,
+        "l3.tcp_keepalive": true,
+        "l3.udp_tunnel": false
+      },
+      "sha256": "ed223539822d0ea8e4542d86c1cf431805b080fea22941a5adcad1299cc2bc43",
+      "size": 4548216
+    },
+    "EasyMonitor": {
+      "capabilities": {
+        "auth.configuration_endpoint": false,
+        "auth.logout_endpoint": false,
+        "auth.resource_endpoint": false,
+        "auth.session_identifier": false,
+        "l3.command_tunnel": false,
+        "l3.handshake.client_message": false,
+        "l3.handshake.server_message": false,
+        "l3.handshake.tls_ack": false,
+        "l3.handshake.tls_syn": false,
+        "l3.new_connection": false,
+        "l3.reconnect": false,
+        "l3.tcp_keepalive": true,
+        "l3.udp_tunnel": false
+      },
+      "sha256": "f4b4d6fd95f95cb032e167d05ba339a198adf97a92b5cac1f132d417e31e29d4",
+      "size": 3023632
+    },
+    "svpnservice": {
+      "capabilities": {
+        "auth.configuration_endpoint": false,
+        "auth.logout_endpoint": false,
+        "auth.resource_endpoint": false,
+        "auth.session_identifier": false,
+        "l3.command_tunnel": true,
+        "l3.handshake.client_message": true,
+        "l3.handshake.server_message": true,
+        "l3.handshake.tls_ack": true,
+        "l3.handshake.tls_syn": true,
+        "l3.new_connection": true,
+        "l3.reconnect": true,
+        "l3.tcp_keepalive": false,
+        "l3.udp_tunnel": true
+      },
+      "sha256": "3cc6d461539e37c4c89311d68fb1f8161f58d84a66732e847064cf1df9373ac5",
+      "size": 1310928
+    }
+  },
+  "package": {
+    "architecture": "amd64",
+    "filename": "EasyConnect_x64_7_6_7_3.deb",
+    "maintainer": "Sangfor Technologies Inc <support@sangfor.com>",
+    "package": "easyconnect",
+    "sha256": "ae623c6dc0354ff87afefbb770de5013bfd943051c9a653b93db708253b2f0d3",
+    "size": 62057642,
+    "version": "7.6.7.7"
+  },
+  "schema_version": 1
+}

@@ -13,7 +13,6 @@ function setPage(page) {
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
   if (page === 'notif') loadLogs();
 }
-function dnsModeSel() { const r = document.querySelector('input[name="dns"]:checked'); return r ? r.value : 'auto'; }
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
@@ -51,19 +50,12 @@ async function refreshState() {
   settings = s.settings || {}; pacUrl = s.pacUrl || '';
   renderConnect(s);
   $('towerPort').value = settings.port || 1080;
-  $('httpPort').textContent = '127.0.0.1:' + ((Number(settings.port) || 1080) + 1);
+  $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
   $('autoConnect').checked = settings.autoConnect !== false;
-  const mode = settings.dnsMode || 'auto';
-  document.querySelectorAll('input[name="dns"]').forEach((r) => { r.checked = r.value === mode; });
-  $('customDns').value = settings.customDns || ''; $('customDns').disabled = mode !== 'manual';
-  $('customProxyDomain').value = settings.customProxyDomain || '';
-  $('proxyAll').checked = !!settings.proxyAll;
-  $('keepAlive').checked = settings.keepAlive !== false;
   $('acct').textContent = settings.username || '—';
-  $('setServer').value = settings.server || 'remote.hkust-gz.edu.cn';
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   return s;
 }
@@ -86,7 +78,8 @@ $('lgBtn').addEventListener('click', async () => {
   const u = $('lgUser').value.trim(), p = $('lgPass').value;
   if (!u) { $('lgErr').textContent = '请填写账号'; return; }
   if (!p) { $('lgErr').textContent = '请填写密码'; return; }
-  await window.api.save({ username: u, password: p });
+  const saved = await window.api.save({ username: u, password: p });
+  if (!saved.ok) { $('lgErr').textContent = saved.error || '密码保存失败'; return; }
   $('lgPass').value = ''; $('lgErr').textContent = '';
   await refreshState(); show('dash'); setPage('connect');
 });
@@ -100,15 +93,13 @@ $('power').addEventListener('click', async () => {
 });
 
 // control tower
-document.querySelectorAll('input[name="dns"]').forEach((r) =>
-  r.addEventListener('change', () => { $('customDns').disabled = dnsModeSel() !== 'manual'; }));
 async function saveTower() {
   await window.api.save({
-    server: ($('setServer').value.trim() || settings.server),
-    port: $('towerPort').value, dnsMode: dnsModeSel(), customDns: $('customDns').value.trim(),
-    customProxyDomain: $('customProxyDomain').value.trim(), proxyAll: $('proxyAll').checked,
-    keepAlive: $('keepAlive').checked, autoReconnect: $('autoReconnect').checked,
-    maxAttempts: Number($('maxAttempts').value) || 0, startAtLogin: $('startAtLogin').checked, autoConnect: $('autoConnect').checked,
+    port: $('towerPort').value,
+    autoReconnect: $('autoReconnect').checked,
+    maxAttempts: Number($('maxAttempts').value) || 0,
+    startAtLogin: $('startAtLogin').checked,
+    autoConnect: $('autoConnect').checked,
   });
   await refreshState();
 }
@@ -126,7 +117,7 @@ document.addEventListener('visibilitychange', () => {
 // copy + tools
 document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
   const w = b.dataset.copy; let txt = '';
-  if (w === 'http') txt = '127.0.0.1:' + ((Number(settings.port) || 1080) + 1);
+  if (w === 'socks') txt = '127.0.0.1:' + (Number(settings.port) || 1080);
   else if (w === 'pac') txt = pacUrl;
   else if (w === 'ssh') txt = await window.api.sshConfig();
   if (!txt) return;

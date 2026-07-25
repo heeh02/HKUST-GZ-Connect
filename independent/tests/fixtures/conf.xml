@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Conf>
+  <L3VPN iptunDns="192.0.2.53" iptunDnsBak="198.51.100.53"/>
+  <TcpApplication userMode="1" compress="0" maxthread="50"/>
+  <Vpnline address="vpn-a.example.test:443;https://vpn-b.example.test:8443"/>
+  <WebVpn hostname="web.example.test" port="443" scheme="https"/>
+  <Other login_name="synthetic-user" mobilephone="synthetic-phone"
+         user_note="synthetic-note" UserPwd="synthetic-password"
+         svpnhost="192.0.2.20" svpnport="443"
+         svpnSessionID="0123456789abcdef0123456789abcdef"
+         sslctx="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"/>
+  <WebSecLogin><LastLoginIp>192.0.2.99</LastLoginIp></WebSecLogin>
+  <EMM><TicketLoginCode>synthetic-ticket</TicketLoginCode></EMM>
+</Conf>

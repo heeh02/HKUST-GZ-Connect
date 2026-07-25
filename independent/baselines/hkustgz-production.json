@@ -1,0 +1,496 @@
+{
+  "base_url": "https://remote.hkust-gz.edu.cn",
+  "collected_at": "2026-07-25T06:13:37+00:00",
+  "discovery": {
+    "compatibility_hash": "2e06d298bfd6d2ccab8f24122eb93e85a0b93ddf45f0980fe406734735ea5c87",
+    "schema_fields": [
+      "AllowBindSms",
+      "Anonymous",
+      "Auth",
+      "Autoinstall",
+      "DKEY_VER_ENABLE",
+      "DenyAccessWithoutCom",
+      "Deny_normal_user",
+      "DeviceType",
+      "DomainSSOEnable",
+      "DomainSSOUrl",
+      "EC",
+      "EFlag",
+      "ErrorCode",
+      "Extra",
+      "GMVERSION",
+      "IS_UNFORCE_INSTALLECAGENT",
+      "Is_enable_mult_client",
+      "Is_multclient_version",
+      "MID_ATK_CHECK",
+      "Message",
+      "Mult_client_guid",
+      "Multiline",
+      "RndImg",
+      "SSLALGOR",
+      "SSLCipherSuite",
+      "Softkey",
+      "StartAuth",
+      "USB_KEY_DLL",
+      "VPNVERSION",
+      "certcodetype",
+      "clientRunMode",
+      "enableautoRelogin",
+      "enableautologin",
+      "enablesavepwd",
+      "enablethirdpartycert",
+      "enablewechatqrcode"
+    ],
+    "values": {
+      "AllowBindSms": "0",
+      "Anonymous": "0",
+      "DenyAccessWithoutCom": "0",
+      "Deny_normal_user": "0",
+      "DeviceType": "ssl",
+      "DomainSSOEnable": "0",
+      "EFlag": "close",
+      "ErrorCode": "1",
+      "GMVERSION": "1.1",
+      "Is_enable_mult_client": "0",
+      "Is_multclient_version": "0",
+      "RndImg": "0",
+      "SSLALGOR": "1",
+      "Softkey": "0",
+      "StartAuth": "1",
+      "VPNVERSION": "M7.6.8R2",
+      "enablethirdpartycert": "0",
+      "enablewechatqrcode": "0"
+    }
+  },
+  "packages": {
+    "compatibility_hash": "5c01ded7f5e9a9d3f4720569c4a73eb9e2e5c4c379a8bafb6ca20b34fdd52e96",
+    "packages": [
+      {
+        "alias": "linux_767",
+        "custom": "0",
+        "kind": "deb-x64",
+        "link_host": "",
+        "link_path": "",
+        "link_present": false,
+        "platform": "linux",
+        "version": "7.6.7.3"
+      },
+      {
+        "alias": "linux_767",
+        "custom": "0",
+        "kind": "deb-x86",
+        "link_host": "",
+        "link_path": "",
+        "link_present": false,
+        "platform": "linux",
+        "version": "7.6.7.3"
+      },
+      {
+        "alias": "linux_767",
+        "custom": "0",
+        "kind": "rpm-x64",
+        "link_host": "",
+        "link_path": "",
+        "link_present": false,
+        "platform": "linux",
+        "version": "7.6.7.3"
+      },
+      {
+        "alias": "linux_767",
+        "custom": "0",
+        "kind": "rpm-x86",
+        "link_host": "",
+        "link_path": "",
+        "link_present": false,
+        "platform": "linux",
+        "version": "7.6.7.3"
+      },
+      {
+        "alias": "mac_767",
+        "custom": "0",
+        "kind": "default",
+        "link_host": "",
+        "link_path": "",
+        "link_present": false,
+        "platform": "mac",
+        "version": "7.6.7.4"
+      }
+    ]
+  },
+  "schema_version": 1,
+  "snapshot_hash": "a4ad9a5c3379f4eebc08f23eda15bbb8f12e787ab6788dc55f8968a75541d997",
+  "source_metadata": {
+    "discovery_last_modified": "",
+    "modules_last_modified": "Sat, 15 Apr 2023 20:04:14 GMT",
+    "packages_last_modified": ""
+  },
+  "target": "hkustgz-production",
+  "windows_installer": {
+    "content_length": "29873768",
+    "content_type": "application/x-msdownload",
+    "etag": "",
+    "http_status": 200,
+    "last_modified": "Wed, 01 Jul 2020 07:57:28 GMT",
+    "sha256": "9d108bcf8775ce61e31d86fbe6e5014907f7ec3d85d8626f38d2dc898ae7203f"
+  },
+  "windows_modules": {
+    "compatibility_hash": "432e4889494c1aa5f2b9c41e4d6dbee03f1ddec082c105d6344540455602b384",
+    "install_option_modules": [
+      "TCPModule"
+    ],
+    "install_options_hash": "4ea01d084b9f8f9b506f215ad3bad3e28551b4e49ce68cb4735c9e332715e703",
+    "module_count": 36,
+    "modules": [
+      {
+        "alias": "日志中心控件",
+        "basic": false,
+        "dependencies": [
+          "SangforServiceModule"
+        ],
+        "name": "CDCModule",
+        "path": "/com/win/SangforCDC.CAB",
+        "vendor_md5": "b7594ab4527bcdabf76fd65eb021fb48",
+        "version": "7,1,1,0"
+      },
+      {
+        "alias": "浏览器控件",
+        "basic": true,
+        "dependencies": [],
+        "name": "CSCMModule",
+        "path": "/com/win/CSClientManagerPrj.CAB",
+        "vendor_md5": "3d5d86afcbe79d6eb4e910fcc2c55e60",
+        "version": "7,6,7,206"
+      },
+      {
+        "alias": "CS客户端",
+        "basic": true,
+        "dependencies": [],
+        "name": "CSClientModule",
+        "path": "/com/win/SangforCSClientInstaller.exe",
+        "vendor_md5": "322c90e9c263b7778258428ca1051ae2",
+        "version": "7,6,7,208"
+      },
+      {
+        "alias": "数据流解析控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "DataParserModule",
+        "path": "/com/win/DataParserInstaller.exe",
+        "vendor_md5": "7fcaa14d30acf0427096e022fa170c32",
+        "version": "7,6,7,1"
+      },
+      {
+        "alias": "DNS服务驱动",
+        "basic": false,
+        "dependencies": [],
+        "name": "DnsDriverModule",
+        "path": "/com/win/DnsDriverInstaller.exe",
+        "vendor_md5": "9bff28ba923d0f4e00b8a6693d6615f7",
+        "version": "7,5,0,1"
+      },
+      {
+        "alias": "域名解析控件",
+        "basic": false,
+        "dependencies": [
+          "SangforServiceModule"
+        ],
+        "name": "DnsModule",
+        "path": "/com/win/SangforNsp.CAB",
+        "vendor_md5": "549f4e16139ec1386be0278030d156b0",
+        "version": "7,6,7,200"
+      },
+      {
+        "alias": "EC网页跨平台插件",
+        "basic": true,
+        "dependencies": [
+          "ECBaseModule"
+        ],
+        "name": "ECAgentModule",
+        "path": "/com/win/ECAgentInstaller.exe",
+        "vendor_md5": "7ae5e7c084669d29efbdbc4b76ff08cf",
+        "version": "7,6,7,201"
+      },
+      {
+        "alias": "EC网页跨平台插件",
+        "basic": true,
+        "dependencies": [
+          "CSCMModule"
+        ],
+        "name": "ECBaseModule",
+        "path": "/com/win/ECBaseInstaller.exe",
+        "vendor_md5": "8cc3e87bd00000167a309d3ba641fbf1",
+        "version": "7,6,7,200"
+      },
+      {
+        "alias": "EasyConnect UI模块",
+        "basic": true,
+        "dependencies": [],
+        "name": "EasyConnectModule",
+        "path": "/com/win/EasyConnectUIInstaller.exe",
+        "vendor_md5": "47d5c950d1b27f9f36f6ef94831e754c",
+        "version": "7,6,7,201"
+      },
+      {
+        "alias": "HTP加速控件",
+        "basic": false,
+        "dependencies": [
+          "SangforServiceModule"
+        ],
+        "name": "HTPModule",
+        "path": "/com/win/HTPInstaller.exe",
+        "vendor_md5": "23578f1e4e10a167f18410d8c9fdb7d0",
+        "version": "6,8,0,0"
+      },
+      {
+        "alias": "L3vpn服务控件",
+        "basic": false,
+        "dependencies": [
+          "DnsModule",
+          "VnicModule",
+          "SangforServiceModule"
+        ],
+        "name": "L3vpnModule",
+        "path": "/com/win/SangforL3Vpn.CAB",
+        "vendor_md5": "9ad93582de6f9509a18a0149c8b9a872",
+        "version": "7,6,7,200"
+      },
+      {
+        "alias": "64位域名解析控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "NSPX64Module",
+        "path": "/com/win/SangforNspX64.CAB",
+        "vendor_md5": "46cc8c3b167c7dfb681f7abf86b442cf",
+        "version": "7,5,1,1"
+      },
+      {
+        "alias": "远程应用RemoteApp客户端",
+        "basic": false,
+        "dependencies": [],
+        "name": "RemoteAppModule",
+        "path": "/com/win/SangforRAppInstaller.exe",
+        "vendor_md5": "ab13b801c28dab8b9d71a1368c0f7b1a",
+        "version": "7,6,7,0"
+      },
+      {
+        "alias": "虚拟专线控件",
+        "basic": false,
+        "dependencies": [
+          "SangforServiceModule"
+        ],
+        "name": "SDDNModule",
+        "path": "/com/win/SangforSddn.CAB",
+        "vendor_md5": "70dd564eb96b524348b8bfbd9666c98f",
+        "version": "7,6,6,302"
+      },
+      {
+        "alias": "单点登录控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "SSOModule",
+        "path": "/com/win/SSOClientPrj.CAB",
+        "vendor_md5": "b11e0d60d340214d28c60cf2296516a1",
+        "version": "7,6,7,200"
+      },
+      {
+        "alias": "流缓存迁移控件",
+        "basic": false,
+        "dependencies": [
+          "TCPModule"
+        ],
+        "name": "SVPNJobberModule",
+        "path": "/com/win/SJobberInstaller.exe",
+        "vendor_md5": "5fcb7a19085e894e18cc5fcdcb15b6ee",
+        "version": "7,6,7,0"
+      },
+      {
+        "alias": "核心业务控件",
+        "basic": true,
+        "dependencies": [],
+        "name": "SangforCoreModule",
+        "path": "/com/win/SangforCore.CAB",
+        "vendor_md5": "c698690e861cb418a2e0d4f10afe1ee4",
+        "version": "7,6,7,206"
+      },
+      {
+        "alias": "EC chrome登录插件",
+        "basic": true,
+        "dependencies": [],
+        "name": "SangforECPluginModule",
+        "path": "/com/win/SangforECPluginInstaller.exe",
+        "vendor_md5": "f65754025934711bb20e9f2d3f4c31f5",
+        "version": "6,9,0,0"
+      },
+      {
+        "alias": "SSLVPN服务客户端",
+        "basic": false,
+        "dependencies": [],
+        "name": "SangforServiceModule",
+        "path": "/com/win/SangforServiceClientInstaller.exe",
+        "vendor_md5": "42f1e77feea95b6513bc5948dac1e4cd",
+        "version": "7,6,7,200"
+      },
+      {
+        "alias": "客户端控件升级程序",
+        "basic": false,
+        "dependencies": [],
+        "name": "SangforUpdateModule",
+        "path": "/com/win/SangforUpdateInstaller.exe",
+        "vendor_md5": "2c29d6fcb6e31eebad423b635df18f15",
+        "version": "11,0,1,10"
+      },
+      {
+        "alias": "流缓存控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "ScacheModule",
+        "path": "/com/win/scache/LibSvpnSCache.dll",
+        "vendor_md5": "2f6652289b6c5597754a8810dbd44f1b",
+        "version": "2F6652289B6C5597754A8810DBD44F1B"
+      },
+      {
+        "alias": "安全桌面控件",
+        "basic": false,
+        "dependencies": [
+          "ALL"
+        ],
+        "name": "SecurityDesktopModule",
+        "path": "/com/win/SangforSDInstaller.exe",
+        "vendor_md5": "3e2cdb4a0d712dc918729609abdc56c0",
+        "version": "6,3,0,1"
+      },
+      {
+        "alias": "安全桌面控件",
+        "basic": false,
+        "dependencies": [
+          "ALL"
+        ],
+        "name": "SecurityDesktopX64Module",
+        "path": "/com/win/SangforSDInstallerX64.exe",
+        "vendor_md5": "c88671dcd994ef07547bbc5855e362aa",
+        "version": "6,3,0,1"
+      },
+      {
+        "alias": "浏览器辅助控件",
+        "basic": true,
+        "dependencies": [],
+        "name": "SinforBHOModule",
+        "path": "/com/win/SangforBHO.CAB",
+        "vendor_md5": "9aeabf9c882045157117880fd6cb828b",
+        "version": "7,6,7,0"
+      },
+      {
+        "alias": "安全桌面SSDT驱动控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "SsdtDriverModule",
+        "path": "/com/win/SsdtDriverInstaller.exe",
+        "vendor_md5": "c3250bb91a3128f0a5df3812d36c0f87",
+        "version": "6,0,0,0"
+      },
+      {
+        "alias": "权限提升服务控件",
+        "basic": true,
+        "dependencies": [],
+        "name": "SuperServiceModule",
+        "path": "/com/win/SuperServiceInstaller.exe",
+        "vendor_md5": "73ced5ecfecd09822991f1e3de9fae61",
+        "version": "7,6,7,205"
+      },
+      {
+        "alias": "权限提升程序控件",
+        "basic": true,
+        "dependencies": [],
+        "name": "SuperexeModule",
+        "path": "/com/win/SuperExeInstaller.exe",
+        "vendor_md5": "86e4b26238a0bb98ef2762d458a6d85e",
+        "version": "7,6,7,205"
+      },
+      {
+        "alias": "TCP服务驱动",
+        "basic": false,
+        "dependencies": [],
+        "name": "TCPDriverModule",
+        "path": "/com/win/TcpDriverInstaller.exe",
+        "vendor_md5": "4e36cb6193803148b1b5dd34e0a74be8",
+        "version": "7,5,0,1"
+      },
+      {
+        "alias": "TCP服务控件",
+        "basic": false,
+        "dependencies": [
+          "DnsModule",
+          "SangforServiceModule"
+        ],
+        "name": "TCPModule",
+        "path": "/com/win/SangforTcp.CAB",
+        "vendor_md5": "d9879c52ecd398b274960e3fcb54b915",
+        "version": "7,6,7,1"
+      },
+      {
+        "alias": "TCP服务64位控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "TCPX64Module",
+        "path": "/com/win/SangforTcpX64.CAB",
+        "vendor_md5": "ac7ab30d1f5f1ac79d8b550413b6af78",
+        "version": "7,5,1,2"
+      },
+      {
+        "alias": "USBKEY控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "USBKeyV2Module",
+        "path": "/com/win/nd_dkey_v2.CAB",
+        "vendor_md5": "9671e3d4dbab15eb26205fc523bd481d",
+        "version": "1,2,17,306"
+      },
+      {
+        "alias": "USBKEY控件_Win8",
+        "basic": false,
+        "dependencies": [],
+        "name": "USBKeyV2Module_win8",
+        "path": "/com/win/nd_dkey_v2_win8.CAB",
+        "vendor_md5": "9671e3d4dbab15eb26205fc523bd481d",
+        "version": "1,2,17,306"
+      },
+      {
+        "alias": "URL授权控件",
+        "basic": false,
+        "dependencies": [],
+        "name": "UrlAuthorModule",
+        "path": "/com/win/UrlWarrent.CAB",
+        "vendor_md5": "f6960e938938e8cb32ca78a93c975818",
+        "version": "7,1,1,0"
+      },
+      {
+        "alias": "VC2010运行库",
+        "basic": false,
+        "dependencies": [],
+        "name": "VC2010RedistModule",
+        "path": "/com/win/VC2010RedistX86UInstaller.exe",
+        "vendor_md5": "65ba49c1cb7e120880e3c33e01921f79",
+        "version": "1,0,0,0"
+      },
+      {
+        "alias": "虚拟网卡",
+        "basic": false,
+        "dependencies": [],
+        "name": "VnicModule",
+        "path": "/com/win/VNICInstaller.exe",
+        "vendor_md5": "c336c92088cc22bfaf33cb25fa967ef9",
+        "version": "7,1,0,1"
+      },
+      {
+        "alias": "虚拟网卡(x64)",
+        "basic": false,
+        "dependencies": [],
+        "name": "VnicModule64",
+        "path": "/com/win/VNICInstaller_X64.exe",
+        "vendor_md5": "8222d773ba8700ceb4145d352f09a210",
+        "version": "7,1,0,1"
+      }
+    ],
+    "vpn_version": "7.6.7.0.201"
+  }
+}

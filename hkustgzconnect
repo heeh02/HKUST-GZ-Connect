@@ -1,121 +1,150 @@
 #!/usr/bin/env bash
-# hkustgzconnect — native arm64 HKUST-GZ EasyConnect (Sangfor) SSL-VPN client.
-# Thin, hardened wrapper around the zju-connect engine. No Rosetta, no Docker.
-# Password lives in the macOS Keychain; an ephemeral 0600 runtime config carries it
-# to the engine so it never appears in `ps` or in a persistent plaintext file.
+# macOS wrapper for the independent Rust EasyConnect engine.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
-ENGINE="$HERE/zju-connect"
+ENGINE="$HERE/independent/target/release/ec-engine"
+ENGINE_CONFIG="$HERE/independent/config/hkustgz.json"
 CONF="$HERE/config.toml"
 
 RUNDIR="$HOME/.hkustgzconnect"
-RUNCONF="$RUNDIR/runtime.toml"
 LOG="$RUNDIR/hkustgzconnect.log"
 PIDFILE="$RUNDIR/hkustgzconnect.pid"
-
 KEYCHAIN_SERVICE="hkustgzconnect"
-SOCKS_HOST="127.0.0.1"; SOCKS_PORT="1080"
+SOCKS_HOST="127.0.0.1"
+SOCKS_PORT="$(awk -F'[:\"]' '/^socks_bind/{print $(NF-1); exit}' "$CONF" 2>/dev/null)"
+SOCKS_PORT="${SOCKS_PORT:-1080}"
 LABEL="com.hkustgz.connect"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-HPC_PROBE_IP="10.120.48.30"   # hpc3, used only by `test`
+HPC_PROBE_IP="10.120.48.30"
 
-mkdir -p "$RUNDIR"; chmod 700 "$RUNDIR"
+mkdir -p "$RUNDIR"
+chmod 700 "$RUNDIR"
 
 ACC="$(awk -F'"' '/^username/{print $2; exit}' "$CONF" 2>/dev/null)"
 die(){ echo "✗ $*" >&2; exit 1; }
-[ -x "$ENGINE" ] || die "engine missing/not executable: $ENGINE"
-[ -f "$CONF" ]   || die "config missing: $CONF"
-[ -n "$ACC" ]    || die "no username in $CONF"
+[ -f "$CONF" ] || die "missing local identity config: $CONF"
+[ -n "$ACC" ] || die "no username in $CONF"
 
 get_pw(){ security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$ACC" -w 2>/dev/null; }
-running_pid(){ [ -f "$PIDFILE" ] && cat "$PIDFILE" 2>/dev/null; }
+running_pid(){ [ -f "$PIDFILE" ] && awk 'NR==1{print; exit}' "$PIDFILE" 2>/dev/null; }
 is_up(){ local p; p="$(running_pid)"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
 socks_listening(){ lsof -nP -iTCP@"$SOCKS_HOST":"$SOCKS_PORT" -sTCP:LISTEN >/dev/null 2>&1; }
 svc_loaded(){ launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; }
 
-wait_socks(){  # wait up to 15s for SOCKS, bail on auth failure / death
-  for _ in $(seq 1 15); do
+ensure_engine(){
+  [ -x "$ENGINE" ] && return 0
+  if command -v cargo >/dev/null 2>&1; then
+    cargo_runner=(cargo)
+  elif command -v rustup >/dev/null 2>&1; then
+    toolchain_bin="$(dirname "$(rustup which rustc --toolchain 1.97.1)")"
+    cargo_runner=(env "PATH=$toolchain_bin:$PATH" rustup run 1.97.1 cargo)
+  else
+    die "engine missing and cargo/rustup is unavailable"
+  fi
+  (cd "$HERE/independent" && "${cargo_runner[@]}" build --locked --release --bin ec-engine) \
+    || die "independent engine build failed"
+}
+
+wait_socks(){
+  for _ in $(seq 1 20); do
     socks_listening && return 0
-    grep -qiE "Login failed|Invalid username|setup error" "$LOG" 2>/dev/null && return 1
+    grep -qiE "authentication failed|unsupported|ec-engine:" "$LOG" 2>/dev/null && return 1
     sleep 1
   done
   socks_listening
 }
+
 report_up(){
   if socks_listening; then
-    echo "✓ up — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"; grep -m1 "Client IP" "$LOG" 2>/dev/null | sed 's/^/  /'
+    echo "✓ up — independent Rust SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
   else
-    echo "✗ failed to come up — last log lines:"; tail -6 "$LOG" 2>/dev/null | sed 's/^/  /'; return 1
+    echo "✗ failed to come up — last log lines:"
+    tail -8 "$LOG" 2>/dev/null | sed 's/^/  /'
+    return 1
   fi
 }
 
-write_runconf(){
-  local pw; pw="$(get_pw)" || true
+run_engine(){
+  local pw
+  pw="$(get_pw)" || true
   [ -n "${pw:-}" ] || die "no password in Keychain — run: $(basename "$0") set-password"
-  ( umask 077; { cat "$CONF"; printf '\npassword = "%s"\n' "$pw"; } > "$RUNCONF" )
-  chmod 600 "$RUNCONF"
+  {
+    printf '%s\n' "$ACC"
+    printf '%s\n' "$pw"
+  } | "$ENGINE" \
+    --config "$ENGINE_CONFIG" \
+    --credentials-stdin \
+    --socks-bind "$SOCKS_HOST:$SOCKS_PORT"
 }
 
 case "${1:-}" in
   set-password)
-    printf "Password for %s @ HKUST-GZ VPN: " "$ACC" >&2; read -rs pw; echo >&2
+    printf "Password for %s @ HKUST-GZ VPN: " "$ACC" >&2
+    read -rs pw
+    echo >&2
     [ -n "$pw" ] || die "empty password"
     security add-generic-password -U -s "$KEYCHAIN_SERVICE" -a "$ACC" -w "$pw" \
-      && echo "✓ stored in Keychain (service=$KEYCHAIN_SERVICE account=$ACC)"
+      && echo "✓ stored in Keychain"
     ;;
 
-  run)   # foreground — used by launchd and by `up`
-    write_runconf
-    echo $$ > "$PIDFILE"   # after exec, the engine inherits this pid
-    exec "$ENGINE" -config "$RUNCONF"
+  run)
+    ensure_engine
+    echo $$ > "$PIDFILE"
+    run_engine
     ;;
 
   up)
     socks_listening && { echo "✓ already running — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"; exit 0; }
-    write_runconf   # fail fast if no password, before launching
+    ensure_engine
+    get_pw >/dev/null 2>&1 || die "no password in Keychain — run set-password"
     : > "$LOG"
-    if [ -f "$PLIST" ]; then           # autostart installed → let launchd own it
+    if [ -f "$PLIST" ]; then
       launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null \
         || launchctl kickstart "gui/$(id -u)/$LABEL" 2>/dev/null
-    else                                # manual mode
-      nohup "$ENGINE" -config "$RUNCONF" >>"$LOG" 2>&1 &
-      echo $! > "$PIDFILE"; disown 2>/dev/null || true
+    else
+      nohup "$0" run >>"$LOG" 2>&1 &
+      echo $! > "$PIDFILE"
+      disown 2>/dev/null || true
     fi
-    wait_socks; report_up || { "$0" down >/dev/null 2>&1; exit 1; }
+    wait_socks
+    report_up || { "$0" down >/dev/null 2>&1; exit 1; }
     ;;
 
   down)
-    if svc_loaded; then launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null; fi
-    local_p="$(running_pid)"
-    [ -n "$local_p" ] && kill "$local_p" 2>/dev/null
-    pkill -f "zju-connect -config $RUNCONF" 2>/dev/null
-    rm -f "$PIDFILE" "$RUNCONF"
+    svc_loaded && launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
+    local_pid="$(running_pid)"
+    [ -n "$local_pid" ] && kill -INT "$local_pid" 2>/dev/null
+    pkill -f "$ENGINE --config $ENGINE_CONFIG" 2>/dev/null
+    [ -f "$PIDFILE" ] && mv "$PIDFILE" "$RUNDIR/hkustgzconnect.pid.stopped"
     echo "✓ down"
     ;;
 
-  restart) "$0" down >/dev/null 2>&1; sleep 1; exec "$0" up ;;
+  restart)
+    "$0" down >/dev/null 2>&1
+    sleep 1
+    exec "$0" up
+    ;;
 
   status)
     if is_up; then echo "● running (pid $(running_pid))"; else echo "○ not running"; fi
     socks_listening && echo "  SOCKS5 $SOCKS_HOST:$SOCKS_PORT: listening" || echo "  SOCKS5: not listening"
-    get_pw >/dev/null 2>&1 && echo "  Keychain password: present" || echo "  Keychain password: MISSING (run set-password)"
-    [ -f "$PLIST" ] && echo "  autostart (launchd): installed" || echo "  autostart: not installed"
+    get_pw >/dev/null 2>&1 && echo "  Keychain password: present" || echo "  Keychain password: missing"
+    [ -x "$ENGINE" ] && echo "  independent engine: built" || echo "  independent engine: not built"
+    [ -f "$PLIST" ] && echo "  autostart: installed" || echo "  autostart: not installed"
     ;;
 
   test)
-    socks_listening || die "SOCKS not listening — is it up? ($(basename "$0") up)"
-    echo -n "HPC $HPC_PROBE_IP:22 via SOCKS → "
+    socks_listening || die "SOCKS not listening"
+    echo -n "HPC $HPC_PROBE_IP:22 via independent SOCKS → "
     banner="$(nc -X 5 -x "$SOCKS_HOST:$SOCKS_PORT" -G 6 -w 6 "$HPC_PROBE_IP" 22 </dev/null 2>&1 | head -1)"
     [ -n "$banner" ] && echo "$banner" || echo "(no banner / unreachable)"
     ;;
 
-  install)   # autostart at login via launchd
-    get_pw >/dev/null 2>&1 || die "set the password first: $(basename "$0") set-password"
-    # stop any manual instance so launchd can bind the SOCKS port
-    p="$(running_pid)"; [ -n "$p" ] && kill "$p" 2>/dev/null
-    pkill -f "zju-connect -config $RUNCONF" 2>/dev/null; rm -f "$PIDFILE"; sleep 1
-    cat > "$PLIST" <<PL
+  install)
+    ensure_engine
+    get_pw >/dev/null 2>&1 || die "set the password first"
+    cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -129,42 +158,40 @@ case "${1:-}" in
   <key>StandardOutPath</key><string>$LOG</string>
   <key>StandardErrorPath</key><string>$LOG</string>
 </dict></plist>
-PL
+PLIST
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
     launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null \
       || launchctl load "$PLIST" 2>/dev/null
-    echo "✓ autostart installed ($PLIST) — runs at login + restarts on drop. Starting…"
-    : > "$LOG"; wait_socks; report_up
+    echo "✓ independent engine autostart installed"
+    : > "$LOG"
+    wait_socks
+    report_up
     ;;
 
   uninstall)
-    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null
-    rm -f "$PLIST"
+    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null \
+      || launchctl unload "$PLIST" 2>/dev/null
+    [ -f "$PLIST" ] && mv "$PLIST" "$RUNDIR/com.hkustgz.connect.plist.uninstalled"
     echo "✓ autostart removed"
     ;;
 
-  logs) tail -n 40 -f "$LOG" ;;
+  logs)
+    tail -n 40 -f "$LOG"
+    ;;
 
   *)
     cat <<USAGE
-hkustgzconnect — native arm64 HKUST-GZ EasyConnect client (engine: zju-connect)
+hkustgzconnect — independent Rust EasyConnect client
 
-  set-password   store VPN password in macOS Keychain (run once)
-  up             start the tunnel (SOCKS5 $SOCKS_HOST:$SOCKS_PORT)
-  down           stop the tunnel
-  restart        down + up
-  status         show running / SOCKS / keychain / autostart state
-  test           probe HPC ($HPC_PROBE_IP:22) through the SOCKS tunnel
-  logs           tail the log
-  install        autostart at login (launchd) + auto-restart on drop
-  uninstall      remove autostart
-  run            (internal) foreground engine, used by launchd
-
-Typical first run:
-  ./hkustgzconnect set-password
-  ./hkustgzconnect up
-  ./hkustgzconnect test
-  ssh hpc3        # works via the SOCKS ProxyCommand in ~/.ssh/hkustgzconnect.conf
+  set-password   store the VPN password in macOS Keychain
+  up             build if needed and start SOCKS5
+  down           stop the engine
+  restart        restart the engine
+  status         show engine and SOCKS state
+  test           read the approved HPC SSH banner through SOCKS
+  logs           follow engine logs
+  install        install launchd autostart
+  uninstall      remove launchd autostart
 USAGE
     ;;
 esac

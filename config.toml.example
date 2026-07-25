@@ -1,16 +1,3 @@
-# hkustgzconnect CLI config — copy to `config.toml` and fill `username`.
-# The password is NOT stored here; it lives in the macOS Keychain
-# (run: ./hkustgzconnect set-password). See README.
-
-protocol             = "easyconnect"
-server_address       = "remote.hkust-gz.edu.cn"
-server_port          = 443
-username             = ""               # your campus account prefix, e.g. xxx000
-
-socks_bind           = "127.0.0.1:1080"
-http_bind            = "127.0.0.1:1081"
-
-disable_zju_config   = true
-disable_zju_dns      = true
-skip_domain_resource = true
-secondary_dns_server = "223.5.5.5"
+# Local CLI identity only. The password stays in the macOS Keychain.
+username = ""
+socks_bind = "127.0.0.1:1080"

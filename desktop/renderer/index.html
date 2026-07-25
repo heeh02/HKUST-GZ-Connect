@@ -91,32 +91,16 @@
         <div class="card">
           <div class="card-title">连接与端口</div>
           <div class="frow"><span class="fk">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65534" /></div>
-          <div class="frow"><span class="fk">HTTP 代理</span><code class="code" id="httpPort">—</code><button class="mini" data-copy="http">复制</button></div>
           <label class="sw"><span>自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
           <label class="sw"><span>开机自启</span><input type="checkbox" id="startAtLogin" /></label>
           <label class="sw"><span>启动后自动连接</span><input type="checkbox" id="autoConnect" /></label>
+          <p class="hint">代理仅监听 127.0.0.1；DNS 由校园 VPN 网关下发，并在隧道内解析。</p>
         </div>
 
         <div class="card">
-          <div class="card-title">DNS 服务器</div>
-          <label class="radio"><input type="radio" name="dns" value="auto" /> <span>自动</span><em>可靠公共 DNS,推荐</em></label>
-          <label class="radio"><input type="radio" name="dns" value="manual" /> <span>手动指定</span><em>自己提供 DNS</em></label>
-          <input id="customDns" class="inp" placeholder="如 223.5.5.5" disabled />
-          <p class="hint">睡醒/换网后连不上,多是系统 DNS 失效;走可靠 DNS 预解析网关、绕开它。</p>
-        </div>
-
-        <div class="card">
-          <div class="card-title">路由 / 分流</div>
-          <div class="fk">强制走代理的域名</div>
-          <input id="customProxyDomain" class="inp" placeholder="science.org,nature.com(逗号分隔)" />
-          <label class="sw" style="margin-top:8px"><span>全局代理(所有流量走隧道)</span><input type="checkbox" id="proxyAll" /></label>
-          <p class="hint">校内/HPC(10.120.x)默认已走隧道;这里可加期刊/图书馆域名。全局代理一般不需要。</p>
-        </div>
-
-        <div class="card">
-          <div class="card-title">保活与工具</div>
-          <label class="sw"><span>保持连接(防空闲断开)</span><input type="checkbox" id="keepAlive" /></label>
+          <div class="card-title">代理与工具</div>
+          <div class="frow"><span class="fk">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks">复制</button></div>
           <div class="tools">
             <button class="mini" data-copy="pac">复制 PAC 地址</button>
             <button class="mini" data-copy="ssh">复制 SSH 命令</button>
@@ -145,8 +129,8 @@
           <div class="card-title">当前账号</div>
           <div class="acct" id="acct">—</div>
           <div class="card-title" style="margin-top:12px">网关</div>
-          <input id="setServer" class="inp" spellcheck="false" />
-          <p class="hint">一般不用改;默认 remote.hkust-gz.edu.cn。</p>
+          <div class="acct">remote.hkust-gz.edu.cn</div>
+          <p class="hint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
         </div>
         <div class="card">
           <div class="card-title">窗口行为</div>
@@ -160,7 +144,7 @@
           </div>
         </div>
         <button id="logoutBtn" class="danger">退出登录 / 切换账号</button>
-        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.3.8</span></div>
+        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v1.0.0</span></div>
       </section>
     </main>
   </div>

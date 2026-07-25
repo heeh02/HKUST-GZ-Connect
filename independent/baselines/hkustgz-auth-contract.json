@@ -1,0 +1,749 @@
+{
+  "authenticated": true,
+  "base_url": "https://remote.hkust-gz.edu.cn",
+  "collected_at": "2026-07-25T06:45:57+00:00",
+  "credentials": {
+    "serialized": false,
+    "source": "stdin"
+  },
+  "schema_version": 1,
+  "session": {
+    "count": 1,
+    "secure_count": 1,
+    "session_cookie_present": true
+  },
+  "stages": {
+    "configuration": {
+      "attribute_keys": {
+        "/Conf/Autorule": [
+          "count",
+          "domain",
+          "enable",
+          "enable_limit",
+          "gather_rule_limit",
+          "mode",
+          "rule_limit"
+        ],
+        "/Conf/Bandwidth": [
+          "recvlimit",
+          "sendlimit"
+        ],
+        "/Conf/CDC": [
+          "AuthPast",
+          "GrpIdInt",
+          "LogInterval",
+          "LogKey",
+          "enable",
+          "useUsersLog"
+        ],
+        "/Conf/EMM/NetworkWhiteList": [
+          "forbid_internet",
+          "forbid_intranet"
+        ],
+        "/Conf/ExchangeServer": [
+          "address",
+          "apns_port",
+          "enable",
+          "src_domain"
+        ],
+        "/Conf/Htp": [
+          "auto",
+          "enable",
+          "mtu",
+          "param",
+          "port"
+        ],
+        "/Conf/L3VPN": [
+          "iptunDns",
+          "iptunDnsBak"
+        ],
+        "/Conf/Logo": [
+          "LogoMd5",
+          "LogoPath",
+          "custom"
+        ],
+        "/Conf/Mline": [
+          "enable",
+          "interval",
+          "list",
+          "number",
+          "timeout"
+        ],
+        "/Conf/Other": [
+          "AccessibleAddr",
+          "RelogIPLast",
+          "RelogTimeLast",
+          "UserAuthPast",
+          "UserPwd",
+          "auth_sms",
+          "autoStartCS",
+          "autorelogininterval",
+          "autorelogintimes",
+          "chg_note_enable",
+          "chg_phone_enable",
+          "chg_pwd_enable",
+          "denyNormalAccess",
+          "deviceversion",
+          "displayhost",
+          "enableAutoRelogin",
+          "enable_cs_rc_windows",
+          "enableautologin",
+          "enablesavepwd",
+          "isExtern",
+          "isHidUser",
+          "isPubUser",
+          "isRelogin",
+          "login_name",
+          "mobilephone",
+          "pptp_detaddr",
+          "pptp_grpolicy",
+          "psw_minlen",
+          "pwp_remind_msg",
+          "sddn_enable",
+          "sslctx",
+          "svpnlanaddr",
+          "user_note",
+          "vpntype"
+        ],
+        "/Conf/RemoteApp": [
+          "MapClipboard",
+          "MapDisk",
+          "MapPrinter",
+          "UseRdp",
+          "VirtualPrintMode",
+          "VirtualPrinter",
+          "account_policy",
+          "rapp_resuse"
+        ],
+        "/Conf/RemoteApp/SRAPOption/CacheHash": [
+          "op_type"
+        ],
+        "/Conf/RemoteApp/SRAPOption/GlyphCompress": [
+          "jpeg_quality",
+          "option"
+        ],
+        "/Conf/RemoteApp/SRAPOption/LossCompressor": [
+          "quality",
+          "ratio",
+          "type"
+        ],
+        "/Conf/RemoteApp/SRAPOption/NoLossCompressor": [
+          "bmp_compressor",
+          "compressor_type"
+        ],
+        "/Conf/RemoteApp/SRAPOption/StreamMerge": [
+          "threshold",
+          "type",
+          "uptime"
+        ],
+        "/Conf/SCache": [
+          "cfgmd5",
+          "dllmd5",
+          "enable",
+          "gwid",
+          "id"
+        ],
+        "/Conf/SysTray": [
+          "SSLTrayIconMd5",
+          "SSLTrayIconPath",
+          "SysShortCutName",
+          "enable"
+        ],
+        "/Conf/TcpApplication": [
+          "compress",
+          "maxthread",
+          "userMode"
+        ],
+        "/Conf/UsbKey": [
+          "certinput",
+          "typecount",
+          "typeinfo",
+          "version"
+        ],
+        "/Conf/Vpnline": [
+          "address"
+        ],
+        "/Conf/WebCache": [
+          "count",
+          "enable",
+          "mode",
+          "url"
+        ],
+        "/Conf/WebHttpEnable": [
+          "enable",
+          "httpPort"
+        ],
+        "/Conf/WebVpn": [
+          "hostname",
+          "port",
+          "scheme"
+        ],
+        "/Conf/Webagent": [
+          "address",
+          "enable"
+        ]
+      },
+      "body_bytes": 4540,
+      "content_type": "text/xml;charset=utf-8",
+      "element_count": 78,
+      "format": "xml",
+      "http_status": 200,
+      "max_depth": 3,
+      "root": "Conf",
+      "schema_fields": [
+        "Autorule",
+        "AworkName",
+        "Bandwidth",
+        "CDC",
+        "CacheHash",
+        "Conf",
+        "DNEnable",
+        "DnsRuleExceptions",
+        "EC",
+        "EMM",
+        "Exception",
+        "ExchangeServer",
+        "ExpireCertInfo",
+        "GlyphCompress",
+        "Htp",
+        "L3VPN",
+        "LastLoginFails",
+        "LastLoginIp",
+        "LastLoginRes",
+        "LastLoginSuccTime",
+        "LastLoginSwitch",
+        "LastLoginTime",
+        "LastLoginType",
+        "LastOsType",
+        "LockIntervalTime",
+        "LogUploadEnable",
+        "Logo",
+        "LossCompressor",
+        "MdmPolicyEnable",
+        "Mline",
+        "NetworkWhiteList",
+        "NoLossCompressor",
+        "Other",
+        "PrintPaper",
+        "PrivateFolderName",
+        "PwdInfo",
+        "PwdRemaintm",
+        "PwpErrorCode",
+        "RdbUpdateTime",
+        "RemoteApp",
+        "SCache",
+        "SRAPOption",
+        "SSLCipherSuite",
+        "SSLEigenvalue",
+        "Service",
+        "StreamMerge",
+        "SvpnID",
+        "SysTray",
+        "TCP",
+        "TcpApplication",
+        "TicketEnable",
+        "TicketLoginCode",
+        "TicketLoginType",
+        "Title",
+        "UsbKey",
+        "V_ISEXTERN",
+        "V_ISPUBUSR",
+        "V_ISSHOWSSOCONF",
+        "Vpnline",
+        "WaterMarkEnable",
+        "WebCache",
+        "WebHttpEnable",
+        "WebOpt",
+        "WebSecLogin",
+        "WebVpn",
+        "Webagent",
+        "certMode",
+        "customInfo",
+        "custonInfoLen",
+        "logoLink",
+        "showPptp",
+        "ssoEnCode",
+        "vpnType"
+      ],
+      "schema_paths": [
+        "/Conf",
+        "/Conf/Autorule",
+        "/Conf/AworkName",
+        "/Conf/Bandwidth",
+        "/Conf/CDC",
+        "/Conf/DNEnable",
+        "/Conf/DnsRuleExceptions",
+        "/Conf/DnsRuleExceptions/Exception",
+        "/Conf/EMM",
+        "/Conf/EMM/ExpireCertInfo",
+        "/Conf/EMM/LockIntervalTime",
+        "/Conf/EMM/LogUploadEnable",
+        "/Conf/EMM/MdmPolicyEnable",
+        "/Conf/EMM/NetworkWhiteList",
+        "/Conf/EMM/RdbUpdateTime",
+        "/Conf/EMM/TicketEnable",
+        "/Conf/EMM/TicketLoginCode",
+        "/Conf/EMM/TicketLoginType",
+        "/Conf/EMM/WaterMarkEnable",
+        "/Conf/ExchangeServer",
+        "/Conf/Htp",
+        "/Conf/L3VPN",
+        "/Conf/Logo",
+        "/Conf/Mline",
+        "/Conf/Other",
+        "/Conf/PwdInfo",
+        "/Conf/PwdInfo/PwdRemaintm",
+        "/Conf/PwdInfo/PwpErrorCode",
+        "/Conf/RemoteApp",
+        "/Conf/RemoteApp/PrintPaper",
+        "/Conf/RemoteApp/PrivateFolderName",
+        "/Conf/RemoteApp/SRAPOption",
+        "/Conf/RemoteApp/SRAPOption/CacheHash",
+        "/Conf/RemoteApp/SRAPOption/GlyphCompress",
+        "/Conf/RemoteApp/SRAPOption/LossCompressor",
+        "/Conf/RemoteApp/SRAPOption/NoLossCompressor",
+        "/Conf/RemoteApp/SRAPOption/StreamMerge",
+        "/Conf/SCache",
+        "/Conf/SSLCipherSuite",
+        "/Conf/SSLCipherSuite/EC",
+        "/Conf/SSLCipherSuite/L3VPN",
+        "/Conf/SSLCipherSuite/TCP",
+        "/Conf/SSLEigenvalue",
+        "/Conf/SSLEigenvalue/L3VPN",
+        "/Conf/SSLEigenvalue/TCP",
+        "/Conf/Service",
+        "/Conf/Service/SvpnID",
+        "/Conf/Service/Title",
+        "/Conf/Service/V_ISEXTERN",
+        "/Conf/Service/V_ISPUBUSR",
+        "/Conf/Service/V_ISSHOWSSOCONF",
+        "/Conf/Service/certMode",
+        "/Conf/Service/customInfo",
+        "/Conf/Service/custonInfoLen",
+        "/Conf/Service/logoLink",
+        "/Conf/Service/showPptp",
+        "/Conf/Service/ssoEnCode",
+        "/Conf/Service/vpnType",
+        "/Conf/SysTray",
+        "/Conf/TcpApplication",
+        "/Conf/UsbKey",
+        "/Conf/Vpnline",
+        "/Conf/WebCache",
+        "/Conf/WebHttpEnable",
+        "/Conf/WebOpt",
+        "/Conf/WebSecLogin",
+        "/Conf/WebSecLogin/LastLoginFails",
+        "/Conf/WebSecLogin/LastLoginIp",
+        "/Conf/WebSecLogin/LastLoginRes",
+        "/Conf/WebSecLogin/LastLoginSuccTime",
+        "/Conf/WebSecLogin/LastLoginSwitch",
+        "/Conf/WebSecLogin/LastLoginTime",
+        "/Conf/WebSecLogin/LastLoginType",
+        "/Conf/WebSecLogin/LastOsType",
+        "/Conf/WebVpn",
+        "/Conf/Webagent"
+      ]
+    },
+    "discovery": {
+      "captcha": 0,
+      "error_code": 1,
+      "http_status": 200,
+      "start_auth": 1
+    },
+    "logout": {
+      "attempted": true,
+      "http_status": 200
+    },
+    "password_config": {
+      "csrf_present": true,
+      "cur_auth": 0,
+      "error_code": 1,
+      "http_status": 200,
+      "mid_attack_check": 0,
+      "next_service": "",
+      "rsa_key_bits": 2048,
+      "schema_fields": [
+        "ErrorCode"
+      ],
+      "session_identifier_present": false
+    },
+    "password_login": {
+      "cur_auth": 1,
+      "error_code": 1,
+      "http_status": 200,
+      "next_service": "",
+      "schema_fields": [
+        "CurAuth",
+        "ErrorCode",
+        "IsFirstAuth"
+      ],
+      "state": "authenticated",
+      "session_identifier_present": true
+    },
+    "resources": {
+      "attribute_keys": {
+        "/Resource/Dns": [
+          "data",
+          "dnsserver",
+          "filter"
+        ],
+        "/Resource/FileLock": [
+          "data",
+          "filecount",
+          "maxfilecount"
+        ],
+        "/Resource/Other": [
+          "allocateVip",
+          "balanceinfo",
+          "defaultRcId"
+        ],
+        "/Resource/RcGroups/Group": [
+          "id",
+          "load_balance",
+          "logoheight",
+          "logowidth",
+          "name",
+          "show_note",
+          "type"
+        ],
+        "/Resource/Rcs/Rc": [
+          "app_path",
+          "attr",
+          "auth_sp_id",
+          "authorization",
+          "enable_disguise",
+          "host",
+          "id",
+          "name",
+          "note",
+          "port",
+          "proto",
+          "rc_grp_id",
+          "rc_logo",
+          "selectid",
+          "svc",
+          "type"
+        ],
+        "/Resource/SD/DesktopFormat": [
+          "bluetooth",
+          "changedesk",
+          "com",
+          "infrared",
+          "printer",
+          "rapp_in_safedesk",
+          "register_un_mon",
+          "safedesk",
+          "safedesk_local_transport"
+        ],
+        "/Resource/SD/Global": [
+          "SDRedirectFile",
+          "enable"
+        ],
+        "/Resource/SD/Internet": [
+          "history",
+          "tables",
+          "tempbuf"
+        ],
+        "/Resource/SD/Policy": [
+          "id"
+        ],
+        "/Resource/SD/iplist": [
+          "iplist"
+        ],
+        "/Resource/SD/rclist": [
+          "rclist"
+        ],
+        "/Resource/StaticSd/ActiveXProxyProcess/Process": [
+          "Name"
+        ],
+        "/Resource/StaticSd/DeniService": [
+          "Count"
+        ],
+        "/Resource/StaticSd/DeniService/Service": [
+          "name"
+        ],
+        "/Resource/StaticSd/DenyProcess/Item": [
+          "FileName",
+          "Info"
+        ],
+        "/Resource/StaticSd/Drivers": [
+          "Enable"
+        ],
+        "/Resource/StaticSd/Drivers/Driver": [
+          "Enable",
+          "Name"
+        ],
+        "/Resource/StaticSd/InjectAgentWhiteList": [
+          "Count"
+        ],
+        "/Resource/StaticSd/InjectAgentWhiteList/ProcName": [
+          "name"
+        ],
+        "/Resource/StaticSd/InterceptSet": [
+          "Count"
+        ],
+        "/Resource/StaticSd/InterceptSet/Item": [
+          "Name",
+          "Type"
+        ],
+        "/Resource/StaticSd/NetDrvInfo": [
+          "WorkMode"
+        ],
+        "/Resource/StaticSd/NetDrvInfo/WhiteListItem": [
+          "FileName",
+          "Value",
+          "VerifyType"
+        ],
+        "/Resource/StaticSd/RedirectObjectRule": [
+          "Count"
+        ],
+        "/Resource/StaticSd/RedirectObjectRule/Rule": [
+          "Disable",
+          "MatchRule",
+          "ObjectName",
+          "ObjectType",
+          "ProcessName"
+        ],
+        "/Resource/StaticSd/UsbWhiteProcess/Rule": [
+          "Info",
+          "ProcessName",
+          "Type"
+        ],
+        "/Resource/StaticSd/VBRule": [
+          "Enable"
+        ],
+        "/Resource/StaticSd/WhitePipeOfProcess": [
+          "EnablePipeRule"
+        ],
+        "/Resource/StaticSd/WhitePipeOfProcess/Item": [
+          "FileName",
+          "Info",
+          "PipeName"
+        ],
+        "/Resource/UB": [
+          "index_inner",
+          "ubdllinfo"
+        ],
+        "/Resource/UrlWarrentRules": [
+          "enable",
+          "filter",
+          "tips"
+        ],
+        "/Resource/VSP/ActiveXProxyInstall": [
+          "Enable"
+        ],
+        "/Resource/VSP/Crypto": [
+          "Ctx",
+          "Length",
+          "Type"
+        ],
+        "/Resource/VSP/ExecutableProcess": [
+          "Enable"
+        ],
+        "/Resource/VSP/FileExport": [
+          "AuditLog",
+          "Compress",
+          "Enable",
+          "MaxAuditFileSize"
+        ],
+        "/Resource/VSP/Inject": [
+          "Type"
+        ],
+        "/Resource/VSP/LocalCommunication": [
+          "Enable"
+        ],
+        "/Resource/VSP/Misc": [
+          "SDTitle",
+          "ShowRcInSD",
+          "ShowUserShortCutIconInSD"
+        ],
+        "/Resource/VSP/NavBar": [
+          "IconUrl",
+          "MD5"
+        ],
+        "/Resource/VSP/OfflineVisit": [
+          "Enable",
+          "IsBind",
+          "VisitTime"
+        ],
+        "/Resource/VSP/ReDirect": [
+          "Ctx",
+          "NameRule"
+        ],
+        "/Resource/VSP/RedirectData": [
+          "ProcessType",
+          "UseCustomDefine"
+        ],
+        "/Resource/VSP/WallPaper": [
+          "Compress",
+          "MD5",
+          "Type",
+          "Url"
+        ]
+      },
+      "body_bytes": 16192,
+      "content_type": "text/xml;charset=utf-8",
+      "element_count": 263,
+      "format": "xml",
+      "http_status": 200,
+      "max_depth": 4,
+      "root": "Resource",
+      "schema_fields": [
+        "ActiveXProxyInstall",
+        "ActiveXProxyProcess",
+        "CertDn",
+        "CertSn",
+        "CertThum",
+        "Crypto",
+        "DefaultExecutableProcess",
+        "DeniService",
+        "DenyProcess",
+        "DesktopFormat",
+        "Dns",
+        "Driver",
+        "Drivers",
+        "Easylink",
+        "EnTopTool",
+        "ExecutableProcess",
+        "FileExport",
+        "FileLock",
+        "FileName",
+        "Global",
+        "Group",
+        "Inject",
+        "InjectAgentWhiteList",
+        "InterceptSet",
+        "Internet",
+        "IsExtern",
+        "IsHidUser",
+        "IsUser",
+        "Item",
+        "KeyList",
+        "LocalCommunication",
+        "LoginIp",
+        "LoginTime",
+        "MSG_INFO",
+        "Misc",
+        "NavBar",
+        "NetDrvInfo",
+        "NotifySize",
+        "OfflineVisit",
+        "Other",
+        "Policy",
+        "ProcList",
+        "ProcName",
+        "Process",
+        "Rc",
+        "RcGroups",
+        "Rcs",
+        "ReDirect",
+        "RedirectData",
+        "RedirectObjectRule",
+        "Resource",
+        "Rule",
+        "SD",
+        "Service",
+        "SpecileFile",
+        "SpecileKey",
+        "SpecileProc",
+        "StaticSd",
+        "UB",
+        "UrlWarrentRules",
+        "UsbWhiteProcess",
+        "UserName",
+        "VBRule",
+        "VSP",
+        "Value",
+        "VerifyType",
+        "WallPaper",
+        "WebSsoInfos",
+        "WhiteListItem",
+        "WhitePipeOfProcess",
+        "iplist",
+        "rclist",
+        "service"
+      ],
+      "schema_paths": [
+        "/Resource",
+        "/Resource/Dns",
+        "/Resource/Easylink",
+        "/Resource/FileLock",
+        "/Resource/MSG_INFO",
+        "/Resource/Other",
+        "/Resource/RcGroups",
+        "/Resource/RcGroups/Group",
+        "/Resource/Rcs",
+        "/Resource/Rcs/Rc",
+        "/Resource/SD",
+        "/Resource/SD/DesktopFormat",
+        "/Resource/SD/Global",
+        "/Resource/SD/Internet",
+        "/Resource/SD/Policy",
+        "/Resource/SD/iplist",
+        "/Resource/SD/rclist",
+        "/Resource/StaticSd",
+        "/Resource/StaticSd/ActiveXProxyProcess",
+        "/Resource/StaticSd/ActiveXProxyProcess/Process",
+        "/Resource/StaticSd/DefaultExecutableProcess",
+        "/Resource/StaticSd/DefaultExecutableProcess/WhiteListItem",
+        "/Resource/StaticSd/DefaultExecutableProcess/WhiteListItem/FileName",
+        "/Resource/StaticSd/DefaultExecutableProcess/WhiteListItem/Value",
+        "/Resource/StaticSd/DefaultExecutableProcess/WhiteListItem/VerifyType",
+        "/Resource/StaticSd/DeniService",
+        "/Resource/StaticSd/DeniService/Service",
+        "/Resource/StaticSd/DenyProcess",
+        "/Resource/StaticSd/DenyProcess/Item",
+        "/Resource/StaticSd/Drivers",
+        "/Resource/StaticSd/Drivers/Driver",
+        "/Resource/StaticSd/EnTopTool",
+        "/Resource/StaticSd/InjectAgentWhiteList",
+        "/Resource/StaticSd/InjectAgentWhiteList/ProcName",
+        "/Resource/StaticSd/InterceptSet",
+        "/Resource/StaticSd/InterceptSet/Item",
+        "/Resource/StaticSd/NetDrvInfo",
+        "/Resource/StaticSd/NetDrvInfo/WhiteListItem",
+        "/Resource/StaticSd/NotifySize",
+        "/Resource/StaticSd/RedirectObjectRule",
+        "/Resource/StaticSd/RedirectObjectRule/Rule",
+        "/Resource/StaticSd/SpecileFile",
+        "/Resource/StaticSd/SpecileKey",
+        "/Resource/StaticSd/SpecileKey/KeyList",
+        "/Resource/StaticSd/SpecileProc",
+        "/Resource/StaticSd/SpecileProc/ProcList",
+        "/Resource/StaticSd/UsbWhiteProcess",
+        "/Resource/StaticSd/UsbWhiteProcess/Rule",
+        "/Resource/StaticSd/VBRule",
+        "/Resource/StaticSd/VBRule/ProcName",
+        "/Resource/StaticSd/WhitePipeOfProcess",
+        "/Resource/StaticSd/WhitePipeOfProcess/Item",
+        "/Resource/UB",
+        "/Resource/UrlWarrentRules",
+        "/Resource/VSP",
+        "/Resource/VSP/ActiveXProxyInstall",
+        "/Resource/VSP/Crypto",
+        "/Resource/VSP/ExecutableProcess",
+        "/Resource/VSP/FileExport",
+        "/Resource/VSP/Inject",
+        "/Resource/VSP/LocalCommunication",
+        "/Resource/VSP/Misc",
+        "/Resource/VSP/NavBar",
+        "/Resource/VSP/OfflineVisit",
+        "/Resource/VSP/ReDirect",
+        "/Resource/VSP/RedirectData",
+        "/Resource/VSP/WallPaper",
+        "/Resource/WebSsoInfos",
+        "/Resource/service",
+        "/Resource/service/CertDn",
+        "/Resource/service/CertSn",
+        "/Resource/service/CertThum",
+        "/Resource/service/IsExtern",
+        "/Resource/service/IsHidUser",
+        "/Resource/service/IsUser",
+        "/Resource/service/LoginIp",
+        "/Resource/service/LoginTime",
+        "/Resource/service/UserName"
+      ]
+    }
+  },
+  "target": "hkustgz-production"
+}

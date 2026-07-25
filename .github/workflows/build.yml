@@ -23,6 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install pinned Rust toolchain
+        working-directory: independent
+        run: rustup show active-toolchain
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -31,23 +35,29 @@ jobs:
         working-directory: desktop
         run: npm ci
 
-      - name: Fetch engine (mac)
+      - name: Build independent engines (mac)
         if: matrix.platform == 'mac'
-        working-directory: desktop
-        run: bash scripts/fetch-engine.sh mac
+        working-directory: independent
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --locked --release --bin ec-engine --target aarch64-apple-darwin
+          cargo build --locked --release --bin ec-engine --target x86_64-apple-darwin
+          mkdir -p ../desktop/engine
+          cp target/aarch64-apple-darwin/release/ec-engine \
+            ../desktop/engine/ec-engine-darwin-arm64
+          cp target/x86_64-apple-darwin/release/ec-engine \
+            ../desktop/engine/ec-engine-darwin-amd64
+          cp config/hkustgz.json ../desktop/engine/hkustgz.json
 
-      - name: Fetch engine (windows)
+      - name: Build independent engine (Windows)
         if: matrix.platform == 'win'
         shell: pwsh
-        working-directory: desktop
+        working-directory: independent
         run: |
-          $ver = if ($env:ZJU_VERSION) { $env:ZJU_VERSION } else { 'v1.1.1' }
-          $base = "https://github.com/Mythologyli/zju-connect/releases/download/$ver"
-          New-Item -ItemType Directory -Force -Path engine | Out-Null
-          Invoke-WebRequest "$base/zju-connect-windows-amd64.zip" -OutFile a.zip
-          Expand-Archive a.zip -DestinationPath tmp -Force
-          $bin = Get-ChildItem -Recurse tmp -Filter zju-connect.exe | Select-Object -First 1
-          Copy-Item $bin.FullName engine/zju-connect-windows-amd64.exe -Force
+          cargo build --locked --release --bin ec-engine
+          New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
+          Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
+          Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
 
       # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
       # makes electron-builder try (and fail) to read "" as a cert file.

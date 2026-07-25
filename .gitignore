@@ -4,7 +4,7 @@ runtime.toml
 *.log
 .hkustgzconnect/
 
-# ---- engine binaries (fetched per-platform by CI / setup) ----
+# ---- generated engine binaries (built from independent/ by CI / setup) ----
 zju-connect
 zju-connect.exe
 desktop/engine/*
@@ -17,7 +17,6 @@ release/
 desktop/release/
 dist/
 out/
-
 # ---- packaged artifacts ----
 *.dmg
 *.exe
@@ -25,6 +24,16 @@ out/
 *.apk
 *.blockmap
 *.zip
+
+# ---- independent EasyConnect compatibility lab ----
+# Official Sangfor packages and raw captures are internal analysis inputs. Never
+# commit or redistribute them from this repository.
+independent/artifacts/*
+!independent/artifacts/.gitkeep
+independent/target/
+independent/snapshots/live/
+independent/diffs/live/
+independent/captures/
 
 # ---- os ----
 .DS_Store

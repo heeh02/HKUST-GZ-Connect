@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Modules>
+  <Module>
+    <ModuleName>SangforCoreModule</ModuleName>
+    <AliasName>核心业务控件</AliasName>
+    <Version>7,6,7,206</Version>
+    <BasicModule>true</BasicModule>
+    <Dependence/>
+    <ServInstallPath>/com/win/SangforCore.CAB</ServInstallPath>
+    <MD5>c698690e861cb418a2e0d4f10afe1ee4</MD5>
+  </Module>
+  <Module>
+    <ModuleName>L3vpnModule</ModuleName>
+    <AliasName>L3vpn服务控件</AliasName>
+    <Version>7,6,7,200</Version>
+    <BasicModule>false</BasicModule>
+    <Dependence>DnsModule;VnicModule;SangforServiceModule</Dependence>
+    <ServInstallPath>/com/win/SangforL3Vpn.CAB</ServInstallPath>
+    <MD5>9ad93582de6f9509a18a0149c8b9a872</MD5>
+  </Module>
+  <VpnVersion><Version>7.6.7.0.201</Version></VpnVersion>
+</Modules>
+<InstallOption>
+  <Module>
+    <ModuleName>TCPModule</ModuleName>
+    <Option Name="Install"><Item Name="NoInstall" Value="0"/></Option>
+  </Module>
+</InstallOption>
