@@ -1,10 +1,12 @@
 # EasyConnect compatibility specification
 
-Status: authentication/configuration behavior is validated. A legacy TCP L3
-handshake and outer frame are partially specified, but the production gateway
-rejects its command path. Binary-only comparison with the known-working client
-identifies a separate modern TLS send/receive family as the active target. This
-is not yet a production-ready tunnel specification.
+Status: authentication/configuration behavior and the active modern TLS
+send/receive family are implemented for the current production profile. The
+native data path has carried live IPv4/TCP traffic through SOCKS5, and an
+isolated Chrome PAC canary loaded the campus site. The legacy TCP L3 family is
+retained only as a versioned compatibility backend because this gateway
+rejects its command path. Live UDP reachability and authentication methods not
+enabled by this profile remain separate release gates.
 
 ## Current observed production profile
 
@@ -27,7 +29,7 @@ The independent implementation separates these layers:
 4. Configuration: parse `conf.csp` without retaining credentials.
 5. Resources: parse `rclist.csp`, routes, domains, DNS, and resource policy.
 6. Tunnel transport: handshake, framing, sequencing, liveness, and errors.
-7. Local exposure: SOCKS5/HTTP first; optional TUN later.
+7. Local exposure: one SOCKS5 listener plus desktop PAC; optional TUN later.
 
 ## Known public endpoint families
 
@@ -120,7 +122,10 @@ downgrades fail closed in the probe.
 - Certificate and HID behavior under approved lab accounts.
 - Additional `conf.csp` and `rclist.csp` variants from future gateway families.
 - L3 tunnel ClientHello, token derivation, framing, and keep-alive behavior.
-- UDP behavior and fragmentation limits.
+- Live SOCKS5 UDP parity, gateway UDP reachability, and sustained datagram
+  behavior. The local frontend implements RFC 1928 UDP ASSOCIATE for IPv4 and
+  domain destinations, rejects fragmented SOCKS datagrams, and binds one
+  loopback client endpoint per control connection.
 - aTrust detection and protocol handoff.
 
 Raw evidence for these questions belongs in the restricted lab, while only
@@ -274,7 +279,11 @@ only the required RSA key exchange, TLS 1.0/1.1 PRF, Finished validation, and
 RC4-SHA record protection. It fails closed on every other negotiated suite,
 version, compression mode, certificate decision, MAC, or handshake shape.
 
-An approved live run established address, send, and receive control channels
-with the native Rust implementation and then immediately closed them. No
-business packet was sent. Packet forwarding, heartbeat/reconnect behavior,
-DNS, SOCKS5, sustained traffic, and failure recovery remain release-blocking.
+Approved live runs established address, send, and receive channels and carried
+campus HTTPS traffic through the native userspace TCP stack and SOCKS5
+frontend. The desktop's exact/suffix PAC then loaded the campus site in an
+isolated Chrome profile without changing system DNS or global proxy settings.
+A SOCKS5 UDP exchange currently receives no reply from the selected live
+target, but closing the pending exchange no longer panics or degrades the
+subsequent TCP path. Reachable live UDP, sustained load, sleep/resume, and
+failure-injection recovery remain release gates.

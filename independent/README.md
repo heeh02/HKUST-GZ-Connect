@@ -13,9 +13,13 @@ The current deliverable observes public gateway metadata, validates authorized
 official packages, implements authentication, and contains both the reviewed
 legacy TCP state machine and an isolated native implementation of the active
 modern TLS 1.1 transport. The modular runtime now includes bounded IPv4
-framing, a userspace TCP/UDP stack, VPN-side DNS, and a loopback SOCKS5
-frontend. An approved end-to-end run retrieved the SSH banner from the
-dedicated campus test endpoint. Sustained load, multi-flow behavior,
+framing, a userspace TCP/UDP stack, gateway DNS when supplied, a
+profile-controlled system DNS fallback, and one loopback SOCKS5 TCP/UDP
+frontend. An approved end-to-end SOCKS5 run reached the dedicated campus test
+endpoint, and the domain-selective PAC loaded the campus site in an isolated
+Chrome profile. The maintained netstack fork prevents stale-handle panics when
+a pending UDP receive is closed. The current live UDP target returned no
+response without destabilizing the engine; sustained load, multi-flow,
 sleep/resume, and reconnect canaries remain release gates.
 
 Module responsibilities and change rules are defined in
@@ -170,12 +174,20 @@ as a general TLS implementation.
 
 `ec-engine` is the maintained runtime. It accepts credentials only through
 standard input, keeps the authenticated HTTPS session and address lease alive,
-bridges EasyConnect IP packets into a userspace stack, resolves SOCKS domains
-through gateway-supplied VPN DNS, and exits when the data plane fails so its
-supervisor can reconnect the whole session.
+bridges EasyConnect IP packets into a userspace stack, resolves proxy domains
+through gateway-supplied VPN DNS when present, or through an explicitly
+enabled system resolver fallback, and exposes one SOCKS5 TCP/UDP frontend. It
+does not bind an HTTP or DNS proxy port. It exits when the data plane fails so
+its supervisor can reconnect the whole session. Local TCP connection attempts
+are bounded so a dead destination cannot hold a proxy task forever. Setup read
+timeouts do not expire an otherwise healthy idle receive channel.
 
 `Cargo.lock` and `rust-toolchain.toml` are committed. CI therefore tests a
 reviewed compiler/dependency graph instead of silently adopting new packages.
+The `geiserx_ts_netstack_smoltcp` dependency is pinned to `0.43.0`; unlike the
+abandoned `0.4.0` line, it generation-checks blocked UDP commands before
+reusing a socket handle. This exact lifecycle bug is covered by the upstream
+fork's tests and by the project's live close-then-TCP canary.
 Dependency or compiler upgrades must pass the same fixtures, live public
 metadata comparison, official-package comparison, provenance review, and
 license review before merge.

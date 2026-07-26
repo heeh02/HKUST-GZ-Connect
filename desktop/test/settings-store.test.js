@@ -26,6 +26,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       startAtLogin: true,
       autoConnect: false,
       closeAction: 'minimize',
+      routeDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
     },
   );
 });

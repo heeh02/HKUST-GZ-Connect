@@ -8,5 +8,6 @@ pub mod data_plane;
 pub mod dns;
 pub mod ip_packet;
 pub mod netstack;
+pub mod proxy;
 pub mod session;
 pub mod socks;

@@ -55,7 +55,9 @@ subtle = "2.6"
 tar = "0.4"
 time = { version = "0.3", features = ["formatting"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-ts_netstack_smoltcp = { version = "0.4", features = ["std", "tokio"] }
+# Maintained API-compatible fork. It guards blocked UDP receives with socket
+# generations, preventing a stale handle panic when SOCKS UDP ASSOCIATE closes.
+ts_netstack_smoltcp = { package = "geiserx_ts_netstack_smoltcp", version = "=0.43.0", features = ["std", "tokio"] }
 url = "2"
 webpki-roots = "1"
 x509-parser = "0.18"

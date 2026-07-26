@@ -20,8 +20,11 @@ independent VPN engine.
 | Modern tunnel authentication | live 48/64-byte contract accepted | yes | memory-only Rust token/control codec | address control accepted |
 | Modern IPv4 framing | live Rust data path | fragmented/coalesced fixtures | bounded Rust codec | live TCP packets passed |
 | Legacy IPCP framing | static official map | yes | bounded diagnostic codec | not used by active profile |
-| TCP via SOCKS5 | approved SSH banner received | parser and netstack tests | modular Rust runtime | one endpoint passed |
-| VPN-side DNS | gateway servers parsed | DNS codec fixtures | modular Rust resolver | sustained canary pending |
+| TCP via SOCKS5 | approved campus HTTPS 200 | parser and netstack tests | modular Rust runtime | repeated browser/curl pass |
+| UDP via SOCKS5 | current target returned no response | header/DNS/fragment/lifecycle fixtures | UDP ASSOCIATE relay; close remains healthy | reachable live UDP service pending |
+| Domain-selective PAC | campus page loaded through PAC | exact/suffix/no-DNS fixtures | one SOCKS5 endpoint | isolated Chrome pass |
+| VPN-side DNS | no DNS server in current profile | DNS codec fixtures | used when supplied | not applicable to current profile |
+| Explicit system DNS fallback | enabled by reviewed current profile | domain validation fixtures | modular Rust resolver | live domain CONNECT passed |
 | Logout | live HTTP 200 | state test | Rust probe | live pass |
 | Reset/reconnect | live server reset | state test | bounded reset retry | reset path confirmed |
 | Timeout/data-plane recovery | process-level restart contract | bounded timeout tests pending | unhealthy engine exits | sleep/resume canary pending |

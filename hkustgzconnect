@@ -14,12 +14,16 @@ KEYCHAIN_SERVICE="hkustgzconnect"
 SOCKS_HOST="127.0.0.1"
 SOCKS_PORT="$(awk -F'[:\"]' '/^socks_bind/{print $(NF-1); exit}' "$CONF" 2>/dev/null)"
 SOCKS_PORT="${SOCKS_PORT:-1080}"
+[[ "$SOCKS_PORT" =~ ^[0-9]+$ ]] && [ "$SOCKS_PORT" -ge 1025 ] && [ "$SOCKS_PORT" -le 65535 ] \
+  || { echo "✗ SOCKS port must be within 1025..65535" >&2; exit 1; }
 LABEL="com.hkustgz.connect"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 HPC_PROBE_IP="10.120.48.30"
 
 mkdir -p "$RUNDIR"
 chmod 700 "$RUNDIR"
+touch "$LOG"
+chmod 600 "$LOG"
 
 ACC="$(awk -F'"' '/^username/{print $2; exit}' "$CONF" 2>/dev/null)"
 die(){ echo "✗ $*" >&2; exit 1; }
@@ -30,6 +34,7 @@ get_pw(){ security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$ACC" -w 2>/
 running_pid(){ [ -f "$PIDFILE" ] && awk 'NR==1{print; exit}' "$PIDFILE" 2>/dev/null; }
 is_up(){ local p; p="$(running_pid)"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
 socks_listening(){ lsof -nP -iTCP@"$SOCKS_HOST":"$SOCKS_PORT" -sTCP:LISTEN >/dev/null 2>&1; }
+proxies_listening(){ socks_listening; }
 svc_loaded(){ launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; }
 
 ensure_engine(){
@@ -48,16 +53,16 @@ ensure_engine(){
 
 wait_socks(){
   for _ in $(seq 1 20); do
-    socks_listening && return 0
+    proxies_listening && return 0
     grep -qiE "authentication failed|unsupported|ec-engine:" "$LOG" 2>/dev/null && return 1
     sleep 1
   done
-  socks_listening
+  proxies_listening
 }
 
 report_up(){
-  if socks_listening; then
-    echo "✓ up — independent Rust SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
+  if proxies_listening; then
+    echo "✓ up — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
   else
     echo "✗ failed to come up — last log lines:"
     tail -8 "$LOG" 2>/dev/null | sed 's/^/  /'
@@ -95,7 +100,7 @@ case "${1:-}" in
     ;;
 
   up)
-    socks_listening && { echo "✓ already running — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"; exit 0; }
+    proxies_listening && { echo "✓ already running — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"; exit 0; }
     ensure_engine
     get_pw >/dev/null 2>&1 || die "no password in Keychain — run set-password"
     : > "$LOG"
@@ -184,10 +189,10 @@ PLIST
 hkustgzconnect — independent Rust EasyConnect client
 
   set-password   store the VPN password in macOS Keychain
-  up             build if needed and start SOCKS5
+  up             build if needed and start the single SOCKS5 listener
   down           stop the engine
   restart        restart the engine
-  status         show engine and SOCKS state
+  status         show engine and proxy state
   test           read the approved HPC SSH banner through SOCKS
   logs           follow engine logs
   install        install launchd autostart

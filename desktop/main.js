@@ -5,11 +5,16 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
+const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const { isValidPort, loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
 const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
 const { classifyEngineOutput } = require('./lib/engine-output');
+const { exactExecutablePattern } = require('./lib/engine-process');
+const { buildPac, normalizeRouteDomains } = require('./lib/pac');
+const { browserLaunchSpec } = require('./lib/browser-launch');
+const { ensureOwnerOnly } = require('./lib/private-file');
+const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { loadTrayImage } = require('./lib/tray-icon');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
@@ -20,8 +25,11 @@ const DATA = app.getPath('userData');
 const SETTINGS = path.join(DATA, 'settings.json');
 const CRED = path.join(DATA, 'cred.bin');
 const LOG = path.join(DATA, 'engine.log');
+const PAC_FILE = path.join(DATA, 'routing.pac');
 const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
 const GATEWAY_HOST = 'remote.hkust-gz.edu.cn';
+
+for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE]) ensureOwnerOnly(privateFile);
 
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
@@ -86,15 +94,22 @@ function emit() {
 
 // The gateway permits one session per account. Stop an orphaned independent
 // engine before starting the new owned child.
-function killStrayEngines() {
+function killStrayEngines(resolvedEnginePath) {
   try {
     if (process.platform === 'win32')
       require('child_process').execFileSync('powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Command',
          "Get-Process -Name 'ec-engine*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
         { stdio: 'ignore', timeout: 4000, windowsHide: true });
-    else
-      require('child_process').execFileSync('pkill', ['-f', 'ec-engine'], { stdio: 'ignore', timeout: 3000 });
+    else {
+      const processPattern = exactExecutablePattern(resolvedEnginePath);
+      if (!processPattern) return;
+      require('child_process').execFileSync(
+        'pkill',
+        ['-f', processPattern],
+        { stdio: 'ignore', timeout: 3000 },
+      );
+    }
   } catch {}
 }
 
@@ -116,13 +131,13 @@ async function connectOnce(isRetry) {
   emit();
   gatewayIp = GATEWAY_HOST;
   if (userDisconnected) { state.connecting = false; emit(); return; }
-  try { fs.writeFileSync(LOG, ''); } catch {}
+  try { resetLog(LOG); } catch {}
   const bin = enginePath();
   if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
   const engineConfig = engineConfigPath();
   if (!fs.existsSync(engineConfig)) { state.connecting = false; state.lastError = '引擎配置缺失:' + engineConfig; emit(); return; }
 
-  killStrayEngines(); // gateway = one session per account; clear any other engine first
+  killStrayEngines(bin); // gateway = one session per account; clear this app's orphan only
   engine = spawn(bin, [
     '--config', engineConfig,
     '--credentials-stdin',
@@ -132,7 +147,7 @@ async function connectOnce(isRetry) {
   let diagnosticTail = '';
   const onData = (d) => {
     const t = d.toString();
-    try { fs.appendFileSync(LOG, t); } catch {}
+    try { appendLog(LOG, t); } catch {}
     diagnosticTail = (diagnosticTail + t).slice(-512);
     if (/SOCKS5 server listening/.test(diagnosticTail)) {
       state.connecting = false; state.connected = true; attempts = 0;
@@ -238,12 +253,15 @@ function friendly(n) {
   if (/^(curl|wget|nc|node)$/.test(n)) return n;
   return n;
 }
-async function listTunnelApps(P, enginePid, appPid) {
-  if (!isValidPort(P)) return { connCount: 0, apps: [] };
-  const ports = new Set([P]);
+async function listTunnelApps(proxyPorts, enginePid, appPid) {
+  const ports = new Set(proxyPorts.filter(
+    (port) => Number.isInteger(port) && port >= 1 && port <= 65535
+  ));
+  if (!ports.size) return { connCount: 0, apps: [] };
   try {
     if (process.platform === 'win32') {
-      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{$_.RemotePort -eq ${P}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
+      const portFilter = [...ports].map((port) => `$_.RemotePort -eq ${port}`).join(' -or ');
+      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{${portFilter}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
       const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 4000);
       let arr = []; try { const j = JSON.parse(out); arr = Array.isArray(j) ? j : [j]; } catch {}
       const apps = arr.filter((a) => a && a.Pid !== enginePid && a.Pid !== appPid)
@@ -285,7 +303,11 @@ function startTelemetry() {
     if (teleBusy || !state.connected) return;
     teleBusy = true;
     try {
-      const r = await listTunnelApps(socksPort(), engine ? engine.pid : -1, process.pid);
+      const r = await listTunnelApps(
+        [socksPort()],
+        engine ? engine.pid : -1,
+        process.pid,
+      );
       lastTele.connCount = r.connCount; lastTele.apps = r.apps;
       if (tick % 2 === 0) lastTele.latencyMs = await tcpPing(gatewayIp, 443);
       tick++;
@@ -301,42 +323,35 @@ function stopTelemetry() {
   lastTele = { connCount: 0, apps: [], latencyMs: null };
 }
 
-// ---------- PAC server (campus -> SOCKS, everything else direct) ----------
-let pacServer = null, pacPort = 0;
-function pacBody() {
-  const p = socksPort();
-  return `function FindProxyForURL(url, host) {
-  if (dnsDomainIs(host, ".hkust-gz.edu.cn") || dnsDomainIs(host, ".hkust.edu.hk") ||
-      shExpMatch(host, "10.120.*") || isInNet(host, "10.0.0.0", "255.0.0.0") ||
-      isInNet(dnsResolve(host) || "0.0.0.0", "10.0.0.0", "255.0.0.0"))
-    return "SOCKS5 127.0.0.1:${p}; SOCKS 127.0.0.1:${p}";
-  return "DIRECT";
+// ---------- PAC file (explicit domains -> one SOCKS5 port; no DNS probing) ----------
+function refreshPacFile(settings = loadSettings()) {
+  fs.writeFileSync(
+    PAC_FILE,
+    buildPac(settings.routeDomains, Number(settings.port)),
+    { mode: 0o600 },
+  );
+  ensureOwnerOnly(PAC_FILE);
 }
-`;
-}
-function startPac() {
-  pacServer = http.createServer((req, res) => {
-    res.setHeader('Content-Type', 'application/x-ns-proxy-autoconfig');
-    res.end(pacBody());
-  });
-  pacServer.on('error', () => {});
-  pacServer.listen(0, '127.0.0.1', () => { pacPort = pacServer.address().port; emit(); });
-}
-function pacUrl() { return pacPort ? `http://127.0.0.1:${pacPort}/proxy.pac` : ''; }
+function pacUrl() { return pathToFileURL(PAC_FILE).href; }
 
 function openCampusBrowser() {
+  if (!state.connected) {
+    state.lastError = '请先连接校园 VPN，再打开自动分流浏览器';
+    emit();
+    return;
+  }
   const pac = pacUrl();
   if (!pac) { state.lastError = 'PAC 未就绪'; emit(); return; }
-  const args = [
-    `--proxy-pac-url=${pac}`,
-    `--user-data-dir=${CHROME_PROFILE}`,
-    '--no-first-run', '--no-default-browser-check', CAMPUS_HOME,
-  ];
-  let child;
-  if (process.platform === 'darwin') child = spawn('open', ['-na', 'Google Chrome', '--args', ...args]);
-  else if (process.platform === 'win32') child = spawn('cmd', ['/c', 'start', 'chrome', ...args], { shell: true });
-  else child = spawn('google-chrome', args);
-  child.on('error', () => { state.lastError = '未找到 Chrome,请手动用 PAC 地址'; emit(); });
+  const launch = browserLaunchSpec({
+    platform: process.platform,
+    env: process.env,
+    existsSync: fs.existsSync,
+    pacUrl: pac,
+    profileDir: CHROME_PROFILE,
+    homeUrl: CAMPUS_HOME,
+  });
+  const child = spawn(launch.command, launch.args, launch.options);
+  child.on('error', () => { state.lastError = '未找到 Chrome/Edge，请手动使用 PAC 地址'; emit(); });
 }
 
 // ---------- IPC ----------
@@ -344,20 +359,24 @@ ipcMain.handle('get-state', () => ({
   ...state, connectedAt, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
   loggedIn: hasPassword() && !!loadSettings().username, platform: process.platform,
 }));
-ipcMain.handle('save', (_e, p) => {
-  const next = { ...loadSettings() };
+ipcMain.handle('save', async (_e, p) => {
+  const previous = loadSettings();
+  const next = { ...previous };
   if (p && p.username != null) next.username = String(p.username);
   if (p && p.port != null) { const n = Number(p.port); if (isValidPort(n)) next.port = n; }
   if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
+  if (p && p.routeDomains != null) next.routeDomains = normalizeRouteDomains(p.routeDomains);
   if (p && ['ask', 'minimize', 'quit'].includes(p.closeAction)) next.closeAction = p.closeAction;
   for (const b of ['autoReconnect', 'startAtLogin', 'autoConnect']) {
     if (p && typeof p[b] === 'boolean') next[b] = p[b];
   }
   saveSettings(next);
+  refreshPacFile(next);
   if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
     return { ok: false, error: '系统安全存储不可用，密码未保存' };
   }
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
+  if (engine && next.port !== previous.port) await reconnect();
   return { ok: true };
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
@@ -384,8 +403,7 @@ ipcMain.handle('logout', () => {
   return { ok: true };
 });
 ipcMain.handle('get-logs', () => {
-  try { return fs.readFileSync(LOG, 'utf8').split('\n').slice(-300).join('\n'); }
-  catch { return ''; }
+  return readLogTail(LOG);
 });
 ipcMain.handle('open-log', () => shell.openPath(LOG));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
@@ -514,7 +532,7 @@ function createWindow() {
 app.on('second-instance', showWindow);
 app.whenReady().then(() => {
   if (process.platform === 'darwin') Menu.setApplicationMenu(null);
-  startPac();
+  refreshPacFile();
   createTray();
   createWindow();
   const settings = loadSettings();

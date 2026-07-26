@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const { ensureOwnerOnly } = require('./private-file');
 
 function protectedStorageAvailable(safeStorage, platform) {
   if (!safeStorage.isEncryptionAvailable()) return false;
@@ -10,6 +11,7 @@ function protectedStorageAvailable(safeStorage, platform) {
 function savePassword(file, password, safeStorage, platform) {
   if (!password || !protectedStorageAvailable(safeStorage, platform)) return false;
   fs.writeFileSync(file, safeStorage.encryptString(String(password)), { mode: 0o600 });
+  ensureOwnerOnly(file);
   return true;
 }
 

@@ -439,6 +439,11 @@ impl SpecialTls11Stream {
         self.stream.peer_addr()
     }
 
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<()> {
+        self.stream.set_read_timeout(timeout)?;
+        Ok(())
+    }
+
     pub fn read_application_data(&mut self, maximum: usize) -> Result<Zeroizing<Vec<u8>>> {
         let (content_type, ciphertext) = read_record(&mut self.stream)?;
         if content_type != APPLICATION_DATA {

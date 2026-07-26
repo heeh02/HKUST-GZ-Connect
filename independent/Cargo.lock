@@ -345,6 +345,7 @@ name = "ec-compat"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "geiserx_ts_netstack_smoltcp",
  "hex",
  "hmac",
  "iced-x86",
@@ -364,7 +365,6 @@ dependencies = [
  "tar",
  "time",
  "tokio",
- "ts_netstack_smoltcp",
  "url",
  "webpki-roots",
  "x509-parser",
@@ -498,6 +498,46 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "geiserx_ts_netstack_smoltcp"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e380e7815b37ff3d32a1bec2fda7d9d95d75e249f18f2a4af4eb3958fddbe20"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "geiserx_ts_netstack_smoltcp_core",
+ "geiserx_ts_netstack_smoltcp_socket",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "geiserx_ts_netstack_smoltcp_core"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d744e198033e08c294a3a806e999af319b759fff322ca314494be5eb119ff6f0"
+dependencies = [
+ "bytes",
+ "flume",
+ "heapless",
+ "smoltcp",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "geiserx_ts_netstack_smoltcp_socket"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7e202fe4c76661b0c94268163b540c50e734bbb24035abc3ffa6c9450835d1b"
+dependencies = [
+ "bytes",
+ "geiserx_ts_netstack_smoltcp_core",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1856,46 +1896,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "ts_netstack_smoltcp"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f8a0e5c0148612f790ba13ef5978437233a435e6738c44bcc129de804c39d7f"
-dependencies = [
- "bytes",
- "futures-util",
- "tokio",
- "tracing",
- "ts_netstack_smoltcp_core",
- "ts_netstack_smoltcp_socket",
-]
-
-[[package]]
-name = "ts_netstack_smoltcp_core"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3286fa0a2c03a7df8ad4a862d78c885638cbff8f9a414975d3f0933a90406495"
-dependencies = [
- "bytes",
- "flume",
- "heapless",
- "smoltcp",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "ts_netstack_smoltcp_socket"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbb07daadb7824a12ae2a383fa7ad5fde4cbcd93940fafe63ee611a5937cd305"
-dependencies = [
- "bytes",
- "tokio",
- "tracing",
- "ts_netstack_smoltcp_core",
-]
 
 [[package]]
 name = "typenum"

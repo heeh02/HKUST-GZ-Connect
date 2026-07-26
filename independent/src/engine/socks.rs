@@ -1,44 +1,41 @@
 use crate::engine::netstack::VirtualNetstack;
+use crate::engine::proxy::{NameResolver, resolve_host, validate_domain};
 use crate::{Error, Result};
-use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UdpSocket as TokioUdpSocket};
+use tokio::sync::RwLock;
+use ts_netstack_smoltcp::netsock::UdpSocket as VirtualUdpSocket;
 
 const SOCKS_VERSION: u8 = 5;
 const NO_AUTHENTICATION: u8 = 0;
 const NO_ACCEPTABLE_METHODS: u8 = 0xff;
 const CONNECT_COMMAND: u8 = 1;
+const UDP_ASSOCIATE_COMMAND: u8 = 3;
 const ADDRESS_IPV4: u8 = 1;
 const ADDRESS_DOMAIN: u8 = 3;
 const ADDRESS_IPV6: u8 = 4;
 const MAX_AUTH_METHODS: usize = 32;
 const MAX_DOMAIN_BYTES: usize = 253;
+const MAX_UDP_DATAGRAM_BYTES: usize = 65_507;
+const MAX_UDP_PAYLOAD_BYTES: usize = MAX_UDP_DATAGRAM_BYTES - 10;
+const MAX_ACTIVE_CONNECTIONS: usize = 256;
 
-pub type ResolveFuture<'a> = Pin<Box<dyn Future<Output = Result<Ipv4Addr>> + Send + 'a>>;
-
-pub trait NameResolver: Send + Sync {
-    fn resolve_ipv4<'a>(&'a self, host: &'a str) -> ResolveFuture<'a>;
-}
-
-pub struct RejectDomainResolver;
-
-impl NameResolver for RejectDomainResolver {
-    fn resolve_ipv4<'a>(&'a self, _host: &'a str) -> ResolveFuture<'a> {
-        Box::pin(async {
-            Err(Error(
-                "SOCKS domain requests require the VPN DNS module".into(),
-            ))
-        })
-    }
+enum SocksRequest {
+    Connect(SocketAddr),
+    UdpAssociate,
 }
 
 pub struct SocksServer {
     bind: SocketAddr,
     netstack: Arc<VirtualNetstack>,
     resolver: Arc<dyn NameResolver>,
+}
+
+pub struct BoundSocksServer {
+    listener: TcpListener,
+    server: Arc<SocksServer>,
 }
 
 impl SocksServer {
@@ -59,42 +56,173 @@ impl SocksServer {
         })
     }
 
-    pub async fn serve(self) -> Result<()> {
+    pub async fn bind(self) -> Result<BoundSocksServer> {
         let listener = TcpListener::bind(self.bind)
             .await
             .map_err(|_| Error("cannot bind the SOCKS5 listener".into()))?;
-        let server = Arc::new(self);
+        Ok(BoundSocksServer {
+            listener,
+            server: Arc::new(self),
+        })
+    }
+}
+
+impl BoundSocksServer {
+    pub async fn serve(self) -> Result<()> {
+        let mut connections = tokio::task::JoinSet::new();
         loop {
-            let (client, peer) = listener
-                .accept()
-                .await
-                .map_err(|_| Error("SOCKS5 accept failed".into()))?;
-            if !peer.ip().is_loopback() {
-                continue;
+            tokio::select! {
+                accepted = self.listener.accept() => {
+                    let (client, peer) =
+                        accepted.map_err(|_| Error("SOCKS5 accept failed".into()))?;
+                    if !peer.ip().is_loopback() {
+                        continue;
+                    }
+                    if connections.len() >= MAX_ACTIVE_CONNECTIONS {
+                        continue;
+                    }
+                    let server = Arc::clone(&self.server);
+                    connections.spawn(async move {
+                        if let Err(error) = server.handle(client).await {
+                            eprintln!("SOCKS5 request failed: {error}");
+                        }
+                    });
+                }
+                _ = connections.join_next(), if !connections.is_empty() => {}
             }
-            let server = Arc::clone(&server);
-            tokio::spawn(async move {
-                let _ = server.handle(client).await;
-            });
+        }
+    }
+}
+
+impl SocksServer {
+    async fn handle(&self, mut client: TcpStream) -> Result<()> {
+        negotiate_no_authentication(&mut client).await?;
+        match read_request(&mut client, self.resolver.as_ref()).await? {
+            SocksRequest::Connect(remote) => match self.netstack.connect_tcp(remote).await {
+                Ok(mut upstream) => {
+                    send_reply(&mut client, 0, None).await?;
+                    tokio::io::copy_bidirectional(&mut client, &mut upstream)
+                        .await
+                        .map_err(|_| Error("SOCKS5 stream forwarding failed".into()))?;
+                    Ok(())
+                }
+                Err(error) => {
+                    let _ = send_reply(&mut client, 5, None).await;
+                    Err(error)
+                }
+            },
+            SocksRequest::UdpAssociate => self.handle_udp_associate(client).await,
         }
     }
 
-    async fn handle(&self, mut client: TcpStream) -> Result<()> {
-        negotiate_no_authentication(&mut client).await?;
-        let remote = read_connect_request(&mut client, self.resolver.as_ref()).await?;
-        match self.netstack.connect_tcp(remote).await {
-            Ok(mut upstream) => {
-                send_reply(&mut client, 0).await?;
-                tokio::io::copy_bidirectional(&mut client, &mut upstream)
-                    .await
-                    .map_err(|_| Error("SOCKS5 stream forwarding failed".into()))?;
-                Ok(())
-            }
-            Err(error) => {
-                let _ = send_reply(&mut client, 5).await;
-                Err(error)
+    async fn handle_udp_associate(&self, mut control: TcpStream) -> Result<()> {
+        let local = Arc::new(
+            TokioUdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
+                .await
+                .map_err(|_| Error("cannot bind the SOCKS5 UDP relay".into()))?,
+        );
+        let local_address = local
+            .local_addr()
+            .map_err(|_| Error("cannot inspect the SOCKS5 UDP relay".into()))?;
+        let tunnel = Arc::new(self.netstack.bind_udp().await?);
+        let client_endpoint = Arc::new(RwLock::new(None::<SocketAddr>));
+        send_reply(&mut control, 0, Some(local_address)).await?;
+
+        let mut upload = tokio::spawn(relay_udp_upload(
+            Arc::clone(&local),
+            Arc::clone(&tunnel),
+            Arc::clone(&client_endpoint),
+            Arc::clone(&self.resolver),
+        ));
+        let mut download = tokio::spawn(relay_udp_download(local, tunnel, client_endpoint));
+        let result = tokio::select! {
+            result = wait_for_control_close(&mut control) => result,
+            result = &mut upload => relay_task_result(result, "upload"),
+            result = &mut download => relay_task_result(result, "download"),
+        };
+        upload.abort();
+        download.abort();
+        result
+    }
+}
+
+async fn relay_udp_upload(
+    local: Arc<TokioUdpSocket>,
+    tunnel: Arc<VirtualUdpSocket>,
+    client_endpoint: Arc<RwLock<Option<SocketAddr>>>,
+    resolver: Arc<dyn NameResolver>,
+) -> Result<()> {
+    let mut datagram = vec![0_u8; MAX_UDP_DATAGRAM_BYTES];
+    loop {
+        let (length, peer) = local
+            .recv_from(&mut datagram)
+            .await
+            .map_err(|_| Error("SOCKS5 UDP relay receive failed".into()))?;
+        if !peer.ip().is_loopback() {
+            continue;
+        }
+        let Ok((remote, payload)) = parse_udp_request(&datagram[..length], resolver.as_ref()).await
+        else {
+            continue;
+        };
+        {
+            let mut endpoint = client_endpoint.write().await;
+            match *endpoint {
+                Some(expected) if expected != peer => continue,
+                Some(_) => {}
+                None => *endpoint = Some(peer),
             }
         }
+        tunnel
+            .send_to(remote, payload)
+            .await
+            .map_err(|_| Error("SOCKS5 UDP tunnel send failed".into()))?;
+    }
+}
+
+async fn relay_udp_download(
+    local: Arc<TokioUdpSocket>,
+    tunnel: Arc<VirtualUdpSocket>,
+    client_endpoint: Arc<RwLock<Option<SocketAddr>>>,
+) -> Result<()> {
+    let mut payload = vec![0_u8; MAX_UDP_PAYLOAD_BYTES];
+    loop {
+        let (remote, length) = tunnel
+            .recv_from(&mut payload)
+            .await
+            .map_err(|_| Error("SOCKS5 UDP tunnel receive failed".into()))?;
+        let Some(peer) = *client_endpoint.read().await else {
+            continue;
+        };
+        let response = encode_udp_response(remote, &payload[..length])?;
+        local
+            .send_to(&response, peer)
+            .await
+            .map_err(|_| Error("SOCKS5 UDP relay send failed".into()))?;
+    }
+}
+
+async fn wait_for_control_close(control: &mut TcpStream) -> Result<()> {
+    let mut control_byte = [0_u8; 1];
+    loop {
+        match control.read(&mut control_byte).await {
+            Ok(0) => return Ok(()),
+            Ok(_) => continue,
+            Err(error) => return Err(Error(error.to_string())),
+        }
+    }
+}
+
+fn relay_task_result(
+    result: std::result::Result<Result<()>, tokio::task::JoinError>,
+    direction: &str,
+) -> Result<()> {
+    match result {
+        Ok(Ok(())) => Err(Error(format!(
+            "SOCKS5 UDP {direction} relay stopped unexpectedly"
+        ))),
+        Ok(Err(error)) => Err(error),
+        Err(_) => Err(Error(format!("SOCKS5 UDP {direction} relay task failed"))),
     }
 }
 
@@ -118,26 +246,51 @@ async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<()> {
     Ok(())
 }
 
-async fn read_connect_request(
-    client: &mut TcpStream,
-    resolver: &dyn NameResolver,
-) -> Result<SocketAddr> {
+async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Result<SocksRequest> {
     let mut header = [0_u8; 4];
     client.read_exact(&mut header).await?;
-    if header[..3] != [SOCKS_VERSION, CONNECT_COMMAND, 0] {
-        send_reply(client, 7).await?;
+    if header[0] != SOCKS_VERSION || header[2] != 0 {
+        send_reply(client, 7, None).await?;
         return Err(Error("unsupported SOCKS5 command".into()));
     }
-    let address = match header[3] {
+    let command = header[1];
+    if !matches!(command, CONNECT_COMMAND | UDP_ASSOCIATE_COMMAND) {
+        consume_address(client, header[3], resolver, false).await?;
+        let _ = client.read_u16().await?;
+        send_reply(client, 7, None).await?;
+        return Err(Error("unsupported SOCKS5 command".into()));
+    }
+    let address = consume_address(client, header[3], resolver, command == CONNECT_COMMAND).await?;
+    let port = client.read_u16().await?;
+    if command == UDP_ASSOCIATE_COMMAND {
+        return Ok(SocksRequest::UdpAssociate);
+    }
+    let address = address.ok_or_else(|| Error("SOCKS5 destination is missing".into()))?;
+    if address.is_unspecified() || port == 0 {
+        send_reply(client, 8, None).await?;
+        return Err(Error("SOCKS5 destination is invalid".into()));
+    }
+    Ok(SocksRequest::Connect(SocketAddr::new(
+        IpAddr::V4(address),
+        port,
+    )))
+}
+
+async fn consume_address(
+    client: &mut TcpStream,
+    address_type: u8,
+    resolver: &dyn NameResolver,
+    resolve_domain: bool,
+) -> Result<Option<Ipv4Addr>> {
+    match address_type {
         ADDRESS_IPV4 => {
             let mut octets = [0_u8; 4];
             client.read_exact(&mut octets).await?;
-            Ipv4Addr::from(octets)
+            Ok(Some(Ipv4Addr::from(octets)))
         }
         ADDRESS_DOMAIN => {
             let length = usize::from(client.read_u8().await?);
             if length == 0 || length > MAX_DOMAIN_BYTES {
-                send_reply(client, 8).await?;
                 return Err(Error("SOCKS5 domain has an invalid length".into()));
             }
             let mut encoded = vec![0_u8; length];
@@ -145,45 +298,107 @@ async fn read_connect_request(
             let host = std::str::from_utf8(&encoded)
                 .map_err(|_| Error("SOCKS5 domain must be UTF-8".into()))?;
             validate_domain(host)?;
-            resolver.resolve_ipv4(host).await?
+            if resolve_domain {
+                Ok(Some(resolve_host(host, resolver).await?))
+            } else {
+                Ok(None)
+            }
         }
         ADDRESS_IPV6 => {
             let mut ignored = [0_u8; 16];
             client.read_exact(&mut ignored).await?;
-            send_reply(client, 8).await?;
-            return Err(Error("SOCKS5 IPv6 is not implemented".into()));
+            Err(Error("SOCKS5 IPv6 is not implemented".into()))
         }
-        _ => {
-            send_reply(client, 8).await?;
-            return Err(Error("SOCKS5 address type is invalid".into()));
+        _ => Err(Error("SOCKS5 address type is invalid".into())),
+    }
+}
+
+async fn parse_udp_request<'a>(
+    datagram: &'a [u8],
+    resolver: &dyn NameResolver,
+) -> Result<(SocketAddr, &'a [u8])> {
+    if datagram.len() < 7 || datagram[..3] != [0, 0, 0] {
+        return Err(Error(
+            "SOCKS5 UDP fragmentation is unsupported or malformed".into(),
+        ));
+    }
+    let mut offset = 4;
+    let address = match datagram[3] {
+        ADDRESS_IPV4 => {
+            let octets = datagram
+                .get(offset..offset + 4)
+                .ok_or_else(|| Error("SOCKS5 UDP IPv4 address is truncated".into()))?;
+            offset += 4;
+            Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3])
         }
+        ADDRESS_DOMAIN => {
+            let length = usize::from(
+                *datagram
+                    .get(offset)
+                    .ok_or_else(|| Error("SOCKS5 UDP domain length is missing".into()))?,
+            );
+            offset += 1;
+            if length == 0 || length > MAX_DOMAIN_BYTES {
+                return Err(Error("SOCKS5 UDP domain length is invalid".into()));
+            }
+            let encoded = datagram
+                .get(offset..offset + length)
+                .ok_or_else(|| Error("SOCKS5 UDP domain is truncated".into()))?;
+            offset += length;
+            let host = std::str::from_utf8(encoded)
+                .map_err(|_| Error("SOCKS5 UDP domain must be UTF-8".into()))?;
+            resolve_host(host, resolver).await?
+        }
+        ADDRESS_IPV6 => return Err(Error("SOCKS5 UDP IPv6 is not implemented".into())),
+        _ => return Err(Error("SOCKS5 UDP address type is invalid".into())),
     };
-    let port = client.read_u16().await?;
+    let port_bytes = datagram
+        .get(offset..offset + 2)
+        .ok_or_else(|| Error("SOCKS5 UDP port is truncated".into()))?;
+    offset += 2;
+    let port = u16::from_be_bytes([port_bytes[0], port_bytes[1]]);
     if address.is_unspecified() || port == 0 {
-        send_reply(client, 8).await?;
-        return Err(Error("SOCKS5 destination is invalid".into()));
+        return Err(Error("SOCKS5 UDP destination is invalid".into()));
     }
-    Ok(SocketAddr::new(IpAddr::V4(address), port))
+    if datagram.len() - offset > MAX_UDP_PAYLOAD_BYTES {
+        return Err(Error("SOCKS5 UDP payload is too large".into()));
+    }
+    Ok((
+        SocketAddr::new(IpAddr::V4(address), port),
+        &datagram[offset..],
+    ))
 }
 
-fn validate_domain(host: &str) -> Result<()> {
-    if host.len() > MAX_DOMAIN_BYTES
-        || host.is_empty()
-        || !host
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
-        || host
-            .split('.')
-            .any(|label| label.is_empty() || label.len() > 63)
-    {
-        return Err(Error("SOCKS5 domain has an invalid shape".into()));
-    }
-    Ok(())
+fn encode_udp_response(remote: SocketAddr, payload: &[u8]) -> Result<Vec<u8>> {
+    let IpAddr::V4(address) = remote.ip() else {
+        return Err(Error("SOCKS5 UDP response requires IPv4".into()));
+    };
+    let mut response = Vec::with_capacity(10 + payload.len());
+    response.extend_from_slice(&[0, 0, 0, ADDRESS_IPV4]);
+    response.extend_from_slice(&address.octets());
+    response.extend_from_slice(&remote.port().to_be_bytes());
+    response.extend_from_slice(payload);
+    Ok(response)
 }
 
-async fn send_reply(client: &mut TcpStream, status: u8) -> Result<()> {
+async fn send_reply(client: &mut TcpStream, status: u8, bound: Option<SocketAddr>) -> Result<()> {
+    let (address, port) = match bound {
+        Some(SocketAddr::V4(value)) => (*value.ip(), value.port()),
+        _ => (Ipv4Addr::UNSPECIFIED, 0),
+    };
     client
-        .write_all(&[SOCKS_VERSION, status, 0, ADDRESS_IPV4, 0, 0, 0, 0, 0, 0])
+        .write_all(&[
+            SOCKS_VERSION,
+            status,
+            0,
+            ADDRESS_IPV4,
+            address.octets()[0],
+            address.octets()[1],
+            address.octets()[2],
+            address.octets()[3],
+            port.to_be_bytes()[0],
+            port.to_be_bytes()[1],
+        ])
         .await?;
     Ok(())
 }
@@ -191,14 +406,52 @@ async fn send_reply(client: &mut TcpStream, status: u8) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::proxy::ResolveFuture;
 
     #[test]
-    fn domain_validation_is_bounded() {
-        assert!(validate_domain("hpc3.internal.example").is_ok());
-        assert!(validate_domain("").is_err());
-        assert!(validate_domain("bad/domain").is_err());
-        assert!(validate_domain("a..b").is_err());
-        assert!(validate_domain(&format!("{}.example", "a".repeat(64))).is_err());
+    fn udp_response_round_trips_source_and_payload() {
+        let response =
+            encode_udp_response("10.20.30.40:53".parse().unwrap(), b"dns-response").unwrap();
+        assert_eq!(&response[..10], &[0, 0, 0, 1, 10, 20, 30, 40, 0, 53]);
+        assert_eq!(&response[10..], b"dns-response");
+    }
+
+    #[tokio::test]
+    async fn udp_request_parsing_supports_ipv4_and_vpn_dns() {
+        struct StaticResolver;
+        impl NameResolver for StaticResolver {
+            fn resolve_ipv4<'a>(&'a self, host: &'a str) -> ResolveFuture<'a> {
+                Box::pin(async move {
+                    if host == "campus.example" {
+                        Ok(Ipv4Addr::new(10, 20, 30, 40))
+                    } else {
+                        Err(Error("not found".into()))
+                    }
+                })
+            }
+        }
+        let ipv4 = [0, 0, 0, 1, 10, 1, 2, 3, 0, 53, 1, 2, 3];
+        let (remote, payload) = parse_udp_request(&ipv4, &StaticResolver).await.unwrap();
+        assert_eq!(remote, "10.1.2.3:53".parse().unwrap());
+        assert_eq!(payload, &[1, 2, 3]);
+
+        let mut domain = vec![0, 0, 0, 3, 14];
+        domain.extend_from_slice(b"campus.example");
+        domain.extend_from_slice(&443_u16.to_be_bytes());
+        domain.extend_from_slice(b"payload");
+        let (remote, payload) = parse_udp_request(&domain, &StaticResolver).await.unwrap();
+        assert_eq!(remote, "10.20.30.40:443".parse().unwrap());
+        assert_eq!(payload, b"payload");
+    }
+
+    #[tokio::test]
+    async fn udp_request_rejects_fragmentation() {
+        let fragmented = [0, 0, 1, 1, 10, 1, 2, 3, 0, 53];
+        assert!(
+            parse_udp_request(&fragmented, &crate::engine::proxy::RejectDomainResolver)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,6 +1,8 @@
 'use strict';
 
 const fs = require('fs');
+const { ensureOwnerOnly } = require('./private-file');
+const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./pac');
 
 const DEFAULTS = Object.freeze({
   port: 1080,
@@ -10,10 +12,11 @@ const DEFAULTS = Object.freeze({
   startAtLogin: false,
   autoConnect: true,
   closeAction: 'ask',
+  routeDomains: DEFAULT_ROUTE_DOMAINS,
 });
 
 function isValidPort(port) {
-  return Number.isInteger(port) && port >= 1025 && port <= 65534;
+  return Number.isInteger(port) && port >= 1025 && port <= 65535;
 }
 
 function normalizeSettings(saved = {}) {
@@ -31,6 +34,7 @@ function normalizeSettings(saved = {}) {
     closeAction: ['ask', 'minimize', 'quit'].includes(saved.closeAction)
       ? saved.closeAction
       : DEFAULTS.closeAction,
+    routeDomains: normalizeRouteDomains(saved.routeDomains),
   };
 }
 
@@ -44,6 +48,7 @@ function loadSettings(file) {
 
 function saveSettings(file, settings) {
   fs.writeFileSync(file, JSON.stringify(normalizeSettings(settings), null, 2), { mode: 0o600 });
+  ensureOwnerOnly(file);
 }
 
 module.exports = { DEFAULTS, isValidPort, loadSettings, normalizeSettings, saveSettings };

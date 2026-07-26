@@ -11,6 +11,7 @@ use ts_netstack_smoltcp::{WakingPipe, piped};
 
 const FIRST_EPHEMERAL_PORT: u16 = 49_152;
 const LAST_EPHEMERAL_PORT: u16 = 65_535;
+const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct VirtualNetstack {
     channel: Channel,
@@ -31,6 +32,9 @@ impl VirtualNetstack {
             udp_buffer_size: 64 * 1024,
             udp_message_count: 128,
             tcp_buffer_size: 256 * 1024,
+            tcp_keep_alive_interval: Some(Duration::from_secs(60)),
+            tcp_timeout: Some(Duration::from_secs(120)),
+            tcp_listen_backlog: 128,
             raw_buffer_size: 64 * 1024,
             raw_message_count: 128,
         };
@@ -93,9 +97,9 @@ impl VirtualNetstack {
             IpAddr::V4(self.assigned_address),
             self.allocate_ephemeral_port(),
         );
-        self.channel
-            .tcp_connect(local, remote)
+        tokio::time::timeout(TCP_CONNECT_TIMEOUT, self.channel.tcp_connect(local, remote))
             .await
+            .map_err(|_| Error("userspace TCP connection timed out".into()))?
             .map_err(|_| Error("userspace TCP connection failed".into()))
     }
 

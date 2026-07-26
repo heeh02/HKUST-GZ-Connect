@@ -1,5 +1,5 @@
 use crate::engine::netstack::VirtualNetstack;
-use crate::engine::socks::{NameResolver, ResolveFuture};
+use crate::engine::proxy::{NameResolver, ResolveFuture};
 use crate::{Error, Result};
 use rand::RngCore;
 use rand::rngs::OsRng;

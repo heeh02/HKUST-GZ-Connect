@@ -13,9 +13,10 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `special_tls11.rs` | Isolated vendor TLS record/handshake compatibility | General-purpose TLS or authentication |
 | `engine/data_plane.rs` | Address lease and send/receive channel ownership | TCP/UDP socket semantics |
 | `engine/ip_packet.rs` | Bounded IPv4 validation and stream framing | Gateway authentication |
-| `engine/netstack.rs` | Userspace TCP/UDP stack and packet bridges | SOCKS parsing or DNS wire parsing |
+| `engine/netstack.rs` | Userspace TCP/UDP stack, packet bridges, bounded TCP connect | Proxy parsing or DNS wire parsing |
 | `engine/dns.rs` | Bounded DNS A queries through VPN UDP | Public/system DNS fallback |
-| `engine/socks.rs` | Loopback SOCKS5 protocol and stream relay | Gateway protocol details |
+| `engine/proxy.rs` | Shared destination validation plus gateway/system resolver policy | Listener lifecycle or gateway protocol |
+| `engine/socks.rs` | Loopback SOCKS5 TCP CONNECT and UDP ASSOCIATE relay | HTTP parsing or gateway protocol details |
 | `bin/ec-engine.rs` | Process assembly, signals, health shutdown | Protocol encoding |
 
 ## Compatibility laboratory
@@ -41,7 +42,8 @@ addresses are excluded from Git.
 3. Update the narrowest adapter or protocol backend.
 4. Add a bounded offline regression fixture.
 5. Pass formatting, lint, unit tests, observer comparisons, restricted
-   authentication/channel canaries, and the approved end-to-end SOCKS canary.
+   authentication/channel canaries and approved SOCKS TCP, domain, and UDP
+   canaries.
 6. Keep the preceding backend until the new EasyConnect release is validated,
    then select by an explicit observed version contract.
 

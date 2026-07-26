@@ -46,10 +46,17 @@ desktop / CLI
         -> gateway-version capability adapters
         -> session/config/resource parsers
         -> tunnel transport
-        -> SOCKS5 first; TUN is optional
+        -> shared proxy policy
+            -> one SOCKS5 TCP/UDP listener
+            -> DNS-neutral PAC in the desktop layer
+        -> TUN is a separate optional frontend
 ```
 
 - Core types and state transitions are vendor-neutral.
+- The userspace stack is the pinned `geiserx_ts_netstack_smoltcp` `0.43.0`
+  compatibility fork. Its blocked-command generation guard is required for
+  safe UDP socket closure; downgrading to the stale-handle-prone `0.4.0` line
+  is prohibited.
 - Version differences live in capability adapters selected from observed
   behavior, never scattered conditionals in the UI.
 - The current official-preface adapter supports reviewed x86 and x86_64 ELF,
@@ -83,7 +90,8 @@ A release is blocked unless all applicable gates pass:
 - sanitized fixture tests for every supported gateway family;
 - official-client versus independent-engine black-box parity;
 - official package publisher verification plus binary/text/adapter hash review;
-- TCP/SOCKS connectivity, DNS, reconnect, timeout, and logout tests;
+- SOCKS TCP, SOCKS UDP, PAC routing, reconnect, idle lifetime, timeout, and
+  logout tests;
 - required secondary authentication tests;
 - supported OS/architecture packaging and signing;
 - security review of new binary formats, crypto, drivers, or attestation;

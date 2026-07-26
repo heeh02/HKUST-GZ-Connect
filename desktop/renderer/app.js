@@ -51,6 +51,7 @@ async function refreshState() {
   renderConnect(s);
   $('towerPort').value = settings.port || 1080;
   $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
+  $('routeDomains').value = (settings.routeDomains || []).join('\n');
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
@@ -100,6 +101,7 @@ async function saveTower() {
     maxAttempts: Number($('maxAttempts').value) || 0,
     startAtLogin: $('startAtLogin').checked,
     autoConnect: $('autoConnect').checked,
+    routeDomains: $('routeDomains').value,
   });
   await refreshState();
 }

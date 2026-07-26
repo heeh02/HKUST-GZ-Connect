@@ -77,6 +77,11 @@ impl EasyConnectDataPlane {
             &receive_stream.read_application_data(1500)?,
             ModernCommand::Receive,
         )?;
+        // The connection timeout protects setup, but the production receive
+        // channel is intentionally idle until a tunneled packet arrives.
+        // Treating that idle period as a socket failure disconnects a healthy
+        // session after `timeout`.
+        receive_stream.set_read_timeout(None)?;
 
         Ok(Self {
             lease: AddressLease {

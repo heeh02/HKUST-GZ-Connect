@@ -7,7 +7,7 @@ function classifyEngineOutput(text, socksPort) {
   if (/not implemented auth|authentication method is unsupported/i.test(text)) {
     return '网关鉴权方式不受支持（可能已改为 SSO/MFA）';
   }
-  if (/address already in use|bind:/i.test(text)) {
+  if (/cannot bind the SOCKS5 listener|address already in use|bind:/i.test(text)) {
     return `端口 ${socksPort} 被占用，请在控制塔更换端口`;
   }
   return null;
