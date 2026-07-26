@@ -6,6 +6,10 @@ let settings = {};
 let connectedAt = null;
 let durTimer = null;
 let pacUrl = '';
+let campusActionBusy = false;
+let campusResources = [];
+let towerDirty = false;
+let towerSaving = false;
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
 function setPage(page) {
@@ -28,6 +32,10 @@ function renderConnect(s) {
   $('connIp').textContent = s.connected && s.clientIp ? s.clientIp : '—';
   $('connTop').classList.toggle('connected', s.connected);
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
+  $('quickCampus').disabled = campusActionBusy;
+  $('quickCampus').textContent = campusActionBusy
+    ? (s.connected ? '正在打开…' : '正在连接，完成后自动打开…')
+    : (s.connected ? '打开校园网站' : '连接并打开校园网站');
   $('statGrid').hidden = !s.connected;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
@@ -45,18 +53,28 @@ function renderTelemetry(t) {
     `<div class="app-row"><span class="app-dot"></span><span class="app-name">${esc(a.name)}</span><span class="app-meta">${a.count} 连接</span></div>`).join('');
 }
 
-async function refreshState() {
-  const s = await window.api.getState();
-  settings = s.settings || {}; pacUrl = s.pacUrl || '';
-  renderConnect(s);
+function populateTowerForm() {
   $('towerPort').value = settings.port || 1080;
-  $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
   $('routeDomains').value = (settings.routeDomains || []).join('\n');
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
   $('autoConnect').checked = settings.autoConnect !== false;
+}
+
+async function refreshState({ preserveTower = false } = {}) {
+  const s = await window.api.getState();
+  settings = s.settings || {}; pacUrl = s.pacUrl || '';
+  campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
+  renderConnect(s);
+  $('campusResources').innerHTML = campusResources.map((resource) =>
+    `<button class="resource-link" data-campus-url="${esc(resource.url)}">`
+    + `<span class="resource-name">${esc(resource.name)}</span>`
+    + `<span class="resource-desc">${esc(resource.description)}</span></button>`).join('');
+  $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
+  if (!preserveTower || !towerDirty) populateTowerForm();
   $('acct').textContent = settings.username || '—';
+  $('ver').textContent = s.version ? `v${s.version}` : '—';
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   return s;
 }
@@ -83,6 +101,7 @@ $('lgBtn').addEventListener('click', async () => {
   if (!saved.ok) { $('lgErr').textContent = saved.error || '密码保存失败'; return; }
   $('lgPass').value = ''; $('lgErr').textContent = '';
   await refreshState(); show('dash'); setPage('connect');
+  await window.api.connect();
 });
 $('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgBtn').click(); });
 
@@ -93,27 +112,109 @@ $('power').addEventListener('click', async () => {
   if (st.connected) await window.api.disconnect(); else await window.api.connect();
 });
 
+async function openCampus(selectedUrl) {
+  if (campusActionBusy) return;
+  campusActionBusy = true;
+  $('quickErr').textContent = '';
+  renderConnect(st);
+  try {
+    const url = typeof selectedUrl === 'string' ? selectedUrl : $('campusUrl').value;
+    const result = await window.api.openCampusBrowser(url);
+    if (!result || !result.ok) $('quickErr').textContent = result?.error || '校园浏览器打开失败';
+  } finally {
+    campusActionBusy = false;
+    renderConnect(st);
+  }
+}
+$('quickCampus').addEventListener('click', openCampus);
+$('campusResources').addEventListener('click', (event) => {
+  const target = event.target.closest('[data-campus-url]');
+  if (target) openCampus(target.dataset.campusUrl);
+});
+$('campusUrl').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') openCampus();
+});
+
 // control tower
 async function saveTower() {
-  await window.api.save({
-    port: $('towerPort').value,
-    autoReconnect: $('autoReconnect').checked,
-    maxAttempts: Number($('maxAttempts').value) || 0,
-    startAtLogin: $('startAtLogin').checked,
-    autoConnect: $('autoConnect').checked,
-    routeDomains: $('routeDomains').value,
-  });
-  await refreshState();
+  if (towerSaving) return { ok: false, busy: true };
+  const port = Number($('towerPort').value);
+  const maxAttempts = Number($('maxAttempts').value);
+  if (!Number.isInteger(port) || port < 1025 || port > 65535) {
+    flashSaved('端口必须是 1025–65535 的整数', true);
+    $('towerPort').focus();
+    return { ok: false };
+  }
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 10) {
+    flashSaved('重试次数必须是 0–10 的整数', true);
+    $('maxAttempts').focus();
+    return { ok: false };
+  }
+
+  towerSaving = true;
+  $('towerSave').disabled = true;
+  $('towerReconnect').disabled = true;
+  try {
+    const result = await window.api.save({
+      port,
+      autoReconnect: $('autoReconnect').checked,
+      maxAttempts,
+      startAtLogin: $('startAtLogin').checked,
+      autoConnect: $('autoConnect').checked,
+      routeDomains: $('routeDomains').value,
+    });
+    if (!result?.ok) {
+      flashSaved(result?.error || '保存失败，请重试', true);
+      return result || { ok: false };
+    }
+    settings = result.settings || settings;
+    towerDirty = false;
+    await refreshState();
+    return result;
+  } catch (error) {
+    flashSaved(error?.message || '保存失败，请重试', true);
+    return { ok: false };
+  } finally {
+    towerSaving = false;
+    $('towerSave').disabled = false;
+    $('towerReconnect').disabled = false;
+  }
 }
-function flashSaved(msg) { $('towerSaved').textContent = msg || '已保存 ✓'; setTimeout(() => { $('towerSaved').textContent = ''; }, 1500); }
-$('towerSave').addEventListener('click', async () => { await saveTower(); flashSaved(); });
-$('towerReconnect').addEventListener('click', async () => { await saveTower(); flashSaved('重连中…'); window.api.reconnect(); });
+let flashTimer = null;
+function flashSaved(msg, isError = false) {
+  clearTimeout(flashTimer);
+  $('towerSaved').textContent = msg || '已保存 ✓';
+  $('towerSaved').classList.toggle('error', isError);
+  flashTimer = setTimeout(() => {
+    $('towerSaved').textContent = '';
+    $('towerSaved').classList.remove('error');
+  }, isError ? 3500 : 1800);
+}
+$('towerSave').addEventListener('click', async () => {
+  const result = await saveTower();
+  if (result?.ok) flashSaved(result.reconnected ? '已保存并应用 ✓' : '已保存 ✓');
+});
+$('towerReconnect').addEventListener('click', async () => {
+  const result = await saveTower();
+  if (!result?.ok) return;
+  if (!result.reconnected) {
+    flashSaved('重连中…');
+    await window.api.reconnect();
+  }
+  flashSaved('已保存并重连 ✓');
+});
+for (const id of [
+  'towerPort', 'routeDomains', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
+]) {
+  $(id).addEventListener('input', () => { towerDirty = true; });
+  $(id).addEventListener('change', () => { towerDirty = true; });
+}
 $('closeAction').addEventListener('change', async () => {
   await window.api.save({ closeAction: $('closeAction').value });
   settings.closeAction = $('closeAction').value;
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshState();
+  if (!document.hidden) refreshState({ preserveTower: true });
 });
 
 // copy + tools
@@ -127,7 +228,7 @@ document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('clic
   const old = b.textContent; b.textContent = '已复制'; b.classList.add('done');
   setTimeout(() => { b.textContent = old; b.classList.remove('done'); }, 1200);
 }));
-$('openBrowser').addEventListener('click', () => window.api.openCampusBrowser());
+$('openBrowser').addEventListener('click', openCampus);
 $('openLog2').addEventListener('click', () => window.api.openLog());
 
 // notifications / settings

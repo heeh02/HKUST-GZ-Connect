@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   openLog: () => ipcRenderer.invoke('open-log'),
   sshConfig: () => ipcRenderer.invoke('ssh-config'),
   copy: (text) => ipcRenderer.invoke('copy', text),
-  openCampusBrowser: () => ipcRenderer.invoke('open-campus-browser'),
+  openCampusBrowser: (url) => ipcRenderer.invoke('open-campus-browser', url),
   resize: (height) => ipcRenderer.invoke('resize', height),
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onTelemetry: (cb) => ipcRenderer.on('telemetry', (_e, t) => cb(t)),

@@ -18,6 +18,12 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `engine/proxy.rs` | Shared destination validation plus gateway/system resolver policy | Listener lifecycle or gateway protocol |
 | `engine/socks.rs` | Loopback SOCKS5 TCP CONNECT and UDP ASSOCIATE relay | HTTP parsing or gateway protocol details |
 | `bin/ec-engine.rs` | Process assembly, signals, health shutdown | Protocol encoding |
+| `desktop/lib/campus-browser.js` | Isolated browser session, proxy policy and safe navigation | Gateway authentication or packet formats |
+
+The loopback SOCKS listener is the current shared frontend, not a permanent
+product constraint. Additional HTTP, per-application or managed system
+frontends may be added behind the same proxy policy. They must not modify
+system DNS or routes by default.
 
 ## Compatibility laboratory
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const { ensureOwnerOnly } = require('./private-file');
 const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./pac');
 
@@ -47,8 +48,27 @@ function loadSettings(file) {
 }
 
 function saveSettings(file, settings) {
-  fs.writeFileSync(file, JSON.stringify(normalizeSettings(settings), null, 2), { mode: 0o600 });
-  ensureOwnerOnly(file);
+  const normalized = normalizeSettings(settings);
+  const directory = path.dirname(file);
+  const temporary = path.join(
+    directory,
+    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  fs.mkdirSync(directory, { recursive: true });
+  try {
+    fs.writeFileSync(temporary, JSON.stringify(normalized, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    fs.renameSync(temporary, file);
+    ensureOwnerOnly(file);
+  } finally {
+    try {
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    } catch {}
+  }
+  return normalized;
 }
 
 module.exports = { DEFAULTS, isValidPort, loadSettings, normalizeSettings, saveSettings };

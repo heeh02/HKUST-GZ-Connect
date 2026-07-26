@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self'; script-src 'self';" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HKUST(GZ) 校园浏览器</title>
+  <link rel="stylesheet" href="campus-browser.css" />
+</head>
+<body>
+  <header class="browser-chrome">
+    <div class="tabs-row">
+      <div id="tabs" class="tabs" role="tablist" aria-label="网页标签"></div>
+      <button id="newTab" class="new-tab" title="新建标签页 (⌘T)" aria-label="新建标签页">+</button>
+    </div>
+    <div class="toolbar">
+      <button id="back" class="icon" title="后退" aria-label="后退">‹</button>
+      <button id="forward" class="icon" title="前进" aria-label="前进">›</button>
+      <button id="reload" class="icon" title="重新加载" aria-label="重新加载">↻</button>
+      <button id="credential" class="icon credential" title="此网站保存的密码"
+              aria-label="管理此网站保存的密码">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="8" cy="12" r="4"></circle>
+          <path d="M12 12h8m-3 0v3m-3-3v2"></path>
+        </svg>
+      </button>
+      <form id="addressForm">
+        <span id="security" class="security" title="此标签通过 HKUST(GZ) Connect">校</span>
+        <input id="address" type="text" inputmode="url" spellcheck="false"
+               aria-label="校园网站地址" placeholder="输入校园网站地址" />
+      </form>
+      <span id="state" class="state">校园网络</span>
+    </div>
+  </header>
+  <script src="campus-browser.js"></script>
+</body>
+</html>

@@ -49,6 +49,9 @@ jobs:
           npm audit --audit-level=high
           node --check main.js
           node --check preload.js
+          node --check campus-preload.js
+          node --check lib/campus-browser.js
+          node --check renderer/campus-browser.js
           node --check renderer/app.js
 
       - name: Test independent Rust engine
@@ -115,6 +118,8 @@ jobs:
           for i in 1 2 3; do
             npx electron-builder --mac dmg --arm64 --x64 && break || { echo "dmg attempt $i failed, retrying"; sleep 8; }
           done
+          test "$(lipo -archs release/mac-arm64/hkustgzconnect.app/Contents/Resources/engine/ec-engine-darwin-arm64)" = "arm64"
+          test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-engine-darwin-amd64)" = "x86_64"
           ls release/*.dmg >/dev/null 2>&1 && echo "dmg built" || echo "::warning::dmg unavailable (CI hdiutil flake); zip shipped"
           cd release
           : > SHA256SUMS-macos.txt
@@ -122,6 +127,15 @@ jobs:
             [ -f "$file" ] && shasum -a 256 "$file" >> SHA256SUMS-macos.txt
           done
           test -s SHA256SUMS-macos.txt
+
+      - name: Verify packaged macOS applications
+        if: matrix.platform == 'mac'
+        working-directory: desktop
+        run: |
+          node build/verify-package.js \
+            release/mac-arm64/hkustgzconnect.app/Contents/Resources darwin arm64
+          node build/verify-package.js \
+            release/mac/hkustgzconnect.app/Contents/Resources darwin x64
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'
@@ -138,6 +152,11 @@ jobs:
         if: matrix.platform == 'win'
         working-directory: desktop
         run: npm run dist:win
+
+      - name: Verify packaged Windows application
+        if: matrix.platform == 'win'
+        working-directory: desktop
+        run: node build/verify-package.js release/win-unpacked/resources win32 x64
 
       - name: Generate Windows checksums
         if: matrix.platform == 'win'

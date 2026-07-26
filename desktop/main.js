@@ -1,24 +1,29 @@
 'use strict';
 const {
-  app, BrowserWindow, ipcMain, shell, Menu, clipboard, safeStorage,
+  app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, clipboard, safeStorage, session,
   Tray, nativeImage, dialog,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
-const { isValidPort, loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
+const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
+const { applySettingsPatch } = require('./lib/settings-update');
 const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
 const { classifyEngineOutput } = require('./lib/engine-output');
 const { exactExecutablePattern } = require('./lib/engine-process');
-const { buildPac, normalizeRouteDomains } = require('./lib/pac');
-const { browserLaunchSpec } = require('./lib/browser-launch');
+const { buildPac } = require('./lib/pac');
+const { CampusBrowser, normalizeCampusUrl } = require('./lib/campus-browser');
+const { loadCampusResources } = require('./lib/campus-resources');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { loadTrayImage } = require('./lib/tray-icon');
+const { probeSocksConnect } = require('./lib/socks-health');
+const { CampusCredentialVault } = require('./lib/campus-credential-vault');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
 if (!app.requestSingleInstanceLock()) { app.quit(); }
+app.setName('HKUST(GZ) Connect');
 
 // ---------- paths & state ----------
 const DATA = app.getPath('userData');
@@ -26,15 +31,16 @@ const SETTINGS = path.join(DATA, 'settings.json');
 const CRED = path.join(DATA, 'cred.bin');
 const LOG = path.join(DATA, 'engine.log');
 const PAC_FILE = path.join(DATA, 'routing.pac');
-const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
+const CAMPUS_CREDENTIALS = path.join(DATA, 'campus-credentials.json');
 const GATEWAY_HOST = 'remote.hkust-gz.edu.cn';
 
-for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE]) ensureOwnerOnly(privateFile);
-
-const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
+for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_CREDENTIALS]) {
+  ensureOwnerOnly(privateFile);
+}
 
 let win = null;
 let tray = null;
+let campusBrowser = null;
 let isQuitting = false;
 let closePromptOpen = false;
 let engine = null;
@@ -47,6 +53,8 @@ let connectedAt = null;
 let gatewayIp = null;
 let telemetryTimer = null;
 let teleBusy = false;
+let tunnelProbeFailures = 0;
+let tunnelRecoveryInFlight = false;
 let lastTele = { connCount: 0, apps: [], latencyMs: null };
 let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
 
@@ -54,7 +62,7 @@ let state = { connected: false, connecting: false, clientIp: null, lastError: nu
 function loadSettings() {
   return readSettings(SETTINGS);
 }
-function saveSettings(settings) { writeSettings(SETTINGS, settings); }
+function saveSettings(settings) { return writeSettings(SETTINGS, settings); }
 function savePassword(pw) {
   return writePassword(CRED, pw, safeStorage, process.platform);
 }
@@ -207,6 +215,21 @@ function waitForConnectionIdle(timeoutMs = 5000) {
   });
 }
 
+function waitForConnected(timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (state.connected) return resolve(true);
+      if (userDisconnected || (!state.connecting && !engine && state.lastError)) {
+        return resolve(false);
+      }
+      if (Date.now() >= deadline) return resolve(false);
+      setTimeout(poll, 100);
+    };
+    poll();
+  });
+}
+
 async function reconnect() {
   if (reconnectInFlight) return reconnectInFlight;
   reconnectInFlight = (async () => {
@@ -310,6 +333,7 @@ function startTelemetry() {
       );
       lastTele.connCount = r.connCount; lastTele.apps = r.apps;
       if (tick % 2 === 0) lastTele.latencyMs = await tcpPing(gatewayIp, 443);
+      if (tick % 4 === 0) await checkTunnelHealth();
       tick++;
       sendTelemetry();
     } finally { teleBusy = false; }
@@ -321,9 +345,43 @@ function stopTelemetry() {
   if (telemetryTimer) clearInterval(telemetryTimer);
   telemetryTimer = null;
   lastTele = { connCount: 0, apps: [], latencyMs: null };
+  tunnelProbeFailures = 0;
 }
 
-// ---------- PAC file (explicit domains -> one SOCKS5 port; no DNS probing) ----------
+async function checkTunnelHealth() {
+  if (!state.connected || tunnelRecoveryInFlight) return;
+  const probeOptions = {
+    proxyPort: socksPort(),
+    targetPort: 443,
+    timeoutMs: 5000,
+  };
+  const first = await probeSocksConnect({
+    ...probeOptions,
+    targetHost: 'www.hkust-gz.edu.cn',
+  });
+  const second = first || await probeSocksConnect({
+    ...probeOptions,
+    targetHost: 'library.hkust-gz.edu.cn',
+  });
+  if (second) {
+    tunnelProbeFailures = 0;
+    return;
+  }
+  tunnelProbeFailures++;
+  if (tunnelProbeFailures < 2 || loadSettings().autoReconnect === false) return;
+
+  tunnelRecoveryInFlight = true;
+  state.lastError = '校园隧道无响应，正在自动恢复…';
+  emit();
+  try {
+    await reconnect();
+  } finally {
+    tunnelProbeFailures = 0;
+    tunnelRecoveryInFlight = false;
+  }
+}
+
+// ---------- PAC file (advanced app integration; no DNS probing) ----------
 function refreshPacFile(settings = loadSettings()) {
   fs.writeFileSync(
     PAC_FILE,
@@ -334,50 +392,90 @@ function refreshPacFile(settings = loadSettings()) {
 }
 function pacUrl() { return pathToFileURL(PAC_FILE).href; }
 
-function openCampusBrowser() {
-  if (!state.connected) {
-    state.lastError = '请先连接校园 VPN，再打开自动分流浏览器';
-    emit();
-    return;
+function getCampusBrowser() {
+  if (!campusBrowser) {
+    const credentialVault = new CampusCredentialVault({
+      filePath: CAMPUS_CREDENTIALS,
+      safeStorage,
+      platform: process.platform,
+    });
+    campusBrowser = new CampusBrowser({
+      BrowserWindow,
+      WebContentsView,
+      session,
+      dialog,
+      credentialVault,
+      parentWindow: () => win,
+      toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
+      campusPreload: path.join(__dirname, 'campus-preload.js'),
+      onError: (message) => {
+        state.lastError = message;
+        emit();
+      },
+    });
   }
-  const pac = pacUrl();
-  if (!pac) { state.lastError = 'PAC 未就绪'; emit(); return; }
-  const launch = browserLaunchSpec({
-    platform: process.platform,
-    env: process.env,
-    existsSync: fs.existsSync,
-    pacUrl: pac,
-    profileDir: CHROME_PROFILE,
-    homeUrl: CAMPUS_HOME,
-  });
-  const child = spawn(launch.command, launch.args, launch.options);
-  child.on('error', () => { state.lastError = '未找到 Chrome/Edge，请手动使用 PAC 地址'; emit(); });
+  return campusBrowser;
+}
+
+async function connectAndOpenCampusBrowser(rawUrl) {
+  let url;
+  try {
+    url = normalizeCampusUrl(rawUrl);
+  } catch (error) {
+    state.lastError = error.message;
+    emit();
+    return { ok: false, error: error.message };
+  }
+
+  if (!state.connected) {
+    await connect();
+    if (!await waitForConnected()) {
+      const error = state.lastError || '连接校园网络超时，请重试或查看日志';
+      state.lastError = error;
+      emit();
+      return { ok: false, error };
+    }
+  }
+
+  try {
+    await getCampusBrowser().open(url, socksPort());
+    return { ok: true, url };
+  } catch (error) {
+    const message = `校园浏览器启动失败：${error.message}`;
+    state.lastError = message;
+    emit();
+    return { ok: false, error: message };
+  }
 }
 
 // ---------- IPC ----------
 ipcMain.handle('get-state', () => ({
   ...state, connectedAt, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
   loggedIn: hasPassword() && !!loadSettings().username, platform: process.platform,
+  version: app.getVersion(), campusResources: loadCampusResources(),
 }));
 ipcMain.handle('save', async (_e, p) => {
   const previous = loadSettings();
-  const next = { ...previous };
-  if (p && p.username != null) next.username = String(p.username);
-  if (p && p.port != null) { const n = Number(p.port); if (isValidPort(n)) next.port = n; }
-  if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
-  if (p && p.routeDomains != null) next.routeDomains = normalizeRouteDomains(p.routeDomains);
-  if (p && ['ask', 'minimize', 'quit'].includes(p.closeAction)) next.closeAction = p.closeAction;
-  for (const b of ['autoReconnect', 'startAtLogin', 'autoConnect']) {
-    if (p && typeof p[b] === 'boolean') next[b] = p[b];
+  let next;
+  let portChanged;
+  try {
+    ({ settings: next, portChanged } = applySettingsPatch(previous, p));
+  } catch (error) {
+    return { ok: false, error: error.message, settings: previous };
   }
-  saveSettings(next);
+  next = saveSettings(next);
   refreshPacFile(next);
   if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
     return { ok: false, error: '系统安全存储不可用，密码未保存' };
   }
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
-  if (engine && next.port !== previous.port) await reconnect();
-  return { ok: true };
+  let reconnected = false;
+  if (engine && portChanged) {
+    await reconnect();
+    reconnected = true;
+  }
+  if (campusBrowser && portChanged) await campusBrowser.configure(next.port);
+  return { ok: true, settings: next, portChanged, reconnected };
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
@@ -407,7 +505,7 @@ ipcMain.handle('get-logs', () => {
 });
 ipcMain.handle('open-log', () => shell.openPath(LOG));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
-ipcMain.handle('open-campus-browser', () => { openCampusBrowser(); return { ok: true }; });
+ipcMain.handle('open-campus-browser', (_event, url) => connectAndOpenCampusBrowser(url));
 ipcMain.handle('resize', (_e, h) => {
   if (win && !win.isDestroyed()) {
     const [w] = win.getContentSize();
@@ -509,8 +607,8 @@ async function handleWindowClose(event) {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 480,
-    height: 700,
+    width: 448,
+    height: 680,
     resizable: false,
     fullscreenable: false,
     maximizable: false,
@@ -520,6 +618,7 @@ function createWindow() {
     trafficLightPosition: { x: 14, y: 12 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      devTools: !app.isPackaged,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -529,9 +628,49 @@ function createWindow() {
   win.on('closed', () => { win = null; });
 }
 
+function installApplicationMenu() {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: 'HKUST(GZ) Connect',
+      submenu: [
+        { role: 'about', label: '关于 HKUST(GZ) Connect' },
+        { type: 'separator' },
+        { role: 'hide', label: '隐藏 HKUST(GZ) Connect' },
+        { role: 'hideOthers', label: '隐藏其他应用' },
+        { role: 'unhide', label: '全部显示' },
+        { type: 'separator' },
+        { role: 'quit', label: '退出 HKUST(GZ) Connect' },
+      ],
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { role: 'undo', label: '撤销' },
+        { role: 'redo', label: '重做' },
+        { type: 'separator' },
+        { role: 'cut', label: '剪切' },
+        { role: 'copy', label: '复制' },
+        { role: 'paste', label: '粘贴' },
+        { role: 'selectAll', label: '全选' },
+      ],
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'close', label: '关闭窗口' },
+      ],
+    },
+  ]));
+}
+
 app.on('second-instance', showWindow);
 app.whenReady().then(() => {
-  if (process.platform === 'darwin') Menu.setApplicationMenu(null);
+  installApplicationMenu();
   refreshPacFile();
   createTray();
   createWindow();

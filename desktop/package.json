@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
@@ -14,6 +14,7 @@
     "dist:linux": "electron-builder --linux"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3"
   },
@@ -32,6 +33,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "campus-preload.js",
       "lib/**/*",
       "renderer/**/*",
       "assets/**/*",

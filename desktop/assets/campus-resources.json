@@ -1,0 +1,26 @@
+[
+  {
+    "id": "home",
+    "name": "学校主页",
+    "description": "新闻、院系与校园信息",
+    "url": "https://www.hkust-gz.edu.cn/"
+  },
+  {
+    "id": "one-stop",
+    "name": "一站式办事大厅",
+    "description": "师生事务与在线申请",
+    "url": "https://onestop-online.hkust-gz.edu.cn/"
+  },
+  {
+    "id": "library",
+    "name": "图书馆",
+    "description": "馆藏、数据库与学习资源",
+    "url": "https://library.hkust-gz.edu.cn/"
+  },
+  {
+    "id": "new-student",
+    "name": "迎新系统",
+    "description": "新生任务与入学指引",
+    "url": "https://nso.hkust-gz.edu.cn/"
+  }
+]
