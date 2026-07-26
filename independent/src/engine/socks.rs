@@ -3,6 +3,7 @@ use crate::engine::proxy::{NameResolver, resolve_host, validate_domain};
 use crate::{Error, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket as TokioUdpSocket};
 use tokio::sync::RwLock;
@@ -21,7 +22,18 @@ const MAX_DOMAIN_BYTES: usize = 253;
 const MAX_UDP_DATAGRAM_BYTES: usize = 65_507;
 const MAX_UDP_PAYLOAD_BYTES: usize = MAX_UDP_DATAGRAM_BYTES - 10;
 const MAX_ACTIVE_CONNECTIONS: usize = 256;
+// A client that opens a connection and then stalls must not hold a slot for the
+// lifetime of the tunnel. The greeting is pure loopback I/O and has to arrive
+// immediately; the request may additionally wait for gateway DNS.
+const GREETING_TIMEOUT: Duration = Duration::from_secs(10);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// `accept` reports per-connection and resource-pressure failures that must not
+// take the whole local frontend down with them. Only a listener that keeps
+// failing is treated as unrecoverable.
+const MAX_CONSECUTIVE_ACCEPT_FAILURES: u32 = 16;
+const ACCEPT_FAILURE_BACKOFF: Duration = Duration::from_millis(100);
 
+#[derive(Debug, Eq, PartialEq)]
 enum SocksRequest {
     Connect(SocketAddr),
     UdpAssociate,
@@ -70,14 +82,33 @@ impl SocksServer {
 impl BoundSocksServer {
     pub async fn serve(self) -> Result<()> {
         let mut connections = tokio::task::JoinSet::new();
+        let mut consecutive_failures = 0_u32;
         loop {
             tokio::select! {
                 accepted = self.listener.accept() => {
-                    let (client, peer) =
-                        accepted.map_err(|_| Error("SOCKS5 accept failed".into()))?;
+                    let (client, peer) = match accepted {
+                        Ok(accepted) => {
+                            consecutive_failures = 0;
+                            accepted
+                        }
+                        Err(error) => {
+                            consecutive_failures += 1;
+                            if consecutive_failures >= MAX_CONSECUTIVE_ACCEPT_FAILURES {
+                                return Err(Error(format!(
+                                    "SOCKS5 listener stopped accepting connections: {error}"
+                                )));
+                            }
+                            // Descriptor and buffer exhaustion leave the pending
+                            // connection queued, so retry after a pause instead
+                            // of spinning on the same failure.
+                            tokio::time::sleep(ACCEPT_FAILURE_BACKOFF).await;
+                            continue;
+                        }
+                    };
                     if !peer.ip().is_loopback() {
                         continue;
                     }
+                    while connections.try_join_next().is_some() {}
                     if connections.len() >= MAX_ACTIVE_CONNECTIONS {
                         continue;
                     }
@@ -96,8 +127,14 @@ impl BoundSocksServer {
 
 impl SocksServer {
     async fn handle(&self, mut client: TcpStream) -> Result<()> {
-        negotiate_no_authentication(&mut client).await?;
-        match read_request(&mut client, self.resolver.as_ref()).await? {
+        let request = bounded_handshake(
+            &mut client,
+            self.resolver.as_ref(),
+            GREETING_TIMEOUT,
+            REQUEST_TIMEOUT,
+        )
+        .await?;
+        match request {
             SocksRequest::Connect(remote) => match self.netstack.connect_tcp(remote).await {
                 Ok(mut upstream) => {
                     send_reply(&mut client, 0, None).await?;
@@ -226,6 +263,22 @@ fn relay_task_result(
     }
 }
 
+/// Reads the greeting and request under explicit deadlines so a client that
+/// connects and then stalls cannot hold one of the bounded connection slots.
+async fn bounded_handshake(
+    client: &mut TcpStream,
+    resolver: &dyn NameResolver,
+    greeting_timeout: Duration,
+    request_timeout: Duration,
+) -> Result<SocksRequest> {
+    tokio::time::timeout(greeting_timeout, negotiate_no_authentication(client))
+        .await
+        .map_err(|_| Error("SOCKS5 authentication greeting timed out".into()))??;
+    tokio::time::timeout(request_timeout, read_request(client, resolver))
+        .await
+        .map_err(|_| Error("SOCKS5 request timed out".into()))?
+}
+
 async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<()> {
     let mut header = [0_u8; 2];
     client.read_exact(&mut header).await?;
@@ -255,10 +308,19 @@ async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Re
     }
     let command = header[1];
     if !matches!(command, CONNECT_COMMAND | UDP_ASSOCIATE_COMMAND) {
-        consume_address(client, header[3], resolver, false).await?;
-        let _ = client.read_u16().await?;
+        // The command can be rejected as soon as the fixed header is complete.
+        // Waiting for an address first lets a malformed client withhold the
+        // remainder and prevents it from receiving the required 0x07 reply.
         send_reply(client, 7, None).await?;
         return Err(Error("unsupported SOCKS5 command".into()));
+    }
+    if header[3] == ADDRESS_IPV6 {
+        // Tell the client the address family is unsupported instead of letting
+        // it wait for a reply that never arrives.
+        let mut ignored = [0_u8; 18];
+        let _ = client.read_exact(&mut ignored).await;
+        send_reply(client, 8, None).await?;
+        return Err(Error("SOCKS5 IPv6 is not implemented".into()));
     }
     let address = consume_address(client, header[3], resolver, command == CONNECT_COMMAND).await?;
     let port = client.read_u16().await?;
@@ -452,6 +514,87 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    async fn connected_pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).await.unwrap();
+        let (server, _) = listener.accept().await.unwrap();
+        (client, server)
+    }
+
+    #[tokio::test]
+    async fn stalled_client_cannot_hold_a_connection_slot() {
+        let (_client, mut server) = connected_pair().await;
+        let error = bounded_handshake(
+            &mut server,
+            &crate::engine::proxy::RejectDomainResolver,
+            Duration::from_millis(50),
+            Duration::from_millis(50),
+        )
+        .await
+        .expect_err("a silent client must not block the handshake");
+        assert!(error.to_string().contains("greeting timed out"));
+    }
+
+    #[tokio::test]
+    async fn stalled_request_after_a_valid_greeting_also_times_out() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                Duration::from_secs(5),
+                Duration::from_millis(50),
+            )
+            .await
+            .map(|_| ())
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 1, NO_AUTHENTICATION])
+            .await
+            .unwrap();
+        let mut negotiated = [0_u8; 2];
+        client.read_exact(&mut negotiated).await.unwrap();
+        assert_eq!(negotiated, [SOCKS_VERSION, NO_AUTHENTICATION]);
+        let error = handshake.await.unwrap().expect_err("stalled request");
+        assert!(error.to_string().contains("request timed out"));
+    }
+
+    #[tokio::test]
+    async fn ipv6_requests_receive_an_address_type_reply() {
+        let (mut client, mut server) = connected_pair().await;
+        let request = tokio::spawn(async move {
+            read_request(&mut server, &crate::engine::proxy::RejectDomainResolver).await
+        });
+        let mut ipv6_request = vec![SOCKS_VERSION, CONNECT_COMMAND, 0, ADDRESS_IPV6];
+        ipv6_request.extend_from_slice(&[0; 16]);
+        ipv6_request.extend_from_slice(&443_u16.to_be_bytes());
+        client.write_all(&ipv6_request).await.unwrap();
+        let mut reply = [0_u8; 10];
+        client.read_exact(&mut reply).await.unwrap();
+        assert_eq!(reply[..4], [SOCKS_VERSION, 8, 0, ADDRESS_IPV4]);
+        assert!(request.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn unsupported_command_is_rejected_before_waiting_for_its_address() {
+        let (mut client, mut server) = connected_pair().await;
+        let request = tokio::spawn(async move {
+            read_request(&mut server, &crate::engine::proxy::RejectDomainResolver).await
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 2, 0, ADDRESS_IPV6])
+            .await
+            .unwrap();
+        let mut reply = [0_u8; 10];
+        tokio::time::timeout(Duration::from_secs(1), client.read_exact(&mut reply))
+            .await
+            .expect("command rejection must not wait for the address")
+            .unwrap();
+        assert_eq!(reply[..4], [SOCKS_VERSION, 7, 0, ADDRESS_IPV4]);
+        assert!(request.await.unwrap().is_err());
     }
 
     #[test]

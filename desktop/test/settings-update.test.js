@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { applySettingsPatch, parsePort } = require('../lib/settings-update');
+const { applySettingsPatch, parseCredentialField, parsePort } = require('../lib/settings-update');
 
 test('numeric-string Windows port is preserved as an integer', () => {
   const result = applySettingsPatch({ port: 1080 }, { port: '6180' });
@@ -27,4 +27,19 @@ test('invalid retry count fails instead of changing another setting', () => {
     () => applySettingsPatch({ port: 6180 }, { maxAttempts: 'not-a-number' }),
     /重试次数/,
   );
+});
+
+test('credentials with control characters cannot reframe the engine stdin protocol', () => {
+  assert.equal(parseCredentialField('student.name', '账号'), 'student.name');
+  assert.equal(parseCredentialField('pass word §', '密码'), 'pass word §');
+  for (const injected of ['\n', '\r', '\u0000', '\u007f', '\u2028']) {
+    assert.throws(() => applySettingsPatch({}, { username: `alice${injected}bob` }), /账号/);
+    assert.throws(() => applySettingsPatch({}, { password: `secret${injected}x` }), /密码/);
+  }
+});
+
+test('a rejected credential leaves every other setting untouched', () => {
+  const previous = { port: 6180, username: 'alice' };
+  assert.throws(() => applySettingsPatch(previous, { port: 2080, username: 'bob\nroot' }), /账号/);
+  assert.equal(applySettingsPatch(previous, {}).settings.username, 'alice');
 });

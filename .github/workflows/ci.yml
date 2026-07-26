@@ -1,0 +1,73 @@
+name: ci
+
+# The release workflow only runs on tags, so without this the desktop suite,
+# syntax checks, and dependency audit would first run when a release is already
+# being cut. Every push to the default branch and every pull request is gated
+# here instead.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        # The unit tests stub Electron, so the prebuilt binary is not needed and
+        # its download would dominate the job runtime.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+      - name: Run desktop tests
+        run: npm test
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+      - name: Check syntax of every entry point
+        run: |
+          node --check main.js
+          node --check preload.js
+          node --check campus-preload.js
+          node --check lib/campus-browser.js
+          node --check renderer/campus-browser.js
+          node --check renderer/app.js
+      - name: Check shell entry point
+        working-directory: .
+        run: bash -n hkustgzconnect
+
+  engine:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: independent
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint all targets
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run engine tests
+        run: cargo test --locked
+      - name: Build the shipped engine binary
+        run: cargo build --locked --release --bin ec-engine

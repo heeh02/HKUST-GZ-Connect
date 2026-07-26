@@ -56,3 +56,18 @@ addresses are excluded from Git.
 No UI file may encode gateway packet formats. No protocol module may read a
 password from disk or command-line arguments. No compatibility failure may
 silently fall back to disabled certificate validation.
+
+## Known deviation: `proxy.allow_system_dns_fallback`
+
+`engine/dns.rs` must not own a public or system resolver, and the engine code
+defaults the flag to `false` (an unresolvable proxy domain fails closed). The
+shipped `config/hkustgz.json` sets it to `true`, so if the gateway ever stops
+advertising an L3 DNS server the frontend silently resolves proxy domains
+through the operating-system resolver instead. Campus hostnames then leave the
+tunnel as plaintext DNS questions.
+
+Before turning this off, confirm the gateway actually advertises L3 DNS: the
+engine prints `Proxy DNS mode: gateway` when it does and
+`Proxy DNS mode: system fallback` when the fallback is carrying real traffic.
+Only the first case makes the flag dead configuration that is safe to set to
+`false`.

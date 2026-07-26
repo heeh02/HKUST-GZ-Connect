@@ -46,9 +46,9 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 
 | 系统 | 下载文件 | 说明 |
 | --- | --- | --- |
-| macOS Apple Silicon | `hkustgzconnect-1.0.2-mac-arm64.dmg` 或 `.zip` | M1/M2/M3/M4 等 |
-| macOS Intel | `hkustgzconnect-1.0.2-mac-x64.dmg` 或 `.zip` | Intel Mac |
-| Windows | `hkustgzconnect-1.0.2-win-x64.exe` | Windows 10/11 x64 |
+| macOS Apple Silicon | `hkustgzconnect-1.0.3-mac-arm64.dmg` 或 `.zip` | M1/M2/M3/M4 等 |
+| macOS Intel | `hkustgzconnect-1.0.3-mac-x64.dmg` 或 `.zip` | Intel Mac |
+| Windows | `hkustgzconnect-1.0.3-win-x64.exe` | Windows 10/11 x64 |
 
 Release 同时提供 `SHA256SUMS-macos.txt` 和 `SHA256SUMS-windows.txt`。
 建议下载后核对校验值。
@@ -270,9 +270,9 @@ Download the latest build from
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | `hkustgzconnect-1.0.2-mac-arm64.dmg` or `.zip` | M1/M2/M3/M4 |
-| macOS Intel | `hkustgzconnect-1.0.2-mac-x64.dmg` or `.zip` | Intel Macs |
-| Windows | `hkustgzconnect-1.0.2-win-x64.exe` | Windows 10/11 x64 |
+| macOS Apple Silicon | `hkustgzconnect-1.0.3-mac-arm64.dmg` or `.zip` | M1/M2/M3/M4 |
+| macOS Intel | `hkustgzconnect-1.0.3-mac-x64.dmg` or `.zip` | Intel Macs |
+| Windows | `hkustgzconnect-1.0.3-win-x64.exe` | Windows 10/11 x64 |
 
 Each release also contains `SHA256SUMS-macos.txt` and
 `SHA256SUMS-windows.txt`.

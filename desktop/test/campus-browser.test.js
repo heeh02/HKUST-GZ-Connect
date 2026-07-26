@@ -7,6 +7,7 @@ const {
   CAMPUS_PARTITION,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
+  applyCampusSessionPolicy,
   campusProxyConfig,
   campusWindowChrome,
   normalizeCampusUrl,
@@ -30,8 +31,37 @@ test('campus browser proxy is loopback-only SOCKS5', () => {
   assert.deepEqual(campusProxyConfig(1080), {
     mode: 'fixed_servers',
     proxyRules: 'socks5://127.0.0.1:1080',
+    proxyBypassRules: '<-loopback>',
   });
   assert.throws(() => campusProxyConfig(80), /端口/);
+});
+
+test('campus pages cannot reach services on this computer around the proxy', () => {
+  // Chromium bypasses proxies for loopback and link-local addresses unless the
+  // implicit rule is removed, which would let a campus page probe local ports.
+  assert.equal(campusProxyConfig(1080).proxyBypassRules, '<-loopback>');
+});
+
+test('campus pages are denied device and capability permissions', () => {
+  const decisions = [];
+  const campusSession = {
+    setPermissionRequestHandler: (handler) => decisions.push(['request', handler]),
+    setPermissionCheckHandler: (handler) => decisions.push(['check', handler]),
+    setDevicePermissionHandler: (handler) => decisions.push(['device', handler]),
+  };
+  assert.equal(applyCampusSessionPolicy(campusSession), campusSession);
+  assert.deepEqual(decisions.map(([kind]) => kind), ['request', 'check', 'device']);
+
+  let granted = null;
+  decisions[0][1]({}, 'media', (allowed) => { granted = allowed; });
+  assert.equal(granted, false);
+  assert.equal(decisions[1][1]({}, 'geolocation'), false);
+  assert.equal(decisions[2][1]({}), false);
+});
+
+test('a session without the newer permission APIs still configures cleanly', () => {
+  const legacySession = {};
+  assert.equal(applyCampusSessionPolicy(legacySession), legacySession);
 });
 
 test('Windows tabs share the native caption row without covering window controls', () => {

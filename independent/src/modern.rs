@@ -745,6 +745,10 @@ pub fn request_modern_token(
     let mut accepted = Zeroizing::new([0_u8; 8]);
     tls.read_exact(accepted.as_mut())
         .map_err(|_| Error("modern token request was not accepted".into()))?;
+    // The token is derived from the TLS ServerHello, but a reply that is not an
+    // HTTP status line means the request never reached the gateway web tier and
+    // the captured handshake cannot be trusted.
+    validate_modern_http_prefix(accepted.as_ref())?;
     let server_session_id = parse_server_hello_session_id(&tls.sock.received)?;
     let verified_leaf = tls
         .conn
@@ -760,9 +764,25 @@ pub fn request_modern_token(
     })
 }
 
+fn validate_modern_http_prefix(prefix: &[u8]) -> Result<()> {
+    if prefix.starts_with(b"HTTP/1.") {
+        return Ok(());
+    }
+    Err(Error(
+        "modern token endpoint did not return an HTTP response".into(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modern_token_requires_an_http_response_prefix() {
+        assert!(validate_modern_http_prefix(b"HTTP/1.1").is_ok());
+        assert!(validate_modern_http_prefix(b"NOT-HTTP").is_err());
+        assert!(validate_modern_http_prefix(b"HTTP/2.0").is_err());
+    }
 
     fn synthetic_server_hello(session_id: &[u8]) -> Vec<u8> {
         let mut body = vec![0x03, 0x03];

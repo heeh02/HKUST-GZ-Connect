@@ -3,6 +3,12 @@
 const { isValidPort, normalizeSettings } = require('./settings-store');
 const { normalizeRouteDomains } = require('./pac');
 
+// The engine reads the account on one stdin line and the password on the next.
+// A control character in either value would reframe that exchange, so it is
+// rejected here with a message the user can act on instead of reaching the
+// engine and failing as a generic credential-parse error.
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
 function parsePort(value) {
   if (typeof value === 'string' && value.trim() === '') {
     throw new Error('SOCKS 端口不能为空');
@@ -14,11 +20,22 @@ function parsePort(value) {
   return port;
 }
 
+function parseCredentialField(value, label) {
+  const text = String(value);
+  if (CONTROL_CHARACTERS.test(text)) {
+    throw new Error(`${label}不能包含换行或控制字符`);
+  }
+  return text;
+}
+
 function applySettingsPatch(previous, payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const next = { ...normalizeSettings(previous) };
 
-  if (source.username != null) next.username = String(source.username);
+  if (source.username != null) {
+    next.username = parseCredentialField(source.username, '账号');
+  }
+  if (source.password != null) parseCredentialField(source.password, '密码');
   if (source.port != null) next.port = parsePort(source.port);
   if (source.maxAttempts != null) {
     const attempts = Number(source.maxAttempts);
@@ -47,4 +64,4 @@ function applySettingsPatch(previous, payload) {
   };
 }
 
-module.exports = { applySettingsPatch, parsePort };
+module.exports = { applySettingsPatch, parseCredentialField, parsePort };

@@ -22,7 +22,13 @@ const { probeSocksConnect } = require('./lib/socks-health');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
-if (!app.requestSingleInstanceLock()) { app.quit(); }
+// `app.quit()` does not stop the rest of this module from running, so return
+// before a second instance touches the shared settings, credential, and log
+// files that the first instance owns.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
 app.setName('HKUST(GZ) Connect');
 
 // ---------- paths & state ----------
@@ -151,6 +157,11 @@ async function connectOnce(isRetry) {
     '--credentials-stdin',
     '--socks-bind', `127.0.0.1:${Number(s.port)}`,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // An engine that dies before reading stdin (missing library, wrong
+  // architecture) makes this write emit EPIPE. Without a listener that would
+  // become an uncaught exception and take the whole application down, so the
+  // failure is left to the 'exit' handler instead.
+  engine.stdin.on('error', () => {});
   engine.stdin.end(`${s.username}\n${pw}\n`);
   let diagnosticTail = '';
   const onData = (d) => {
@@ -464,7 +475,14 @@ ipcMain.handle('save', async (_e, p) => {
     return { ok: false, error: error.message, settings: previous };
   }
   next = saveSettings(next);
-  refreshPacFile(next);
+  // The PAC file only serves external applications. A write failure must not
+  // discard the settings that were already stored, nor the password below it.
+  let pacError = null;
+  try {
+    refreshPacFile(next);
+  } catch (error) {
+    pacError = `设置已保存，但 PAC 文件写入失败：${error.message}`;
+  }
   if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
     return { ok: false, error: '系统安全存储不可用，密码未保存' };
   }
@@ -475,7 +493,17 @@ ipcMain.handle('save', async (_e, p) => {
     reconnected = true;
   }
   if (campusBrowser && portChanged) await campusBrowser.configure(next.port);
-  return { ok: true, settings: next, portChanged, reconnected };
+  if (pacError) {
+    state.lastError = pacError;
+    emit();
+  }
+  return {
+    ok: true,
+    warning: pacError,
+    settings: next,
+    portChanged,
+    reconnected,
+  };
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
@@ -623,6 +651,14 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  // The control window only ever renders its own bundled page. Deny popups and
+  // navigation away from it so a future renderer change cannot turn it into a
+  // browser with main-process privileges.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url !== win.webContents.getURL()) event.preventDefault();
+  });
+  win.webContents.on('will-attach-webview', (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', handleWindowClose);
   win.on('closed', () => { win = null; });
@@ -671,12 +707,22 @@ function installApplicationMenu() {
 app.on('second-instance', showWindow);
 app.whenReady().then(() => {
   installApplicationMenu();
-  refreshPacFile();
+  // A PAC write can fail on a read-only or full user-data directory. That must
+  // not leave the user with no window and no tray, so it is reported through the
+  // normal error surface instead of aborting startup.
+  try {
+    refreshPacFile();
+  } catch (error) {
+    state.lastError = `无法写入 PAC 文件：${error.message}`;
+  }
   createTray();
   createWindow();
   const settings = loadSettings();
   if (settings.autoConnect !== false && settings.username && hasPassword()) setTimeout(() => connect(), 500);
   app.on('activate', showWindow);
+}).catch((error) => {
+  dialog.showErrorBox('HKUST(GZ) Connect 启动失败', String(error && error.message ? error.message : error));
+  app.exit(1);
 });
 app.on('window-all-closed', () => { /* Keep the tray process alive. */ });
 app.on('before-quit', () => {

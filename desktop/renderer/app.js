@@ -192,7 +192,12 @@ function flashSaved(msg, isError = false) {
 }
 $('towerSave').addEventListener('click', async () => {
   const result = await saveTower();
-  if (result?.ok) flashSaved(result.reconnected ? '已保存并应用 ✓' : '已保存 ✓');
+  if (result?.ok) {
+    flashSaved(
+      result.warning || (result.reconnected ? '已保存并应用 ✓' : '已保存 ✓'),
+      !!result.warning,
+    );
+  }
 });
 $('towerReconnect').addEventListener('click', async () => {
   const result = await saveTower();
@@ -201,7 +206,7 @@ $('towerReconnect').addEventListener('click', async () => {
     flashSaved('重连中…');
     await window.api.reconnect();
   }
-  flashSaved('已保存并重连 ✓');
+  flashSaved(result.warning || '已保存并重连 ✓', !!result.warning);
 });
 for (const id of [
   'towerPort', 'routeDomains', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',

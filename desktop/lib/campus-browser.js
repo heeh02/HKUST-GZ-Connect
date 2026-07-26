@@ -33,7 +33,27 @@ function campusProxyConfig(port) {
   return {
     mode: 'fixed_servers',
     proxyRules: `socks5://127.0.0.1:${value}`,
+    // Chromium implicitly bypasses the proxy for loopback and link-local
+    // addresses. Removing that rule keeps a campus page from reaching services
+    // on this computer or the local network instead of going through the tunnel.
+    proxyBypassRules: '<-loopback>',
   };
+}
+
+// A campus web page is untrusted content. Nothing it renders needs the camera,
+// microphone, location, notifications, or a USB/serial device, so every request
+// is refused without prompting the user.
+function applyCampusSessionPolicy(campusSession) {
+  if (typeof campusSession.setPermissionRequestHandler === 'function') {
+    campusSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  }
+  if (typeof campusSession.setPermissionCheckHandler === 'function') {
+    campusSession.setPermissionCheckHandler(() => false);
+  }
+  if (typeof campusSession.setDevicePermissionHandler === 'function') {
+    campusSession.setDevicePermissionHandler(() => false);
+  }
+  return campusSession;
 }
 
 function campusWindowChrome(platform) {
@@ -125,7 +145,7 @@ class CampusBrowser {
   }
 
   async configure(port) {
-    const campusSession = this.session.fromPartition(CAMPUS_PARTITION);
+    const campusSession = applyCampusSessionPolicy(this.session.fromPartition(CAMPUS_PARTITION));
     if (this.configuredPort !== port) {
       await campusSession.setProxy(campusProxyConfig(port));
       await campusSession.closeAllConnections();
@@ -513,6 +533,7 @@ module.exports = {
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
   TOOLBAR_HEIGHT,
+  applyCampusSessionPolicy,
   campusProxyConfig,
   campusWindowChrome,
   errorPage,

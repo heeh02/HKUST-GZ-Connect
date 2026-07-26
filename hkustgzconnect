@@ -30,6 +30,7 @@ die(){ echo "✗ $*" >&2; exit 1; }
 [ -f "$CONF" ] || die "missing local identity config: $CONF"
 [ -n "$ACC" ] || die "no username in $CONF"
 
+regex_escape(){ printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/[][^$.*+?(){}|]/\\&/g'; }
 get_pw(){ security find-generic-password -s "$KEYCHAIN_SERVICE" -a "$ACC" -w 2>/dev/null; }
 running_pid(){ [ -f "$PIDFILE" ] && awk 'NR==1{print; exit}' "$PIDFILE" 2>/dev/null; }
 is_up(){ local p; p="$(running_pid)"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
@@ -85,12 +86,13 @@ run_engine(){
 
 case "${1:-}" in
   set-password)
-    printf "Password for %s @ HKUST-GZ VPN: " "$ACC" >&2
-    read -rs pw
-    echo >&2
-    [ -n "$pw" ] || die "empty password"
-    security add-generic-password -U -s "$KEYCHAIN_SERVICE" -a "$ACC" -w "$pw" \
-      && echo "✓ stored in Keychain"
+    # `security ... -w "$pw"` would expose the password in the process arguments,
+    # which any local user can read with ps. Passing -w last makes security
+    # prompt for the secret itself, so it never becomes an argv entry.
+    echo "Password for $ACC @ HKUST-GZ VPN (security will prompt twice):" >&2
+    security add-generic-password -U -s "$KEYCHAIN_SERVICE" -a "$ACC" -w \
+      && echo "✓ stored in Keychain" \
+      || die "password was not stored"
     ;;
 
   run)
@@ -120,7 +122,10 @@ case "${1:-}" in
     svc_loaded && launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
     local_pid="$(running_pid)"
     [ -n "$local_pid" ] && kill -INT "$local_pid" 2>/dev/null
-    pkill -f "$ENGINE --config $ENGINE_CONFIG" 2>/dev/null
+    # pkill -f takes an extended regular expression. A checkout path containing
+    # regex metacharacters (for example parentheses) would otherwise silently
+    # match nothing and leave the engine running.
+    pkill -f "^$(regex_escape "$ENGINE") " 2>/dev/null
     [ -f "$PIDFILE" ] && mv "$PIDFILE" "$RUNDIR/hkustgzconnect.pid.stopped"
     echo "✓ down"
     ;;
