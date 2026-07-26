@@ -168,7 +168,12 @@ jobs:
             "$hash  $($_.Name)"
           }
           if (-not $lines) { throw "no Windows release artifact found" }
-          $lines | Set-Content -Encoding ascii SHA256SUMS-windows.txt
+          $content = ($lines -join "`n") + "`n"
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) "SHA256SUMS-windows.txt"),
+            $content,
+            [System.Text.Encoding]::ASCII
+          )
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
