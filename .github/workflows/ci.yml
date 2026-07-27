@@ -49,9 +49,12 @@ jobs:
           node --check lib/campus-browser.js
           node --check renderer/campus-browser.js
           node --check renderer/app.js
-      - name: Check shell entry point
-        working-directory: .
-        run: bash -n hkustgzconnect
+      - name: Check shell entry points
+        run: |
+          bash -n ../hkustgzconnect
+          bash -n scripts/install-mac.sh
+          bash -n scripts/rebuild-mac.sh
+          bash -n scripts/build-engine.sh
 
   engine:
     timeout-minutes: 20

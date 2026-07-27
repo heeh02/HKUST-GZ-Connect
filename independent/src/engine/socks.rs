@@ -108,6 +108,9 @@ impl BoundSocksServer {
                     if !peer.ip().is_loopback() {
                         continue;
                     }
+                    // Best effort: Nagle is a latency optimisation, so failing to
+                    // clear it must not deny the client its connection.
+                    let _ = configure_client_socket(&client);
                     while connections.try_join_next().is_some() {}
                     if connections.len() >= MAX_ACTIVE_CONNECTIONS {
                         continue;
@@ -127,21 +130,26 @@ impl BoundSocksServer {
 
 impl SocksServer {
     async fn handle(&self, mut client: TcpStream) -> Result<()> {
-        let request = bounded_handshake(
+        let Some(request) = bounded_handshake(
             &mut client,
             self.resolver.as_ref(),
             GREETING_TIMEOUT,
             REQUEST_TIMEOUT,
         )
-        .await?;
+        .await?
+        else {
+            return Ok(());
+        };
         match request {
             SocksRequest::Connect(remote) => match self.netstack.connect_tcp(remote).await {
                 Ok(mut upstream) => {
                     send_reply(&mut client, 0, None).await?;
-                    tokio::io::copy_bidirectional(&mut client, &mut upstream)
-                        .await
-                        .map_err(|_| Error("SOCKS5 stream forwarding failed".into()))?;
-                    Ok(())
+                    match tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
+                        // Either side hanging up ends a proxied session normally.
+                        Ok(_) => Ok(()),
+                        Err(error) if peer_departed(&error) => Ok(()),
+                        Err(_) => Err(Error("SOCKS5 stream forwarding failed".into())),
+                    }
                 }
                 Err(error) => {
                     let _ = send_reply(&mut client, 5, None).await;
@@ -263,25 +271,66 @@ fn relay_task_result(
     }
 }
 
+/// Disables Nagle on an accepted client socket.
+///
+/// The SOCKS exchange is a sequence of short writes followed by a read, and the
+/// success reply is only ten bytes. Holding those back until the client
+/// acknowledges the previous segment adds a delayed-ACK stall in front of every
+/// proxied request.
+fn configure_client_socket(client: &TcpStream) -> Result<()> {
+    client
+        .set_nodelay(true)
+        .map_err(|_| Error("cannot configure the SOCKS5 client socket".into()))
+}
+
+/// Reports whether an I/O error means the peer simply went away.
+///
+/// A client that disconnects has ended its session, not failed it. Logging those
+/// as request failures buries the real errors: the desktop health probe closes
+/// its socket the moment it has the reply, and browsers routinely abandon
+/// speculative connections.
+fn peer_departed(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::UnexpectedEof
+    )
+}
+
 /// Reads the greeting and request under explicit deadlines so a client that
 /// connects and then stalls cannot hold one of the bounded connection slots.
+///
+/// `Ok(None)` means the client disconnected before completing the handshake.
 async fn bounded_handshake(
     client: &mut TcpStream,
     resolver: &dyn NameResolver,
     greeting_timeout: Duration,
     request_timeout: Duration,
-) -> Result<SocksRequest> {
-    tokio::time::timeout(greeting_timeout, negotiate_no_authentication(client))
+) -> Result<Option<SocksRequest>> {
+    let greeted = tokio::time::timeout(greeting_timeout, negotiate_no_authentication(client))
         .await
         .map_err(|_| Error("SOCKS5 authentication greeting timed out".into()))??;
+    if !greeted {
+        return Ok(None);
+    }
     tokio::time::timeout(request_timeout, read_request(client, resolver))
         .await
         .map_err(|_| Error("SOCKS5 request timed out".into()))?
+        .map(Some)
 }
 
-async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<()> {
+/// Returns `Ok(false)` when the client disconnected instead of greeting.
+async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<bool> {
     let mut header = [0_u8; 2];
-    client.read_exact(&mut header).await?;
+    if let Err(error) = client.read_exact(&mut header).await {
+        if peer_departed(&error) {
+            return Ok(false);
+        }
+        return Err(error.into());
+    }
     if header[0] != SOCKS_VERSION || header[1] == 0 || usize::from(header[1]) > MAX_AUTH_METHODS {
         return Err(Error("invalid SOCKS5 authentication greeting".into()));
     }
@@ -296,7 +345,7 @@ async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<()> {
     if method == NO_ACCEPTABLE_METHODS {
         return Err(Error("SOCKS5 client offered no supported method".into()));
     }
-    Ok(())
+    Ok(true)
 }
 
 async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Result<SocksRequest> {
@@ -560,6 +609,55 @@ mod tests {
         assert_eq!(negotiated, [SOCKS_VERSION, NO_AUTHENTICATION]);
         let error = handshake.await.unwrap().expect_err("stalled request");
         assert!(error.to_string().contains("request timed out"));
+    }
+
+    #[tokio::test]
+    async fn a_client_that_leaves_before_the_greeting_is_not_a_failure() {
+        // The desktop health probe closes its socket as soon as it has the reply,
+        // and browsers open and abandon speculative connections. Reporting those
+        // as request failures fills the user-visible log with noise that hides
+        // the errors that matter.
+        let (client, mut server) = connected_pair().await;
+        drop(client);
+        let outcome = bounded_handshake(
+            &mut server,
+            &crate::engine::proxy::RejectDomainResolver,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("a departed client is a completed session, not an error");
+        assert!(outcome.is_none());
+    }
+
+    #[test]
+    fn only_a_departed_peer_is_treated_as_a_clean_end() {
+        use std::io::ErrorKind;
+        for kind in [
+            ErrorKind::BrokenPipe,
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::NotConnected,
+            ErrorKind::UnexpectedEof,
+        ] {
+            assert!(peer_departed(&std::io::Error::from(kind)), "{kind:?}");
+        }
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::AddrInUse,
+            ErrorKind::InvalidData,
+            ErrorKind::TimedOut,
+        ] {
+            assert!(!peer_departed(&std::io::Error::from(kind)), "{kind:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn accepted_clients_have_nagle_disabled() {
+        let (_client, server) = connected_pair().await;
+        assert!(!server.nodelay().unwrap());
+        configure_client_socket(&server).unwrap();
+        assert!(server.nodelay().unwrap());
     }
 
     #[tokio::test]

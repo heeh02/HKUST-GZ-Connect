@@ -19,6 +19,9 @@ const { ensureOwnerOnly } = require('./lib/private-file');
 const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { loadTrayImage } = require('./lib/tray-icon');
 const { probeSocksConnect } = require('./lib/socks-health');
+const {
+  PROBE_TIMEOUT_MS, TELEMETRY_TICK_MS, shouldProbe, shouldRecover,
+} = require('./lib/tunnel-health');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
@@ -61,6 +64,7 @@ let telemetryTimer = null;
 let teleBusy = false;
 let tunnelProbeFailures = 0;
 let tunnelRecoveryInFlight = false;
+let probeInFlight = false;
 let lastTele = { connCount: 0, apps: [], latencyMs: null };
 let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
 
@@ -279,7 +283,7 @@ function tcpPing(host, port) {
 }
 function friendly(n) {
   if (/Chrome|chrome/.test(n)) return 'Google Chrome';
-  if (/Code Helper|Electron/.test(n)) return 'VS Code';
+  if (/Code Helper/.test(n)) return 'VS Code';
   if (/Microsoft Edge|msedge/.test(n)) return 'Microsoft Edge';
   if (/Lark|Feishu|飞书/.test(n)) return 'Lark/飞书';
   if (/firefox/i.test(n)) return 'Firefox';
@@ -287,6 +291,8 @@ function friendly(n) {
   if (/^(curl|wget|nc|node)$/.test(n)) return n;
   return n;
 }
+const processNames = new Map();
+const MAX_TRACKED_PROCESS_NAMES = 256;
 async function listTunnelApps(proxyPorts, enginePid, appPid) {
   const ports = new Set(proxyPorts.filter(
     (port) => Number.isInteger(port) && port >= 1 && port <= 65535
@@ -317,9 +323,16 @@ async function listTunnelApps(proxyPorts, enginePid, appPid) {
     for (const p of tuples.values()) perPid.set(p, (perPid.get(p) || 0) + 1);
     const apps = [];
     for (const [p, count] of perPid) {
-      let name = cmd.get(p) || String(p);
-      const full = (await run('ps', ['-p', String(p), '-o', 'comm='], 800)).trim();
-      if (full) name = full.split('/').pop();
+      // lsof truncates the command name, so the full one comes from ps. A pid
+      // keeps the same name for its whole life, so resolve each one once instead
+      // of spawning ps for every process on every telemetry tick.
+      let name = processNames.get(p);
+      if (name === undefined) {
+        const full = (await run('ps', ['-p', String(p), '-o', 'comm='], 800)).trim();
+        name = full ? full.split('/').pop() : (cmd.get(p) || String(p));
+        if (processNames.size >= MAX_TRACKED_PROCESS_NAMES) processNames.clear();
+        processNames.set(p, name);
+      }
       apps.push({ pid: p, name: friendly(name), count });
     }
     apps.sort((a, b) => b.count - a.count);
@@ -344,13 +357,25 @@ function startTelemetry() {
       );
       lastTele.connCount = r.connCount; lastTele.apps = r.apps;
       if (tick % 2 === 0) lastTele.latencyMs = await tcpPing(gatewayIp, 443);
-      if (tick % 4 === 0) await checkTunnelHealth();
-      tick++;
+      if (shouldProbe(tick) && !probeInFlight) {
+        probeInFlight = true;
+        // Deliberately not awaited. The probe deadline is longer than the tick
+        // interval and recovery is longer still, so awaiting it here would hold
+        // `teleBusy` and freeze the live counters for the whole probe.
+        checkTunnelHealth()
+          .catch(() => {})
+          .finally(() => { probeInFlight = false; });
+      }
       sendTelemetry();
-    } finally { teleBusy = false; }
+    } finally {
+      // Advance even if a step above threw, otherwise the next pump repeats the
+      // same tick and probes the tunnel again immediately.
+      tick++;
+      teleBusy = false;
+    }
   };
   pump();
-  telemetryTimer = setInterval(pump, 2500);
+  telemetryTimer = setInterval(pump, TELEMETRY_TICK_MS);
 }
 function stopTelemetry() {
   if (telemetryTimer) clearInterval(telemetryTimer);
@@ -364,7 +389,7 @@ async function checkTunnelHealth() {
   const probeOptions = {
     proxyPort: socksPort(),
     targetPort: 443,
-    timeoutMs: 5000,
+    timeoutMs: PROBE_TIMEOUT_MS,
   };
   const first = await probeSocksConnect({
     ...probeOptions,
@@ -379,7 +404,10 @@ async function checkTunnelHealth() {
     return;
   }
   tunnelProbeFailures++;
-  if (tunnelProbeFailures < 2 || loadSettings().autoReconnect === false) return;
+  if (!shouldRecover({
+    failures: tunnelProbeFailures,
+    autoReconnect: loadSettings().autoReconnect,
+  })) return;
 
   tunnelRecoveryInFlight = true;
   state.lastError = '校园隧道无响应，正在自动恢复…';
@@ -654,11 +682,12 @@ function createWindow() {
   // The control window only ever renders its own bundled page. Deny popups and
   // navigation away from it so a future renderer change cannot turn it into a
   // browser with main-process privileges.
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', (event, url) => {
-    if (url !== win.webContents.getURL()) event.preventDefault();
+  const controlContents = win.webContents;
+  controlContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  controlContents.on('will-navigate', (event, url) => {
+    if (url !== controlContents.getURL()) event.preventDefault();
   });
-  win.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  controlContents.on('will-attach-webview', (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', handleWindowClose);
   win.on('closed', () => { win = null; });

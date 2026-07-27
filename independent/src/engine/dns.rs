@@ -3,9 +3,12 @@ use crate::engine::proxy::{NameResolver, ResolveFuture};
 use crate::{Error, Result};
 use rand::RngCore;
 use rand::rngs::OsRng;
+use std::collections::HashMap;
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use tokio::sync::broadcast;
 
 const DNS_HEADER_LEN: usize = 12;
 const DNS_PORT: u16 = 53;
@@ -13,11 +16,151 @@ const DNS_MAX_RESPONSE: usize = 4096;
 const DNS_TYPE_A: u16 = 1;
 const DNS_CLASS_IN: u16 = 1;
 const MAX_POINTER_JUMPS: usize = 16;
+// A SOCKS5 client that lets the proxy resolve names sends the hostname on every
+// CONNECT, so one page load asks for the same handful of hosts dozens of times.
+// The floor keeps a zero or one-second gateway TTL from turning each of those
+// into a fresh round trip through the tunnel; the ceiling keeps a long TTL from
+// pinning a campus address across a whole session.
+const MIN_CACHE_TTL: Duration = Duration::from_secs(10);
+const MAX_CACHE_TTL: Duration = Duration::from_secs(300);
+const MAX_CACHE_ENTRIES: usize = 512;
+
+#[derive(Default)]
+struct DnsCache {
+    entries: Mutex<HashMap<String, (Ipv4Addr, Instant)>>,
+}
+
+impl DnsCache {
+    fn get(&self, host: &str, now: Instant) -> Option<Ipv4Addr> {
+        let entries = self.entries.lock().ok()?;
+        entries
+            .get(host)
+            .filter(|(_, expires_at)| now < *expires_at)
+            .map(|(address, _)| *address)
+    }
+
+    fn insert(&self, host: &str, address: Ipv4Addr, ttl_seconds: u32, now: Instant) {
+        let ttl = Duration::from_secs(u64::from(ttl_seconds)).clamp(MIN_CACHE_TTL, MAX_CACHE_TTL);
+        let Ok(mut entries) = self.entries.lock() else {
+            return;
+        };
+        if entries.len() >= MAX_CACHE_ENTRIES {
+            entries.retain(|_, (_, expires_at)| now < *expires_at);
+            if entries.len() >= MAX_CACHE_ENTRIES {
+                entries.clear();
+            }
+        }
+        entries.insert(host.to_owned(), (address, now + ttl));
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries
+            .lock()
+            .map(|entries| entries.len())
+            .unwrap_or(0)
+    }
+}
+
+/// A shareable copy of a completed lookup. The error carries no detail because
+/// only the caller that ran the query owns its diagnostics.
+type SharedLookup = std::result::Result<Ipv4Addr, ()>;
+
+enum Role {
+    Leader,
+    Waiter(broadcast::Receiver<SharedLookup>),
+}
+
+/// Collapses simultaneous lookups for the same host into one query.
+///
+/// A browser opens several connections to a host at once, and a SOCKS5 client
+/// that resolves through the proxy sends the hostname on each of them. Without
+/// this, the first visit to a host fans out into one tunnel round trip per
+/// connection — the cache only helps once an answer exists.
+#[derive(Default)]
+struct SingleFlight {
+    lookups: Mutex<HashMap<String, broadcast::Sender<SharedLookup>>>,
+}
+
+/// Frees the in-flight slot even if the leader's task is dropped mid-query, so a
+/// cancelled leader cannot strand its waiters.
+struct LeaderSlot<'a> {
+    flight: &'a SingleFlight,
+    host: &'a str,
+}
+
+impl LeaderSlot<'_> {
+    fn publish(&self, result: SharedLookup) {
+        if let Some(sender) = self.flight.take(self.host) {
+            let _ = sender.send(result);
+        }
+    }
+}
+
+impl Drop for LeaderSlot<'_> {
+    fn drop(&mut self) {
+        // A no-op after `publish`; on cancellation it drops the sender, which
+        // wakes every waiter with a closed channel.
+        let _ = self.flight.take(self.host);
+    }
+}
+
+impl SingleFlight {
+    fn join(&self, host: &str) -> Role {
+        let Ok(mut lookups) = self.lookups.lock() else {
+            return Role::Leader;
+        };
+        if let Some(sender) = lookups.get(host) {
+            return Role::Waiter(sender.subscribe());
+        }
+        let (sender, _receiver) = broadcast::channel(1);
+        lookups.insert(host.to_owned(), sender);
+        Role::Leader
+    }
+
+    fn take(&self, host: &str) -> Option<broadcast::Sender<SharedLookup>> {
+        self.lookups
+            .lock()
+            .ok()
+            .and_then(|mut lookups| lookups.remove(host))
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.lookups
+            .lock()
+            .map(|lookups| lookups.len())
+            .unwrap_or(0)
+    }
+
+    async fn run<F, Fut>(&self, host: &str, query: F) -> Result<Ipv4Addr>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<Ipv4Addr>>,
+    {
+        match self.join(host) {
+            Role::Leader => {
+                let slot = LeaderSlot { flight: self, host };
+                let outcome = query().await;
+                slot.publish(outcome.as_ref().map(|address| *address).map_err(|_| ()));
+                outcome
+            }
+            Role::Waiter(mut receiver) => match receiver.recv().await {
+                Ok(Ok(address)) => Ok(address),
+                Ok(Err(())) => Err(Error("VPN DNS lookup failed".into())),
+                // The leader went away without answering, so nobody resolved it.
+                Err(_) => query().await,
+            },
+        }
+    }
+}
 
 pub struct VpnDnsResolver {
     netstack: Arc<VirtualNetstack>,
     servers: Vec<Ipv4Addr>,
     timeout: Duration,
+    cache: DnsCache,
+    in_flight: SingleFlight,
 }
 
 impl VpnDnsResolver {
@@ -35,33 +178,94 @@ impl VpnDnsResolver {
             netstack,
             servers,
             timeout,
+            cache: DnsCache::default(),
+            in_flight: SingleFlight::default(),
         })
     }
 
     async fn resolve(&self, host: &str) -> Result<Ipv4Addr> {
-        let mut last_error = Error("VPN DNS lookup failed".into());
-        for server in &self.servers {
-            match self.resolve_with_server(host, *server).await {
-                Ok(address) => return Ok(address),
-                Err(error) => last_error = error,
-            }
+        if let Some(address) = self.cache.get(host, Instant::now()) {
+            return Ok(address);
         }
-        Err(last_error)
+        self.in_flight.run(host, || self.query_servers(host)).await
     }
 
-    async fn resolve_with_server(&self, host: &str, server: Ipv4Addr) -> Result<Ipv4Addr> {
+    async fn query_servers(&self, host: &str) -> Result<Ipv4Addr> {
+        // Re-check under the in-flight slot: a leader that just finished may have
+        // filled the cache while this caller was waiting to become one.
+        if let Some(address) = self.cache.get(host, Instant::now()) {
+            return Ok(address);
+        }
+        // Ask every configured server at once. Trying them in order makes an
+        // unresponsive first server cost its full timeout on every lookup that
+        // misses the cache, which is seconds added to the first visit to a host.
+        let attempts = self
+            .servers
+            .iter()
+            .map(|server| {
+                let netstack = Arc::clone(&self.netstack);
+                let host = host.to_owned();
+                let (server, timeout) = (*server, self.timeout);
+                async move { query_one_server(netstack, host, server, timeout).await }
+            })
+            .collect::<Vec<_>>();
+        let (address, ttl_seconds) = race_to_first_success(attempts).await?;
+        self.cache
+            .insert(host, address, ttl_seconds, Instant::now());
+        Ok(address)
+    }
+}
+
+/// Runs every attempt concurrently and yields the first success.
+///
+/// Dropping the set on an early return aborts the attempts still outstanding.
+async fn race_to_first_success<Fut>(attempts: Vec<Fut>) -> Result<(Ipv4Addr, u32)>
+where
+    Fut: Future<Output = Result<(Ipv4Addr, u32)>> + Send + 'static,
+{
+    let mut running = tokio::task::JoinSet::new();
+    for attempt in attempts {
+        running.spawn(attempt);
+    }
+    let mut last_error = Error("VPN DNS lookup failed".into());
+    while let Some(joined) = running.join_next().await {
+        match joined {
+            Ok(Ok(answer)) => return Ok(answer),
+            Ok(Err(error)) => last_error = error,
+            Err(_) => last_error = Error("VPN DNS query task failed".into()),
+        }
+    }
+    Err(last_error)
+}
+
+async fn query_one_server(
+    netstack: Arc<VirtualNetstack>,
+    host: String,
+    server: Ipv4Addr,
+    timeout: Duration,
+) -> Result<(Ipv4Addr, u32)> {
+    VpnDnsResolver::resolve_with_server(&netstack, &host, server, timeout).await
+}
+
+impl VpnDnsResolver {
+    async fn resolve_with_server(
+        netstack: &VirtualNetstack,
+        host: &str,
+        server: Ipv4Addr,
+        timeout: Duration,
+    ) -> Result<(Ipv4Addr, u32)> {
         let mut id_bytes = [0_u8; 2];
         OsRng.fill_bytes(&mut id_bytes);
         let id = u16::from_be_bytes(id_bytes);
         let query = build_query(host, id)?;
-        let socket = self.netstack.bind_udp().await?;
+        let socket = netstack.bind_udp().await?;
         let endpoint = SocketAddr::new(IpAddr::V4(server), DNS_PORT);
         socket
             .send_to(endpoint, &query)
             .await
             .map_err(|_| Error("VPN DNS query send failed".into()))?;
         let mut response = vec![0_u8; DNS_MAX_RESPONSE];
-        let receive = tokio::time::timeout(self.timeout, socket.recv_from(&mut response))
+        let receive = tokio::time::timeout(timeout, socket.recv_from(&mut response))
             .await
             .map_err(|_| Error("VPN DNS query timed out".into()))?
             .map_err(|_| Error("VPN DNS response failed".into()))?;
@@ -150,7 +354,7 @@ fn skip_name(data: &[u8], mut offset: usize) -> Result<usize> {
     }
 }
 
-fn parse_a_response(data: &[u8], expected_id: u16) -> Result<Ipv4Addr> {
+fn parse_a_response(data: &[u8], expected_id: u16) -> Result<(Ipv4Addr, u32)> {
     if data.len() < DNS_HEADER_LEN || read_u16(data, 0)? != expected_id {
         return Err(Error("DNS response header is invalid".into()));
     }
@@ -180,17 +384,21 @@ fn parse_a_response(data: &[u8], expected_id: u16) -> Result<Ipv4Addr> {
             .ok_or_else(|| Error("DNS answer is truncated".into()))?;
         let record_type = u16::from_be_bytes([record[0], record[1]]);
         let class = u16::from_be_bytes([record[2], record[3]]);
+        let ttl_seconds = u32::from_be_bytes([record[4], record[5], record[6], record[7]]);
         let data_length = usize::from(u16::from_be_bytes([record[8], record[9]]));
         offset += 10;
         let record_data = data
             .get(offset..offset + data_length)
             .ok_or_else(|| Error("DNS answer data is truncated".into()))?;
         if record_type == DNS_TYPE_A && class == DNS_CLASS_IN && data_length == 4 {
-            return Ok(Ipv4Addr::new(
-                record_data[0],
-                record_data[1],
-                record_data[2],
-                record_data[3],
+            return Ok((
+                Ipv4Addr::new(
+                    record_data[0],
+                    record_data[1],
+                    record_data[2],
+                    record_data[3],
+                ),
+                ttl_seconds,
             ));
         }
         offset += data_length;
@@ -218,8 +426,242 @@ mod tests {
         response.extend_from_slice(&[0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4, 10, 20, 30, 40]);
         assert_eq!(
             parse_a_response(&response, 0x1234).unwrap(),
-            Ipv4Addr::new(10, 20, 30, 40)
+            (Ipv4Addr::new(10, 20, 30, 40), 30)
         );
         assert!(parse_a_response(&response, 7).is_err());
+    }
+
+    #[test]
+    fn repeated_lookups_reuse_the_cache_until_the_ttl_expires() {
+        // A SOCKS5 client that resolves through the proxy sends the hostname on
+        // every CONNECT, so one page load asks for the same host dozens of times.
+        // Without a cache each of those is a full round trip through the tunnel.
+        let cache = DnsCache::default();
+        let now = Instant::now();
+        let address = Ipv4Addr::new(10, 1, 2, 3);
+        assert_eq!(cache.get("onestop.example", now), None);
+        cache.insert("onestop.example", address, 60, now);
+        assert_eq!(cache.get("onestop.example", now), Some(address));
+        assert_eq!(
+            cache.get("onestop.example", now + Duration::from_secs(59)),
+            Some(address)
+        );
+        assert_eq!(
+            cache.get("onestop.example", now + Duration::from_secs(61)),
+            None
+        );
+        assert_eq!(cache.get("other.example", now), None);
+    }
+
+    async fn wait_for_in_flight(flight: &SingleFlight, expected: usize) {
+        for _ in 0..200 {
+            if flight.len() == expected {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("in-flight lookups never reached {expected}");
+    }
+
+    #[tokio::test]
+    async fn simultaneous_lookups_for_one_host_share_a_single_query() {
+        // A browser opens several connections to a host at once and a SOCKS5
+        // proxy resolves for each of them, so a cold cache would otherwise fan
+        // out into one tunnel round trip per connection.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let flight = Arc::new(SingleFlight::default());
+        let queries = Arc::new(AtomicUsize::new(0));
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+
+        let leader = tokio::spawn({
+            let (flight, queries, gate) = (flight.clone(), queries.clone(), gate.clone());
+            async move {
+                flight
+                    .run("onestop.example", || {
+                        queries.fetch_add(1, Ordering::SeqCst);
+                        let gate = gate.clone();
+                        async move {
+                            let _ = gate.acquire().await;
+                            Ok(Ipv4Addr::new(10, 1, 2, 3))
+                        }
+                    })
+                    .await
+            }
+        });
+        wait_for_in_flight(&flight, 1).await;
+
+        let mut waiters = Vec::new();
+        for _ in 0..5 {
+            let (flight, queries) = (flight.clone(), queries.clone());
+            waiters.push(tokio::spawn(async move {
+                flight
+                    .run("onestop.example", || {
+                        queries.fetch_add(1, Ordering::SeqCst);
+                        async { Ok(Ipv4Addr::new(9, 9, 9, 9)) }
+                    })
+                    .await
+            }));
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        gate.add_permits(1);
+
+        assert_eq!(leader.await.unwrap().unwrap(), Ipv4Addr::new(10, 1, 2, 3));
+        for waiter in waiters {
+            assert_eq!(waiter.await.unwrap().unwrap(), Ipv4Addr::new(10, 1, 2, 3));
+        }
+        assert_eq!(queries.load(Ordering::SeqCst), 1);
+        assert_eq!(flight.len(), 0, "the slot must not leak");
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_reaches_every_waiter_and_frees_the_slot() {
+        let flight = Arc::new(SingleFlight::default());
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let leader = tokio::spawn({
+            let (flight, gate) = (flight.clone(), gate.clone());
+            async move {
+                flight
+                    .run("dead.example", || {
+                        let gate = gate.clone();
+                        async move {
+                            let _ = gate.acquire().await;
+                            Err(Error("gateway DNS refused".into()))
+                        }
+                    })
+                    .await
+            }
+        });
+        wait_for_in_flight(&flight, 1).await;
+        let waiter = tokio::spawn({
+            let flight = flight.clone();
+            async move {
+                flight
+                    .run("dead.example", || async { Ok(Ipv4Addr::new(9, 9, 9, 9)) })
+                    .await
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        gate.add_permits(1);
+
+        assert!(leader.await.unwrap().is_err());
+        assert!(waiter.await.unwrap().is_err());
+        assert_eq!(flight.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_abandoned_leader_lets_a_waiter_resolve_for_itself() {
+        // The leader's task is dropped when its SOCKS client disconnects. Waiters
+        // must not be stranded on a result that will never arrive.
+        let flight = Arc::new(SingleFlight::default());
+        let leader = tokio::spawn({
+            let flight = flight.clone();
+            async move {
+                flight
+                    .run("cancelled.example", || async {
+                        std::future::pending::<()>().await;
+                        unreachable!()
+                    })
+                    .await
+            }
+        });
+        wait_for_in_flight(&flight, 1).await;
+        leader.abort();
+        let _ = leader.await;
+        wait_for_in_flight(&flight, 0).await;
+
+        let resolved = flight
+            .run("cancelled.example", || async {
+                Ok(Ipv4Addr::new(10, 4, 5, 6))
+            })
+            .await
+            .unwrap();
+        assert_eq!(resolved, Ipv4Addr::new(10, 4, 5, 6));
+        assert_eq!(flight.len(), 0);
+    }
+
+    type Attempt = std::pin::Pin<Box<dyn Future<Output = Result<(Ipv4Addr, u32)>> + Send>>;
+
+    fn attempt<F>(future: F) -> Attempt
+    where
+        F: Future<Output = Result<(Ipv4Addr, u32)>> + Send + 'static,
+    {
+        Box::pin(future)
+    }
+
+    #[tokio::test]
+    async fn an_unresponsive_server_does_not_delay_a_working_one() {
+        // Sequentially, a first server that never answers costs its whole timeout
+        // on every lookup that misses the cache. Racing them means the healthy
+        // server's answer arrives on its own schedule.
+        let started = Instant::now();
+        let answer = race_to_first_success(vec![
+            attempt(async {
+                std::future::pending::<()>().await;
+                Err(Error("a stalled server never answers".into()))
+            }),
+            attempt(async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                Ok((Ipv4Addr::new(10, 7, 8, 9), 120_u32))
+            }),
+        ])
+        .await
+        .unwrap();
+        assert_eq!(answer, (Ipv4Addr::new(10, 7, 8, 9), 120));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "a stalled server must not hold up the result"
+        );
+    }
+
+    #[tokio::test]
+    async fn racing_reports_an_error_only_when_every_server_fails() {
+        assert!(
+            race_to_first_success(vec![
+                attempt(async { Err(Error("first refused".into())) }),
+                attempt(async { Err(Error("second refused".into())) }),
+            ])
+            .await
+            .is_err()
+        );
+
+        let single = race_to_first_success(vec![attempt(async {
+            Ok((Ipv4Addr::new(10, 1, 1, 1), 30_u32))
+        })])
+        .await
+        .unwrap();
+        assert_eq!(single, (Ipv4Addr::new(10, 1, 1, 1), 30));
+
+        assert!(
+            race_to_first_success(Vec::<Attempt>::new()).await.is_err(),
+            "no configured server must fail rather than hang"
+        );
+    }
+
+    #[test]
+    fn cache_clamps_gateway_ttls_and_stays_bounded() {
+        let cache = DnsCache::default();
+        let now = Instant::now();
+        let address = Ipv4Addr::new(10, 1, 2, 3);
+
+        // A zero or one-second TTL must still absorb one page load's burst.
+        cache.insert("zero.example", address, 0, now);
+        assert_eq!(
+            cache.get("zero.example", now + MIN_CACHE_TTL - Duration::from_secs(1)),
+            Some(address)
+        );
+        assert_eq!(cache.get("zero.example", now + MIN_CACHE_TTL), None);
+
+        // A week-long TTL must not pin a stale campus address.
+        cache.insert("huge.example", address, 7 * 86_400, now);
+        assert_eq!(cache.get("huge.example", now + MAX_CACHE_TTL), None);
+
+        for index in 0..MAX_CACHE_ENTRIES + 40 {
+            cache.insert(&format!("host{index}.example"), address, 60, now);
+        }
+        assert!(cache.len() <= MAX_CACHE_ENTRIES);
+        assert_eq!(
+            cache.get(&format!("host{}.example", MAX_CACHE_ENTRIES + 39), now),
+            Some(address)
+        );
     }
 }

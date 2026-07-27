@@ -536,9 +536,7 @@ pub fn probe_special_tls_contract(
 ) -> Result<SpecialTlsContract> {
     let url = Url::parse(base_url).map_err(|_| Error("invalid special TLS base URL".into()))?;
     let (host, address) = resolve_gateway(&url)?;
-    let mut stream = TcpStream::connect_timeout(&address, timeout)?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
+    let mut stream = connect_gateway_tcp(address, timeout)?;
     let mut random = [0_u8; 32];
     OsRng.fill_bytes(&mut random);
     let hello = build_special_client_hello(random)?;
@@ -687,6 +685,21 @@ pub fn parse_server_hello_session_id(records: &[u8]) -> Result<Zeroizing<Vec<u8>
     ))
 }
 
+/// Opens a gateway TCP connection with the timeouts and latency settings every
+/// caller needs.
+///
+/// `TCP_NODELAY` matters here because the transport carries one tunneled IP
+/// packet per TLS record: with Nagle enabled a request packet waits for the
+/// gateway to acknowledge the previous one, so interactive traffic pays a
+/// delayed-ACK stall on every packet instead of a single round trip.
+pub(crate) fn connect_gateway_tcp(address: SocketAddr, timeout: Duration) -> Result<TcpStream> {
+    let stream = TcpStream::connect_timeout(&address, timeout)?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
+    stream.set_nodelay(true)?;
+    Ok(stream)
+}
+
 fn resolve_gateway(url: &Url) -> Result<(String, SocketAddr)> {
     if url.scheme() != "https" {
         return Err(Error("modern token endpoint must use HTTPS".into()));
@@ -710,9 +723,7 @@ pub fn request_modern_token(
 ) -> Result<ModernTokenAcquisition> {
     let url = Url::parse(base_url).map_err(|_| Error("invalid modern token base URL".into()))?;
     let (host, address) = resolve_gateway(&url)?;
-    let socket = TcpStream::connect_timeout(&address, timeout)?;
-    socket.set_read_timeout(Some(timeout))?;
-    socket.set_write_timeout(Some(timeout))?;
+    let socket = connect_gateway_tcp(address, timeout)?;
 
     let roots = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let config = ClientConfig::builder()
@@ -870,6 +881,22 @@ mod tests {
         assert_eq!(&hello[76..80], &[0, 4, 0, 5]);
         assert_eq!(&hello[80..84], &[0, 255, 2, 1]);
         assert_eq!(&hello[84..], &[0, 0, 5, 0, 15, 0, 1, 1]);
+    }
+
+    #[test]
+    fn gateway_sockets_are_latency_configured() {
+        // Every tunneled IP packet is one write on these sockets, so leaving
+        // Nagle enabled delays each packet until the gateway's delayed ACK
+        // arrives.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let stream = connect_gateway_tcp(address, Duration::from_secs(7)).unwrap();
+        assert!(stream.nodelay().unwrap());
+        assert_eq!(stream.read_timeout().unwrap(), Some(Duration::from_secs(7)));
+        assert_eq!(
+            stream.write_timeout().unwrap(),
+            Some(Duration::from_secs(7))
+        );
     }
 
     #[test]

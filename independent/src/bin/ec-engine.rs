@@ -1,4 +1,5 @@
 use ec_compat::engine::dns::VpnDnsResolver;
+use ec_compat::engine::ip_packet::stack_mtu;
 use ec_compat::engine::netstack::VirtualNetstack;
 use ec_compat::engine::proxy::{NameResolver, RejectDomainResolver, SystemDnsResolver};
 use ec_compat::engine::session::AuthenticatedEngineSession;
@@ -93,7 +94,10 @@ async fn run() -> Result<()> {
     drop(username);
     let dns_servers = session.dns_servers();
     let data_plane = session.establish_data_plane()?;
-    let netstack = Arc::new(VirtualNetstack::start(data_plane)?);
+    // Lowering this makes campus servers use smaller segments, which is what
+    // reaches destinations whose path cannot carry a full-size packet.
+    let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());
+    let netstack = Arc::new(VirtualNetstack::start(data_plane, mtu)?);
     let health = Arc::clone(&netstack);
     let allow_system_dns_fallback = config["proxy"]["allow_system_dns_fallback"]
         .as_bool()
@@ -117,6 +121,7 @@ async fn run() -> Result<()> {
         .await?;
     println!("Client IP assigned");
     println!("Proxy DNS mode: {dns_mode}");
+    println!("Tunnel MTU: {mtu}");
     println!("SOCKS5 server listening on {bind} (TCP CONNECT + UDP ASSOCIATE)");
     let mut services = tokio::task::JoinSet::new();
     services.spawn(async move {

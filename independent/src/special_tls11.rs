@@ -1,4 +1,4 @@
-use crate::modern::{build_special_client_hello, verify_special_certificates};
+use crate::modern::{build_special_client_hello, connect_gateway_tcp, verify_special_certificates};
 use crate::{Error, Result};
 use hmac::{Hmac, Mac};
 use md5::Md5;
@@ -24,6 +24,7 @@ const ALERT: u8 = 21;
 const MAX_RECORD_PAYLOAD: usize = 18_432;
 const MAX_SERVER_FLIGHT: usize = 64 * 1024;
 const SHA1_MAC_LEN: usize = 20;
+const TLS_RECORD_HEADER_LEN: usize = 5;
 
 type HmacMd5 = Hmac<Md5>;
 type HmacSha1 = Hmac<Sha1>;
@@ -177,14 +178,24 @@ fn handshake_message(message_type: u8, body: &[u8]) -> Result<Zeroizing<Vec<u8>>
     Ok(message)
 }
 
-fn write_record(stream: &mut TcpStream, content_type: u8, payload: &[u8]) -> Result<()> {
+fn write_record<W: Write>(stream: &mut W, content_type: u8, payload: &[u8]) -> Result<()> {
     if payload.len() > MAX_RECORD_PAYLOAD {
         return Err(Error("TLS record payload exceeds limit".into()));
     }
-    let mut header = [content_type, TLS11_VERSION[0], TLS11_VERSION[1], 0, 0];
-    header[3..].copy_from_slice(&(payload.len() as u16).to_be_bytes());
-    stream.write_all(&header)?;
-    stream.write_all(payload)?;
+    // Header and payload go out together. Writing the 5-byte header on its own
+    // puts a small segment on the wire and then waits for the reply, which is
+    // the write-write-read pattern that Nagle plus a delayed ACK stalls for tens
+    // of milliseconds. On this transport every tunneled IP packet is one record,
+    // so that stall would apply to every packet the client sends.
+    let mut record = Zeroizing::new(Vec::with_capacity(TLS_RECORD_HEADER_LEN + payload.len()));
+    record.extend_from_slice(&[content_type, TLS11_VERSION[0], TLS11_VERSION[1]]);
+    record.extend_from_slice(
+        &u16::try_from(payload.len())
+            .map_err(|_| Error("TLS record payload exceeds limit".into()))?
+            .to_be_bytes(),
+    );
+    record.extend_from_slice(payload);
+    stream.write_all(&record)?;
     Ok(())
 }
 
@@ -318,9 +329,7 @@ impl SpecialTls11Stream {
         verified_https_leaf_sha256: &[u8; 32],
         configured_special_leaf_sha256: Option<&[u8; 32]>,
     ) -> Result<Self> {
-        let mut stream = TcpStream::connect_timeout(&address, timeout)?;
-        stream.set_read_timeout(Some(timeout))?;
-        stream.set_write_timeout(Some(timeout))?;
+        let mut stream = connect_gateway_tcp(address, timeout)?;
         let mut client_random = [0_u8; 32];
         OsRng.fill_bytes(&mut client_random);
         let client_hello = build_special_client_hello(client_random)?;
@@ -476,6 +485,33 @@ mod tests {
             "8793ea16237fa3610209e587fe37b081db6453f77b4b0364e942a81c3cfcd861\
              505f4a1f078c89bd2da86f982e1295938a1f743f2d653fd05ab7498d6c603e18"
                 .replace(' ', "")
+        );
+    }
+
+    #[test]
+    fn each_record_reaches_the_socket_in_a_single_write() {
+        // A separate header write makes every tunneled packet a small segment
+        // followed by a dependent read, which Nagle plus the gateway's delayed
+        // ACK turns into a stall of tens of milliseconds per packet.
+        struct CountingWriter {
+            writes: Vec<usize>,
+        }
+        impl Write for CountingWriter {
+            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+                self.writes.push(buffer.len());
+                Ok(buffer.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut writer = CountingWriter { writes: Vec::new() };
+        write_record(&mut writer, APPLICATION_DATA, b"one tunneled packet").unwrap();
+        assert_eq!(writer.writes, vec![TLS_RECORD_HEADER_LEN + 19]);
+        write_record(&mut writer, HANDSHAKE, &[7; 300]).unwrap();
+        assert_eq!(
+            writer.writes,
+            vec![TLS_RECORD_HEADER_LEN + 19, TLS_RECORD_HEADER_LEN + 300]
         );
     }
 

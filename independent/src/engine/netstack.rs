@@ -18,16 +18,20 @@ pub struct VirtualNetstack {
     assigned_address: Ipv4Addr,
     next_ephemeral_port: AtomicU16,
     healthy: Arc<AtomicBool>,
-    _runner: JoinHandle<()>,
+    _runner: tokio::task::JoinHandle<()>,
     _bridges: [JoinHandle<()>; 2],
 }
 
 impl VirtualNetstack {
-    pub fn start(data_plane: EasyConnectDataPlane) -> Result<Self> {
+    /// Starts the userspace stack over an established data plane.
+    ///
+    /// Must be called from inside a Tokio runtime: the stack is driven by an
+    /// event-driven runner spawned onto it.
+    pub fn start(data_plane: EasyConnectDataPlane, mtu: usize) -> Result<Self> {
         let assigned_address = data_plane.assigned_address();
         let config = ts_netstack_smoltcp::netcore::Config {
             command_channel_capacity: Some(256),
-            mtu: crate::engine::ip_packet::ENGINE_MTU,
+            mtu,
             loopback: false,
             udp_buffer_size: 64 * 1024,
             udp_message_count: 128,
@@ -40,7 +44,13 @@ impl VirtualNetstack {
         };
         let (stack, pipe) = piped(config);
         let channel = stack.command_channel();
-        let runner = stack.spawn_threaded(Duration::from_millis(2));
+        // The event-driven runner wakes on device readiness. The threaded runner
+        // only wakes on a command or its poll timer, so every packet arriving from
+        // the tunnel waits out the poll interval before the stack processes it —
+        // measured at ~4.6ms per round trip with a 2ms interval against ~0.09ms
+        // here (see tests/poll_latency_probe.rs). That delay applies to every
+        // round trip of every connection the campus browser makes.
+        let runner = stack.spawn_tokio();
         channel
             .set_ips_blocking([IpAddr::V4(assigned_address)])
             .map_err(|_| Error("cannot assign the VPN address to the userspace stack".into()))?;

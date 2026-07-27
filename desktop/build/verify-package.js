@@ -24,6 +24,7 @@ const requiredEntries = [
   '/lib/campus-browser.js',
   '/lib/campus-credential-vault.js',
   '/lib/settings-update.js',
+  '/lib/tunnel-health.js',
   '/renderer/app.js',
   '/renderer/campus-browser.html',
   '/renderer/campus-browser.js',

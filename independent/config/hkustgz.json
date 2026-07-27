@@ -1,11 +1,5 @@
 {
   "base_url": "https://remote.hkust-gz.edu.cn",
-  "user_agent": "EasyConnect_windows",
-  "hash_windows_installer": true,
-  "max_artifact_bytes": 536870912,
-  "proxy": {
-    "allow_system_dns_fallback": true
-  },
   "endpoints": {
     "discovery": "/por/login_auth.csp?apiversion=1",
     "logout": "/por/logout.csp?apiversion=1",
@@ -17,6 +11,15 @@
     "windows_installer": "/com/EasyConnectInstaller.exe",
     "windows_modules": "/com/WindowsModule.xml"
   },
+  "hash_windows_installer": true,
+  "max_artifact_bytes": 536870912,
+  "proxy": {
+    "allow_system_dns_fallback": true
+  },
   "target": "hkustgz-production",
-  "timeout_seconds": 15
+  "timeout_seconds": 15,
+  "tunnel": {
+    "mtu": 1400
+  },
+  "user_agent": "EasyConnect_windows"
 }

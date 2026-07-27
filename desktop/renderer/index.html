@@ -12,7 +12,9 @@
 
   <!-- ============ LOGIN ============ -->
   <section id="login" class="login">
-    <img class="logo" src="../assets/logo.svg" alt="HKUST(GZ)" onerror="this.style.display='none'" />
+    <!-- No inline handler here: the page CSP has no script-src 'unsafe-inline',
+         so an onerror attribute would be blocked and only log a violation. -->
+    <img class="logo" src="../assets/logo.svg" alt="HKUST(GZ)" />
     <h1 class="brand-title">HKUST<span class="paren">(GZ)</span> Connect</h1>
     <p class="brand-sub">香港科技大学(广州) · 校园 VPN</p>
     <div class="lg-form">
