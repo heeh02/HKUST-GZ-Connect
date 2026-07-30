@@ -192,6 +192,20 @@ substitute for the completed authorization record.
   banner prefix. Credentials, tunnel token, assigned address, packet contents,
   and traffic captures were not retained.
 
+## 2026-07-30 — intermittent address-allocation review
+
+- A local 1.0.4 reconnect reproduced a bounded modern address reply with
+  non-success status `3`; no raw reply, token, session identifier, credential,
+  cookie, or assigned address was retained.
+- A narrowly scoped review of `zju-connect` v1.2.2's EasyConnect setup path
+  found its explicit one-second minimum delay between token acquisition and
+  the address request, documented there as necessary when requests are too
+  fast. The project remains independent: no Go code, binary, runtime service,
+  or dependency was copied or linked.
+- The Rust session now owns the same timing contract through a monotonic
+  deadline. Setup failures after login perform best-effort logout before the
+  desktop's bounded retry, and diagnostics retain only the numeric status.
+
 ## 2026-07-25 — release-path validation
 
 - Repeated the approved end-to-end check through the maintained macOS wrapper:

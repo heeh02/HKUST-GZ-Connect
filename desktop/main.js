@@ -10,13 +10,14 @@ const { spawn } = require('child_process');
 const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
 const { applySettingsPatch } = require('./lib/settings-update');
 const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
-const { classifyEngineOutput } = require('./lib/engine-output');
+const { classifyEngineOutput, engineFailureKind } = require('./lib/engine-output');
 const { exactExecutablePattern } = require('./lib/engine-process');
 const { buildPac } = require('./lib/pac');
 const { CampusBrowser, normalizeCampusUrl } = require('./lib/campus-browser');
 const { loadCampusResources } = require('./lib/campus-resources');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
+const { planReconnect } = require('./lib/reconnect-policy');
 const { loadTrayImage } = require('./lib/tray-icon');
 const { probeSocksConnect } = require('./lib/socks-health');
 const {
@@ -149,7 +150,12 @@ async function connectOnce(isRetry) {
   emit();
   gatewayIp = GATEWAY_HOST;
   if (userDisconnected) { state.connecting = false; emit(); return; }
-  try { resetLog(LOG); } catch {}
+  try {
+    // Keep every attempt in one diagnostic session. Clearing the file on an
+    // automatic retry used to erase the failure that triggered that retry.
+    if (!isRetry) resetLog(LOG);
+    appendLog(LOG, `\n--- connection attempt ${attempts + 1} ---\n`);
+  } catch {}
   const bin = enginePath();
   if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
   const engineConfig = engineConfigPath();
@@ -173,7 +179,8 @@ async function connectOnce(isRetry) {
     try { appendLog(LOG, t); } catch {}
     diagnosticTail = (diagnosticTail + t).slice(-512);
     if (/SOCKS5 server listening/.test(diagnosticTail)) {
-      state.connecting = false; state.connected = true; attempts = 0;
+      state.connecting = false; state.connected = true;
+      state.lastError = null;
       connectedAt = Date.now(); startTelemetry(); emit();
     }
     if (/Client IP assigned/.test(diagnosticTail)) { state.clientIp = '已分配'; emit(); }
@@ -189,30 +196,43 @@ async function connectOnce(isRetry) {
     engine = null;
     state.connected = false; state.clientIp = null; connectedAt = null;
     stopTelemetry();
-    const authErr = /账号或密码|鉴权/.test(state.lastError || '');
+    const failureKind = engineFailureKind(diagnosticTail);
+    const terminalFailure = failureKind === 'terminal';
     const cfg = loadSettings();
     const autoOn = cfg.autoReconnect !== false;
     const maxA = Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS;
     // user-initiated stop or bad credentials → never auto-reconnect
-    if (userDisconnected || authErr) { state.connecting = false; emit(); return; }
-    // A session that stayed up a while and THEN dropped (gateway kick / engine gvisor
-    // panic / network blip / idle timeout) gets a FRESH retry budget so it always
-    // recovers — this is the fix for "无缘无故掉线". A connection that died almost
-    // immediately keeps counting against maxA so a hard failure can't hammer the gateway.
-    if (wasConnected && uptime > 20000) attempts = 0;
-    if (autoOn && attempts < maxA) {
-      attempts++;
-      const delay = Math.min(2000 * attempts, 15000); // linear backoff, capped at 15s
+    if (userDisconnected || terminalFailure) { state.connecting = false; emit(); return; }
+    // Only a genuinely stable session earns a fresh retry budget. Merely
+    // opening SOCKS and then losing the data plane must keep counting, or a
+    // rejecting gateway can drive the app into an infinite login loop.
+    const retry = autoOn ? planReconnect({
+      attempts,
+      maxAttempts: maxA,
+      wasConnected,
+      uptimeMs: uptime,
+      failureKind,
+    }) : null;
+    if (retry) {
+      attempts = retry.attempt;
       state.connecting = true;
-      state.lastError = wasConnected ? '连接中断,正在自动重连…' : null;
+      state.lastError = wasConnected
+        ? '连接中断,正在自动重连…'
+        : (failureKind === 'gateway-transient'
+          ? '网关暂未分配校园网地址，正在清理会话并自动重试…'
+          : null);
       emit();
-      setTimeout(() => connect(true), delay);
+      setTimeout(() => connect(true), retry.delayMs);
       return;
     }
     state.connecting = false;
-    if (!state.lastError) state.lastError = wasConnected
-      ? '连接已断开,自动重连多次失败,请手动重连或查看日志'
-      : (code ? '连接失败,请重试或查看日志' : null);
+    if (failureKind === 'gateway-transient') {
+      state.lastError = '校园网关暂时拒绝数据通道，已停止重试；请等待一分钟后再连接';
+    } else if (!state.lastError) {
+      state.lastError = wasConnected
+        ? '连接已断开,自动重连多次失败,请手动重连或查看日志'
+        : (code ? '连接失败,请重试或查看日志' : null);
+    }
     emit();
   });
 }

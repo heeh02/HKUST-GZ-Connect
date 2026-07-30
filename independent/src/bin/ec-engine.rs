@@ -93,7 +93,7 @@ async fn run() -> Result<()> {
     drop(password);
     drop(username);
     let dns_servers = session.dns_servers();
-    let data_plane = session.establish_data_plane()?;
+    let (session, data_plane) = session.establish_data_plane_or_logout()?;
     // Lowering this makes campus servers use smaller segments, which is what
     // reaches destinations whose path cannot carry a full-size packet.
     let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());

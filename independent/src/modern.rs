@@ -194,9 +194,13 @@ pub fn parse_address_reply(reply: &[u8]) -> Result<Ipv4Addr> {
         return Err(Error("modern address reply is shorter than 8 bytes".into()));
     }
     if reply[0] != ModernCommand::RequestAddress as u8 {
-        return Err(Error(
-            "modern address reply has an unexpected status".into(),
-        ));
+        // The status byte is protocol metadata, not session material. Keeping
+        // it in the diagnostic makes gateway-side transient rejections
+        // distinguishable without ever logging the token or raw reply.
+        return Err(Error(format!(
+            "modern address reply rejected the request (status={})",
+            reply[0]
+        )));
     }
     Ok(Ipv4Addr::new(reply[4], reply[5], reply[6], reply[7]))
 }
@@ -856,6 +860,13 @@ mod tests {
             Ipv4Addr::new(10, 0, 0, 9)
         );
         assert!(parse_address_reply(&[0; 7]).is_err());
+        let rejected = parse_address_reply(&[3, 0, 0, 0, 10, 0, 0, 9])
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            rejected,
+            "modern address reply rejected the request (status=3)"
+        );
         assert!(validate_channel_reply(&[2], ModernCommand::Send).is_ok());
         assert!(validate_channel_reply(&[1], ModernCommand::Receive).is_ok());
         assert!(validate_channel_reply(&[1], ModernCommand::Send).is_err());

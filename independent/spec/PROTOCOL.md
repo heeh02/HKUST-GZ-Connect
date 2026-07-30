@@ -270,7 +270,9 @@ Each special connection sends a bounded 64-byte control request:
 The address reply requires status byte `0` and contains the assigned IPv4 in
 bytes `4..8`. Send and receive replies require status bytes `2` and `1`.
 The address-control connection remains open while separate send and receive
-connections are established.
+connections are established. The address request is paced to start at least one
+second after token acquisition; the reviewed reference and live HKUST(GZ)
+gateway both show that an immediate request can be rejected transiently.
 
 The special transport has one deliberately narrow ClientHello contract:
 TLS 1.1, a 32-byte session ID beginning `L3IP`, RSA with RC4-128-SHA, reviewed

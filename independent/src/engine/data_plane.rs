@@ -30,11 +30,16 @@ impl EasyConnectDataPlane {
             timeout,
             verified_leaf,
             configured_certificate_pin,
-        )?;
+        )
+        .map_err(|error| Error(format!("modern address TLS: {error}")))?;
         let request =
             ModernControlRequest::new(ModernCommand::RequestAddress, acquisition.token(), None)?;
-        lease_stream.write_application_data(request.as_bytes())?;
-        let reply = lease_stream.read_application_data(128)?;
+        lease_stream
+            .write_application_data(request.as_bytes())
+            .map_err(|error| Error(format!("modern address request: {error}")))?;
+        let reply = lease_stream
+            .read_application_data(128)
+            .map_err(|error| Error(format!("modern address reply: {error}")))?;
         let assigned_address = parse_address_reply(&reply)?;
         if assigned_address.is_unspecified() {
             return Err(Error(
@@ -48,15 +53,20 @@ impl EasyConnectDataPlane {
             timeout,
             verified_leaf,
             configured_certificate_pin,
-        )?;
+        )
+        .map_err(|error| Error(format!("modern send TLS: {error}")))?;
         let send_request = ModernControlRequest::new(
             ModernCommand::Send,
             acquisition.token(),
             Some(assigned_address),
         )?;
-        send_stream.write_application_data(send_request.as_bytes())?;
+        send_stream
+            .write_application_data(send_request.as_bytes())
+            .map_err(|error| Error(format!("modern send request: {error}")))?;
         validate_channel_reply(
-            &send_stream.read_application_data(1500)?,
+            &send_stream
+                .read_application_data(1500)
+                .map_err(|error| Error(format!("modern send reply: {error}")))?,
             ModernCommand::Send,
         )?;
 
@@ -66,15 +76,20 @@ impl EasyConnectDataPlane {
             timeout,
             verified_leaf,
             configured_certificate_pin,
-        )?;
+        )
+        .map_err(|error| Error(format!("modern receive TLS: {error}")))?;
         let receive_request = ModernControlRequest::new(
             ModernCommand::Receive,
             acquisition.token(),
             Some(assigned_address),
         )?;
-        receive_stream.write_application_data(receive_request.as_bytes())?;
+        receive_stream
+            .write_application_data(receive_request.as_bytes())
+            .map_err(|error| Error(format!("modern receive request: {error}")))?;
         validate_channel_reply(
-            &receive_stream.read_application_data(1500)?,
+            &receive_stream
+                .read_application_data(1500)
+                .map_err(|error| Error(format!("modern receive reply: {error}")))?,
             ModernCommand::Receive,
         )?;
         // The connection timeout protects setup, but the production receive

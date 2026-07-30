@@ -10,7 +10,29 @@ function classifyEngineOutput(text, socksPort) {
   if (/cannot bind the SOCKS5 listener|address already in use|bind:/i.test(text)) {
     return `端口 ${socksPort} 被占用，请在控制塔更换端口`;
   }
+  if (/modern address reply (?:has an unexpected status|rejected the request)/i.test(text)) {
+    return '网关暂未分配校园网地址，正在清理会话并自动重试…';
+  }
+  if (/modern (?:address|send|receive) (?:TLS|request|reply):/i.test(text)) {
+    return '校园网关通道暂时关闭，正在清理会话并自动重试…';
+  }
   return null;
 }
 
-module.exports = { classifyEngineOutput };
+function engineFailureKind(text) {
+  if (
+    /gateway authentication failed|login failed|invalid username|not implemented auth|authentication method is unsupported/i
+      .test(text)
+  ) {
+    return 'terminal';
+  }
+  if (/modern address reply (?:has an unexpected status|rejected the request)/i.test(text)) {
+    return 'gateway-transient';
+  }
+  if (/modern (?:address|send|receive) (?:TLS|request|reply):/i.test(text)) {
+    return 'gateway-transient';
+  }
+  return 'unknown';
+}
+
+module.exports = { classifyEngineOutput, engineFailureKind };
