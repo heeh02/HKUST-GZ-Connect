@@ -18,6 +18,7 @@ const { loadCampusResources } = require('./lib/campus-resources');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { planReconnect } = require('./lib/reconnect-policy');
+const { stopPhase } = require('./lib/stop-policy');
 const { loadTrayImage } = require('./lib/tray-icon');
 const { probeSocksConnect } = require('./lib/socks-health');
 const {
@@ -238,12 +239,23 @@ async function connectOnce(isRetry) {
 }
 function disconnect() { userDisconnected = true; connectedAt = null; stopTelemetry(); if (engine) engine.kill(); }
 
-function waitForConnectionIdle(timeoutMs = 5000) {
-  const deadline = Date.now() + timeoutMs;
+function forceStopEngine() {
+  if (!engine) return;
+  try { engine.kill('SIGKILL'); } catch {}
+}
+
+function waitForConnectionIdle() {
+  const startedAt = Date.now();
+  let forced = false;
   return new Promise((resolve) => {
     const poll = () => {
       if (!connectInFlight && !engine) return resolve(true);
-      if (Date.now() >= deadline) return resolve(false);
+      const phase = stopPhase(Date.now() - startedAt);
+      if (phase === 'force' && !forced) {
+        forced = true;
+        forceStopEngine();
+      }
+      if (phase === 'failed') return resolve(false);
       setTimeout(poll, 50);
     };
     poll();
