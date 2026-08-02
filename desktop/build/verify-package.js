@@ -23,6 +23,7 @@ const requiredEntries = [
   '/campus-preload.js',
   '/lib/campus-browser.js',
   '/lib/campus-credential-vault.js',
+  '/lib/login-flow.js',
   '/lib/settings-update.js',
   '/lib/tunnel-health.js',
   '/renderer/app.js',

@@ -8,6 +8,7 @@ const test = require('node:test');
 const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
+const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 
 test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgUser"[^>]*name="username"/);
@@ -17,6 +18,9 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgPass"[^>]*autocomplete="current-password"/);
   assert.doesNotMatch(html, /id="lgPass"[^>]*(?:disabled|readonly)/);
   assert.match(css, /\.inp\s*\{[^}]*-webkit-user-select:\s*text/);
+  assert.match(html, /\.\.\/lib\/login-flow\.js/);
+  assert.match(appJs, /updateLoginProgress\(s\)/);
+  assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
 });
 
 test('dashboard exposes collapsible secondary sections', () => {

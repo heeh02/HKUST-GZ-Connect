@@ -11,6 +11,7 @@ let campusResources = [];
 let resourcesExpanded = false;
 let towerDirty = false;
 let towerSaving = false;
+let loginPending = false;
 const resourceDialog = $('resourceDialog');
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
@@ -22,6 +23,19 @@ function setPage(page) {
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
+
+function updateLoginProgress(s) {
+  if (!loginPending) return;
+  const next = window.loginFlow.evaluateLoginProgress(loginPending, s);
+  $('lgBtn').disabled = next.pending;
+  $('lgBtn').textContent = next.pending ? '连接中…' : '登录并连接';
+  $('lgErr').textContent = next.error;
+  if (next.pending) return;
+  loginPending = false;
+  if (next.clearPassword) $('lgPass').value = '';
+  show(next.view);
+  if (next.view === 'dash') setPage('connect');
+}
 
 function renderConnect(s) {
   st = s;
@@ -43,6 +57,7 @@ function renderConnect(s) {
   $('stIp').textContent = s.clientIp || '—';
   if (s.connected && connectedAt) { startDur(); $('stDur').textContent = fmtDur(Date.now() - connectedAt); }
   else { stopDur(); $('stDur').textContent = '0:00'; $('stPing').textContent = '—'; $('stConn').textContent = '0'; $('appList').innerHTML = ''; }
+  updateLoginProgress(s);
 }
 
 function renderTelemetry(t) {
@@ -107,14 +122,25 @@ async function init() {
 
 // login
 $('lgBtn').addEventListener('click', async () => {
+  if (loginPending) return;
   const u = $('lgUser').value.trim(), p = $('lgPass').value;
   if (!u) { $('lgErr').textContent = '请填写账号'; return; }
   if (!p) { $('lgErr').textContent = '请填写密码'; return; }
   const saved = await window.api.save({ username: u, password: p });
   if (!saved.ok) { $('lgErr').textContent = saved.error || '密码保存失败'; return; }
-  $('lgPass').value = ''; $('lgErr').textContent = '';
-  await refreshState(); show('dash'); setPage('connect');
-  await window.api.connect();
+  loginPending = true;
+  $('lgBtn').disabled = true;
+  $('lgBtn').textContent = '连接中…';
+  $('lgErr').textContent = '正在连接…';
+  try {
+    await window.api.connect();
+    await refreshState();
+  } catch (error) {
+    loginPending = false;
+    $('lgBtn').disabled = false;
+    $('lgBtn').textContent = '登录并连接';
+    $('lgErr').textContent = error?.message || '连接失败，请重试';
+  }
 });
 $('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgBtn').click(); });
 
@@ -365,7 +391,15 @@ $('openLog2').addEventListener('click', () => window.api.openLog());
 
 // notifications / settings
 $('logRefresh').addEventListener('click', loadLogs);
-$('logoutBtn').addEventListener('click', async () => { await window.api.logout(); await refreshState(); $('lgPass').value = ''; show('login'); });
+$('logoutBtn').addEventListener('click', async () => {
+  loginPending = false;
+  await window.api.logout();
+  await refreshState();
+  $('lgPass').value = '';
+  $('lgBtn').disabled = false;
+  $('lgBtn').textContent = '登录并连接';
+  show('login');
+});
 $('openLogLink').addEventListener('click', (e) => { e.preventDefault(); window.api.openLog(); });
 
 window.api.onStatus(renderConnect);
