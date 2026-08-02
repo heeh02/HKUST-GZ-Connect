@@ -23,6 +23,7 @@ function normalizedInput(payload, existing) {
   if (!String(source.name || '').trim()) throw new Error('网站名称不能为空');
   const id = String(source.id || '').trim() || generatedId(String(source.url || '').trim(), existing);
   if (BUILTIN_IDS.has(id)) throw new Error('内置网站不能被覆盖');
+  if (!String(source.url || '').trim()) throw new Error('网站网址不能为空');
   let url;
   try {
     url = normalizeCampusUrl(source.url);

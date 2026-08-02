@@ -47,5 +47,6 @@ test('deleting and reordering only affect local shortcuts', () => {
 
 test('shortcut mutations reject invalid user input', () => {
   assert.throws(() => upsertCustomResource([], { name: '', url: 'https://example.com' }), /名称/);
+  assert.throws(() => upsertCustomResource([], { name: '缺网址' }), /网址/);
   assert.throws(() => upsertCustomResource([], { name: '脚本', url: 'javascript:alert(1)' }), /HTTP/);
 });
