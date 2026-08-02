@@ -1,7 +1,14 @@
 'use strict';
 
 const DEFAULT_CAMPUS_HOME = 'https://www.hkust-gz.edu.cn/';
-const CAMPUS_PARTITION = 'persist:hkustgz-campus-browser';
+const {
+  CAMPUS_PARTITION,
+  ROUTE_CAMPUS,
+  ROUTE_DIRECT,
+  partitionForRoute,
+  proxyConfigForRoute,
+  routeForUrl,
+} = require('./campus-route');
 const TOOLBAR_HEIGHT = 76;
 const MAX_URL_LENGTH = 2048;
 
@@ -26,18 +33,7 @@ function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME) {
 }
 
 function campusProxyConfig(port) {
-  const value = Number(port);
-  if (!Number.isInteger(value) || value < 1025 || value > 65535) {
-    throw new Error('本地代理端口无效');
-  }
-  return {
-    mode: 'fixed_servers',
-    proxyRules: `socks5://127.0.0.1:${value}`,
-    // Chromium implicitly bypasses the proxy for loopback and link-local
-    // addresses. Removing that rule keeps a campus page from reaching services
-    // on this computer or the local network instead of going through the tunnel.
-    proxyBypassRules: '<-loopback>',
-  };
+  return proxyConfigForRoute(ROUTE_CAMPUS, port);
 }
 
 // A campus web page is untrusted content. Nothing it renders needs the camera,
@@ -140,19 +136,27 @@ class CampusBrowser {
     this.activeTabId = null;
     this.nextTabId = 1;
     this.configuredPort = null;
+    this.sessions = new Map();
+    this.sessionKeys = new Map();
     this.campusSession = null;
     this.credentialPrompts = new Set();
   }
 
-  async configure(port) {
-    const campusSession = applyCampusSessionPolicy(this.session.fromPartition(CAMPUS_PARTITION));
-    if (this.configuredPort !== port) {
-      await campusSession.setProxy(campusProxyConfig(port));
-      await campusSession.closeAllConnections();
-      this.configuredPort = port;
+  async configure(port, route = ROUTE_CAMPUS) {
+    const partition = partitionForRoute(route);
+    const routeSession = applyCampusSessionPolicy(this.session.fromPartition(partition));
+    const key = route === ROUTE_DIRECT ? route : `${route}:${port}`;
+    if (this.sessionKeys.get(route) !== key) {
+      await routeSession.setProxy(proxyConfigForRoute(route, port));
+      await routeSession.closeAllConnections();
+      this.sessionKeys.set(route, key);
     }
-    this.campusSession = campusSession;
-    return campusSession;
+    this.sessions.set(route, routeSession);
+    if (route === ROUTE_CAMPUS) {
+      this.configuredPort = port;
+      this.campusSession = routeSession;
+    }
+    return routeSession;
   }
 
   activeTab() {
@@ -187,6 +191,8 @@ class CampusBrowser {
       url: this.currentUrl(active),
       title: activeTitle,
       loading: !!active?.loading,
+      route: active?.route || ROUTE_CAMPUS,
+      routeLabel: active?.route === ROUTE_DIRECT ? '直连' : '校园隧道',
       canGoBack: !!active && active.view.webContents.canGoBack(),
       canGoForward: !!active && active.view.webContents.canGoForward(),
       activeTabId: this.activeTabId,
@@ -194,6 +200,7 @@ class CampusBrowser {
         id: tab.id,
         title: tab.view.webContents.getTitle() || '新标签页',
         loading: tab.loading,
+        route: tab.route,
       })),
     };
     const script = `window.campusBrowserUI&&window.campusBrowserUI.setState(${JSON.stringify(state)})`;
@@ -212,9 +219,10 @@ class CampusBrowser {
     const value = values.get('value') || '';
     const active = this.activeTab();
 
-    if (command === 'new-tab') this.createTab(DEFAULT_CAMPUS_HOME);
+    if (command === 'new-tab') this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
+    else if (command === 'set-route' && active) this.setTabRoute(active.id, value);
     else if (command === 'manage-credential' && active) {
       this.manageCredential(active);
     }
@@ -382,8 +390,8 @@ class CampusBrowser {
     }
   }
 
-  createTab(rawUrl = DEFAULT_CAMPUS_HOME) {
-    if (!this.window || this.window.isDestroyed() || !this.campusSession) return null;
+  createTab(rawUrl = DEFAULT_CAMPUS_HOME, route = routeForUrl(rawUrl)) {
+    if (!this.window || this.window.isDestroyed()) return null;
     let url;
     try {
       url = normalizeCampusUrl(rawUrl);
@@ -391,9 +399,11 @@ class CampusBrowser {
       if (this.onError) this.onError(error.message);
       return null;
     }
+    const routeSession = this.sessions.get(route);
+    if (!routeSession) return null;
     const view = new this.WebContentsView({
       webPreferences: {
-        session: this.campusSession,
+        session: routeSession,
         preload: this.campusPreload,
         devTools: false,
         nodeIntegration: false,
@@ -409,6 +419,7 @@ class CampusBrowser {
       failedUrl: '',
       loading: false,
       renderingError: false,
+      route,
     };
     this.tabs.push(tab);
     this.window.contentView.addChildView(view);
@@ -416,6 +427,36 @@ class CampusBrowser {
     this.switchTab(tab.id);
     this.navigate(url, tab);
     return tab;
+  }
+
+  async setTabRoute(id, route) {
+    if (![ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
+    const tab = this.tabs.find((candidate) => candidate.id === id);
+    if (!tab || tab.route === route || !this.window || this.window.isDestroyed()) return false;
+    const url = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
+    await this.configure(this.configuredPort || 1080, route);
+    const oldView = tab.view;
+    this.window.contentView.removeChildView(oldView);
+    if (!oldView.webContents.isDestroyed()) oldView.webContents.close();
+    const view = new this.WebContentsView({
+      webPreferences: {
+        session: this.sessions.get(route),
+        preload: this.campusPreload,
+        devTools: false,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        safeDialogs: true,
+      },
+    });
+    tab.view = view;
+    tab.route = route;
+    this.window.contentView.addChildView(view);
+    this.attachPageEvents(tab);
+    this.switchTab(tab.id);
+    this.navigate(url, tab);
+    return true;
   }
 
   switchTab(id) {
@@ -439,7 +480,7 @@ class CampusBrowser {
     if (!this.tabs.length) {
       this.activeTabId = null;
       this.view = null;
-      this.createTab(DEFAULT_CAMPUS_HOME);
+      this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
     } else if (this.activeTabId === id) {
       const replacement = this.tabs[Math.min(index, this.tabs.length - 1)];
       this.switchTab(replacement.id);
@@ -449,8 +490,7 @@ class CampusBrowser {
     return true;
   }
 
-  async createWindow(campusSession) {
-    this.campusSession = campusSession;
+  async createWindow() {
     this.window = new this.BrowserWindow({
       width: 1040,
       height: 740,
@@ -504,15 +544,18 @@ class CampusBrowser {
     return true;
   }
 
-  async open(rawUrl, port) {
+  async open(rawUrl, port, route = routeForUrl(rawUrl)) {
     const url = normalizeCampusUrl(rawUrl);
-    const campusSession = await this.configure(port);
-    if (!this.window || this.window.isDestroyed()) await this.createWindow(campusSession);
+    const selectedRoute = [ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)
+      ? route
+      : routeForUrl(url);
+    await this.configure(port, selectedRoute);
+    if (!this.window || this.window.isDestroyed()) await this.createWindow();
 
     if (this.window.isMinimized()) this.window.restore();
     this.window.show();
     this.window.focus();
-    this.createTab(url);
+    this.createTab(url, selectedRoute);
     return url;
   }
 

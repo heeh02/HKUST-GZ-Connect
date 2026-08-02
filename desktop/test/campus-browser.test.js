@@ -13,6 +13,12 @@ const {
   normalizeCampusUrl,
   safePopupUrl,
 } = require('../lib/campus-browser');
+const {
+  DIRECT_PARTITION,
+  ROUTE_CAMPUS,
+  ROUTE_DIRECT,
+  proxyConfigForRoute,
+} = require('../lib/campus-route');
 
 test('campus URLs default to the school home and accept host-only input', () => {
   assert.equal(normalizeCampusUrl(''), DEFAULT_CAMPUS_HOME);
@@ -75,16 +81,25 @@ test('Windows tabs share the native caption row without covering window controls
   });
 });
 
-test('campus browser uses a persistent isolated session and never the system proxy', async () => {
+test('campus browser uses route-specific persistent sessions and never the system proxy', async () => {
   const calls = [];
-  const campusSession = {
-    setProxy: async (config) => calls.push(['proxy', config]),
-    closeAllConnections: async () => calls.push(['close-connections']),
+  function makeSession(name) {
+    return {
+      name,
+      setProxy: async (config) => calls.push([name, 'proxy', config]),
+      closeAllConnections: async () => calls.push([name, 'close-connections']),
+    };
   };
+  const campusSession = makeSession('campus');
+  const directSession = makeSession('direct');
+  const sessions = new Map([
+    ['persist:hkustgz-campus-browser', campusSession],
+    [DIRECT_PARTITION, directSession],
+  ]);
   const fakeSession = {
     fromPartition: (partition) => {
       calls.push(['partition', partition]);
-      return campusSession;
+      return sessions.get(partition);
     },
   };
   class FakeWebContents extends EventEmitter {
@@ -140,7 +155,7 @@ test('campus browser uses a persistent isolated session and never the system pro
   await browser.open('portal.example.internal', 1080);
 
   assert.deepEqual(calls[0], ['partition', CAMPUS_PARTITION]);
-  assert.deepEqual(calls[1], ['proxy', campusProxyConfig(1080)]);
+  assert.deepEqual(calls[1], ['campus', 'proxy', proxyConfigForRoute(ROUTE_CAMPUS, 1080)]);
   assert.ok(calls.some((call) => call[0] === 'toolbar'));
   assert.ok(calls.some((call) =>
     call[0] === 'load' && call[1] === 'https://portal.example.internal/'));
@@ -150,15 +165,23 @@ test('campus browser uses a persistent isolated session and never the system pro
   assert.equal(browser.view.options.webPreferences.sandbox, true);
   assert.equal(browser.view.options.webPreferences.webSecurity, true);
 
-  await browser.open('library.hkust-gz.edu.cn', 1080);
+  await browser.open('outlook.office.com/owa/', 1080, ROUTE_DIRECT);
   assert.equal(browser.tabs.length, 2);
-  assert.equal(browser.activeTab().view.webContents.getURL(), 'https://library.hkust-gz.edu.cn/');
+  assert.equal(browser.activeTab().view.webContents.getURL(), 'https://outlook.office.com/owa/');
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+  assert.equal(browser.activeTab().view.options.webPreferences.session, directSession);
   assert.equal(browser.switchTab(browser.tabs[0].id), true);
   assert.equal(browser.activeTab().view.webContents.getURL(), 'https://portal.example.internal/');
   assert.equal(browser.closeTab(browser.activeTabId), true);
   assert.equal(browser.tabs.length, 1);
 
-  await browser.configure(6180);
+  const firstId = browser.tabs[0].id;
+  assert.equal(await browser.setTabRoute(firstId, ROUTE_CAMPUS), true);
+  assert.equal(browser.tabs[0].route, ROUTE_CAMPUS);
+  assert.equal(browser.tabs[0].view.options.webPreferences.session, campusSession);
+  assert.equal(browser.tabs[0].view.webContents.getURL(), 'https://outlook.office.com/owa/');
+
+  await browser.configure(6180, ROUTE_CAMPUS);
   assert.ok(calls.some((call) =>
-    call[0] === 'proxy' && call[1].proxyRules === 'socks5://127.0.0.1:6180'));
+    call[0] === 'campus' && call[1] === 'proxy' && call[2].proxyRules === 'socks5://127.0.0.1:6180'));
 });
