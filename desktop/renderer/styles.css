@@ -37,7 +37,7 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 
 .inp {
   font-size: 14px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px;
-  background: var(--field); color: var(--ink); outline: none; width: 100%; user-select: text;
+  background: var(--field); color: var(--ink); outline: none; width: 100%; user-select: text; -webkit-user-select: text;
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 

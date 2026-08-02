@@ -9,6 +9,16 @@ const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
 
+test('login fields keep native keyboard and password-manager semantics', () => {
+  assert.match(html, /id="lgUser"[^>]*name="username"/);
+  assert.match(html, /id="lgUser"[^>]*autocomplete="username"/);
+  assert.match(html, /id="lgPass"[^>]*name="password"/);
+  assert.match(html, /id="lgPass"[^>]*type="password"/);
+  assert.match(html, /id="lgPass"[^>]*autocomplete="current-password"/);
+  assert.doesNotMatch(html, /id="lgPass"[^>]*(?:disabled|readonly)/);
+  assert.match(css, /\.inp\s*\{[^}]*-webkit-user-select:\s*text/);
+});
+
 test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="stats"/);
   assert.match(html, /data-collapsible="gateway"/);
