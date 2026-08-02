@@ -13,8 +13,10 @@ const { loadPassword: readPassword, savePassword: writePassword } = require('./l
 const { classifyEngineOutput, engineFailureKind } = require('./lib/engine-output');
 const { exactExecutablePattern } = require('./lib/engine-process');
 const { buildPac } = require('./lib/pac');
-const { CampusBrowser, normalizeCampusUrl } = require('./lib/campus-browser');
-const { loadCampusResources } = require('./lib/campus-resources');
+const { CampusBrowser } = require('./lib/campus-browser');
+const { loadCampusResources, mergeCampusResources } = require('./lib/campus-resources');
+const { deleteCustomResource, reorderCustomResources, upsertCustomResource } = require('./lib/campus-resource-store');
+const { normalizeOpenRequest, requiresCampusTunnel } = require('./lib/campus-open-policy');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { planReconnect } = require('./lib/reconnect-policy');
@@ -83,6 +85,9 @@ function loadPassword() {
 }
 function hasPassword() { return !!loadPassword(); }  // true only if it actually decrypts
 function socksPort() { return Number(loadSettings().port) || 1080; }
+function campusResources(settings = loadSettings()) {
+  return mergeCampusResources(loadCampusResources(), settings.customResources);
+}
 
 // ---------- engine ----------
 function enginePath() {
@@ -489,16 +494,16 @@ function getCampusBrowser() {
 }
 
 async function connectAndOpenCampusBrowser(rawUrl) {
-  let url;
+  let request;
   try {
-    url = normalizeCampusUrl(rawUrl);
+    request = normalizeOpenRequest(rawUrl);
   } catch (error) {
     state.lastError = error.message;
     emit();
     return { ok: false, error: error.message };
   }
 
-  if (!state.connected) {
+  if (requiresCampusTunnel(request.route) && !state.connected) {
     await connect();
     if (!await waitForConnected()) {
       const error = state.lastError || '连接校园网络超时，请重试或查看日志';
@@ -509,8 +514,8 @@ async function connectAndOpenCampusBrowser(rawUrl) {
   }
 
   try {
-    await getCampusBrowser().open(url, socksPort());
-    return { ok: true, url };
+    await getCampusBrowser().open(request.url, socksPort(), request.route);
+    return { ok: true, url: request.url, route: request.route };
   } catch (error) {
     const message = `校园浏览器启动失败：${error.message}`;
     state.lastError = message;
@@ -523,8 +528,34 @@ async function connectAndOpenCampusBrowser(rawUrl) {
 ipcMain.handle('get-state', () => ({
   ...state, connectedAt, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
   loggedIn: hasPassword() && !!loadSettings().username, platform: process.platform,
-  version: app.getVersion(), campusResources: loadCampusResources(),
+  version: app.getVersion(), campusResources: campusResources(),
 }));
+ipcMain.handle('save-resource', (_e, payload) => {
+  const previous = loadSettings();
+  try {
+    const result = upsertCustomResource(previous.customResources, payload);
+    saveSettings({ ...previous, customResources: result.resources });
+    return { ok: true, resource: result.resource, resources: campusResources() };
+  } catch (error) {
+    return { ok: false, error: error.message, resources: campusResources(previous) };
+  }
+});
+ipcMain.handle('delete-resource', (_e, id) => {
+  const previous = loadSettings();
+  try {
+    const resources = deleteCustomResource(previous.customResources, id);
+    saveSettings({ ...previous, customResources: resources });
+    return { ok: true, resources: campusResources() };
+  } catch (error) {
+    return { ok: false, error: error.message, resources: campusResources(previous) };
+  }
+});
+ipcMain.handle('reorder-resources', (_e, ids) => {
+  const previous = loadSettings();
+  const resources = reorderCustomResources(previous.customResources, ids);
+  saveSettings({ ...previous, customResources: resources });
+  return { ok: true, resources: campusResources() };
+});
 ipcMain.handle('save', async (_e, p) => {
   const previous = loadSettings();
   let next;
