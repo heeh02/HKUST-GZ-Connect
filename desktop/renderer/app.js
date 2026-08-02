@@ -8,8 +8,10 @@ let durTimer = null;
 let pacUrl = '';
 let campusActionBusy = false;
 let campusResources = [];
+let resourcesExpanded = false;
 let towerDirty = false;
 let towerSaving = false;
+const resourceDialog = $('resourceDialog');
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
 function setPage(page) {
@@ -53,6 +55,20 @@ function renderTelemetry(t) {
     `<div class="app-row"><span class="app-dot"></span><span class="app-name">${esc(a.name)}</span><span class="app-meta">${a.count} 连接</span></div>`).join('');
 }
 
+function renderResources() {
+  const visible = window.resourceView.visibleResources(campusResources, resourcesExpanded);
+  $('campusResources').innerHTML = visible.map((resource) =>
+    `<button class="resource-link" data-campus-id="${esc(resource.id)}" title="${esc(resource.url)}">`
+    + `<span class="resource-name">${esc(resource.name)}</span>`
+    + `<span class="resource-desc">${esc(resource.description || resource.url)}</span>`
+    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(window.resourceView.routeLabel(resource))}</span></button>`).join('');
+  const toggle = $('toggleResources');
+  const hasMore = campusResources.length > 4;
+  toggle.hidden = !hasMore;
+  toggle.textContent = resourcesExpanded ? '收起' : '展开全部';
+  toggle.setAttribute('aria-expanded', String(resourcesExpanded));
+}
+
 function populateTowerForm() {
   $('towerPort').value = settings.port || 1080;
   $('routeDomains').value = (settings.routeDomains || []).join('\n');
@@ -67,10 +83,7 @@ async function refreshState({ preserveTower = false } = {}) {
   settings = s.settings || {}; pacUrl = s.pacUrl || '';
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   renderConnect(s);
-  $('campusResources').innerHTML = campusResources.map((resource) =>
-    `<button class="resource-link" data-campus-url="${esc(resource.url)}">`
-    + `<span class="resource-name">${esc(resource.name)}</span>`
-    + `<span class="resource-desc">${esc(resource.description)}</span></button>`).join('');
+  renderResources();
   $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
   if (!preserveTower || !towerDirty) populateTowerForm();
   $('acct').textContent = settings.username || '—';
@@ -124,14 +137,16 @@ document.querySelectorAll('[data-toggle-section]').forEach((button) => {
   });
 });
 
-async function openCampus(selectedUrl) {
+async function openCampus(selected) {
   if (campusActionBusy) return;
   campusActionBusy = true;
   $('quickErr').textContent = '';
   renderConnect(st);
   try {
-    const url = typeof selectedUrl === 'string' ? selectedUrl : $('campusUrl').value;
-    const result = await window.api.openCampusBrowser(url);
+    const request = selected && typeof selected === 'object'
+      ? { url: selected.url, route: selected.route }
+      : { url: typeof selected === 'string' ? selected : $('campusUrl').value };
+    const result = await window.api.openCampusBrowser(request);
     if (!result || !result.ok) $('quickErr').textContent = result?.error || '校园浏览器打开失败';
   } finally {
     campusActionBusy = false;
@@ -140,11 +155,111 @@ async function openCampus(selectedUrl) {
 }
 $('quickCampus').addEventListener('click', openCampus);
 $('campusResources').addEventListener('click', (event) => {
-  const target = event.target.closest('[data-campus-url]');
-  if (target) openCampus(target.dataset.campusUrl);
+  const target = event.target.closest('[data-campus-id]');
+  const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
+  if (resource) openCampus(resource);
 });
 $('campusUrl').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') openCampus();
+});
+
+$('toggleResources').addEventListener('click', () => {
+  resourcesExpanded = !resourcesExpanded;
+  renderResources();
+});
+
+function clearResourceEditor() {
+  $('resourceId').value = '';
+  $('resourceName').value = '';
+  $('resourceUrl').value = '';
+  $('resourceDescription').value = '';
+  $('resourceRoute').value = 'campus';
+  $('resourceFormError').textContent = '';
+  document.querySelectorAll('.resource-editor-row').forEach((row) => row.classList.remove('active'));
+}
+
+function fillResourceEditor(resource) {
+  $('resourceId').value = resource?.builtin ? '' : (resource?.id || '');
+  $('resourceName').value = resource?.name || '';
+  $('resourceUrl').value = resource?.url || '';
+  $('resourceDescription').value = resource?.description || '';
+  $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
+  $('resourceFormError').textContent = resource?.builtin ? '内置网站不能覆盖，请新增一个自定义入口' : '';
+  document.querySelectorAll('.resource-editor-row').forEach((row) => {
+    row.classList.toggle('active', row.dataset.resourceId === resource?.id);
+  });
+}
+
+function renderResourceEditorList() {
+  $('resourceEditorList').innerHTML = campusResources.map((resource) => {
+    const custom = !resource.builtin;
+    return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
+      + `<span class="resource-editor-name">${esc(resource.name)}</span>`
+      + `<span class="resource-editor-route">${esc(window.resourceView.routeLabel(resource))}</span>`
+      + `<button class="mini" type="button" data-resource-action="edit" ${resource.builtin ? 'disabled' : ''}>编辑</button>`
+      + (custom
+        ? `<button class="mini" type="button" data-resource-action="up">↑</button>`
+          + `<button class="mini" type="button" data-resource-action="down">↓</button>`
+          + `<button class="mini" type="button" data-resource-action="delete">删除</button>`
+        : '<span class="resource-editor-route">内置</span>')
+      + `</div>`;
+  }).join('');
+}
+
+async function openResourceManager() {
+  renderResourceEditorList();
+  clearResourceEditor();
+  if (!resourceDialog.open) resourceDialog.showModal();
+}
+
+$('manageResources').addEventListener('click', openResourceManager);
+$('closeResourceDialog').addEventListener('click', () => resourceDialog.close());
+$('cancelResource').addEventListener('click', clearResourceEditor);
+$('newResource').addEventListener('click', clearResourceEditor);
+$('resourceEditorList').addEventListener('click', async (event) => {
+  const row = event.target.closest('[data-resource-id]');
+  if (!row) return;
+  const resource = campusResources.find((item) => item.id === row.dataset.resourceId);
+  const action = event.target.closest('[data-resource-action]')?.dataset.resourceAction;
+  if (!resource || resource.builtin) return;
+  if (action === 'edit') fillResourceEditor(resource);
+  if (action === 'up' || action === 'down') {
+    const localIds = campusResources.filter((item) => !item.builtin).map((item) => item.id);
+    const index = localIds.indexOf(resource.id);
+    const target = action === 'up' ? index - 1 : index + 1;
+    if (index < 0 || target < 0 || target >= localIds.length) return;
+    [localIds[index], localIds[target]] = [localIds[target], localIds[index]];
+    const result = await window.api.reorderResources(localIds);
+    if (result?.ok) {
+      campusResources = result.resources || campusResources;
+      renderResources();
+      renderResourceEditorList();
+    }
+  }
+  if (action === 'delete') {
+    if (!window.confirm(`删除“${resource.name}”？`)) return;
+    const result = await window.api.deleteResource(resource.id);
+    if (!result?.ok) { $('resourceFormError').textContent = result?.error || '删除失败'; return; }
+    campusResources = result.resources || campusResources.filter((item) => item.id !== resource.id);
+    renderResources();
+    renderResourceEditorList();
+    clearResourceEditor();
+  }
+});
+$('resourceForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const result = await window.api.saveResource({
+    id: $('resourceId').value || undefined,
+    name: $('resourceName').value,
+    url: $('resourceUrl').value,
+    description: $('resourceDescription').value,
+    route: $('resourceRoute').value,
+  });
+  if (!result?.ok) { $('resourceFormError').textContent = result?.error || '保存失败'; return; }
+  campusResources = result.resources || campusResources;
+  renderResources();
+  renderResourceEditorList();
+  clearResourceEditor();
 });
 
 // control tower

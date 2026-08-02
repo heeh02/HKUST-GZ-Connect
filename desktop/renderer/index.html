@@ -187,6 +187,37 @@
     </main>
   </div>
 
+  <dialog id="resourceDialog" class="resource-dialog">
+    <form method="dialog" id="resourceForm" class="resource-form">
+      <div class="dialog-head">
+        <div>
+          <h3>管理常用网站</h3>
+          <p>快捷方式只保存在这台电脑上。</p>
+        </div>
+        <button id="closeResourceDialog" class="icon-button" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="resourceEditorList" class="resource-editor-list"></div>
+      <div class="resource-editor-fields">
+        <input id="resourceId" type="hidden" />
+        <label>名称<input id="resourceName" class="inp" maxlength="40" required /></label>
+        <label>网址<input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
+        <label>说明<input id="resourceDescription" class="inp" maxlength="80" /></label>
+        <label>网络路径<select id="resourceRoute" class="inp">
+          <option value="campus">校园隧道</option>
+          <option value="direct">直连</option>
+        </select></label>
+      </div>
+      <p id="resourceFormError" class="dialog-error"></p>
+      <div class="dialog-actions">
+        <button id="newResource" class="ghost sm" type="button">新增网站</button>
+        <span></span>
+        <button id="cancelResource" class="mini" type="button">取消编辑</button>
+        <button id="saveResource" class="primary sm" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="../lib/resource-view.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
