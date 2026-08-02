@@ -24,9 +24,25 @@ function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Ma
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
 
+// Keep the renderer usable even when an older or partially assembled package
+// omitted the optional browser copy of this helper. The CommonJS copy remains
+// the tested source of truth; this fallback prevents a missing asset from
+// turning a valid login into a JavaScript exception.
+function evaluateLoginProgress(pending, state = {}) {
+  if (typeof window.loginFlow?.evaluateLoginProgress === 'function') {
+    return window.loginFlow.evaluateLoginProgress(pending, state);
+  }
+  if (!pending) return { pending: false, view: null, clearPassword: false, error: '' };
+  if (state.connected) return { pending: false, view: 'dash', clearPassword: true, error: '' };
+  if (!state.connecting && state.lastError) {
+    return { pending: false, view: 'login', clearPassword: false, error: String(state.lastError) };
+  }
+  return { pending: true, view: 'login', clearPassword: false, error: '正在连接…' };
+}
+
 function updateLoginProgress(s) {
   if (!loginPending) return;
-  const next = window.loginFlow.evaluateLoginProgress(loginPending, s);
+  const next = evaluateLoginProgress(loginPending, s);
   $('lgBtn').disabled = next.pending;
   $('lgBtn').textContent = next.pending ? '连接中…' : '登录并连接';
   $('lgErr').textContent = next.error;

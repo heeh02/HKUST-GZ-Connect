@@ -20,6 +20,7 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(css, /\.inp\s*\{[^}]*-webkit-user-select:\s*text/);
   assert.match(html, /\.\.\/lib\/login-flow\.js/);
   assert.match(appJs, /updateLoginProgress\(s\)/);
+  assert.match(appJs, /typeof window\.loginFlow\?\.evaluateLoginProgress === 'function'/);
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
 });
 
