@@ -17,6 +17,7 @@ release/
 desktop/release/
 dist/
 out/
+.worktrees/
 # ---- packaged artifacts ----
 *.dmg
 *.exe
