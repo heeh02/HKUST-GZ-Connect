@@ -1,0 +1,22 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+const { assertEnginePresent, requiredEngineName } = require('../build/afterPack');
+
+test('packaging maps each target to its required engine name', () => {
+  assert.equal(requiredEngineName('darwin', 'arm64'), 'ec-engine-darwin-arm64');
+  assert.equal(requiredEngineName('darwin', 3), 'ec-engine-darwin-arm64');
+  assert.equal(requiredEngineName('win32', 'x64'), 'ec-engine-windows-amd64.exe');
+});
+
+test('packaging fails before signing when the native engine is absent', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-engine-'));
+  assert.throws(
+    () => assertEnginePresent(directory, 'darwin', 'arm64'),
+    /missing packaged engine:.*ec-engine-darwin-arm64/,
+  );
+});

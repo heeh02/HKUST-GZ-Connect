@@ -36,6 +36,17 @@ for (const entry of requiredEntries) {
   if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
 }
 
+const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
+const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
+if (/\.\.\/lib\/(?:login-flow|resource-view)\.js/.test(packagedIndex)) {
+  throw new Error('renderer must not depend on split helper scripts');
+}
+for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
+  if (!packagedRenderer.includes(`function ${helper}`)) {
+    throw new Error(`renderer helper is not self-contained: ${helper}`);
+  }
+}
+
 const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
 const architectureName = architecture === 'arm64' ? 'arm64' : 'amd64';
 const extension = platformName === 'windows' ? '.exe' : '';
