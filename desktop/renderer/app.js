@@ -24,20 +24,22 @@ function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Ma
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
 
-// Keep the renderer usable even when an older or partially assembled package
-// omitted the optional browser copy of this helper. The CommonJS copy remains
-// the tested source of truth; this fallback prevents a missing asset from
-// turning a valid login into a JavaScript exception.
 function evaluateLoginProgress(pending, state = {}) {
-  if (typeof window.loginFlow?.evaluateLoginProgress === 'function') {
-    return window.loginFlow.evaluateLoginProgress(pending, state);
-  }
   if (!pending) return { pending: false, view: null, clearPassword: false, error: '' };
   if (state.connected) return { pending: false, view: 'dash', clearPassword: true, error: '' };
   if (!state.connecting && state.lastError) {
     return { pending: false, view: 'login', clearPassword: false, error: String(state.lastError) };
   }
   return { pending: true, view: 'login', clearPassword: false, error: '正在连接…' };
+}
+
+function visibleResources(resources, expanded, limit = 4) {
+  const items = Array.isArray(resources) ? resources : [];
+  return expanded ? items : items.slice(0, Math.max(0, limit));
+}
+
+function routeLabel(resource) {
+  return resource?.route === 'direct' ? '直连' : '校园隧道';
 }
 
 function updateLoginProgress(s) {
@@ -87,12 +89,12 @@ function renderTelemetry(t) {
 }
 
 function renderResources() {
-  const visible = window.resourceView.visibleResources(campusResources, resourcesExpanded);
+  const visible = visibleResources(campusResources, resourcesExpanded);
   $('campusResources').innerHTML = visible.map((resource) =>
     `<button class="resource-link" data-campus-id="${esc(resource.id)}" title="${esc(resource.url)}">`
     + `<span class="resource-name">${esc(resource.name)}</span>`
     + `<span class="resource-desc">${esc(resource.description || resource.url)}</span>`
-    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(window.resourceView.routeLabel(resource))}</span></button>`).join('');
+    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource))}</span></button>`).join('');
   const toggle = $('toggleResources');
   const hasMore = campusResources.length > 4;
   toggle.hidden = !hasMore;
@@ -237,7 +239,7 @@ function renderResourceEditorList() {
     const custom = !resource.builtin;
     return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
       + `<span class="resource-editor-name">${esc(resource.name)}</span>`
-      + `<span class="resource-editor-route">${esc(window.resourceView.routeLabel(resource))}</span>`
+      + `<span class="resource-editor-route">${esc(routeLabel(resource))}</span>`
       + `<button class="mini" type="button" data-resource-action="edit" ${resource.builtin ? 'disabled' : ''}>编辑</button>`
       + (custom
         ? `<button class="mini" type="button" data-resource-action="up">↑</button>`
