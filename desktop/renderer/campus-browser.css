@@ -85,6 +85,9 @@ input {
   flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
   padding: 0 8px; color: #27354b; font-size: 12px; user-select: text;
 }
+.route-selector { height: 30px; max-width: 92px; border: 1px solid var(--line); border-radius: 9px; background: #f4f7fb; color: var(--navy); padding: 0 5px; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.route-selector:focus { outline: 0; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(168,132,44,.12); }
+.security.direct { background: #a8842c; }
 .state {
   min-width: 58px; color: var(--muted); font-size: 11px; font-weight: 650;
   text-align: right; white-space: nowrap;

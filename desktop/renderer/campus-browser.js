@@ -12,6 +12,8 @@ const forward = document.getElementById('forward');
 const reload = document.getElementById('reload');
 const state = document.getElementById('state');
 const tabs = document.getElementById('tabs');
+const routeSelector = document.getElementById('routeSelector');
+const security = document.getElementById('security');
 
 function command(name, value = '') {
   const values = new URLSearchParams({
@@ -34,6 +36,7 @@ document.getElementById('addressForm').addEventListener('submit', (event) => {
   event.preventDefault();
   command('navigate', address.value);
 });
+routeSelector.addEventListener('change', () => command('set-route', routeSelector.value));
 
 function renderTabs(items, activeTabId) {
   const previousScroll = tabs.scrollLeft;
@@ -89,7 +92,11 @@ window.campusBrowserUI = {
     if (document.activeElement !== address) address.value = next.url || '';
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
-    state.textContent = next.loading ? '正在加载…' : '校园网络';
+    routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
+    security.textContent = next.route === 'direct' ? '直' : '校';
+    security.classList.toggle('direct', next.route === 'direct');
+    security.title = next.route === 'direct' ? '此标签直接连接互联网' : '此标签通过 HKUST(GZ) Connect';
+    state.textContent = next.loading ? '正在加载…' : (next.routeLabel || '校园隧道');
     state.classList.toggle('loading', !!next.loading);
     document.title = next.title ? `${next.title} - HKUST(GZ)` : 'HKUST(GZ) 校园浏览器';
   },

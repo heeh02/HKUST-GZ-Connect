@@ -222,7 +222,11 @@ class CampusBrowser {
     if (command === 'new-tab') this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
-    else if (command === 'set-route' && active) this.setTabRoute(active.id, value);
+    else if (command === 'set-route' && active) {
+      this.setTabRoute(active.id, value).catch((error) => {
+        if (this.onError) this.onError(`切换网络路径失败：${error.message}`);
+      });
+    }
     else if (command === 'manage-credential' && active) {
       this.manageCredential(active);
     }
