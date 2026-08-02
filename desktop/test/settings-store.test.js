@@ -30,6 +30,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       autoConnect: false,
       closeAction: 'minimize',
       routeDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
+      customResources: [],
     },
   );
 });
@@ -38,6 +39,23 @@ test('invalid ports and retry counts use reviewed defaults', () => {
   const settings = normalizeSettings({ port: 80, maxAttempts: 1.5 });
   assert.equal(settings.port, 1080);
   assert.equal(settings.maxAttempts, 3);
+});
+
+test('custom shortcut resources survive an owner-only settings round trip', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-settings-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'settings.json');
+  const resource = {
+    id: 'outlook',
+    name: 'Outlook',
+    description: '邮件',
+    url: 'https://outlook.office.com/owa/',
+    route: 'direct',
+  };
+
+  saveSettings(file, { customResources: [resource] });
+  assert.deepEqual(loadSettings(file).customResources, [resource]);
+  assert.equal((fs.statSync(file).mode & 0o777), 0o600);
 });
 
 test('port 6180 is written atomically and survives a reload', (t) => {

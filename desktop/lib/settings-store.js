@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { ensureOwnerOnly } = require('./private-file');
 const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./pac');
+const { normalizeCustomResources } = require('./campus-resources');
 
 const DEFAULTS = Object.freeze({
   port: 1080,
@@ -14,6 +15,7 @@ const DEFAULTS = Object.freeze({
   autoConnect: true,
   closeAction: 'ask',
   routeDomains: DEFAULT_ROUTE_DOMAINS,
+  customResources: [],
 });
 
 function isValidPort(port) {
@@ -36,6 +38,7 @@ function normalizeSettings(saved = {}) {
       ? saved.closeAction
       : DEFAULTS.closeAction,
     routeDomains: normalizeRouteDomains(saved.routeDomains),
+    customResources: normalizeCustomResources(saved.customResources),
   };
 }
 
