@@ -112,6 +112,18 @@ $('power').addEventListener('click', async () => {
   if (st.connected) await window.api.disconnect(); else await window.api.connect();
 });
 
+document.querySelectorAll('[data-toggle-section]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.toggleSection;
+    const panel = document.querySelector(`[data-collapsible="${key}"]`);
+    if (!panel) return;
+    const expanded = panel.hidden;
+    panel.hidden = !expanded;
+    button.textContent = expanded ? '收起' : '展开';
+    button.setAttribute('aria-expanded', String(expanded));
+  });
+});
+
 async function openCampus(selectedUrl) {
   if (campusActionBusy) return;
   campusActionBusy = true;

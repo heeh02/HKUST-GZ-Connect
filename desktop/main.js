@@ -27,6 +27,7 @@ const {
   PROBE_TIMEOUT_MS, TELEMETRY_TICK_MS, shouldProbe, shouldRecover,
 } = require('./lib/tunnel-health');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
+const { CONTROL_WINDOW, clampWindowSize } = require('./lib/window-layout');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
 // `app.quit()` does not stop the rest of this module from running, so return
@@ -628,7 +629,8 @@ ipcMain.handle('open-campus-browser', (_event, url) => connectAndOpenCampusBrows
 ipcMain.handle('resize', (_e, h) => {
   if (win && !win.isDestroyed()) {
     const [w] = win.getContentSize();
-    win.setContentSize(w, Math.max(360, Math.min(980, Math.ceil(h))));
+    const next = clampWindowSize(w, h);
+    win.setContentSize(next.width, next.height);
   }
 });
 
@@ -726,9 +728,8 @@ async function handleWindowClose(event) {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 448,
-    height: 680,
-    resizable: false,
+    ...CONTROL_WINDOW,
+    resizable: true,
     fullscreenable: false,
     maximizable: false,
     title: 'HKUST(GZ) Connect',

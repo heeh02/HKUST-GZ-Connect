@@ -76,25 +76,40 @@
                    placeholder="可选：粘贴校内网址；留空打开学校主页" />
             <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
             <p id="quickErr" class="quick-error"></p>
+            <div class="resource-toolbar">
+              <span class="resource-toolbar-title">常用网站</span>
+              <span class="resource-toolbar-actions">
+                <button id="toggleResources" class="mini" type="button">展开全部</button>
+                <button id="manageResources" class="mini" type="button">管理</button>
+              </span>
+            </div>
             <div id="campusResources" class="resource-grid" aria-label="常用校园服务"></div>
           </div>
-          <div class="stat-grid" id="statGrid" hidden>
-            <div class="stat"><div class="k">时长</div><div class="v" id="stDur">0:00</div></div>
-            <div class="stat"><div class="k">网关延迟</div><div class="v" id="stPing">—</div></div>
-            <div class="stat"><div class="k">活动连接</div><div class="v" id="stConn">0</div></div>
-            <div class="stat"><div class="k">校内 IP</div><div class="v ip" id="stIp">—</div></div>
+          <div class="collapsible-panel" data-collapsible="stats" hidden>
+            <div class="stat-grid" id="statGrid" hidden>
+              <div class="stat"><div class="k">时长</div><div class="v" id="stDur">0:00</div></div>
+              <div class="stat"><div class="k">网关延迟</div><div class="v" id="stPing">—</div></div>
+              <div class="stat"><div class="k">活动连接</div><div class="v" id="stConn">0</div></div>
+              <div class="stat"><div class="k">校内 IP</div><div class="v ip" id="stIp">—</div></div>
+            </div>
+            <div class="card apps-card" id="appsCard" hidden>
+              <div class="card-title">正在使用隧道的程序</div>
+              <div id="appList" class="app-list"></div>
+            </div>
           </div>
-          <div class="card apps-card" id="appsCard" hidden>
-            <div class="card-title">正在使用隧道的程序</div>
-            <div id="appList" class="app-list"></div>
+          <div class="section-toggle-row">
+            <span class="section-toggle-label">连接详情</span>
+            <button class="mini" type="button" data-toggle-section="stats">展开</button>
           </div>
-          <div class="loc-card">
-            <div class="loc-card-label">校园网关</div>
-            <div class="loc-card-main">
-              <span class="loc-flag">🏫</span>
-              <div class="loc-card-text">
-                <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
-                <div class="loc-card-sub">广州 · HKUST(GZ) 校园网</div>
+          <div class="collapsible-panel" data-collapsible="gateway" hidden>
+            <div class="loc-card">
+              <div class="loc-card-label">校园网关</div>
+              <div class="loc-card-main">
+                <span class="loc-flag">🏫</span>
+                <div class="loc-card-text">
+                  <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
+                  <div class="loc-card-sub">广州 · HKUST(GZ) 校园网</div>
+                </div>
               </div>
             </div>
           </div>
