@@ -56,6 +56,24 @@ jobs:
           bash -n scripts/rebuild-mac.sh
           bash -n scripts/build-engine.sh
 
+  desktop-renderer-layout:
+    timeout-minutes: 15
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies including Electron runtime
+        run: npm ci
+      - name: Measure the resource manager at compact window sizes
+        run: npm run test:renderer-layout
+
   engine:
     timeout-minutes: 20
     runs-on: ubuntu-latest

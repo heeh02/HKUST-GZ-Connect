@@ -212,16 +212,24 @@ button:disabled { cursor: wait; opacity: .62; }
 .loc-card-name { font-size: 13.5px; font-weight: 700; color: var(--ink); font-family: ui-monospace, Menlo, monospace; }
 .loc-card-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
-.resource-dialog { width: min(540px, calc(100vw - 28px)); max-height: min(700px, calc(100vh - 36px)); border: 0; border-radius: 18px; padding: 0; color: var(--ink); box-shadow: var(--shadow-lg); }
+.resource-dialog {
+  position: fixed; inset: 48px 12px 12px; width: auto; max-width: 540px; max-height: none;
+  margin: 0 auto; border: 0; border-radius: 18px; padding: 0; overflow: hidden;
+  color: var(--ink); box-shadow: var(--shadow-lg);
+}
 .resource-dialog::backdrop { background: rgba(7, 22, 48, .34); backdrop-filter: blur(2px); }
-.resource-form { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
-.dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.resource-form { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.dialog-head { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
 .dialog-head h3 { color: var(--navy); font-size: 17px; }
 .dialog-head p { color: var(--muted); font-size: 11px; margin-top: 3px; }
 .icon-button { width: 28px; height: 28px; border: 0; border-radius: 8px; background: var(--field); color: var(--muted); font-size: 20px; cursor: pointer; }
-.resource-editor-list { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow-y: auto; padding-right: 2px; }
-.resource-editor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto repeat(4, auto); align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; }
+.resource-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 18px; display: flex; flex-direction: column; gap: 12px; }
+.resource-editor-list { display: flex; flex-direction: column; gap: 6px; max-height: clamp(128px, 30vh, 190px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.resource-editor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; }
 .resource-editor-row.active { border-color: var(--gold-2); background: #fffcf4; }
+.resource-editor-summary, .resource-editor-actions { display: flex; align-items: center; min-width: 0; gap: 6px; }
+.resource-editor-summary { overflow: hidden; }
+.resource-editor-actions { flex-wrap: wrap; justify-content: flex-end; }
 .resource-editor-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--navy); font-size: 12px; font-weight: 700; }
 .resource-editor-route { color: var(--muted); font-size: 10px; }
 .resource-editor-fields { display: grid; grid-template-columns: 1fr 1.4fr; gap: 9px; }
@@ -229,7 +237,7 @@ button:disabled { cursor: wait; opacity: .62; }
 .resource-editor-fields label:nth-child(2) { grid-column: span 2; }
 .resource-editor-fields .inp { padding: 8px 10px; font-size: 12px; }
 .dialog-error { min-height: 16px; color: var(--err); font-size: 11.5px; }
-.dialog-actions { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; }
+.dialog-actions { flex: 0 0 auto; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid var(--line); background: var(--card); }
 
 @media (min-width: 620px) {
   .page[data-page="connect"] { max-width: 720px; }
@@ -249,6 +257,8 @@ button:disabled { cursor: wait; opacity: .62; }
   .conn-status { margin-top: 11px; font-size: 17px; }
   .resource-editor-fields { grid-template-columns: 1fr; }
   .resource-editor-fields label:nth-child(2) { grid-column: auto; }
+  .resource-editor-row { grid-template-columns: 1fr; }
+  .resource-editor-actions { justify-content: flex-start; }
   .dialog-actions { grid-template-columns: 1fr 1fr; }
   .dialog-actions span { display: none; }
 }

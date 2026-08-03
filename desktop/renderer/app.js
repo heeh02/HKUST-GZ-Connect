@@ -237,15 +237,16 @@ function fillResourceEditor(resource) {
 function renderResourceEditorList() {
   $('resourceEditorList').innerHTML = campusResources.map((resource) => {
     const custom = !resource.builtin;
+    const actions = custom
+      ? `<button class="mini" type="button" data-resource-action="edit">编辑</button>`
+        + `<button class="mini" type="button" data-resource-action="up">↑</button>`
+        + `<button class="mini" type="button" data-resource-action="down">↓</button>`
+        + `<button class="mini" type="button" data-resource-action="delete">删除</button>`
+      : '<span class="resource-editor-route">内置</span>';
     return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
-      + `<span class="resource-editor-name">${esc(resource.name)}</span>`
-      + `<span class="resource-editor-route">${esc(routeLabel(resource))}</span>`
-      + `<button class="mini" type="button" data-resource-action="edit" ${resource.builtin ? 'disabled' : ''}>编辑</button>`
-      + (custom
-        ? `<button class="mini" type="button" data-resource-action="up">↑</button>`
-          + `<button class="mini" type="button" data-resource-action="down">↓</button>`
-          + `<button class="mini" type="button" data-resource-action="delete">删除</button>`
-        : '<span class="resource-editor-route">内置</span>')
+      + `<div class="resource-editor-summary"><span class="resource-editor-name">${esc(resource.name)}</span>`
+      + `<span class="resource-editor-route">${esc(routeLabel(resource))}</span></div>`
+      + `<div class="resource-editor-actions">${actions}</div>`
       + `</div>`;
   }).join('');
 }

@@ -7,6 +7,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "test": "node --test",
+    "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
     "start": "electron .",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
