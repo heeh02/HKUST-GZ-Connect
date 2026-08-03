@@ -2,16 +2,56 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
+const { classifyMacSignature } = require('./macos-signing');
 
-const [resourcesArgument, platform = process.platform, architecture = process.arch] =
-  process.argv.slice(2);
-
-if (!resourcesArgument) {
-  throw new Error('usage: node build/verify-package.js <resources-dir> [platform] [arch]');
+function resolveResourcesDirectory(input) {
+  const resolved = path.resolve(input);
+  return resolved.endsWith('.app') ? path.join(resolved, 'Contents', 'Resources') : resolved;
 }
 
-const resources = path.resolve(resourcesArgument);
+function resolveMacAppPath(input) {
+  const resolved = path.resolve(input);
+  if (resolved.endsWith('.app')) return resolved;
+  if (path.basename(resolved) === 'Resources'
+    && path.basename(path.dirname(resolved)) === 'Contents'
+    && path.dirname(path.dirname(resolved)).endsWith('.app')) {
+    return path.dirname(path.dirname(resolved));
+  }
+  return null;
+}
+
+function readMacSignature(appPath) {
+  const result = spawnSync('codesign', ['-dvvv', appPath], { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`codesign diagnostics failed for ${appPath}: ${String(result.stderr || '').trim()}`);
+  }
+  return classifyMacSignature(`${result.stdout || ''}\n${result.stderr || ''}`);
+}
+
+function parseArguments(argv) {
+  const positional = [];
+  let requireAppleSignature = false;
+  for (const argument of argv) {
+    if (argument === '--require-apple-signature') requireAppleSignature = true;
+    else positional.push(argument);
+  }
+  return {
+    resourcesArgument: positional[0],
+    platform: positional[1] || process.platform,
+    architecture: positional[2] || process.arch,
+    requireAppleSignature,
+  };
+}
+
+function verifyPackage({ resourcesArgument, platform = process.platform, architecture = process.arch, requireAppleSignature = false }) {
+  if (!resourcesArgument) {
+    throw new Error('usage: node build/verify-package.js <app-or-resources-dir> [platform] [arch] [--require-apple-signature]');
+  }
+
+  const resources = resolveResourcesDirectory(resourcesArgument);
 const archive = path.join(resources, 'app.asar');
 if (!fs.existsSync(archive)) throw new Error(`missing packaged application: ${archive}`);
 
@@ -23,6 +63,7 @@ const requiredEntries = [
   '/campus-preload.js',
   '/lib/campus-browser.js',
   '/lib/campus-credential-vault.js',
+  '/lib/app-data-dir.js',
   '/lib/login-flow.js',
   '/lib/settings-update.js',
   '/lib/tunnel-health.js',
@@ -79,6 +120,24 @@ if (packagedManifest.version !== sourceManifest.version) {
   );
 }
 
-process.stdout.write(
-  `verified ${platformName}/${architectureName}: campus browser, settings update, engine, v${packagedManifest.version}\n`,
-);
+  let signature = 'not-applicable';
+  const appPath = platformName === 'darwin' ? resolveMacAppPath(resourcesArgument) : null;
+  if (appPath) signature = readMacSignature(appPath);
+  if (requireAppleSignature && signature !== 'apple') {
+    throw new Error(`package requires an Apple signature, found signature=${signature}`);
+  }
+
+  return `verified ${platformName}/${architectureName}: campus browser, settings update, engine, signature=${signature}, v${packagedManifest.version}`;
+}
+
+module.exports = {
+  parseArguments,
+  readMacSignature,
+  resolveMacAppPath,
+  resolveResourcesDirectory,
+  verifyPackage,
+};
+
+if (require.main === module) {
+  process.stdout.write(`${verifyPackage(parseArguments(process.argv.slice(2)))}\n`);
+}

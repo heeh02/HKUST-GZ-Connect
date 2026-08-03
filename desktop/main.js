@@ -9,7 +9,10 @@ const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
 const { applySettingsPatch } = require('./lib/settings-update');
-const { loadPassword: readPassword, savePassword: writePassword } = require('./lib/credential-store');
+const {
+  hasStoredPassword, loadPassword: readPassword, savePassword: writePassword,
+} = require('./lib/credential-store');
+const { resolveUserDataOverride } = require('./lib/app-data-dir');
 const { classifyEngineOutput, engineFailureKind } = require('./lib/engine-output');
 const { exactExecutablePattern } = require('./lib/engine-process');
 const { buildPac } = require('./lib/pac');
@@ -28,6 +31,14 @@ const {
 } = require('./lib/tunnel-health');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
 const { CONTROL_WINDOW, clampWindowSize } = require('./lib/window-layout');
+
+// ---------- profile override & single instance ----------
+// Automated package checks need to isolate every app-owned file, not merely
+// Chromium's cache. The override is deliberately private to the current
+// process and must be absolute, so a relative launch cannot redirect it into
+// an unexpected working directory.
+const userDataOverride = resolveUserDataOverride(process.env.HKUSTGZ_USER_DATA_DIR);
+if (userDataOverride) app.setPath('userData', userDataOverride);
 
 // ---------- single instance (avoid the app fighting its own session) ----------
 // `app.quit()` does not stop the rest of this module from running, so return
@@ -84,7 +95,7 @@ function savePassword(pw) {
 function loadPassword() {
   return readPassword(CRED, safeStorage, process.platform);
 }
-function hasPassword() { return !!loadPassword(); }  // true only if it actually decrypts
+function hasStoredCredential() { return hasStoredPassword(CRED, process.platform); }
 function socksPort() { return Number(loadSettings().port) || 1080; }
 function campusResources(settings = loadSettings()) {
   return mergeCampusResources(loadCampusResources(), settings.customResources);
@@ -526,11 +537,21 @@ async function connectAndOpenCampusBrowser(rawUrl) {
 }
 
 // ---------- IPC ----------
-ipcMain.handle('get-state', () => ({
-  ...state, connectedAt, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
-  loggedIn: hasPassword() && !!loadSettings().username, platform: process.platform,
-  version: app.getVersion(), campusResources: campusResources(),
-}));
+ipcMain.handle('get-state', () => {
+  const settings = loadSettings();
+  const passwordPresent = hasStoredCredential();
+  return {
+    ...state,
+    connectedAt,
+    settings,
+    hasPassword: passwordPresent,
+    pacUrl: pacUrl(),
+    loggedIn: passwordPresent && !!settings.username,
+    platform: process.platform,
+    version: app.getVersion(),
+    campusResources: campusResources(settings),
+  };
+});
 ipcMain.handle('save-resource', (_e, payload) => {
   const previous = loadSettings();
   try {
@@ -811,7 +832,9 @@ app.whenReady().then(() => {
   createTray();
   createWindow();
   const settings = loadSettings();
-  if (settings.autoConnect !== false && settings.username && hasPassword()) setTimeout(() => connect(), 500);
+  if (settings.autoConnect !== false && settings.username && hasStoredCredential()) {
+    setTimeout(() => connect(), 500);
+  }
   app.on('activate', showWindow);
 }).catch((error) => {
   dialog.showErrorBox('HKUST(GZ) Connect 启动失败', String(error && error.message ? error.message : error));

@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { assertEnginePresent, requiredEngineName } = require('../build/afterPack');
+const { resolveResourcesDirectory } = require('../build/verify-package');
 
 test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredEngineName('darwin', 'arm64'), 'ec-engine-darwin-arm64');
@@ -19,4 +20,11 @@ test('packaging fails before signing when the native engine is absent', () => {
     () => assertEnginePresent(directory, 'darwin', 'arm64'),
     /missing packaged engine:.*ec-engine-darwin-arm64/,
   );
+});
+
+test('package verification accepts either a macOS app or its Resources directory', () => {
+  const appPath = path.join(os.tmpdir(), 'hkustgzconnect.app');
+  const resources = path.join(appPath, 'Contents', 'Resources');
+  assert.equal(resolveResourcesDirectory(appPath), resources);
+  assert.equal(resolveResourcesDirectory(resources), resources);
 });
