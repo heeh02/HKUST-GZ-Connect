@@ -46,79 +46,103 @@ function parseArguments(argv) {
   };
 }
 
+function assertCustomResourceManager({ html, renderer, preload, main }) {
+  const missing = [];
+  if (!String(html).includes('id="manageResources"')) missing.push('manage button');
+  if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
+  if (!String(html).includes('id="newResource"')) missing.push('new website button');
+  if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');
+  if (!String(preload).includes("saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)")) {
+    missing.push('preload bridge');
+  }
+  if (!String(main).includes("ipcMain.handle('save-resource'")) missing.push('save handler');
+  if (missing.length) {
+    throw new Error(`custom resource manager is incomplete: ${missing.join(', ')}`);
+  }
+}
+
 function verifyPackage({ resourcesArgument, platform = process.platform, architecture = process.arch, requireAppleSignature = false }) {
   if (!resourcesArgument) {
     throw new Error('usage: node build/verify-package.js <app-or-resources-dir> [platform] [arch] [--require-apple-signature]');
   }
 
   const resources = resolveResourcesDirectory(resourcesArgument);
-const archive = path.join(resources, 'app.asar');
-if (!fs.existsSync(archive)) throw new Error(`missing packaged application: ${archive}`);
+  const archive = path.join(resources, 'app.asar');
+  if (!fs.existsSync(archive)) throw new Error(`missing packaged application: ${archive}`);
 
-const entries = new Set(
-  asar.listPackage(archive).map((entry) => entry.replaceAll('\\', '/')),
-);
-const requiredEntries = [
-  '/main.js',
-  '/campus-preload.js',
-  '/lib/campus-browser.js',
-  '/lib/campus-credential-vault.js',
-  '/lib/app-data-dir.js',
-  '/lib/login-flow.js',
-  '/lib/settings-update.js',
-  '/lib/tunnel-health.js',
-  '/renderer/app.js',
-  '/renderer/campus-browser.html',
-  '/renderer/campus-browser.js',
-  '/renderer/campus-browser.css',
-  '/assets/campus-resources.json',
-];
-for (const entry of requiredEntries) {
-  if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
-}
-
-const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
-const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
-if (/\.\.\/lib\/(?:login-flow|resource-view)\.js/.test(packagedIndex)) {
-  throw new Error('renderer must not depend on split helper scripts');
-}
-for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
-  if (!packagedRenderer.includes(`function ${helper}`)) {
-    throw new Error(`renderer helper is not self-contained: ${helper}`);
+  const entries = new Set(
+    asar.listPackage(archive).map((entry) => entry.replaceAll('\\', '/')),
+  );
+  const requiredEntries = [
+    '/main.js',
+    '/preload.js',
+    '/campus-preload.js',
+    '/lib/campus-browser.js',
+    '/lib/campus-credential-vault.js',
+    '/lib/app-data-dir.js',
+    '/lib/login-flow.js',
+    '/lib/settings-update.js',
+    '/lib/tunnel-health.js',
+    '/renderer/app.js',
+    '/renderer/campus-browser.html',
+    '/renderer/campus-browser.js',
+    '/renderer/campus-browser.css',
+    '/assets/campus-resources.json',
+  ];
+  for (const entry of requiredEntries) {
+    if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
   }
-}
 
-const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
-const architectureName = architecture === 'arm64' ? 'arm64' : 'amd64';
-const extension = platformName === 'windows' ? '.exe' : '';
-const engineName = `ec-engine-${platformName}-${architectureName}${extension}`;
-const engine = path.join(resources, 'engine', engineName);
-if (!fs.existsSync(engine) || fs.statSync(engine).size === 0) {
-  throw new Error(`missing packaged engine: ${engine}`);
-}
+  const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
+  const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
+  const packagedPreload = asar.extractFile(archive, 'preload.js').toString('utf8');
+  const packagedMain = asar.extractFile(archive, 'main.js').toString('utf8');
+  if (/\.\.\/lib\/(?:login-flow|resource-view)\.js/.test(packagedIndex)) {
+    throw new Error('renderer must not depend on split helper scripts');
+  }
+  for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
+    if (!packagedRenderer.includes(`function ${helper}`)) {
+      throw new Error(`renderer helper is not self-contained: ${helper}`);
+    }
+  }
+  assertCustomResourceManager({
+    html: packagedIndex,
+    renderer: packagedRenderer,
+    preload: packagedPreload,
+    main: packagedMain,
+  });
 
-if (platformName === 'windows') {
-  const header = fs.readFileSync(engine);
-  const peOffset = header.length >= 0x40 ? header.readUInt32LE(0x3c) : -1;
-  const signature = peOffset >= 0 && peOffset + 6 <= header.length
-    ? header.subarray(peOffset, peOffset + 4).toString('binary')
-    : '';
-  const machine = signature === 'PE\u0000\u0000' ? header.readUInt16LE(peOffset + 4) : -1;
-  const expectedMachine = architectureName === 'arm64' ? 0xaa64 : 0x8664;
-  if (machine !== expectedMachine) {
+  const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
+  const architectureName = architecture === 'arm64' ? 'arm64' : 'amd64';
+  const extension = platformName === 'windows' ? '.exe' : '';
+  const engineName = `ec-engine-${platformName}-${architectureName}${extension}`;
+  const engine = path.join(resources, 'engine', engineName);
+  if (!fs.existsSync(engine) || fs.statSync(engine).size === 0) {
+    throw new Error(`missing packaged engine: ${engine}`);
+  }
+
+  if (platformName === 'windows') {
+    const header = fs.readFileSync(engine);
+    const peOffset = header.length >= 0x40 ? header.readUInt32LE(0x3c) : -1;
+    const signature = peOffset >= 0 && peOffset + 6 <= header.length
+      ? header.subarray(peOffset, peOffset + 4).toString('binary')
+      : '';
+    const machine = signature === 'PE\u0000\u0000' ? header.readUInt16LE(peOffset + 4) : -1;
+    const expectedMachine = architectureName === 'arm64' ? 0xaa64 : 0x8664;
+    if (machine !== expectedMachine) {
+      throw new Error(
+        `packaged engine is not a ${architectureName} Windows PE executable: ${engine}`,
+      );
+    }
+  }
+
+  const packagedManifest = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
+  const sourceManifest = require(path.join(__dirname, '..', 'package.json'));
+  if (packagedManifest.version !== sourceManifest.version) {
     throw new Error(
-      `packaged engine is not a ${architectureName} Windows PE executable: ${engine}`,
+      `packaged version ${packagedManifest.version} does not match source ${sourceManifest.version}`,
     );
   }
-}
-
-const packagedManifest = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
-const sourceManifest = require(path.join(__dirname, '..', 'package.json'));
-if (packagedManifest.version !== sourceManifest.version) {
-  throw new Error(
-    `packaged version ${packagedManifest.version} does not match source ${sourceManifest.version}`,
-  );
-}
 
   let signature = 'not-applicable';
   const appPath = platformName === 'darwin' ? resolveMacAppPath(resourcesArgument) : null;
@@ -131,6 +155,7 @@ if (packagedManifest.version !== sourceManifest.version) {
 }
 
 module.exports = {
+  assertCustomResourceManager,
   parseArguments,
   readMacSignature,
   resolveMacAppPath,

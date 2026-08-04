@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
@@ -20,7 +20,8 @@
     "electron-builder": "^26.15.3"
   },
   "overrides": {
-    "brace-expansion": "5.0.8"
+    "brace-expansion": "5.0.9",
+    "fast-uri": "3.1.5"
   },
   "build": {
     "appId": "cn.edu.hkust-gz.connect",
