@@ -51,11 +51,15 @@ function assertCustomResourceManager({ html, renderer, preload, main }) {
   if (!String(html).includes('id="manageResources"')) missing.push('manage button');
   if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
   if (!String(html).includes('id="newResource"')) missing.push('new website button');
+  if (!String(html).includes('id="quickAddCampus"')) missing.push('add and open button');
+  if (!String(html).includes('id="resourceSaved"')) missing.push('save confirmation');
   if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');
+  if (!String(renderer).includes('function suggestedResourceName')) missing.push('URL naming helper');
   if (!String(preload).includes("saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)")) {
     missing.push('preload bridge');
   }
   if (!String(main).includes("ipcMain.handle('save-resource'")) missing.push('save handler');
+  if (!String(main).includes("app.on('certificate-error'")) missing.push('certificate handler');
   if (missing.length) {
     throw new Error(`custom resource manager is incomplete: ${missing.join(', ')}`);
   }
@@ -78,6 +82,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/preload.js',
     '/campus-preload.js',
     '/lib/campus-browser.js',
+    '/lib/campus-certificate-trust.js',
     '/lib/campus-credential-vault.js',
     '/lib/app-data-dir.js',
     '/lib/login-flow.js',

@@ -75,6 +75,76 @@ function assertLayout(view, width, height) {
   assert.ok(view.row.right <= view.dialog.right && view.rowActions.right <= view.dialog.right, `${label}: resource controls overflow the manager`);
 }
 
+async function saveCustomResource(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const dialog = document.getElementById('resourceDialog');
+    if (!dialog.open) document.getElementById('manageResources').click();
+    document.getElementById('newResource').click();
+    document.getElementById('resourceName').value = '';
+    const url = document.getElementById('resourceUrl');
+    url.value = 'research.example.edu:4433';
+    url.dispatchEvent(new Event('blur'));
+    document.getElementById('resourceDescription').value = '测试自定义网站保存';
+    document.getElementById('resourceRoute').value = 'campus';
+    const generatedName = document.getElementById('resourceName').value;
+    document.getElementById('resourceForm').requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const row = [...document.querySelectorAll('.resource-editor-row')]
+      .find((candidate) => candidate.textContent.includes('research.example.edu:4433'));
+    return {
+      error: document.getElementById('resourceFormError').textContent,
+      generatedName,
+      rowText: row?.textContent || '',
+      urlCleared: document.getElementById('resourceUrl').value === '',
+      customRows: [...document.querySelectorAll('.resource-editor-row')]
+        .filter((candidate) => candidate.textContent.includes('research.example.edu:4433')).length,
+      savedMessage: document.getElementById('resourceSaved')?.textContent || '',
+      formSavedMessage: document.getElementById('resourceFormSaved')?.textContent || '',
+    };
+  })()`);
+}
+
+function assertCustomResourceSave(result) {
+  assert.equal(result.error, '', 'saving a custom website reported an error');
+  assert.equal(result.generatedName, 'research.example.edu:4433', 'a URL-only shortcut did not receive a useful default name');
+  assert.match(result.rowText, /research\.example\.edu:4433/, 'saved custom website is absent from the manager');
+  assert.equal(result.urlCleared, true, 'the editor did not return to a clean new-resource state');
+  assert.equal(result.customRows, 1, 'saved custom website was duplicated in the manager');
+  assert.equal(result.savedMessage, '已添加到常用网站', 'saving a shortcut did not give a positive confirmation');
+  assert.equal(result.formSavedMessage, '已添加到常用网站', 'the manager did not visibly confirm a saved shortcut');
+}
+
+async function addAndOpenCustomResource(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    const dialog = document.getElementById('resourceDialog');
+    if (dialog.open) dialog.close();
+    const add = document.getElementById('quickAddCampus');
+    if (!add) return { controlPresent: false };
+    document.getElementById('campusUrl').value = '103.189.154.10:4433';
+    add.click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return {
+      controlPresent: true,
+      error: document.getElementById('quickAddErr')?.textContent || '',
+      savedMessage: document.getElementById('resourceSaved')?.textContent || '',
+      openedRequest: window.api.testState().lastOpenRequest,
+      savedRows: [...document.querySelectorAll('.resource-editor-row')]
+        .filter((candidate) => candidate.textContent.includes('103.189.154.10:4433')).length,
+    };
+  })()`);
+}
+
+function assertCustomResourceAddAndOpen(result) {
+  assert.equal(result.controlPresent, true, 'dashboard is missing the add-to-favorites action');
+  assert.equal(result.error, '', 'adding and opening a shortcut reported an error');
+  assert.equal(result.savedMessage, '已添加到常用网站', 'adding and opening did not confirm the saved shortcut');
+  assert.equal(result.savedRows, 1, 'adding and opening did not persist a shortcut');
+  assert.deepEqual(result.openedRequest, {
+    url: 'https://103.189.154.10:4433/',
+    route: 'campus',
+  }, 'adding and opening did not use the saved campus route');
+}
+
 async function main() {
   await app.whenReady();
   const window = new BrowserWindow({
@@ -90,6 +160,8 @@ async function main() {
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
       assertLayout(await measureAt(window, width, height), width, height);
     }
+    assertCustomResourceSave(await saveCustomResource(window));
+    assertCustomResourceAddAndOpen(await addAndOpenCustomResource(window));
     process.stdout.write('resource manager layout: PASS\n');
   } finally {
     if (!window.isDestroyed()) window.destroy();

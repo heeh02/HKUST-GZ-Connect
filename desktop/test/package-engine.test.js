@@ -36,9 +36,9 @@ test('package verification rejects a build without the custom website manager', 
   );
 
   assert.doesNotThrow(() => assertCustomResourceManager({
-    html: 'id="manageResources" id="resourceDialog" id="newResource"',
-    renderer: 'window.api.saveResource',
+    html: 'id="manageResources" id="resourceDialog" id="newResource" id="quickAddCampus" id="resourceSaved"',
+    renderer: 'window.api.saveResource function suggestedResourceName',
     preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
-    main: "ipcMain.handle('save-resource'",
+    main: "ipcMain.handle('save-resource' app.on('certificate-error'",
   }));
 });

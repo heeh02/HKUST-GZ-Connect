@@ -9,6 +9,10 @@ const {
   proxyConfigForRoute,
   routeForUrl,
 } = require('./campus-route');
+const {
+  certificateFingerprint,
+  normalizeCertificateOrigin,
+} = require('./campus-certificate-trust');
 const TOOLBAR_HEIGHT = 76;
 const MAX_URL_LENGTH = 2048;
 
@@ -81,6 +85,16 @@ function safePopupUrl(value) {
   }
 }
 
+function certificateTime(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '未知';
+  try {
+    return new Date(seconds * 1000).toLocaleString('zh-CN', { hour12: false });
+  } catch {
+    return '未知';
+  }
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -115,6 +129,7 @@ class CampusBrowser {
     WebContentsView,
     session,
     dialog,
+    certificateTrust,
     credentialVault,
     parentWindow,
     toolbarFile,
@@ -125,6 +140,7 @@ class CampusBrowser {
     this.WebContentsView = WebContentsView;
     this.session = session;
     this.dialog = dialog;
+    this.certificateTrust = certificateTrust;
     this.credentialVault = credentialVault;
     this.parentWindow = parentWindow;
     this.toolbarFile = toolbarFile;
@@ -140,6 +156,62 @@ class CampusBrowser {
     this.sessionKeys = new Map();
     this.campusSession = null;
     this.credentialPrompts = new Set();
+  }
+
+  ownsWebContents(webContents) {
+    return !!webContents && this.tabs.some((tab) => tab?.view?.webContents === webContents);
+  }
+
+  async handleCertificateError({ url, error, certificate, callback }) {
+    let settled = false;
+    const finish = (allowed) => {
+      if (settled) return;
+      settled = true;
+      if (typeof callback === 'function') callback(allowed);
+    };
+    try {
+      const origin = normalizeCertificateOrigin(url);
+      const fingerprint = certificateFingerprint(certificate?.data);
+      if (this.certificateTrust?.isTrusted?.(origin, fingerprint)) {
+        finish(true);
+        return true;
+      }
+      if (!this.dialog?.showMessageBox || !this.certificateTrust?.trust) {
+        finish(false);
+        return false;
+      }
+      const detail = [
+        `网站：${origin}`,
+        `Chromium 错误：${String(error || '未知')}`,
+        `主题：${String(certificate?.subjectName || '未知')}`,
+        `颁发者：${String(certificate?.issuerName || '未知')}`,
+        `有效期：${certificateTime(certificate?.validStart)} 至 ${certificateTime(certificate?.validExpiry)}`,
+        `证书 SHA-256：${fingerprint}`,
+        '',
+        '只会为这个精确的网站来源保存指纹；相同域名的其他端口、子域名和其他网站不会继承此信任。',
+      ].join('\n');
+      const parent = this.window && !this.window.isDestroyed?.() ? this.window : undefined;
+      const result = await this.dialog.showMessageBox(parent, {
+        type: 'warning',
+        title: '需要确认网站证书',
+        message: `是否仅为 ${origin} 信任这张证书？`,
+        detail,
+        buttons: ['信任此网站证书', '取消'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (result?.response !== 0) {
+        finish(false);
+        return false;
+      }
+      this.certificateTrust.trust(origin, fingerprint);
+      finish(true);
+      return true;
+    } catch {
+      finish(false);
+      return false;
+    }
   }
 
   async configure(port, route = ROUTE_CAMPUS) {

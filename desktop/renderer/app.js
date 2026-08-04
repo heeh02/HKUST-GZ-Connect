@@ -67,6 +67,7 @@ function renderConnect(s) {
   $('connTop').classList.toggle('connected', s.connected);
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('quickCampus').disabled = campusActionBusy;
+  $('quickAddCampus').disabled = campusActionBusy;
   $('quickCampus').textContent = campusActionBusy
     ? (s.connected ? '正在打开…' : '正在连接，完成后自动打开…')
     : (s.connected ? '打开校园网站' : '连接并打开校园网站');
@@ -100,6 +101,36 @@ function renderResources() {
   toggle.hidden = !hasMore;
   toggle.textContent = resourcesExpanded ? '收起' : '展开全部';
   toggle.setAttribute('aria-expanded', String(resourcesExpanded));
+}
+
+function suggestedResourceName(value) {
+  const source = String(value || '').trim();
+  if (!source) return '';
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ? source : `https://${source}`;
+  try {
+    const parsed = new URL(candidate);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.host : '';
+  } catch {
+    return '';
+  }
+}
+
+function setResourceSaved(message) {
+  $('resourceSaved').textContent = message || '';
+}
+
+function clearResourceMessages() {
+  $('resourceFormError').textContent = '';
+  $('resourceFormSaved').textContent = '';
+}
+
+async function saveCampusResource(payload) {
+  const result = await window.api.saveResource(payload);
+  if (!result?.ok) return { ok: false, error: result?.error || '保存失败' };
+  campusResources = result.resources || campusResources;
+  renderResources();
+  renderResourceEditorList();
+  return { ok: true, resource: result.resource };
 }
 
 function populateTowerForm() {
@@ -198,6 +229,39 @@ async function openCampus(selected) {
   }
 }
 $('quickCampus').addEventListener('click', openCampus);
+$('quickAddCampus').addEventListener('click', async () => {
+  if (campusActionBusy) return;
+  const url = $('campusUrl').value.trim();
+  $('quickAddErr').textContent = '';
+  setResourceSaved('');
+  if (!url) {
+    $('quickAddErr').textContent = '请先粘贴需要保存的网址';
+    $('campusUrl').focus();
+    return;
+  }
+
+  campusActionBusy = true;
+  renderConnect(st);
+  try {
+    const name = suggestedResourceName(url);
+    const saved = await saveCampusResource({ name, url, description: '' });
+    if (!saved.ok) {
+      $('quickAddErr').textContent = saved.error;
+      return;
+    }
+    setResourceSaved('已添加到常用网站');
+    const result = await window.api.openCampusBrowser({
+      url: saved.resource.url,
+      route: saved.resource.route,
+    });
+    if (!result?.ok) $('quickAddErr').textContent = result?.error || '校园浏览器打开失败';
+  } catch (error) {
+    $('quickAddErr').textContent = error?.message || '添加网站失败';
+  } finally {
+    campusActionBusy = false;
+    renderConnect(st);
+  }
+});
 $('campusResources').addEventListener('click', (event) => {
   const target = event.target.closest('[data-campus-id]');
   const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
@@ -218,7 +282,7 @@ function clearResourceEditor() {
   $('resourceUrl').value = '';
   $('resourceDescription').value = '';
   $('resourceRoute').value = 'campus';
-  $('resourceFormError').textContent = '';
+  clearResourceMessages();
   document.querySelectorAll('.resource-editor-row').forEach((row) => row.classList.remove('active'));
 }
 
@@ -228,6 +292,7 @@ function fillResourceEditor(resource) {
   $('resourceUrl').value = resource?.url || '';
   $('resourceDescription').value = resource?.description || '';
   $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
+  clearResourceMessages();
   $('resourceFormError').textContent = resource?.builtin ? '内置网站不能覆盖，请新增一个自定义入口' : '';
   document.querySelectorAll('.resource-editor-row').forEach((row) => {
     row.classList.toggle('active', row.dataset.resourceId === resource?.id);
@@ -261,6 +326,11 @@ $('manageResources').addEventListener('click', openResourceManager);
 $('closeResourceDialog').addEventListener('click', () => resourceDialog.close());
 $('cancelResource').addEventListener('click', clearResourceEditor);
 $('newResource').addEventListener('click', clearResourceEditor);
+$('resourceUrl').addEventListener('blur', () => {
+  if ($('resourceName').value.trim()) return;
+  const suggestion = suggestedResourceName($('resourceUrl').value);
+  if (suggestion) $('resourceName').value = suggestion;
+});
 $('resourceEditorList').addEventListener('click', async (event) => {
   const row = event.target.closest('[data-resource-id]');
   if (!row) return;
@@ -293,18 +363,23 @@ $('resourceEditorList').addEventListener('click', async (event) => {
 });
 $('resourceForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const result = await window.api.saveResource({
-    id: $('resourceId').value || undefined,
-    name: $('resourceName').value,
-    url: $('resourceUrl').value,
-    description: $('resourceDescription').value,
-    route: $('resourceRoute').value,
-  });
-  if (!result?.ok) { $('resourceFormError').textContent = result?.error || '保存失败'; return; }
-  campusResources = result.resources || campusResources;
-  renderResources();
-  renderResourceEditorList();
-  clearResourceEditor();
+  clearResourceMessages();
+  if (!$('resourceName').value.trim()) $('resourceName').value = suggestedResourceName($('resourceUrl').value);
+  try {
+    const saved = await saveCampusResource({
+      id: $('resourceId').value || undefined,
+      name: $('resourceName').value,
+      url: $('resourceUrl').value,
+      description: $('resourceDescription').value,
+      route: $('resourceRoute').value,
+    });
+    if (!saved.ok) { $('resourceFormError').textContent = saved.error; return; }
+    clearResourceEditor();
+    $('resourceFormSaved').textContent = '已添加到常用网站';
+    setResourceSaved('已添加到常用网站');
+  } catch (error) {
+    $('resourceFormError').textContent = error?.message || '保存失败';
+  }
 });
 
 // control tower

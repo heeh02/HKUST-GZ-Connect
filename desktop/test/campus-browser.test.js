@@ -19,6 +19,13 @@ const {
   ROUTE_DIRECT,
   proxyConfigForRoute,
 } = require('../lib/campus-route');
+const { certificateFingerprint } = require('../lib/campus-certificate-trust');
+
+const CERTIFICATE_PEM = [
+  '-----BEGIN CERTIFICATE-----',
+  Buffer.from('fixture-certificate-der').toString('base64'),
+  '-----END CERTIFICATE-----',
+].join('\n');
 
 test('campus URLs default to the school home and accept host-only input', () => {
   assert.equal(normalizeCampusUrl(''), DEFAULT_CAMPUS_HOME);
@@ -79,6 +86,71 @@ test('Windows tabs share the native caption row without covering window controls
       height: 34,
     },
   });
+});
+
+test('a certificate exception needs confirmation and is scoped to one campus-browser origin', async () => {
+  const ownedContents = {};
+  const stored = new Map();
+  let promptCount = 0;
+  let promptOptions;
+  const browser = new CampusBrowser({
+    dialog: {
+      showMessageBox: async (_window, options) => {
+        promptCount++;
+        promptOptions = options;
+        return { response: 0 };
+      },
+    },
+    certificateTrust: {
+      isTrusted: (origin, fingerprint) => stored.get(origin) === fingerprint,
+      trust: (origin, fingerprint) => stored.set(origin, fingerprint),
+    },
+  });
+  browser.tabs = [{ view: { webContents: ownedContents } }];
+
+  assert.equal(browser.ownsWebContents(ownedContents), true);
+  assert.equal(browser.ownsWebContents({}), false);
+
+  const decisions = [];
+  await browser.handleCertificateError({
+    url: 'https://103.189.154.10:4433/login',
+    error: 'net::ERR_CERT_AUTHORITY_INVALID',
+    certificate: {
+      data: CERTIFICATE_PEM,
+      subjectName: '103.189.154.10',
+      issuerName: 'HKUST(GZ) test gateway',
+      validStart: 1700000000,
+      validExpiry: 1800000000,
+    },
+    callback: (allowed) => decisions.push(allowed),
+  });
+
+  const fingerprint = certificateFingerprint(CERTIFICATE_PEM);
+  assert.deepEqual(decisions, [true]);
+  assert.equal(stored.get('https://103.189.154.10:4433'), fingerprint);
+  assert.equal(promptCount, 1);
+  assert.match(promptOptions.detail, /SHA-256/);
+  assert.match(promptOptions.detail, /ERR_CERT_AUTHORITY_INVALID/);
+  assert.match(promptOptions.detail, /HKUST\(GZ\) test gateway/);
+  assert.match(promptOptions.detail, /2023/);
+
+  await browser.handleCertificateError({
+    url: 'https://103.189.154.10:4433/again',
+    error: 'net::ERR_CERT_AUTHORITY_INVALID',
+    certificate: { data: CERTIFICATE_PEM },
+    callback: (allowed) => decisions.push(allowed),
+  });
+  assert.deepEqual(decisions, [true, true]);
+  assert.equal(promptCount, 1, 'the same exact certificate should not prompt again');
+
+  browser.dialog.showMessageBox = async () => ({ response: 1 });
+  await browser.handleCertificateError({
+    url: 'https://103.189.154.10:4443/login',
+    error: 'net::ERR_CERT_AUTHORITY_INVALID',
+    certificate: { data: CERTIFICATE_PEM },
+    callback: (allowed) => decisions.push(allowed),
+  });
+  assert.deepEqual(decisions, [true, true, false], 'a different port must not inherit the pin');
 });
 
 test('campus browser uses route-specific persistent sessions and never the system proxy', async () => {

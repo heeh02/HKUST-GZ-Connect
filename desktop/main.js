@@ -30,6 +30,9 @@ const {
   PROBE_TIMEOUT_MS, TELEMETRY_TICK_MS, shouldProbe, shouldRecover,
 } = require('./lib/tunnel-health');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
+const {
+  MAX_CERTIFICATE_PINS, loadCertificateTrust, saveCertificateTrust,
+} = require('./lib/campus-certificate-trust');
 const { CONTROL_WINDOW, clampWindowSize } = require('./lib/window-layout');
 
 // ---------- profile override & single instance ----------
@@ -57,9 +60,10 @@ const CRED = path.join(DATA, 'cred.bin');
 const LOG = path.join(DATA, 'engine.log');
 const PAC_FILE = path.join(DATA, 'routing.pac');
 const CAMPUS_CREDENTIALS = path.join(DATA, 'campus-credentials.json');
+const CAMPUS_CERTIFICATE_TRUST = path.join(DATA, 'campus-certificate-trust.json');
 const GATEWAY_HOST = 'remote.hkust-gz.edu.cn';
 
-for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_CREDENTIALS]) {
+for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_CREDENTIALS, CAMPUS_CERTIFICATE_TRUST]) {
   ensureOwnerOnly(privateFile);
 }
 
@@ -99,6 +103,18 @@ function hasStoredCredential() { return hasStoredPassword(CRED, process.platform
 function socksPort() { return Number(loadSettings().port) || 1080; }
 function campusResources(settings = loadSettings()) {
   return mergeCampusResources(loadCampusResources(), settings.customResources);
+}
+function certificateIsTrusted(origin, fingerprint) {
+  return loadCertificateTrust(CAMPUS_CERTIFICATE_TRUST).some((pin) =>
+    pin.origin === origin && pin.fingerprint === fingerprint);
+}
+function trustCertificate(origin, fingerprint) {
+  const current = loadCertificateTrust(CAMPUS_CERTIFICATE_TRUST)
+    .filter((pin) => pin.origin !== origin);
+  saveCertificateTrust(CAMPUS_CERTIFICATE_TRUST, [
+    ...current.slice(-(MAX_CERTIFICATE_PINS - 1)),
+    { origin, fingerprint },
+  ]);
 }
 
 // ---------- engine ----------
@@ -492,6 +508,10 @@ function getCampusBrowser() {
       WebContentsView,
       session,
       dialog,
+      certificateTrust: {
+        isTrusted: certificateIsTrusted,
+        trust: trustCertificate,
+      },
       credentialVault,
       parentWindow: () => win,
       toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
@@ -819,6 +839,15 @@ function installApplicationMenu() {
 }
 
 app.on('second-instance', showWindow);
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  // This exception path belongs only to untrusted pages rendered by the campus
+  // browser. The control window, the toolbar, and every unrelated Electron
+  // request retain Chromium's normal certificate handling.
+  if (!campusBrowser?.ownsWebContents(webContents)) return;
+  event.preventDefault();
+  campusBrowser.handleCertificateError({ url, error, certificate, callback })
+    .catch(() => callback(false));
+});
 app.whenReady().then(() => {
   installApplicationMenu();
   // A PAC write can fail on a read-only or full user-data directory. That must

@@ -74,8 +74,13 @@
             </div>
             <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"
                    placeholder="可选：粘贴校内网址；留空打开学校主页" />
-            <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
+            <div class="quick-actions">
+              <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
+              <button id="quickAddCampus" class="ghost quick-add-action" type="button">添加到常用并打开</button>
+            </div>
             <p id="quickErr" class="quick-error"></p>
+            <p id="quickAddErr" class="quick-error"></p>
+            <p id="resourceSaved" class="quick-saved" aria-live="polite"></p>
             <div class="resource-toolbar">
               <span class="resource-toolbar-title">常用网站</span>
               <span class="resource-toolbar-actions">
@@ -200,7 +205,7 @@
         <div id="resourceEditorList" class="resource-editor-list"></div>
         <div class="resource-editor-fields">
           <input id="resourceId" type="hidden" />
-          <label>名称<input id="resourceName" class="inp" maxlength="40" required /></label>
+          <label>名称<input id="resourceName" class="inp" maxlength="40" placeholder="留空时自动使用网址" /></label>
           <label>网址<input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
           <label>说明<input id="resourceDescription" class="inp" maxlength="80" /></label>
           <label>网络路径<select id="resourceRoute" class="inp">
@@ -209,6 +214,7 @@
           </select></label>
         </div>
         <p id="resourceFormError" class="dialog-error"></p>
+        <p id="resourceFormSaved" class="dialog-saved" aria-live="polite"></p>
       </div>
       <div class="dialog-actions">
         <button id="newResource" class="ghost sm" type="button">新增网站</button>
