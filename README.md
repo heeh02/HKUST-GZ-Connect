@@ -39,6 +39,8 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 默认模式不会修改系统 DNS、系统代理或默认路由。即使连接异常或强制退出，也
 不会在系统中留下 EasyConnect 常见的 DNS/路由残留。
 
+> 如果觉得 HKUST(GZ) Connect 好用，欢迎在 GitHub 给项目一个 ⭐ Star；谢谢支持！
+
 ## 下载
 
 请从 [GitHub Releases](https://github.com/heeh02/hkustgzconnect/releases/latest)
