@@ -79,7 +79,7 @@ async function saveCustomResource(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
     if (!dialog.open) document.getElementById('manageResources').click();
-    document.getElementById('newResource').click();
+    document.getElementById('cancelResource').click();
     document.getElementById('resourceName').value = '';
     const url = document.getElementById('resourceUrl');
     url.value = 'research.example.edu:4433';

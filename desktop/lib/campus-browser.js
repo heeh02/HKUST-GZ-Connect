@@ -334,14 +334,20 @@ class CampusBrowser {
     for (const eventName of ['did-navigate', 'did-navigate-in-page', 'page-title-updated']) {
       contents.on(eventName, () => this.updateToolbar());
     }
-    contents.on('did-fail-load', (_event, code, description, failedUrl, isMainFrame) => {
+    // Provisional failures (DNS, reset, timeout before the page commits) do not
+    // fire did-fail-load; without this handler the tab stayed blank and the
+    // failed URL was lost, so a route switch silently fell back to the school
+    // home page instead of retrying the site the user asked for.
+    const handleLoadFailure = (_event, code, description, failedUrl, isMainFrame) => {
       if (!isMainFrame || code === -3 || !safePopupUrl(failedUrl)) return;
       tab.loading = false;
       tab.failedUrl = failedUrl;
       tab.renderingError = true;
       contents.loadURL(errorPage(failedUrl, description)).catch(() => {});
       this.updateToolbar();
-    });
+    };
+    contents.on('did-fail-load', handleLoadFailure);
+    contents.on('did-fail-provisional-load', handleLoadFailure);
     contents.on('ipc-message', (_event, channel, candidate) => {
       if (channel === 'campus-credential-candidate') {
         this.offerCredential(tab, candidate);

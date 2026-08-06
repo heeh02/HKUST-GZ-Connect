@@ -50,7 +50,7 @@ function assertCustomResourceManager({ html, renderer, preload, main }) {
   const missing = [];
   if (!String(html).includes('id="manageResources"')) missing.push('manage button');
   if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
-  if (!String(html).includes('id="newResource"')) missing.push('new website button');
+  if (!String(html).includes('id="saveResource"')) missing.push('save website button');
   if (!String(html).includes('id="quickAddCampus"')) missing.push('add and open button');
   if (!String(html).includes('id="resourceSaved"')) missing.push('save confirmation');
   if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');

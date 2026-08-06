@@ -76,7 +76,7 @@
                    placeholder="可选：粘贴校内网址；留空打开学校主页" />
             <div class="quick-actions">
               <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
-              <button id="quickAddCampus" class="ghost quick-add-action" type="button">添加到常用并打开</button>
+              <button id="quickAddCampus" class="quick-add-action" type="button">添加到常用并打开</button>
             </div>
             <p id="quickErr" class="quick-error"></p>
             <p id="quickAddErr" class="quick-error"></p>
@@ -217,10 +217,9 @@
         <p id="resourceFormSaved" class="dialog-saved" aria-live="polite"></p>
       </div>
       <div class="dialog-actions">
-        <button id="newResource" class="ghost sm" type="button">新增网站</button>
-        <span></span>
-        <button id="cancelResource" class="mini" type="button">取消编辑</button>
-        <button id="saveResource" class="primary sm" type="submit">保存</button>
+        <span id="resourceEditHint" class="dialog-edit-hint"></span>
+        <button id="cancelResource" class="ghost sm" type="button">清空</button>
+        <button id="saveResource" class="primary sm" type="submit">添加网站</button>
       </div>
     </form>
   </dialog>

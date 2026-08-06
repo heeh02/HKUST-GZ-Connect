@@ -277,37 +277,91 @@ $('toggleResources').addEventListener('click', () => {
 });
 
 function clearResourceEditor() {
+  disarmDeleteConfirm();
   $('resourceId').value = '';
   $('resourceName').value = '';
   $('resourceUrl').value = '';
   $('resourceDescription').value = '';
   $('resourceRoute').value = 'campus';
   clearResourceMessages();
+  setResourceFormMode(null);
   document.querySelectorAll('.resource-editor-row').forEach((row) => row.classList.remove('active'));
 }
 
+function setResourceFormMode(editingResource) {
+  const editing = !!editingResource;
+  $('saveResource').textContent = editing ? '保存修改' : '添加网站';
+  $('cancelResource').textContent = editing ? '取消编辑' : '清空';
+  $('resourceEditHint').textContent = editing
+    ? `正在编辑：${editingResource.name || editingResource.url}`
+    : '';
+}
+
 function fillResourceEditor(resource) {
+  disarmDeleteConfirm();
   $('resourceId').value = resource?.builtin ? '' : (resource?.id || '');
   $('resourceName').value = resource?.name || '';
   $('resourceUrl').value = resource?.url || '';
   $('resourceDescription').value = resource?.description || '';
   $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
   clearResourceMessages();
+  setResourceFormMode(resource && !resource.builtin ? resource : null);
   $('resourceFormError').textContent = resource?.builtin ? '内置网站不能覆盖，请新增一个自定义入口' : '';
   document.querySelectorAll('.resource-editor-row').forEach((row) => {
     row.classList.toggle('active', row.dataset.resourceId === resource?.id);
   });
 }
 
+const RESOURCE_ICONS = {
+  edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  delete: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>',
+  'cancel-delete': '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+};
+
+function resourceActionButton(action, label, disabled = false) {
+  return `<button class="row-icon${action === 'delete' ? ' danger' : ''}" type="button"`
+    + ` data-resource-action="${action}" title="${label}" aria-label="${label}"${disabled ? ' disabled' : ''}>`
+    + `${RESOURCE_ICONS[action]}</button>`;
+}
+
+let pendingDeleteId = null;
+let pendingDeleteTimer = null;
+
+function disarmDeleteConfirm() {
+  pendingDeleteId = null;
+  clearTimeout(pendingDeleteTimer);
+  pendingDeleteTimer = null;
+}
+
+function armDeleteConfirm(id) {
+  pendingDeleteId = id;
+  clearTimeout(pendingDeleteTimer);
+  pendingDeleteTimer = setTimeout(() => {
+    disarmDeleteConfirm();
+    renderResourceEditorList();
+  }, 4000);
+  renderResourceEditorList();
+}
+
 function renderResourceEditorList() {
+  const customIds = campusResources.filter((item) => !item.builtin).map((item) => item.id);
   $('resourceEditorList').innerHTML = campusResources.map((resource) => {
     const custom = !resource.builtin;
-    const actions = custom
-      ? `<button class="mini" type="button" data-resource-action="edit">编辑</button>`
-        + `<button class="mini" type="button" data-resource-action="up">↑</button>`
-        + `<button class="mini" type="button" data-resource-action="down">↓</button>`
-        + `<button class="mini" type="button" data-resource-action="delete">删除</button>`
-      : '<span class="resource-editor-route">内置</span>';
+    let actions;
+    if (!custom) {
+      actions = '<span class="resource-editor-route">内置</span>';
+    } else if (pendingDeleteId === resource.id) {
+      actions = '<button class="row-icon confirm-delete" type="button" data-resource-action="delete">确认删除</button>'
+        + resourceActionButton('cancel-delete', '取消删除');
+    } else {
+      const index = customIds.indexOf(resource.id);
+      actions = resourceActionButton('edit', '编辑')
+        + resourceActionButton('up', '上移', index <= 0)
+        + resourceActionButton('down', '下移', index === customIds.length - 1)
+        + resourceActionButton('delete', '删除');
+    }
     return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
       + `<div class="resource-editor-summary"><span class="resource-editor-name">${esc(resource.name)}</span>`
       + `<span class="resource-editor-route">${esc(routeLabel(resource))}</span></div>`
@@ -325,7 +379,6 @@ async function openResourceManager() {
 $('manageResources').addEventListener('click', openResourceManager);
 $('closeResourceDialog').addEventListener('click', () => resourceDialog.close());
 $('cancelResource').addEventListener('click', clearResourceEditor);
-$('newResource').addEventListener('click', clearResourceEditor);
 $('resourceUrl').addEventListener('blur', () => {
   if ($('resourceName').value.trim()) return;
   const suggestion = suggestedResourceName($('resourceUrl').value);
@@ -337,6 +390,26 @@ $('resourceEditorList').addEventListener('click', async (event) => {
   const resource = campusResources.find((item) => item.id === row.dataset.resourceId);
   const action = event.target.closest('[data-resource-action]')?.dataset.resourceAction;
   if (!resource || resource.builtin) return;
+  if (action === 'cancel-delete') {
+    disarmDeleteConfirm();
+    renderResourceEditorList();
+    return;
+  }
+  if (action === 'delete') {
+    if (pendingDeleteId !== resource.id) {
+      armDeleteConfirm(resource.id);
+      return;
+    }
+    disarmDeleteConfirm();
+    const result = await window.api.deleteResource(resource.id);
+    if (!result?.ok) { $('resourceFormError').textContent = result?.error || '删除失败'; return; }
+    campusResources = result.resources || campusResources.filter((item) => item.id !== resource.id);
+    renderResources();
+    renderResourceEditorList();
+    clearResourceEditor();
+    return;
+  }
+  disarmDeleteConfirm();
   if (action === 'edit') fillResourceEditor(resource);
   if (action === 'up' || action === 'down') {
     const localIds = campusResources.filter((item) => !item.builtin).map((item) => item.id);
@@ -351,20 +424,12 @@ $('resourceEditorList').addEventListener('click', async (event) => {
       renderResourceEditorList();
     }
   }
-  if (action === 'delete') {
-    if (!window.confirm(`删除“${resource.name}”？`)) return;
-    const result = await window.api.deleteResource(resource.id);
-    if (!result?.ok) { $('resourceFormError').textContent = result?.error || '删除失败'; return; }
-    campusResources = result.resources || campusResources.filter((item) => item.id !== resource.id);
-    renderResources();
-    renderResourceEditorList();
-    clearResourceEditor();
-  }
 });
 $('resourceForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   clearResourceMessages();
   if (!$('resourceName').value.trim()) $('resourceName').value = suggestedResourceName($('resourceUrl').value);
+  const editing = !!$('resourceId').value;
   try {
     const saved = await saveCampusResource({
       id: $('resourceId').value || undefined,
@@ -375,8 +440,9 @@ $('resourceForm').addEventListener('submit', async (event) => {
     });
     if (!saved.ok) { $('resourceFormError').textContent = saved.error; return; }
     clearResourceEditor();
-    $('resourceFormSaved').textContent = '已添加到常用网站';
-    setResourceSaved('已添加到常用网站');
+    const message = editing ? '已保存修改' : '已添加到常用网站';
+    $('resourceFormSaved').textContent = message;
+    setResourceSaved(message);
   } catch (error) {
     $('resourceFormError').textContent = error?.message || '保存失败';
   }
