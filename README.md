@@ -53,8 +53,17 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 Release 同时提供 `SHA256SUMS-macos.txt` 和 `SHA256SUMS-windows.txt`。
 建议下载后核对校验值。
 
-当前 macOS 构建如果没有 Developer ID 签名，请在 Finder 中右键应用并选择
-“打开”。Windows 未签名构建可能显示 SmartScreen 提示。
+### 安装
+
+当前 Release 的 macOS 构建可能没有 Apple Developer ID 签名（ad-hoc 签名）。
+从 Releases 下载 dmg 并把应用拖入“应用程序”后，如果 macOS 提示
+“无法验证开发者”或应用“已损坏”：
+
+- 在 Finder 中右键点击应用并选择“打开”，然后在对话框中再次确认；或
+- 打开“系统设置”→“隐私与安全性”，在相应提示处点击“仍要打开”。
+
+Windows 未签名构建可能显示 SmartScreen 提示：点击“更多信息”，然后选择
+“仍要运行”。
 
 ## 最简单的使用方法（推荐）
 
@@ -295,9 +304,18 @@ Download the latest build from
 Each release also contains `SHA256SUMS-macos.txt` and
 `SHA256SUMS-windows.txt`.
 
-If a macOS build has no Developer ID signature, right-click the application
-in Finder and choose **Open**. Unsigned Windows builds may show a SmartScreen
-warning.
+### Installation
+
+The macOS builds on Releases may be ad-hoc signed (no Apple Developer ID
+signature). After downloading the dmg and dragging the app into Applications,
+if macOS says the developer “cannot be verified” or the app “is damaged”:
+
+- Right-click the app in Finder and choose **Open**, then confirm in the
+  dialog; or
+- Open **System Settings → Privacy & Security** and click **Open Anyway**.
+
+Unsigned Windows builds may show a SmartScreen prompt: click **More info**,
+then **Run anyway**.
 
 ## Easiest setup (recommended)
 
