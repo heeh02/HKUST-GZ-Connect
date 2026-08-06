@@ -65,13 +65,28 @@ Release 同时提供 `SHA256SUMS-macos.txt` 和 `SHA256SUMS-windows.txt`。
 校园浏览器由应用自带，无需另装 Chrome。可在输入框粘贴任意校内网址；留空则
 打开学校主页。可以像普通浏览器一样新建、切换和关闭多个标签页，也支持
 `⌘/Ctrl+T`、`⌘/Ctrl+W` 和 `⌘/Ctrl+L`。校园浏览器内的域名解析和访问经过
-隧道，其他应用不受影响。
+校园隧道标签页；标记为“直连”的合作站点使用本机原有网络，其他应用不受影响。
 
 在 HTTPS 登录页提交账号密码后，校园浏览器会询问是否保存。只有用户明确点击
 “保存”才会写入；凭据按网站来源隔离，并由 macOS Keychain 或 Windows DPAPI
 加密后存放在本机。地址栏旁的密码按钮可填入或删除当前网站的凭据。凭据不会
 进入日志或诊断包；除用户原本登录的目标网站外，不会发送给项目维护者或
 GitHub。
+
+### 常用网站与合作站点
+
+首页的“常用网站”默认只显示一小组入口，点击“展开全部”可以查看其余网站。
+点击“管理”可以在本机新增、编辑、删除和上下移动自定义入口；这些入口只写入
+当前电脑的应用数据，不会同步到账号、服务器或 GitHub。
+
+每个入口都有独立的网络路径：
+
+- **校园隧道**：通过 HKUST(GZ) Connect 访问校内资源；
+- **直连**：使用当前电脑原有网络访问合作服务，不经过校园隧道。
+
+Outlook (`outlook.office.com`) 和 Canvas (`hkust-gz.instructure.com`) 默认
+标记为“直连”，因此不会因为校园隧道出口而打不开。校园浏览器地址栏也提供
+网络路径选择器；切换只影响当前标签页，其他标签页和系统网络不受影响。
 
 > 普通用户到这里就可以了。下面的 SOCKS、PAC、SSH 和 Clash 内容只面向需要
 > 访问服务器、数据库或把其他软件接入校园网的高级用户。
@@ -89,6 +104,8 @@ GitHub。
 - **网址没有打开怎么办？** 确认状态为“已连接”，把完整网址（包括
   `http://` 或 `https://`）粘贴到校园网站输入框；仍失败可在“通知”中查看
   脱敏日志并联系维护人员。
+- **合作网站打不开怎么办？** 在该标签页地址栏选择“直连”。Outlook 和 Canvas
+  等已知合作站点默认使用直连；自定义入口也可以在“管理”中选择直连。
 
 ## 高级用户接入
 
@@ -249,8 +266,9 @@ you need is a campus website, you do not need to understand proxies, install
 Clash, or change browser settings: sign in and click **Open Campus Website**.
 
 The built-in multi-tab Campus Browser is isolated from your everyday browser.
-Its requests use the campus tunnel while Safari, Edge, Chrome, and other
-applications keep their existing network. Advanced users can still use the
+Campus-tunnel tabs use the campus tunnel, while Direct tabs use the computer's
+existing network. Safari, Edge, Chrome, and other applications keep their
+existing network. Advanced users can still use the
 local SOCKS5 endpoint, PAC, SSH, or Clash/Mihomo.
 
 Version history:
@@ -302,6 +320,22 @@ fill or remove the current site's credential. Passwords never enter logs or
 diagnostic bundles and, beyond the site the user is signing into, are not sent
 to the maintainer or GitHub.
 
+### Shortcuts and partner services
+
+The **Common Websites** shelf is collapsed to a compact set by default. Use
+**Show all** to expand it, or **Manage** to add, edit, delete, and reorder local
+shortcuts. Custom shortcuts are stored only in this computer's application data;
+there is no account sync, server storage, or import/export.
+
+Each shortcut has an independent route:
+
+- **Campus tunnel** sends the tab through HKUST(GZ) Connect;
+- **Direct** uses the computer's existing network for partner services.
+
+Outlook (`outlook.office.com`) and Canvas (`hkust-gz.instructure.com`) default to
+**Direct**, avoiding failures caused by the campus tunnel's egress. The browser
+toolbar also exposes a route selector; changing it only reloads the current tab.
+
 > Ordinary Web users can stop here. SOCKS, PAC, SSH, and Clash below are
 > advanced integrations for servers, databases, and other applications.
 
@@ -317,6 +351,9 @@ to the maintainer or GitHub.
 - **What if a site does not open?** Confirm the connection is active and paste
   the complete `http://` or `https://` URL. If it still fails, use the
   redacted log under Notifications when contacting support.
+- **What if a partner site does not open?** Choose **Direct** in that tab's
+  route selector. Known Outlook and Canvas shortcuts already use Direct, and
+  custom shortcuts can be configured the same way.
 
 ## Advanced integrations
 
