@@ -257,3 +257,80 @@ test('campus browser uses route-specific persistent sessions and never the syste
   assert.ok(calls.some((call) =>
     call[0] === 'campus' && call[1] === 'proxy' && call[2].proxyRules === 'socks5://127.0.0.1:6180'));
 });
+
+test('a provisional load failure keeps the failed URL and shows an error page', async () => {
+  function makeSession(name) {
+    return { name, setProxy: async () => {}, closeAllConnections: async () => {} };
+  }
+  const sessions = new Map([
+    ['persist:hkustgz-campus-browser', makeSession('campus')],
+    [DIRECT_PARTITION, makeSession('direct')],
+  ]);
+  class FakeWebContents extends EventEmitter {
+    setWindowOpenHandler(handler) { this.popupHandler = handler; }
+    executeJavaScript() { return Promise.resolve(); }
+    getTitle() { return 'Test'; }
+    getURL() { return this.url || ''; }
+    isDestroyed() { return false; }
+    canGoBack() { return false; }
+    canGoForward() { return false; }
+    reload() {}
+    close() {}
+    async loadURL(url) { this.url = url; }
+  }
+  class FakeWebContentsView {
+    constructor(options) {
+      this.options = options;
+      this.webContents = new FakeWebContents();
+    }
+    setBounds() {}
+    setVisible() {}
+  }
+  class FakeBrowserWindow extends EventEmitter {
+    constructor() {
+      super();
+      this.webContents = new FakeWebContents();
+      this.contentView = { addChildView: () => {}, removeChildView: () => {} };
+      this.destroyed = false;
+    }
+    isDestroyed() { return this.destroyed; }
+    isMinimized() { return false; }
+    getContentSize() { return [1200, 820]; }
+    show() {}
+    focus() {}
+    async loadFile() {}
+    close() { this.destroyed = true; }
+  }
+
+  const browser = new CampusBrowser({
+    BrowserWindow: FakeBrowserWindow,
+    WebContentsView: FakeWebContentsView,
+    session: { fromPartition: (partition) => sessions.get(partition) },
+    parentWindow: () => null,
+    toolbarFile: '/app/campus-browser.html',
+    campusPreload: '/app/campus-preload.js',
+  });
+  await browser.open('www.google.com', 1080, ROUTE_DIRECT);
+  const tab = browser.activeTab();
+  assert.equal(tab.view.webContents.getURL(), 'https://www.google.com/');
+
+  tab.view.webContents.emit(
+    'did-fail-provisional-load',
+    null,
+    -7,
+    'ERR_TIMED_OUT',
+    'https://www.google.com/',
+    true,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(tab.failedUrl, 'https://www.google.com/');
+  assert.equal(tab.loading, false);
+  assert.ok(tab.view.webContents.getURL().startsWith('data:text/html'),
+    'the failed tab renders a local error page instead of staying blank');
+
+  assert.equal(await browser.setTabRoute(tab.id, ROUTE_CAMPUS), true);
+  assert.equal(tab.view.webContents.getURL(), 'https://www.google.com/',
+    'switching the route retries the failed site instead of the school home');
+  assert.notEqual(tab.view.webContents.getURL(), DEFAULT_CAMPUS_HOME);
+});
