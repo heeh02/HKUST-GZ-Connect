@@ -159,21 +159,21 @@ impl SocksServer {
                 // the resource that triggered it.
                 eprintln!("SOCKS5 connect {remote}");
                 match self.netstack.connect_tcp(remote).await {
-                Ok(mut upstream) => {
-                    send_reply(&mut client, 0, None).await?;
-                    match tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
-                        // Either side hanging up ends a proxied session normally.
-                        Ok(_) => Ok(()),
-                        Err(error) if peer_departed(&error) => Ok(()),
-                        Err(_) => Err(Error("SOCKS5 stream forwarding failed".into())),
+                    Ok(mut upstream) => {
+                        send_reply(&mut client, 0, None).await?;
+                        match tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
+                            // Either side hanging up ends a proxied session normally.
+                            Ok(_) => Ok(()),
+                            Err(error) if peer_departed(&error) => Ok(()),
+                            Err(_) => Err(Error("SOCKS5 stream forwarding failed".into())),
+                        }
                     }
-                }
-                Err(error) => {
-                    let _ = send_reply(&mut client, 5, None).await;
-                    // Name the target so unreachable-resource failures in
-                    // engine.log point at the exact host:port the VPN refused.
-                    Err(Error(format!("{error} (target {remote})")))
-                }
+                    Err(error) => {
+                        let _ = send_reply(&mut client, 5, None).await;
+                        // Name the target so unreachable-resource failures in
+                        // engine.log point at the exact host:port the VPN refused.
+                        Err(Error(format!("{error} (target {remote})")))
+                    }
                 }
             }
             SocksRequest::UdpAssociate => {
