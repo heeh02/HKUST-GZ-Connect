@@ -1,5 +1,20 @@
 'use strict';
 
+// The main process passes the resolved UI locale as ?lang= on loadFile, and
+// can switch it live later through campusBrowserUI.setLocale.
+let locale = 'zh';
+let t = window.I18N.createT(locale);
+
+function applyLang(lang) {
+  locale = window.I18N.resolveLocale(lang);
+  t = window.I18N.createT(locale);
+  document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+  window.I18N.applyStatic(t, document);
+  document.title = t('browser.title');
+}
+
+applyLang(new URLSearchParams(location.search).get('lang'));
+
 if (/Macintosh|Mac OS X/.test(navigator.userAgent)) {
   document.documentElement.classList.add('macos');
 } else if (/Windows/.test(navigator.userAgent)) {
@@ -14,6 +29,8 @@ const state = document.getElementById('state');
 const tabs = document.getElementById('tabs');
 const routeSelector = document.getElementById('routeSelector');
 const security = document.getElementById('security');
+const findBar = document.getElementById('findBar');
+const findInput = document.getElementById('findInput');
 
 function command(name, value = '') {
   const values = new URLSearchParams({
@@ -38,6 +55,20 @@ document.getElementById('addressForm').addEventListener('submit', (event) => {
 });
 routeSelector.addEventListener('change', () => command('set-route', routeSelector.value));
 
+findInput.addEventListener('input', () => command('find', findInput.value));
+findInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    command(event.shiftKey ? 'find-prev' : 'find-next');
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    command('find-close');
+  }
+});
+document.getElementById('findPrev').addEventListener('click', () => command('find-prev'));
+document.getElementById('findNext').addEventListener('click', () => command('find-next'));
+document.getElementById('findClose').addEventListener('click', () => command('find-close'));
+
 function renderTabs(items, activeTabId) {
   const previousScroll = tabs.scrollLeft;
   const fragment = document.createDocumentFragment();
@@ -48,7 +79,7 @@ function renderTabs(items, activeTabId) {
     tab.dataset.tabId = String(item.id);
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', String(item.id === activeTabId));
-    tab.title = item.title || '新标签页';
+    tab.title = item.title || t('browser.newTabFallback');
 
     if (item.loading) {
       const loading = document.createElement('span');
@@ -59,14 +90,14 @@ function renderTabs(items, activeTabId) {
 
     const title = document.createElement('span');
     title.className = 'tab-title';
-    title.textContent = item.title || '新标签页';
+    title.textContent = item.title || t('browser.newTabFallback');
     tab.appendChild(title);
 
     const close = document.createElement('span');
     close.className = 'tab-close';
     close.dataset.closeTabId = String(item.id);
-    close.title = '关闭标签页';
-    close.setAttribute('aria-label', '关闭标签页');
+    close.title = t('browser.closeTab');
+    close.setAttribute('aria-label', t('browser.closeTab'));
     close.textContent = '×';
     tab.appendChild(close);
     fragment.appendChild(tab);
@@ -87,21 +118,31 @@ tabs.addEventListener('click', (event) => {
 });
 
 window.campusBrowserUI = {
+  setLocale(lang) {
+    applyLang(lang);
+  },
   setState(next) {
     renderTabs(next.tabs, next.activeTabId);
     if (document.activeElement !== address) address.value = next.url || '';
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
     routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
-    security.textContent = next.route === 'direct' ? '直' : '校';
+    security.textContent = next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
     security.classList.toggle('direct', next.route === 'direct');
-    security.title = next.route === 'direct' ? '此标签直接连接互联网' : '此标签通过 HKUST(GZ) Connect';
-    state.textContent = next.loading ? '正在加载…' : (next.routeLabel || '校园隧道');
+    security.title = next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
+    state.textContent = next.loading
+      ? (next.slow ? t('browser.loadingSlow') : t('browser.loading'))
+      : (next.routeLabel || t('browser.routeCampus'));
     state.classList.toggle('loading', !!next.loading);
-    document.title = next.title ? `${next.title} - HKUST(GZ)` : 'HKUST(GZ) 校园浏览器';
+    findBar.hidden = !next.findOpen;
+    document.title = next.title ? `${next.title} - HKUST(GZ)` : t('browser.title');
   },
   focusAddress() {
     address.focus();
     address.select();
+  },
+  focusFind() {
+    findInput.focus();
+    findInput.select();
   },
 };

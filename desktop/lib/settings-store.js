@@ -14,6 +14,8 @@ const DEFAULTS = Object.freeze({
   startAtLogin: false,
   autoConnect: true,
   closeAction: 'ask',
+  language: 'auto',
+  updateCheckedAt: 0,
   routeDomains: DEFAULT_ROUTE_DOMAINS,
   customResources: [],
 });
@@ -37,6 +39,12 @@ function normalizeSettings(saved = {}) {
     closeAction: ['ask', 'minimize', 'quit'].includes(saved.closeAction)
       ? saved.closeAction
       : DEFAULTS.closeAction,
+    language: ['auto', 'zh', 'en'].includes(saved.language)
+      ? saved.language
+      : DEFAULTS.language,
+    updateCheckedAt: Number.isFinite(Number(saved.updateCheckedAt)) && Number(saved.updateCheckedAt) > 0
+      ? Number(saved.updateCheckedAt)
+      : DEFAULTS.updateCheckedAt,
     routeDomains: normalizeRouteDomains(saved.routeDomains),
     customResources: normalizeCustomResources(saved.customResources),
   };

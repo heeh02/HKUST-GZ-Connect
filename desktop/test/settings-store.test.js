@@ -18,6 +18,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       startAtLogin: true,
       autoConnect: false,
       closeAction: 'minimize',
+      language: 'en',
       server: 'untrusted.example',
       customDns: '1.2.3.4',
     }),
@@ -29,10 +30,19 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       startAtLogin: true,
       autoConnect: false,
       closeAction: 'minimize',
+      language: 'en',
+      updateCheckedAt: 0,
       routeDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
       customResources: [],
     },
   );
+});
+
+test('the language override is whitelisted to auto/zh/en', () => {
+  assert.equal(normalizeSettings({}).language, 'auto');
+  assert.equal(normalizeSettings({ language: 'zh' }).language, 'zh');
+  assert.equal(normalizeSettings({ language: 'en' }).language, 'en');
+  assert.equal(normalizeSettings({ language: 'fr' }).language, 'auto');
 });
 
 test('invalid ports and retry counts use reviewed defaults', () => {
@@ -82,4 +92,15 @@ test('credential storage rejects Linux plaintext backend', () => {
   };
   assert.equal(protectedStorageAvailable(plaintext, 'linux'), false);
   assert.equal(protectedStorageAvailable(plaintext, 'darwin'), true);
+});
+
+test('update check throttle timestamp survives a save/load round trip', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-settings-throttle-'));
+  const file = path.join(directory, 'settings.json');
+  const saved = saveSettings(file, { updateCheckedAt: 1786100000000 });
+  assert.equal(saved.updateCheckedAt, 1786100000000);
+  assert.equal(loadSettings(file).updateCheckedAt, 1786100000000);
+  assert.equal(normalizeSettings({}).updateCheckedAt, 0);
+  assert.equal(normalizeSettings({ updateCheckedAt: 'not-a-number' }).updateCheckedAt, 0);
+  assert.equal(normalizeSettings({ updateCheckedAt: -5 }).updateCheckedAt, 0);
 });

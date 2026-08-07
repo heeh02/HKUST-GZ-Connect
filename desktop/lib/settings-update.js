@@ -51,6 +51,12 @@ function applySettingsPatch(previous, payload) {
     }
     next.closeAction = source.closeAction;
   }
+  if (source.language != null) {
+    if (!['auto', 'zh', 'en'].includes(source.language)) {
+      throw new Error('语言设置无效');
+    }
+    next.language = source.language;
+  }
   for (const key of ['autoReconnect', 'startAtLogin', 'autoConnect']) {
     if (source[key] != null) {
       if (typeof source[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);

@@ -25,6 +25,7 @@ const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
 const { planReconnect } = require('./lib/reconnect-policy');
 const { stopPhase } = require('./lib/stop-policy');
 const { loadTrayImage } = require('./lib/tray-icon');
+const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
 const { probeSocksConnect } = require('./lib/socks-health');
 const {
   PROBE_TIMEOUT_MS, TELEMETRY_TICK_MS, shouldProbe, shouldRecover,
@@ -34,6 +35,7 @@ const {
   MAX_CERTIFICATE_PINS, loadCertificateTrust, saveCertificateTrust,
 } = require('./lib/campus-certificate-trust');
 const { CONTROL_WINDOW, clampWindowSize } = require('./lib/window-layout');
+const { createT, effectiveLocale } = require('./lib/i18n');
 
 // ---------- profile override & single instance ----------
 // Automated package checks need to isolate every app-owned file, not merely
@@ -87,10 +89,22 @@ let tunnelRecoveryInFlight = false;
 let probeInFlight = false;
 let lastTele = { connCount: 0, apps: [], latencyMs: null };
 let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
+// Last known "newer release exists" result. Failures never land here, so the
+// renderer can render it without distinguishing network errors from silence.
+let updateInfo = null;
+// UI locale follows the OS; Chinese stays the fallback until whenReady reads
+// the real locale, so early failures still render a coherent language.
+let locale = 'zh';
+let t = createT(locale);
 
 // ---------- settings & credentials ----------
 function loadSettings() {
   return readSettings(SETTINGS);
+}
+// The saved language override ('zh'/'en') wins over the OS locale; 'auto'
+// follows the system, and Chinese remains the fallback when both are silent.
+function currentLocale() {
+  return effectiveLocale(loadSettings().language, app.getLocale());
 }
 function saveSettings(settings) { return writeSettings(SETTINGS, settings); }
 function savePassword(pw) {
@@ -141,7 +155,13 @@ function engineConfigPath() {
 
 function emit() {
   state.pacUrl = pacUrl();
-  if (win && !win.isDestroyed()) win.webContents.send('status', { ...state, connectedAt });
+  // locale rides along so a language change reaches the renderer without a
+  // separate channel; update rides along so an automatic check that finds a
+  // new release surfaces without waiting for a full refresh. get-state stays
+  // the source of truth on full refreshes.
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('status', { ...state, connectedAt, locale, update: updateInfo });
+  }
   updateTray();
 }
 
@@ -179,7 +199,7 @@ async function connectOnce(isRetry) {
   if (!isRetry) { attempts = 0; userDisconnected = false; }
   const s = loadSettings();
   const pw = loadPassword();
-  if (!s.username || !pw) { state.connecting = false; state.lastError = '请先填写账号和密码'; emit(); return; }
+  if (!s.username || !pw) { state.connecting = false; state.lastError = t('error.needCredentials'); emit(); return; }
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
   gatewayIp = GATEWAY_HOST;
@@ -191,9 +211,9 @@ async function connectOnce(isRetry) {
     appendLog(LOG, `\n--- connection attempt ${attempts + 1} ---\n`);
   } catch {}
   const bin = enginePath();
-  if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
+  if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = t('error.engineMissing', { path: bin }); emit(); return; }
   const engineConfig = engineConfigPath();
-  if (!fs.existsSync(engineConfig)) { state.connecting = false; state.lastError = '引擎配置缺失:' + engineConfig; emit(); return; }
+  if (!fs.existsSync(engineConfig)) { state.connecting = false; state.lastError = t('error.engineConfigMissing', { path: engineConfig }); emit(); return; }
 
   killStrayEngines(bin); // gateway = one session per account; clear this app's orphan only
   engine = spawn(bin, [
@@ -209,21 +229,21 @@ async function connectOnce(isRetry) {
   engine.stdin.end(`${s.username}\n${pw}\n`);
   let diagnosticTail = '';
   const onData = (d) => {
-    const t = d.toString();
-    try { appendLog(LOG, t); } catch {}
-    diagnosticTail = (diagnosticTail + t).slice(-512);
+    const chunk = d.toString();
+    try { appendLog(LOG, chunk); } catch {}
+    diagnosticTail = (diagnosticTail + chunk).slice(-512);
     if (/SOCKS5 server listening/.test(diagnosticTail)) {
       state.connecting = false; state.connected = true;
       state.lastError = null;
       connectedAt = Date.now(); startTelemetry(); emit();
     }
-    if (/Client IP assigned/.test(diagnosticTail)) { state.clientIp = '已分配'; emit(); }
-    const classifiedError = classifyEngineOutput(diagnosticTail, s.port);
+    if (/Client IP assigned/.test(diagnosticTail)) { state.clientIp = t('status.ipAssigned'); emit(); }
+    const classifiedError = classifyEngineOutput(diagnosticTail, s.port, t);
     if (classifiedError) state.lastError = classifiedError;
   };
   engine.stdout.on('data', onData);
   engine.stderr.on('data', onData);
-  engine.on('error', (err) => { state.connecting = false; state.lastError = '无法启动引擎:' + err.message; emit(); });
+  engine.on('error', (err) => { state.connecting = false; state.lastError = t('error.engineStart', { message: err.message }); emit(); });
   engine.on('exit', (code) => {
     const wasConnected = state.connected;
     const uptime = connectedAt ? (Date.now() - connectedAt) : 0;
@@ -251,9 +271,9 @@ async function connectOnce(isRetry) {
       attempts = retry.attempt;
       state.connecting = true;
       state.lastError = wasConnected
-        ? '连接中断,正在自动重连…'
+        ? t('error.reconnecting')
         : (failureKind === 'gateway-transient'
-          ? '网关暂未分配校园网地址，正在清理会话并自动重试…'
+          ? t('error.gatewayRetrying')
           : null);
       emit();
       setTimeout(() => connect(true), retry.delayMs);
@@ -261,11 +281,11 @@ async function connectOnce(isRetry) {
     }
     state.connecting = false;
     if (failureKind === 'gateway-transient') {
-      state.lastError = '校园网关暂时拒绝数据通道，已停止重试；请等待一分钟后再连接';
+      state.lastError = t('error.gatewayRejected');
     } else if (!state.lastError) {
       state.lastError = wasConnected
-        ? '连接已断开,自动重连多次失败,请手动重连或查看日志'
-        : (code ? '连接失败,请重试或查看日志' : null);
+        ? t('error.reconnectFailed')
+        : (code ? t('error.connectFailed') : null);
     }
     emit();
   });
@@ -316,7 +336,7 @@ async function reconnect() {
     disconnect();
     if (!await waitForConnectionIdle()) {
       state.connecting = false;
-      state.lastError = '引擎未能停止，请退出程序后重试';
+      state.lastError = t('error.engineStuck');
       emit();
       return { ok: false };
     }
@@ -475,7 +495,7 @@ async function checkTunnelHealth() {
   })) return;
 
   tunnelRecoveryInFlight = true;
-  state.lastError = '校园隧道无响应，正在自动恢复…';
+  state.lastError = t('error.tunnelRecovering');
   emit();
   try {
     await reconnect();
@@ -516,6 +536,8 @@ function getCampusBrowser() {
       parentWindow: () => win,
       toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
       campusPreload: path.join(__dirname, 'campus-preload.js'),
+      locale,
+      t,
       onError: (message) => {
         state.lastError = message;
         emit();
@@ -528,7 +550,7 @@ function getCampusBrowser() {
 async function connectAndOpenCampusBrowser(rawUrl) {
   let request;
   try {
-    request = normalizeOpenRequest(rawUrl);
+    request = normalizeOpenRequest(rawUrl, t);
   } catch (error) {
     state.lastError = error.message;
     emit();
@@ -538,7 +560,7 @@ async function connectAndOpenCampusBrowser(rawUrl) {
   if (requiresCampusTunnel(request.route) && !state.connected) {
     await connect();
     if (!await waitForConnected()) {
-      const error = state.lastError || '连接校园网络超时，请重试或查看日志';
+      const error = state.lastError || t('error.connectTimeout');
       state.lastError = error;
       emit();
       return { ok: false, error };
@@ -549,11 +571,38 @@ async function connectAndOpenCampusBrowser(rawUrl) {
     await getCampusBrowser().open(request.url, socksPort(), request.route);
     return { ok: true, url: request.url, route: request.route };
   } catch (error) {
-    const message = `校园浏览器启动失败：${error.message}`;
+    const message = t('error.browserStart', { message: error.message });
     state.lastError = message;
     emit();
     return { ok: false, error: message };
   }
+}
+
+// ---------- update check (notify only; no auto-download) ----------
+// macOS builds are ad-hoc signed, so the app never downloads updates itself:
+// it only learns whether a newer GitHub release exists and points the user at
+// the release page. checkForUpdate resolves to null on any failure, so this
+// can never throw into the main loop.
+async function runUpdateCheck() {
+  const result = await checkForUpdate(app.getVersion());
+  if (result) {
+    // The API answered, so the 24h throttle window starts here. Failures leave
+    // the timestamp alone and are retried at the next launch.
+    const settings = loadSettings();
+    saveSettings({ ...settings, updateCheckedAt: Date.now() });
+  }
+  if (result && result.updateAvailable) {
+    updateInfo = result;
+    emit();
+  }
+  return result;
+}
+
+// Automatic checks run at most once every 24h (persisted across restarts and
+// long-running sessions); the settings-page button always forces a fresh check.
+function runAutomaticUpdateCheck() {
+  if (!shouldAutoCheck(loadSettings().updateCheckedAt)) return Promise.resolve(null);
+  return runUpdateCheck();
 }
 
 // ---------- IPC ----------
@@ -567,8 +616,10 @@ ipcMain.handle('get-state', () => {
     hasPassword: passwordPresent,
     pacUrl: pacUrl(),
     loggedIn: passwordPresent && !!settings.username,
+    locale,
     platform: process.platform,
     version: app.getVersion(),
+    update: updateInfo,
     campusResources: campusResources(settings),
   };
 });
@@ -608,16 +659,26 @@ ipcMain.handle('save', async (_e, p) => {
     return { ok: false, error: error.message, settings: previous };
   }
   next = saveSettings(next);
+  // A language change applies immediately: recompute the effective locale,
+  // re-render the tray, hand the campus browser the new strings, and let
+  // emit() push the new locale to the control panel.
+  if (next.language !== previous.language) {
+    locale = effectiveLocale(next.language, app.getLocale());
+    t = createT(locale);
+    installApplicationMenu();
+    if (campusBrowser) campusBrowser.setLocale(locale, t);
+    emit();
+  }
   // The PAC file only serves external applications. A write failure must not
   // discard the settings that were already stored, nor the password below it.
   let pacError = null;
   try {
     refreshPacFile(next);
   } catch (error) {
-    pacError = `设置已保存，但 PAC 文件写入失败：${error.message}`;
+    pacError = t('error.pacWriteAfterSave', { message: error.message });
   }
   if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
-    return { ok: false, error: '系统安全存储不可用，密码未保存' };
+    return { ok: false, error: t('error.passwordStoreUnavailable') };
   }
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
   let reconnected = false;
@@ -664,9 +725,20 @@ ipcMain.handle('logout', () => {
 ipcMain.handle('get-logs', () => {
   return readLogTail(LOG);
 });
-ipcMain.handle('open-log', () => shell.openPath(LOG));
+ipcMain.handle('open-log', () => { shell.openPath(LOG).catch(() => {}); });
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
 ipcMain.handle('open-campus-browser', (_event, url) => connectAndOpenCampusBrowser(url));
+// Only an explicit button press forces a network check; entering the settings
+// page goes through the same 24h throttle as the timer.
+ipcMain.handle('check-update', (_event, force) => (
+  force ? runUpdateCheck() : runAutomaticUpdateCheck()
+));
+ipcMain.handle('open-external', (_event, url) => {
+  // The renderer may only send users to this project's GitHub releases pages.
+  if (!isAllowedReleaseUrl(url)) return { ok: false };
+  shell.openExternal(url).catch(() => {});
+  return { ok: true };
+});
 ipcMain.handle('resize', (_e, h) => {
   if (win && !win.isDestroyed()) {
     const [w] = win.getContentSize();
@@ -686,13 +758,22 @@ function showWindow() {
 
 function updateTray() {
   if (!tray || tray.isDestroyed()) return;
-  const status = state.connecting ? '连接中' : state.connected ? '已连接' : '未连接';
+  const status = state.connecting
+    ? t('status.connecting')
+    : state.connected ? t('status.connected') : t('status.disconnected');
   tray.setToolTip(`HKUST(GZ) Connect - ${status}`);
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示主窗口', click: showWindow },
-    { label: `状态：${status}`, enabled: false },
+    { label: t('tray.showWindow'), click: showWindow },
+    { label: t('tray.status', { status }), enabled: false },
     { type: 'separator' },
-    { label: '退出程序', click: requestQuit },
+    {
+      label: state.connected ? t('tray.disconnect') : t('tray.connect'),
+      enabled: !state.connecting,
+      click: () => { if (state.connected) disconnect(); else connect(); },
+    },
+    { label: t('tray.openCampusBrowser'), click: () => { connectAndOpenCampusBrowser(); } },
+    { type: 'separator' },
+    { label: t('tray.quit'), click: requestQuit },
   ]));
 }
 
@@ -744,14 +825,14 @@ async function handleWindowClose(event) {
   try {
     const result = await dialog.showMessageBox(win, {
       type: 'question',
-      title: '关闭 HKUST(GZ) Connect',
-      message: '关闭窗口时要执行什么操作？',
-      detail: '最小化到托盘会保持校园网络连接。',
-      buttons: ['最小化到托盘', '退出程序', '取消'],
+      title: t('close.title'),
+      message: t('close.message'),
+      detail: t('close.detail'),
+      buttons: [t('close.minimize'), t('close.quit'), t('close.cancel')],
       defaultId: 0,
       cancelId: 2,
       noLink: true,
-      checkboxLabel: '记住我的选择（可在设置中更改）',
+      checkboxLabel: t('close.remember'),
       checkboxChecked: false,
     });
 
@@ -807,32 +888,32 @@ function installApplicationMenu() {
     {
       label: 'HKUST(GZ) Connect',
       submenu: [
-        { role: 'about', label: '关于 HKUST(GZ) Connect' },
+        { role: 'about', label: t('menu.about') },
         { type: 'separator' },
-        { role: 'hide', label: '隐藏 HKUST(GZ) Connect' },
-        { role: 'hideOthers', label: '隐藏其他应用' },
-        { role: 'unhide', label: '全部显示' },
+        { role: 'hide', label: t('menu.hide') },
+        { role: 'hideOthers', label: t('menu.hideOthers') },
+        { role: 'unhide', label: t('menu.unhide') },
         { type: 'separator' },
-        { role: 'quit', label: '退出 HKUST(GZ) Connect' },
+        { role: 'quit', label: t('menu.quit') },
       ],
     },
     {
-      label: '编辑',
+      label: t('menu.edit'),
       submenu: [
-        { role: 'undo', label: '撤销' },
-        { role: 'redo', label: '重做' },
+        { role: 'undo', label: t('menu.undo') },
+        { role: 'redo', label: t('menu.redo') },
         { type: 'separator' },
-        { role: 'cut', label: '剪切' },
-        { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' },
-        { role: 'selectAll', label: '全选' },
+        { role: 'cut', label: t('menu.cut') },
+        { role: 'copy', label: t('menu.copy') },
+        { role: 'paste', label: t('menu.paste') },
+        { role: 'selectAll', label: t('menu.selectAll') },
       ],
     },
     {
-      label: '窗口',
+      label: t('menu.window'),
       submenu: [
-        { role: 'minimize', label: '最小化' },
-        { role: 'close', label: '关闭窗口' },
+        { role: 'minimize', label: t('menu.minimize') },
+        { role: 'close', label: t('menu.closeWindow') },
       ],
     },
   ]));
@@ -849,6 +930,8 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
     .catch(() => callback(false));
 });
 app.whenReady().then(() => {
+  locale = currentLocale();
+  t = createT(locale);
   installApplicationMenu();
   // A PAC write can fail on a read-only or full user-data directory. That must
   // not leave the user with no window and no tray, so it is reported through the
@@ -856,7 +939,7 @@ app.whenReady().then(() => {
   try {
     refreshPacFile();
   } catch (error) {
-    state.lastError = `无法写入 PAC 文件：${error.message}`;
+    state.lastError = t('error.pacWriteAtBoot', { message: error.message });
   }
   createTray();
   createWindow();
@@ -864,9 +947,20 @@ app.whenReady().then(() => {
   if (settings.autoConnect !== false && settings.username && hasStoredCredential()) {
     setTimeout(() => connect(), 500);
   }
+  // Dev checkouts and CI would only ever hit the rate-limited API for no
+  // benefit, so the automatic check is packaged-builds only. The settings
+  // page can always trigger a manual one. Automatic checks are throttled to
+  // once per 24h; the interval covers sessions that run for days.
+  if (app.isPackaged) {
+    setTimeout(() => { runAutomaticUpdateCheck().catch(() => {}); }, 5000);
+    const updateTimer = setInterval(() => {
+      runAutomaticUpdateCheck().catch(() => {});
+    }, AUTO_CHECK_INTERVAL_MS);
+    updateTimer.unref();
+  }
   app.on('activate', showWindow);
 }).catch((error) => {
-  dialog.showErrorBox('HKUST(GZ) Connect 启动失败', String(error && error.message ? error.message : error));
+  dialog.showErrorBox(t('error.startupTitle'), String(error && error.message ? error.message : error));
   app.exit(1);
 });
 app.on('window-all-closed', () => { /* Keep the tray process alive. */ });

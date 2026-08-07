@@ -13,25 +13,31 @@ const {
   certificateFingerprint,
   normalizeCertificateOrigin,
 } = require('./campus-certificate-trust');
+const { createT } = require('./i18n');
 const TOOLBAR_HEIGHT = 76;
+const FIND_BAR_HEIGHT = 34;
+const SLOW_LOADING_HINT_MS = 10000;
 const MAX_URL_LENGTH = 2048;
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
 
-function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME) {
+function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('zh')) {
   let value = String(input || '').trim() || fallback;
-  if (value.length > MAX_URL_LENGTH) throw new Error('网址过长');
+  if (value.length > MAX_URL_LENGTH) throw new Error(t('url.tooLong'));
   if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value}`;
 
   let parsed;
   try {
     parsed = new URL(value);
   } catch {
-    throw new Error('网址格式不正确');
+    throw new Error(t('url.invalid'));
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('校园浏览器只支持 HTTP 和 HTTPS 网址');
+    throw new Error(t('url.schemeUnsupported'));
   }
   if (!parsed.hostname || parsed.username || parsed.password) {
-    throw new Error('网址格式不正确');
+    throw new Error(t('url.invalid'));
   }
   return parsed.href;
 }
@@ -85,13 +91,21 @@ function safePopupUrl(value) {
   }
 }
 
-function certificateTime(value) {
+// key is '0' to reset, '=' or '+' to zoom in, '-' to zoom out. The product of
+// float steps drifts (1.7 + 0.1 === 1.7999…), so round back to one decimal.
+function nextZoomFactor(current, key) {
+  const base = Number.isFinite(current) ? current : 1;
+  const target = key === '0' ? 1 : key === '-' ? base - ZOOM_STEP : base + ZOOM_STEP;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(target * 10) / 10));
+}
+
+function certificateTime(value, locale = 'zh', t = createT('zh')) {
   const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return '未知';
+  if (!Number.isFinite(seconds) || seconds <= 0) return t('cert.unknown');
   try {
-    return new Date(seconds * 1000).toLocaleString('zh-CN', { hour12: false });
+    return new Date(seconds * 1000).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', { hour12: false });
   } catch {
-    return '未知';
+    return t('cert.unknown');
   }
 }
 
@@ -105,20 +119,20 @@ function escapeHtml(value) {
   }[character]));
 }
 
-function errorPage(failedUrl, description) {
-  const url = escapeHtml(failedUrl || '未知网址');
-  const reason = escapeHtml(description || '网络请求失败');
+function errorPage(failedUrl, description, t = createT('zh')) {
+  const url = escapeHtml(failedUrl || t('errorPage.unknownUrl'));
+  const reason = escapeHtml(description || t('errorPage.networkFailed'));
   const html = `<!doctype html><meta charset="utf-8">
     <meta name="color-scheme" content="light">
-    <title>校园网站无法打开</title>
+    <title>${escapeHtml(t('errorPage.title'))}</title>
     <style>
       body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}
       main{max-width:560px;margin:12vh auto;padding:36px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}
       h1{margin:0 0 14px;color:#0b2a5b;font-size:23px}p{line-height:1.7;color:#667085}
       code{display:block;margin-top:16px;padding:12px;background:#f4f7fb;border-radius:10px;word-break:break-all;color:#344054}
     </style>
-    <main><h1>这个校园网站暂时无法打开</h1>
-    <p>请确认 HKUST(GZ) Connect 仍为“已连接”，也可以检查网址后点击上方的重新加载。</p>
+    <main><h1>${escapeHtml(t('errorPage.heading'))}</h1>
+    <p>${escapeHtml(t('errorPage.body'))}</p>
     <code>${url}</code><p>${reason}</p></main>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
@@ -134,6 +148,8 @@ class CampusBrowser {
     parentWindow,
     toolbarFile,
     campusPreload,
+    locale,
+    t,
     onError,
   }) {
     this.BrowserWindow = BrowserWindow;
@@ -145,6 +161,8 @@ class CampusBrowser {
     this.parentWindow = parentWindow;
     this.toolbarFile = toolbarFile;
     this.campusPreload = campusPreload;
+    this.locale = locale === 'en' ? 'en' : 'zh';
+    this.t = typeof t === 'function' ? t : createT(this.locale);
     this.onError = onError;
     this.window = null;
     this.view = null;
@@ -156,10 +174,26 @@ class CampusBrowser {
     this.sessionKeys = new Map();
     this.campusSession = null;
     this.credentialPrompts = new Set();
+    this.downloadSessions = new Set();
+    this.findOpen = false;
+    this.lastFindQuery = '';
   }
 
   ownsWebContents(webContents) {
     return !!webContents && this.tabs.some((tab) => tab?.view?.webContents === webContents);
+  }
+
+  // Live language switch: future dialogs and toolbar states use the new
+  // strings immediately, and an open chrome window re-renders in place.
+  setLocale(nextLocale, nextT) {
+    this.locale = nextLocale === 'en' ? 'en' : 'zh';
+    this.t = typeof nextT === 'function' ? nextT : createT(this.locale);
+    if (!this.window || this.window.isDestroyed()) return;
+    this.window.setTitle(this.t('browser.windowTitle'));
+    this.window.webContents.executeJavaScript(
+      `window.campusBrowserUI&&window.campusBrowserUI.setLocale(${JSON.stringify(this.locale)})`,
+    ).catch(() => {});
+    this.updateToolbar();
   }
 
   async handleCertificateError({ url, error, certificate, callback }) {
@@ -181,22 +215,25 @@ class CampusBrowser {
         return false;
       }
       const detail = [
-        `网站：${origin}`,
-        `Chromium 错误：${String(error || '未知')}`,
-        `主题：${String(certificate?.subjectName || '未知')}`,
-        `颁发者：${String(certificate?.issuerName || '未知')}`,
-        `有效期：${certificateTime(certificate?.validStart)} 至 ${certificateTime(certificate?.validExpiry)}`,
-        `证书 SHA-256：${fingerprint}`,
+        this.t('cert.site', { origin }),
+        this.t('cert.chromiumError', { error: String(error || this.t('cert.unknown')) }),
+        this.t('cert.subject', { subject: String(certificate?.subjectName || this.t('cert.unknown')) }),
+        this.t('cert.issuer', { issuer: String(certificate?.issuerName || this.t('cert.unknown')) }),
+        this.t('cert.validity', {
+          start: certificateTime(certificate?.validStart, this.locale, this.t),
+          end: certificateTime(certificate?.validExpiry, this.locale, this.t),
+        }),
+        this.t('cert.fingerprint', { fingerprint }),
         '',
-        '只会为这个精确的网站来源保存指纹；相同域名的其他端口、子域名和其他网站不会继承此信任。',
+        this.t('cert.scope'),
       ].join('\n');
       const parent = this.window && !this.window.isDestroyed?.() ? this.window : undefined;
       const result = await this.dialog.showMessageBox(parent, {
         type: 'warning',
-        title: '需要确认网站证书',
-        message: `是否仅为 ${origin} 信任这张证书？`,
+        title: this.t('cert.title'),
+        message: this.t('cert.message', { origin }),
         detail,
-        buttons: ['信任此网站证书', '取消'],
+        buttons: [this.t('cert.trust'), this.t('common.cancel')],
         defaultId: 1,
         cancelId: 1,
         noLink: true,
@@ -214,9 +251,47 @@ class CampusBrowser {
     }
   }
 
+  // Electron would otherwise silently drop downloads because the campus
+  // sessions have no default download behavior wired to a dialog.
+  applyDownloadHandler(routeSession) {
+    if (typeof routeSession.on !== 'function' || this.downloadSessions.has(routeSession)) {
+      return;
+    }
+    this.downloadSessions.add(routeSession);
+    routeSession.on('will-download', (_event, item) => this.handleDownload(item));
+  }
+
+  async handleDownload(item) {
+    if (!this.dialog?.showSaveDialog) {
+      item.cancel();
+      return;
+    }
+    try {
+      const parent = this.window && !this.window.isDestroyed?.() ? this.window : undefined;
+      const result = await this.dialog.showSaveDialog(parent, {
+        defaultPath: item.getFilename(),
+      });
+      if (result.canceled || !result.filePath) {
+        item.cancel();
+        return;
+      }
+      item.setSavePath(result.filePath);
+      item.once('done', (_event, state) => {
+        if (state === 'interrupted' && this.onError) {
+          this.onError(this.t('download.interrupted', { filename: item.getFilename() }));
+        }
+      });
+    } catch {
+      // The item may already have finished while the dialog was open.
+      try { item.cancel(); } catch {}
+      if (this.onError) this.onError(this.t('download.noLocation'));
+    }
+  }
+
   async configure(port, route = ROUTE_CAMPUS) {
     const partition = partitionForRoute(route);
     const routeSession = applyCampusSessionPolicy(this.session.fromPartition(partition));
+    this.applyDownloadHandler(routeSession);
     const key = route === ROUTE_DIRECT ? route : `${route}:${port}`;
     if (this.sessionKeys.get(route) !== key) {
       await routeSession.setProxy(proxyConfigForRoute(route, port));
@@ -238,11 +313,12 @@ class CampusBrowser {
   layout() {
     if (!this.window || this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
+    const toolbarHeight = TOOLBAR_HEIGHT + (this.findOpen ? FIND_BAR_HEIGHT : 0);
     const bounds = {
       x: 0,
-      y: TOOLBAR_HEIGHT,
+      y: toolbarHeight,
       width: Math.max(1, width),
-      height: Math.max(1, height - TOOLBAR_HEIGHT),
+      height: Math.max(1, height - toolbarHeight),
     };
     for (const tab of this.tabs) tab.view.setBounds(bounds);
   }
@@ -258,19 +334,26 @@ class CampusBrowser {
   updateToolbar() {
     if (!this.window || this.window.isDestroyed()) return;
     const active = this.activeTab();
+    // A crashed or closed renderer (e.g. the page died while the slow-load
+    // timer was pending) must not take the main process down with it.
+    if (active && active.view.webContents.isDestroyed()) return;
     const activeTitle = active?.view.webContents.getTitle() || '';
     const state = {
       url: this.currentUrl(active),
       title: activeTitle,
       loading: !!active?.loading,
+      slow: !!active?.slow,
+      findOpen: this.findOpen,
       route: active?.route || ROUTE_CAMPUS,
-      routeLabel: active?.route === ROUTE_DIRECT ? '直连' : '校园隧道',
+      routeLabel: active?.route === ROUTE_DIRECT ? this.t('route.direct') : this.t('route.campus'),
       canGoBack: !!active && active.view.webContents.canGoBack(),
       canGoForward: !!active && active.view.webContents.canGoForward(),
       activeTabId: this.activeTabId,
       tabs: this.tabs.map((tab) => ({
         id: tab.id,
-        title: tab.view.webContents.getTitle() || '新标签页',
+        title: tab.view.webContents.isDestroyed()
+          ? this.t('tab.new')
+          : tab.view.webContents.getTitle() || this.t('tab.new'),
         loading: tab.loading,
         route: tab.route,
       })),
@@ -296,7 +379,7 @@ class CampusBrowser {
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
       this.setTabRoute(active.id, value).catch((error) => {
-        if (this.onError) this.onError(`切换网络路径失败：${error.message}`);
+        if (this.onError) this.onError(this.t('route.switchFailed', { message: error.message }));
       });
     }
     else if (command === 'manage-credential' && active) {
@@ -312,7 +395,57 @@ class CampusBrowser {
         : active.view.webContents.reload();
     } else if (command === 'navigate' && active) {
       this.navigate(value, active);
+    } else if (command === 'find-open') {
+      this.setFindBar(true);
+    } else if (command === 'find-close') {
+      this.setFindBar(false);
+    } else if (command === 'find' && active) {
+      this.lastFindQuery = value;
+      const contents = active.view.webContents;
+      if (contents.isDestroyed()) return;
+      if (value && typeof contents.findInPage === 'function') contents.findInPage(value);
+      if (!value && typeof contents.stopFindInPage === 'function') {
+        contents.stopFindInPage('clearSelection');
+      }
+    } else if ((command === 'find-next' || command === 'find-prev') &&
+               active && this.lastFindQuery &&
+               !active.view.webContents.isDestroyed() &&
+               typeof active.view.webContents.findInPage === 'function') {
+      active.view.webContents.findInPage(this.lastFindQuery, {
+        forward: command === 'find-next',
+        findNext: true,
+      });
     }
+  }
+
+  // The find bar is per-window: it stays open across tab switches, but matches
+  // are per-tab, so a switched-to tab has no active find until the next search.
+  setFindBar(open) {
+    if (!this.window || this.window.isDestroyed()) return;
+    this.findOpen = !!open;
+    this.layout();
+    this.updateToolbar();
+    if (open) {
+      this.window.webContents.executeJavaScript(
+        'window.campusBrowserUI&&window.campusBrowserUI.focusFind()',
+      ).catch(() => {});
+      return;
+    }
+    const active = this.activeTab();
+    if (active && !active.view.webContents.isDestroyed()) {
+      if (typeof active.view.webContents.stopFindInPage === 'function') {
+        active.view.webContents.stopFindInPage('clearSelection');
+      }
+      active.view.webContents.focus();
+    }
+  }
+
+  clearSlowTimer(tab) {
+    if (tab.slowTimer) {
+      clearTimeout(tab.slowTimer);
+      tab.slowTimer = null;
+    }
+    tab.slow = false;
   }
 
   attachPageEvents(tab) {
@@ -324,11 +457,19 @@ class CampusBrowser {
     contents.on('did-start-loading', () => {
       tab.loading = true;
       if (!tab.renderingError) tab.failedUrl = '';
+      this.clearSlowTimer(tab);
+      tab.slowTimer = setTimeout(() => {
+        tab.slowTimer = null;
+        tab.slow = true;
+        this.updateToolbar();
+      }, SLOW_LOADING_HINT_MS);
+      tab.slowTimer.unref?.();
       this.updateToolbar();
     });
     contents.on('did-stop-loading', () => {
       tab.loading = false;
       tab.renderingError = false;
+      this.clearSlowTimer(tab);
       this.updateToolbar();
     });
     for (const eventName of ['did-navigate', 'did-navigate-in-page', 'page-title-updated']) {
@@ -343,7 +484,8 @@ class CampusBrowser {
       tab.loading = false;
       tab.failedUrl = failedUrl;
       tab.renderingError = true;
-      contents.loadURL(errorPage(failedUrl, description)).catch(() => {});
+      this.clearSlowTimer(tab);
+      contents.loadURL(errorPage(failedUrl, description, this.t)).catch(() => {});
       this.updateToolbar();
     };
     contents.on('did-fail-load', handleLoadFailure);
@@ -370,6 +512,13 @@ class CampusBrowser {
       } else if (commandKey && key === 'r') {
         event.preventDefault();
         tab.failedUrl ? this.navigate(tab.failedUrl, tab) : contents.reload();
+      } else if (commandKey && key === 'f' && input.type === 'keyDown') {
+        event.preventDefault();
+        this.setFindBar(true);
+      } else if (commandKey && ['=', '+', '-', '0'].includes(key) &&
+                 input.type === 'keyDown') {
+        event.preventDefault();
+        contents.setZoomFactor(nextZoomFactor(contents.getZoomFactor(), key));
       } else if (input.alt && ['left', 'arrowleft'].includes(key) && contents.canGoBack()) {
         event.preventDefault();
         contents.goBack();
@@ -412,10 +561,10 @@ class CampusBrowser {
       if (!this.window || this.window.isDestroyed()) return;
       const result = await this.dialog.showMessageBox(this.window, {
         type: 'question',
-        title: '保存校园网站密码',
-        message: `要为 ${new URL(origin).hostname} 保存此登录信息吗？`,
-        detail: '保存副本只加密存放在这台电脑上，不会额外上传给维护者或 GitHub。',
-        buttons: ['保存', '暂不保存'],
+        title: this.t('cred.saveTitle'),
+        message: this.t('cred.saveMessage', { host: new URL(origin).hostname }),
+        detail: this.t('cred.saveDetail'),
+        buttons: [this.t('cred.save'), this.t('cred.later')],
         defaultId: 0,
         cancelId: 1,
         noLink: true,
@@ -424,7 +573,7 @@ class CampusBrowser {
         await this.credentialVault.save(origin, username, password);
       }
     } catch {
-      if (this.onError) this.onError('网站密码无法写入本机安全存储');
+      if (this.onError) this.onError(this.t('cred.writeFailed'));
     } finally {
       password = '';
       this.credentialPrompts.delete(origin);
@@ -435,7 +584,7 @@ class CampusBrowser {
     if (!this.credentialVault || !this.dialog) return;
     const origin = this.tabOrigin(tab);
     if (!origin) {
-      if (this.onError) this.onError('网站密码只适用于 HTTPS 页面');
+      if (this.onError) this.onError(this.t('cred.httpsOnly'));
       return;
     }
     try {
@@ -444,20 +593,20 @@ class CampusBrowser {
       if (!credential) {
         await this.dialog.showMessageBox(this.window, {
           type: 'info',
-          title: '网站密码',
-          message: `${new URL(origin).hostname} 尚未保存密码`,
-          detail: '在网站登录表单提交后，校园浏览器会询问是否保存在本机。',
-          buttons: ['知道了'],
+          title: this.t('cred.title'),
+          message: this.t('cred.noneMessage', { host: new URL(origin).hostname }),
+          detail: this.t('cred.noneDetail'),
+          buttons: [this.t('cred.ok')],
           noLink: true,
         });
         return;
       }
       const result = await this.dialog.showMessageBox(this.window, {
         type: 'question',
-        title: '网站密码',
-        message: `${new URL(origin).hostname} 已保存一个登录账号`,
-        detail: '可以填入当前登录页，或只删除这个网站保存在本机的凭据。',
-        buttons: ['填入登录页', '删除保存', '取消'],
+        title: this.t('cred.title'),
+        message: this.t('cred.hasMessage', { host: new URL(origin).hostname }),
+        detail: this.t('cred.hasDetail'),
+        buttons: [this.t('cred.fill'), this.t('cred.delete'), this.t('common.cancel')],
         defaultId: 0,
         cancelId: 2,
         noLink: true,
@@ -468,7 +617,7 @@ class CampusBrowser {
         await this.credentialVault.remove(origin);
       }
     } catch {
-      if (this.onError) this.onError('网站密码无法从本机安全存储读取');
+      if (this.onError) this.onError(this.t('cred.readFailed'));
     }
   }
 
@@ -476,7 +625,7 @@ class CampusBrowser {
     if (!this.window || this.window.isDestroyed()) return null;
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl);
+      url = normalizeCampusUrl(rawUrl, undefined, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return null;
@@ -500,6 +649,8 @@ class CampusBrowser {
       view,
       failedUrl: '',
       loading: false,
+      slow: false,
+      slowTimer: null,
       renderingError: false,
       route,
     };
@@ -517,6 +668,7 @@ class CampusBrowser {
     if (!tab || tab.route === route || !this.window || this.window.isDestroyed()) return false;
     const url = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
     await this.configure(this.configuredPort || 1080, route);
+    this.clearSlowTimer(tab);
     const oldView = tab.view;
     this.window.contentView.removeChildView(oldView);
     if (!oldView.webContents.isDestroyed()) oldView.webContents.close();
@@ -556,6 +708,7 @@ class CampusBrowser {
     const index = this.tabs.findIndex((tab) => tab.id === id);
     if (index === -1) return false;
     const [tab] = this.tabs.splice(index, 1);
+    this.clearSlowTimer(tab);
     this.window.contentView.removeChildView(tab.view);
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
 
@@ -578,7 +731,7 @@ class CampusBrowser {
       height: 740,
       minWidth: 660,
       minHeight: 460,
-      title: 'HKUST(GZ) 校园浏览器',
+      title: this.t('browser.windowTitle'),
       backgroundColor: '#f7f9fc',
       autoHideMenuBar: true,
       ...campusWindowChrome(process.platform),
@@ -592,26 +745,28 @@ class CampusBrowser {
         safeDialogs: true,
       },
     });
-    await this.window.loadFile(this.toolbarFile);
+    await this.window.loadFile(this.toolbarFile, { query: { lang: this.locale } });
     this.window.webContents.on('did-navigate-in-page', (_event, url) => {
       this.handleToolbarCommand(url);
     });
     this.window.on('resize', () => this.layout());
     this.window.on('closed', () => {
       for (const tab of this.tabs) {
+        this.clearSlowTimer(tab);
         if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
       }
       this.tabs = [];
       this.activeTabId = null;
       this.view = null;
       this.window = null;
+      this.findOpen = false;
     });
   }
 
   navigate(rawUrl, tab = this.activeTab()) {
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl);
+      url = normalizeCampusUrl(rawUrl, undefined, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return false;
@@ -627,7 +782,7 @@ class CampusBrowser {
   }
 
   async open(rawUrl, port, route = routeForUrl(rawUrl)) {
-    const url = normalizeCampusUrl(rawUrl);
+    const url = normalizeCampusUrl(rawUrl, undefined, this.t);
     const selectedRoute = [ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)
       ? route
       : routeForUrl(url);
@@ -657,11 +812,14 @@ module.exports = {
   CAMPUS_PARTITION,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
+  FIND_BAR_HEIGHT,
+  SLOW_LOADING_HINT_MS,
   TOOLBAR_HEIGHT,
   applyCampusSessionPolicy,
   campusProxyConfig,
   campusWindowChrome,
   errorPage,
+  nextZoomFactor,
   normalizeCampusUrl,
   safePopupUrl,
 };
