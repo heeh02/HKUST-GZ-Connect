@@ -29,6 +29,12 @@ test('invalid retry count fails instead of changing another setting', () => {
   );
 });
 
+test('the language override is validated like the close action', () => {
+  assert.equal(applySettingsPatch({}, { language: 'en' }).settings.language, 'en');
+  assert.equal(applySettingsPatch({ language: 'en' }, {}).settings.language, 'en');
+  assert.throws(() => applySettingsPatch({}, { language: 'fr' }), /语言/);
+});
+
 test('credentials with control characters cannot reframe the engine stdin protocol', () => {
   assert.equal(parseCredentialField('student.name', '账号'), 'student.name');
   assert.equal(parseCredentialField('pass word §', '密码'), 'pass word §');

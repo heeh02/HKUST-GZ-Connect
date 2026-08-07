@@ -3,9 +3,9 @@
 const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('./campus-route');
 const { normalizeCampusUrl } = require('./campus-browser');
 
-function normalizeOpenRequest(input) {
+function normalizeOpenRequest(input, t) {
   const source = input && typeof input === 'object' ? input : { url: input };
-  const url = normalizeCampusUrl(source.url);
+  const url = normalizeCampusUrl(source.url, undefined, t);
   const route = [ROUTE_CAMPUS, ROUTE_DIRECT].includes(source.route)
     ? source.route
     : routeForUrl(url);

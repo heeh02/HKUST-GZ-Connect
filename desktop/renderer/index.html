@@ -16,14 +16,14 @@
          so an onerror attribute would be blocked and only log a violation. -->
     <img class="logo" src="../assets/logo.svg" alt="HKUST(GZ)" />
     <h1 class="brand-title">HKUST<span class="paren">(GZ)</span> Connect</h1>
-    <p class="brand-sub">香港科技大学(广州) · 校园 VPN</p>
+    <p class="brand-sub" data-i18n="brand.sub">香港科技大学(广州) · 校园 VPN</p>
     <div class="lg-form">
-      <label class="lbl">账号</label>
-      <input id="lgUser" class="inp" type="text" name="username" autocomplete="username" spellcheck="false" placeholder="校园账号前缀(如 xxx000)" />
-      <label class="lbl">密码</label>
-      <input id="lgPass" class="inp" type="password" name="password" autocomplete="current-password" spellcheck="false" placeholder="校园密码" />
-      <button id="lgBtn" class="primary">登录并连接</button>
-      <p class="login-help">只访问校内网站无需安装 Clash，也不会修改系统 DNS。</p>
+      <label class="lbl" data-i18n="login.account">账号</label>
+      <input id="lgUser" class="inp" type="text" name="username" autocomplete="username" spellcheck="false" placeholder="校园账号前缀(如 xxx000)" data-i18n-attr="placeholder:login.accountPlaceholder" />
+      <label class="lbl" data-i18n="login.password">密码</label>
+      <input id="lgPass" class="inp" type="password" name="password" autocomplete="current-password" spellcheck="false" placeholder="校园密码" data-i18n-attr="placeholder:login.passwordPlaceholder" />
+      <button id="lgBtn" class="primary" data-i18n="login.submit">登录并连接</button>
+      <p class="login-help" data-i18n="login.help">只访问校内网站无需安装 Clash，也不会修改系统 DNS。</p>
       <p id="lgErr" class="err"></p>
     </div>
   </section>
@@ -32,23 +32,23 @@
   <div id="dash" class="dash" hidden>
     <aside class="sidebar">
       <div class="side-group">
-        <button class="nav active" data-page="connect" title="连接">
+        <button class="nav active" data-page="connect" title="连接" data-i18n-attr="title:nav.connect">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 11.5a4 4 0 0 1 6 0M11 13.6a1.6 1.6 0 0 1 2 0"/></svg>
-          <span class="nav-label">连接</span>
+          <span class="nav-label" data-i18n="nav.connect">连接</span>
         </button>
-        <button class="nav" data-page="tower" title="控制塔">
+        <button class="nav" data-page="tower" title="控制塔" data-i18n-attr="title:nav.tower">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="2.2"/><line x1="3" y1="8" x2="5.8" y2="8"/><line x1="10.2" y1="8" x2="21" y2="8"/><circle cx="16" cy="16" r="2.2"/><line x1="3" y1="16" x2="13.8" y2="16"/><line x1="18.2" y1="16" x2="21" y2="16"/></svg>
-          <span class="nav-label">控制塔</span>
+          <span class="nav-label" data-i18n="nav.tower">控制塔</span>
         </button>
       </div>
       <div class="side-group bottom">
-        <button class="nav" data-page="notif" title="通知 / 日志">
+        <button class="nav" data-page="notif" title="通知 / 日志" data-i18n-attr="title:nav.notifTitle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-          <span class="nav-label">通知</span>
+          <span class="nav-label" data-i18n="nav.notif">通知</span>
         </button>
-        <button class="nav" data-page="settings" title="设置">
+        <button class="nav" data-page="settings" title="设置" data-i18n-attr="title:nav.settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.3a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 2.8 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 8 2.6h.1A1.6 1.6 0 0 0 9 1a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 16 2.7a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.6 1H23a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
-          <span class="nav-label">设置</span>
+          <span class="nav-label" data-i18n="nav.settings">设置</span>
         </button>
       </div>
     </aside>
@@ -57,9 +57,9 @@
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
         <div class="hero-card" id="connTop">
-          <div class="conn-loc">香港科技大学(广州)</div>
+          <div class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
           <div class="conn-ip">IP <span id="connIp">—</span></div>
-          <button class="switch" id="power" aria-label="连接开关"><span class="knob"></span></button>
+          <button class="switch" id="power" aria-label="连接开关" data-i18n-attr="aria-label:connect.powerLabel"><span class="knob"></span></button>
           <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
           <p class="conn-err" id="connErr"></p>
         </div>
@@ -67,53 +67,53 @@
           <div class="quick-card">
             <div class="quick-head">
               <div>
-                <div class="quick-title">打开校园网站</div>
-                <div class="quick-sub">应用内多标签浏览器，无需 Clash，不影响其他软件上网</div>
+                <div class="quick-title" data-i18n="quick.title">打开校园网站</div>
+                <div class="quick-sub" data-i18n="quick.sub">应用内多标签浏览器，无需 Clash，不影响其他软件上网</div>
               </div>
-              <span class="quick-badge">推荐</span>
+              <span class="quick-badge" data-i18n="quick.badge">推荐</span>
             </div>
             <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"
-                   placeholder="可选：粘贴校内网址；留空打开学校主页" />
+                   placeholder="可选：粘贴校内网址；留空打开学校主页" data-i18n-attr="placeholder:quick.urlPlaceholder" />
             <div class="quick-actions">
               <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
-              <button id="quickAddCampus" class="quick-add-action" type="button">添加到常用并打开</button>
+              <button id="quickAddCampus" class="quick-add-action" type="button" data-i18n="quick.addOpen">添加到常用并打开</button>
             </div>
             <p id="quickErr" class="quick-error"></p>
             <p id="quickAddErr" class="quick-error"></p>
             <p id="resourceSaved" class="quick-saved" aria-live="polite"></p>
             <div class="resource-toolbar">
-              <span class="resource-toolbar-title">常用网站</span>
+              <span class="resource-toolbar-title" data-i18n="resources.title">常用网站</span>
               <span class="resource-toolbar-actions">
                 <button id="toggleResources" class="mini" type="button">展开全部</button>
-                <button id="manageResources" class="mini" type="button">管理</button>
+                <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
               </span>
             </div>
-            <div id="campusResources" class="resource-grid" aria-label="常用校园服务"></div>
+            <div id="campusResources" class="resource-grid" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
           </div>
           <div class="collapsible-panel" data-collapsible="stats" hidden>
             <div class="stat-grid" id="statGrid" hidden>
-              <div class="stat"><div class="k">时长</div><div class="v" id="stDur">0:00</div></div>
-              <div class="stat"><div class="k">网关延迟</div><div class="v" id="stPing">—</div></div>
-              <div class="stat"><div class="k">活动连接</div><div class="v" id="stConn">0</div></div>
-              <div class="stat"><div class="k">校内 IP</div><div class="v ip" id="stIp">—</div></div>
+              <div class="stat"><div class="k" data-i18n="stats.duration">时长</div><div class="v" id="stDur">0:00</div></div>
+              <div class="stat"><div class="k" data-i18n="stats.latency">网关延迟</div><div class="v" id="stPing">—</div></div>
+              <div class="stat"><div class="k" data-i18n="stats.connections">活动连接</div><div class="v" id="stConn">0</div></div>
+              <div class="stat"><div class="k" data-i18n="stats.campusIp">校内 IP</div><div class="v ip" id="stIp">—</div></div>
             </div>
             <div class="card apps-card" id="appsCard" hidden>
-              <div class="card-title">正在使用隧道的程序</div>
+              <div class="card-title" data-i18n="stats.appsTitle">正在使用隧道的程序</div>
               <div id="appList" class="app-list"></div>
             </div>
           </div>
           <div class="section-toggle-row">
-            <span class="section-toggle-label">连接详情</span>
+            <span class="section-toggle-label" data-i18n="section.details">连接详情</span>
             <button class="mini" type="button" data-toggle-section="stats">展开</button>
           </div>
           <div class="collapsible-panel" data-collapsible="gateway" hidden>
             <div class="loc-card">
-              <div class="loc-card-label">校园网关</div>
+              <div class="loc-card-label" data-i18n="gateway.label">校园网关</div>
               <div class="loc-card-main">
                 <span class="loc-flag">🏫</span>
                 <div class="loc-card-text">
                   <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
-                  <div class="loc-card-sub">广州 · HKUST(GZ) 校园网</div>
+                  <div class="loc-card-sub" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</div>
                 </div>
               </div>
             </div>
@@ -123,71 +123,85 @@
 
       <!-- CONTROL TOWER -->
       <section class="page" data-page="tower" hidden>
-        <h2 class="page-h">控制塔</h2>
+        <h2 class="page-h" data-i18n="tower.title">控制塔</h2>
 
         <div class="card">
-          <div class="card-title">连接与端口</div>
-          <div class="frow"><span class="fk">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65535" /></div>
-          <label class="sw"><span>自动重连</span><input type="checkbox" id="autoReconnect" /></label>
-          <div class="frow"><span class="fk">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
-          <label class="sw"><span>开机自启</span><input type="checkbox" id="startAtLogin" /></label>
-          <label class="sw"><span>启动后自动连接</span><input type="checkbox" id="autoConnect" /></label>
-          <p class="hint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
+          <div class="card-title" data-i18n="tower.connectionPort">连接与端口</div>
+          <div class="frow"><span class="fk" data-i18n="tower.socksPort">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65535" /></div>
+          <label class="sw"><span data-i18n="tower.autoReconnect">自动重连</span><input type="checkbox" id="autoReconnect" /></label>
+          <div class="frow"><span class="fk" data-i18n="tower.maxAttempts">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
+          <label class="sw"><span data-i18n="tower.startAtLogin">开机自启</span><input type="checkbox" id="startAtLogin" /></label>
+          <label class="sw"><span data-i18n="tower.autoConnect">启动后自动连接</span><input type="checkbox" id="autoConnect" /></label>
+          <p class="hint" data-i18n="tower.portHint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
         </div>
 
         <div class="card">
-          <div class="card-title">默认分流网站</div>
-          <textarea id="routeDomains" class="inp route-domains" rows="5" spellcheck="false" placeholder="每行一个域名，例如 hkust-gz.edu.cn"></textarea>
-          <p class="hint">此列表只用于外部应用的 PAC 分流。应用内校园浏览器会把自身流量隔离地送入隧道，不依赖该列表。</p>
+          <div class="card-title" data-i18n="tower.routeDomains">默认分流网站</div>
+          <textarea id="routeDomains" class="inp route-domains" rows="5" spellcheck="false" placeholder="每行一个域名，例如 hkust-gz.edu.cn" data-i18n-attr="placeholder:tower.routeDomainsPlaceholder"></textarea>
+          <p class="hint" data-i18n="tower.routeDomainsHint">此列表只用于外部应用的 PAC 分流。应用内校园浏览器会把自身流量隔离地送入隧道，不依赖该列表。</p>
         </div>
 
         <div class="card">
-          <div class="card-title">高级接入与工具</div>
-          <div class="frow"><span class="fk">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks">复制</button></div>
+          <div class="card-title" data-i18n="tower.advanced">高级接入与工具</div>
+          <div class="frow"><span class="fk" data-i18n="tower.socksProxy">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks" data-i18n="tower.copy">复制</button></div>
           <div class="tools">
-            <button class="mini" data-copy="pac">复制 PAC 地址</button>
-            <button class="mini" data-copy="ssh">复制 SSH 命令</button>
-            <button class="mini" id="openBrowser">打开应用内校园浏览器</button>
-            <button class="mini" id="openLog2">打开日志</button>
+            <button class="mini" data-copy="pac" data-i18n="tower.copyPac">复制 PAC 地址</button>
+            <button class="mini" data-copy="ssh" data-i18n="tower.copySsh">复制 SSH 命令</button>
+            <button class="mini" id="openBrowser" data-i18n="tower.openBrowser">打开应用内校园浏览器</button>
+            <button class="mini" id="openLog2" data-i18n="tower.openLog">打开日志</button>
           </div>
         </div>
 
         <div class="row">
-          <button id="towerSave" class="primary sm">保存</button>
-          <button id="towerReconnect" class="ghost sm">保存并重连</button>
+          <button id="towerSave" class="primary sm" data-i18n="tower.save">保存</button>
+          <button id="towerReconnect" class="ghost sm" data-i18n="tower.saveReconnect">保存并重连</button>
           <span id="towerSaved" class="saved-tip"></span>
         </div>
       </section>
 
       <!-- NOTIFICATIONS / LOGS -->
       <section class="page" data-page="notif" hidden>
-        <h2 class="page-h">通知 / 日志 <button id="logRefresh" class="mini">刷新</button></h2>
+        <h2 class="page-h"><span data-i18n="notif.title">通知 / 日志</span> <button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></h2>
         <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
       </section>
 
       <!-- SETTINGS -->
       <section class="page" data-page="settings" hidden>
-        <h2 class="page-h">设置</h2>
+        <h2 class="page-h" data-i18n="settings.title">设置</h2>
         <div class="card">
-          <div class="card-title">当前账号</div>
+          <div class="card-title" data-i18n="settings.account">当前账号</div>
           <div class="acct" id="acct">—</div>
-          <div class="card-title" style="margin-top:12px">网关</div>
+          <div class="card-title" style="margin-top:12px" data-i18n="settings.gateway">网关</div>
           <div class="acct">remote.hkust-gz.edu.cn</div>
-          <p class="hint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
+          <p class="hint" data-i18n="settings.gatewayHint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
         </div>
         <div class="card">
-          <div class="card-title">窗口行为</div>
           <div class="frow">
-            <label class="fk" for="closeAction">点击关闭按钮时</label>
-            <select id="closeAction" class="inp action-select">
-              <option value="ask">每次询问</option>
-              <option value="minimize">最小化到托盘</option>
-              <option value="quit">直接退出程序</option>
+            <label class="fk" for="language">语言 / Language</label>
+            <select id="language" class="inp action-select">
+              <option value="auto">跟随系统 / System</option>
+              <option value="zh">中文</option>
+              <option value="en">English</option>
             </select>
           </div>
         </div>
-        <button id="logoutBtn" class="danger">退出登录 / 切换账号</button>
-        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">—</span></div>
+        <div class="card">
+          <div class="card-title" data-i18n="settings.windowBehavior">窗口行为</div>
+          <div class="frow">
+            <label class="fk" for="closeAction" data-i18n="settings.closeAction">点击关闭按钮时</label>
+            <select id="closeAction" class="inp action-select">
+              <option value="ask" data-i18n="settings.closeAsk">每次询问</option>
+              <option value="minimize" data-i18n="settings.closeMinimize">最小化到托盘</option>
+              <option value="quit" data-i18n="settings.closeQuit">直接退出程序</option>
+            </select>
+          </div>
+        </div>
+        <button id="logoutBtn" class="danger" data-i18n="settings.logout">退出登录 / 切换账号</button>
+        <div class="foot">
+          <a id="openLogLink" href="#" data-i18n="settings.openFullLog">打开完整日志</a><span class="sep">·</span><span id="ver">—</span><span class="sep">·</span>
+          <button id="checkUpdateBtn" class="mini" type="button" data-i18n="settings.checkUpdate">检查更新</button>
+        </div>
+        <p id="updateHint" class="foot update-hint" hidden></p>
       </section>
     </main>
   </div>
@@ -196,21 +210,21 @@
     <form method="dialog" id="resourceForm" class="resource-form">
       <div class="dialog-head">
         <div>
-          <h3>管理常用网站</h3>
-          <p>快捷方式只保存在这台电脑上。</p>
+          <h3 data-i18n="dialog.title">管理常用网站</h3>
+          <p data-i18n="dialog.sub">快捷方式只保存在这台电脑上。</p>
         </div>
-        <button id="closeResourceDialog" class="icon-button" type="button" aria-label="关闭">×</button>
+        <button id="closeResourceDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
       </div>
       <div class="resource-dialog-body">
         <div id="resourceEditorList" class="resource-editor-list"></div>
         <div class="resource-editor-fields">
           <input id="resourceId" type="hidden" />
-          <label>名称<input id="resourceName" class="inp" maxlength="40" placeholder="留空时自动使用网址" /></label>
-          <label>网址<input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
-          <label>说明<input id="resourceDescription" class="inp" maxlength="80" /></label>
-          <label>网络路径<select id="resourceRoute" class="inp">
-            <option value="campus">校园隧道</option>
-            <option value="direct">直连</option>
+          <label><span data-i18n="dialog.name">名称</span><input id="resourceName" class="inp" maxlength="40" placeholder="留空时自动使用网址" data-i18n-attr="placeholder:dialog.namePlaceholder" /></label>
+          <label><span data-i18n="dialog.url">网址</span><input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
+          <label><span data-i18n="dialog.description">说明</span><input id="resourceDescription" class="inp" maxlength="80" /></label>
+          <label><span data-i18n="dialog.route">网络路径</span><select id="resourceRoute" class="inp">
+            <option value="campus" data-i18n="resources.routeCampus">校园隧道</option>
+            <option value="direct" data-i18n="resources.routeDirect">直连</option>
           </select></label>
         </div>
         <p id="resourceFormError" class="dialog-error"></p>
@@ -224,6 +238,7 @@
     </form>
   </dialog>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

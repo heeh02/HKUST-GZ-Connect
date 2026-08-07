@@ -13,7 +13,7 @@ body {
   font-family: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 .browser-chrome {
-  height: 76px; border-bottom: 1px solid var(--line); background: #fff;
+  background: #fff;
   -webkit-app-region: drag;
 }
 .tabs-row {
@@ -55,8 +55,8 @@ body {
 }
 .new-tab:hover { background: rgba(255,255,255,.72); }
 .toolbar {
-  height: 42px; display: flex; align-items: center; gap: 6px; padding: 5px 9px;
-  background: #fff;
+  height: 41px; display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+  background: #fff; border-bottom: 1px solid var(--line);
 }
 button, input, select, form { -webkit-app-region: no-drag; }
 .icon {
@@ -90,15 +90,27 @@ input {
   flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
   padding: 0 8px; color: #27354b; font-size: 12px; user-select: text;
 }
-.route-selector { height: 29px; max-width: 96px; border: 1px solid var(--line); border-radius: 9px; background: #f4f7fb; color: var(--navy); padding: 0 4px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.route-selector { height: 29px; max-width: 116px; border: 1px solid var(--line); border-radius: 9px; background: #f4f7fb; color: var(--navy); padding: 0 4px; font-size: 11px; font-weight: 700; cursor: pointer; }
 .route-selector:hover { border-color: var(--gold); background: #fffcf4; }
 .route-selector:focus { outline: 0; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(168,132,44,.12); }
 .security.direct { background: #a8842c; }
 .state {
-  min-width: 58px; color: var(--muted); font-size: 11px; font-weight: 650;
-  text-align: right; white-space: nowrap;
+  flex: 0 1 auto; min-width: 58px; color: var(--muted); font-size: 11px; font-weight: 650;
+  text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .state.loading { color: var(--gold); }
+.find-bar {
+  height: 34px; display: flex; align-items: center; gap: 6px;
+  padding: 2px 9px 3px; background: #fff;
+  -webkit-app-region: no-drag;
+}
+.find-bar[hidden] { display: none; }
+.find-bar input {
+  flex: 0 1 260px; height: 28px; border: 1px solid var(--line);
+  border-radius: 9px; background: #f4f7fb; padding: 0 9px;
+}
+.find-bar input:focus { border-color: var(--gold); background: #fff; box-shadow: 0 0 0 3px rgba(168,132,44,.12); }
+.find-button { flex: 0 0 auto; font-size: 13px; line-height: 1; }
 @keyframes pulse {
   0%, 100% { opacity: .35; transform: scale(.85); }
   50% { opacity: 1; transform: scale(1); }

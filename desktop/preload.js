@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('api', {
   sshConfig: () => ipcRenderer.invoke('ssh-config'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openCampusBrowser: (request) => ipcRenderer.invoke('open-campus-browser', request),
+  checkUpdate: (force) => ipcRenderer.invoke('check-update', force),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveResource: (resource) => ipcRenderer.invoke('save-resource', resource),
   deleteResource: (id) => ipcRenderer.invoke('delete-resource', id),
   reorderResources: (ids) => ipcRenderer.invoke('reorder-resources', ids),

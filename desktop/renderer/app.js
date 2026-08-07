@@ -1,6 +1,8 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// Active UI language. Chinese until get-state reports the real system locale.
+let t = window.I18N.createT('zh');
 let st = { connected: false, connecting: false, clientIp: null, lastError: null };
 let settings = {};
 let connectedAt = null;
@@ -15,10 +17,25 @@ let loginPending = false;
 const resourceDialog = $('resourceDialog');
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
+
+function applyLocale(rawLocale) {
+  const locale = window.I18N.resolveLocale(rawLocale);
+  t = window.I18N.createT(locale);
+  document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+  window.I18N.applyStatic(t, document);
+  // Labels whose text depends on runtime state, not just the locale.
+  document.querySelectorAll('[data-toggle-section]').forEach((button) => {
+    const panel = document.querySelector(`[data-collapsible="${button.dataset.toggleSection}"]`);
+    const expanded = panel ? !panel.hidden : false;
+    button.textContent = expanded ? t('section.collapse') : t('section.expand');
+    button.setAttribute('aria-expanded', String(expanded));
+  });
+}
 function setPage(page) {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n.dataset.page === page));
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
   if (page === 'notif') loadLogs();
+  if (page === 'settings') runUpdateCheck(false);
 }
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
@@ -30,7 +47,7 @@ function evaluateLoginProgress(pending, state = {}) {
   if (!state.connecting && state.lastError) {
     return { pending: false, view: 'login', clearPassword: false, error: String(state.lastError) };
   }
-  return { pending: true, view: 'login', clearPassword: false, error: '正在连接…' };
+  return { pending: true, view: 'login', clearPassword: false, error: t('login.connecting') };
 }
 
 function visibleResources(resources, expanded, limit = 4) {
@@ -39,14 +56,14 @@ function visibleResources(resources, expanded, limit = 4) {
 }
 
 function routeLabel(resource) {
-  return resource?.route === 'direct' ? '直连' : '校园隧道';
+  return resource?.route === 'direct' ? t('resources.routeDirect') : t('resources.routeCampus');
 }
 
 function updateLoginProgress(s) {
   if (!loginPending) return;
   const next = evaluateLoginProgress(loginPending, s);
   $('lgBtn').disabled = next.pending;
-  $('lgBtn').textContent = next.pending ? '连接中…' : '登录并连接';
+  $('lgBtn').textContent = next.pending ? t('connect.connecting') : t('login.submit');
   $('lgErr').textContent = next.error;
   if (next.pending) return;
   loginPending = false;
@@ -56,21 +73,26 @@ function updateLoginProgress(s) {
 }
 
 function renderConnect(s) {
+  // Status pushes carry the effective locale so a language switch re-renders
+  // live; locally constructed state has no locale and keeps the current one.
+  if (typeof s.locale === 'string') applyLocale(s.locale);
   st = s;
   connectedAt = s.connected ? (s.connectedAt || connectedAt) : null;
   $('power').classList.toggle('on', s.connected);
   $('power').classList.toggle('busy', s.connecting);
   const wrap = document.querySelector('.conn-status');
   wrap.classList.toggle('on', s.connected); wrap.classList.toggle('busy', s.connecting);
-  $('connStatus').textContent = s.connecting ? '连接中…' : s.connected ? '已连接' : '未连接';
+  $('connStatus').textContent = s.connecting
+    ? t('connect.connecting')
+    : s.connected ? t('connect.connected') : t('connect.disconnected');
   $('connIp').textContent = s.connected && s.clientIp ? s.clientIp : '—';
   $('connTop').classList.toggle('connected', s.connected);
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('quickCampus').disabled = campusActionBusy;
   $('quickAddCampus').disabled = campusActionBusy;
   $('quickCampus').textContent = campusActionBusy
-    ? (s.connected ? '正在打开…' : '正在连接，完成后自动打开…')
-    : (s.connected ? '打开校园网站' : '连接并打开校园网站');
+    ? (s.connected ? t('quick.opening') : t('quick.connectThenOpen'))
+    : (s.connected ? t('quick.open') : t('quick.connectOpen'));
   $('statGrid').hidden = !s.connected;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
@@ -79,14 +101,14 @@ function renderConnect(s) {
   updateLoginProgress(s);
 }
 
-function renderTelemetry(t) {
-  if (t.connectedAt) connectedAt = t.connectedAt;
-  $('stPing').textContent = (t.latencyMs != null) ? Math.round(t.latencyMs) + ' ms' : '—';
-  $('stConn').textContent = t.connCount || 0;
+function renderTelemetry(tele) {
+  if (tele.connectedAt) connectedAt = tele.connectedAt;
+  $('stPing').textContent = (tele.latencyMs != null) ? Math.round(tele.latencyMs) + ' ms' : '—';
+  $('stConn').textContent = tele.connCount || 0;
   const list = $('appList');
-  if (!t.apps || !t.apps.length) { list.innerHTML = '<div class="app-empty">暂无程序在用隧道(浏览器走 PAC 或 ssh 后显示)</div>'; return; }
-  list.innerHTML = t.apps.map((a) =>
-    `<div class="app-row"><span class="app-dot"></span><span class="app-name">${esc(a.name)}</span><span class="app-meta">${a.count} 连接</span></div>`).join('');
+  if (!tele.apps || !tele.apps.length) { list.innerHTML = `<div class="app-empty">${esc(t('stats.appsEmpty'))}</div>`; return; }
+  list.innerHTML = tele.apps.map((a) =>
+    `<div class="app-row"><span class="app-dot"></span><span class="app-name">${esc(a.name)}</span><span class="app-meta">${esc(t('stats.connectionCount', { count: a.count }))}</span></div>`).join('');
 }
 
 function renderResources() {
@@ -99,7 +121,7 @@ function renderResources() {
   const toggle = $('toggleResources');
   const hasMore = campusResources.length > 4;
   toggle.hidden = !hasMore;
-  toggle.textContent = resourcesExpanded ? '收起' : '展开全部';
+  toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
   toggle.setAttribute('aria-expanded', String(resourcesExpanded));
 }
 
@@ -126,7 +148,7 @@ function clearResourceMessages() {
 
 async function saveCampusResource(payload) {
   const result = await window.api.saveResource(payload);
-  if (!result?.ok) return { ok: false, error: result?.error || '保存失败' };
+  if (!result?.ok) return { ok: false, error: result?.error || t('dialog.saveFailed') };
   campusResources = result.resources || campusResources;
   renderResources();
   renderResourceEditorList();
@@ -144,6 +166,7 @@ function populateTowerForm() {
 
 async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
+  applyLocale(s.locale);
   settings = s.settings || {}; pacUrl = s.pacUrl || '';
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   renderConnect(s);
@@ -152,14 +175,47 @@ async function refreshState({ preserveTower = false } = {}) {
   if (!preserveTower || !towerDirty) populateTowerForm();
   $('acct').textContent = settings.username || '—';
   $('ver').textContent = s.version ? `v${s.version}` : '—';
+  if (s.update) renderUpdateResult(s.update);
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
+  $('language').value = ['auto', 'zh', 'en'].includes(settings.language) ? settings.language : 'auto';
   return s;
 }
 
+// update check (notify only — the app never downloads updates itself)
+let updateHintTimer = null;
+function setUpdateHint(html, { sticky = false } = {}) {
+  const el = $('updateHint');
+  if (updateHintTimer) { clearTimeout(updateHintTimer); updateHintTimer = null; }
+  el.innerHTML = html || '';
+  el.hidden = !html;
+  if (html && !sticky) updateHintTimer = setTimeout(() => { el.hidden = true; }, 3500);
+}
+function renderUpdateResult(result, { manual = false } = {}) {
+  if (result && result.updateAvailable) {
+    setUpdateHint(
+      t('settings.updateAvailable', {
+        version: esc(result.latestVersion),
+        button: t('settings.updateDownload'),
+      }),
+      { sticky: true },
+    );
+    $('updateDownload').addEventListener('click', () => window.api.openExternal(result.url));
+  } else if (manual) {
+    setUpdateHint(result ? t('settings.updateLatest') : t('settings.updateFailed'));
+  }
+}
+async function runUpdateCheck(manual) {
+  try {
+    renderUpdateResult(await window.api.checkUpdate(manual === true), { manual });
+  } catch {
+    if (manual) setUpdateHint(t('settings.updateFailed'));
+  }
+}
+
 async function loadLogs() {
-  const t = await window.api.getLogs();
+  const text = await window.api.getLogs();
   const box = $('logs');
-  box.textContent = t && t.trim() ? t : '(暂无日志,连接后这里显示运行/错误信息)';
+  box.textContent = text && text.trim() ? text : t('notif.empty');
   box.scrollTop = box.scrollHeight;
 }
 
@@ -173,22 +229,22 @@ async function init() {
 $('lgBtn').addEventListener('click', async () => {
   if (loginPending) return;
   const u = $('lgUser').value.trim(), p = $('lgPass').value;
-  if (!u) { $('lgErr').textContent = '请填写账号'; return; }
-  if (!p) { $('lgErr').textContent = '请填写密码'; return; }
+  if (!u) { $('lgErr').textContent = t('login.needAccount'); return; }
+  if (!p) { $('lgErr').textContent = t('login.needPassword'); return; }
   const saved = await window.api.save({ username: u, password: p });
-  if (!saved.ok) { $('lgErr').textContent = saved.error || '密码保存失败'; return; }
+  if (!saved.ok) { $('lgErr').textContent = saved.error || t('login.passwordSaveFailed'); return; }
   loginPending = true;
   $('lgBtn').disabled = true;
-  $('lgBtn').textContent = '连接中…';
-  $('lgErr').textContent = '正在连接…';
+  $('lgBtn').textContent = t('connect.connecting');
+  $('lgErr').textContent = t('login.connecting');
   try {
     await window.api.connect();
     await refreshState();
   } catch (error) {
     loginPending = false;
     $('lgBtn').disabled = false;
-    $('lgBtn').textContent = '登录并连接';
-    $('lgErr').textContent = error?.message || '连接失败，请重试';
+    $('lgBtn').textContent = t('login.submit');
+    $('lgErr').textContent = error?.message || t('login.connectFailed');
   }
 });
 $('lgPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('lgBtn').click(); });
@@ -207,7 +263,7 @@ document.querySelectorAll('[data-toggle-section]').forEach((button) => {
     if (!panel) return;
     const expanded = panel.hidden;
     panel.hidden = !expanded;
-    button.textContent = expanded ? '收起' : '展开';
+    button.textContent = expanded ? t('section.collapse') : t('section.expand');
     button.setAttribute('aria-expanded', String(expanded));
   });
 });
@@ -222,7 +278,7 @@ async function openCampus(selected) {
       ? { url: selected.url, route: selected.route }
       : { url: typeof selected === 'string' ? selected : $('campusUrl').value };
     const result = await window.api.openCampusBrowser(request);
-    if (!result || !result.ok) $('quickErr').textContent = result?.error || '校园浏览器打开失败';
+    if (!result || !result.ok) $('quickErr').textContent = result?.error || t('quick.browserOpenFailed');
   } finally {
     campusActionBusy = false;
     renderConnect(st);
@@ -235,7 +291,7 @@ $('quickAddCampus').addEventListener('click', async () => {
   $('quickAddErr').textContent = '';
   setResourceSaved('');
   if (!url) {
-    $('quickAddErr').textContent = '请先粘贴需要保存的网址';
+    $('quickAddErr').textContent = t('quick.needUrl');
     $('campusUrl').focus();
     return;
   }
@@ -249,14 +305,14 @@ $('quickAddCampus').addEventListener('click', async () => {
       $('quickAddErr').textContent = saved.error;
       return;
     }
-    setResourceSaved('已添加到常用网站');
+    setResourceSaved(t('resources.saved'));
     const result = await window.api.openCampusBrowser({
       url: saved.resource.url,
       route: saved.resource.route,
     });
-    if (!result?.ok) $('quickAddErr').textContent = result?.error || '校园浏览器打开失败';
+    if (!result?.ok) $('quickAddErr').textContent = result?.error || t('quick.browserOpenFailed');
   } catch (error) {
-    $('quickAddErr').textContent = error?.message || '添加网站失败';
+    $('quickAddErr').textContent = error?.message || t('quick.addFailed');
   } finally {
     campusActionBusy = false;
     renderConnect(st);
@@ -290,10 +346,10 @@ function clearResourceEditor() {
 
 function setResourceFormMode(editingResource) {
   const editing = !!editingResource;
-  $('saveResource').textContent = editing ? '保存修改' : '添加网站';
-  $('cancelResource').textContent = editing ? '取消编辑' : '清空';
+  $('saveResource').textContent = editing ? t('dialog.saveChanges') : t('dialog.add');
+  $('cancelResource').textContent = editing ? t('dialog.cancelEdit') : t('dialog.clear');
   $('resourceEditHint').textContent = editing
-    ? `正在编辑：${editingResource.name || editingResource.url}`
+    ? t('dialog.editing', { name: editingResource.name || editingResource.url })
     : '';
 }
 
@@ -306,7 +362,7 @@ function fillResourceEditor(resource) {
   $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
   clearResourceMessages();
   setResourceFormMode(resource && !resource.builtin ? resource : null);
-  $('resourceFormError').textContent = resource?.builtin ? '内置网站不能覆盖，请新增一个自定义入口' : '';
+  $('resourceFormError').textContent = resource?.builtin ? t('dialog.builtinReadonly') : '';
   document.querySelectorAll('.resource-editor-row').forEach((row) => {
     row.classList.toggle('active', row.dataset.resourceId === resource?.id);
   });
@@ -322,7 +378,7 @@ const RESOURCE_ICONS = {
 
 function resourceActionButton(action, label, disabled = false) {
   return `<button class="row-icon${action === 'delete' ? ' danger' : ''}" type="button"`
-    + ` data-resource-action="${action}" title="${label}" aria-label="${label}"${disabled ? ' disabled' : ''}>`
+    + ` data-resource-action="${action}" title="${esc(label)}" aria-label="${esc(label)}"${disabled ? ' disabled' : ''}>`
     + `${RESOURCE_ICONS[action]}</button>`;
 }
 
@@ -351,16 +407,16 @@ function renderResourceEditorList() {
     const custom = !resource.builtin;
     let actions;
     if (!custom) {
-      actions = '<span class="resource-editor-route">内置</span>';
+      actions = `<span class="resource-editor-route">${esc(t('dialog.builtin'))}</span>`;
     } else if (pendingDeleteId === resource.id) {
-      actions = '<button class="row-icon confirm-delete" type="button" data-resource-action="delete">确认删除</button>'
-        + resourceActionButton('cancel-delete', '取消删除');
+      actions = `<button class="row-icon confirm-delete" type="button" data-resource-action="delete">${esc(t('dialog.confirmDelete'))}</button>`
+        + resourceActionButton('cancel-delete', t('dialog.cancelDelete'));
     } else {
       const index = customIds.indexOf(resource.id);
-      actions = resourceActionButton('edit', '编辑')
-        + resourceActionButton('up', '上移', index <= 0)
-        + resourceActionButton('down', '下移', index === customIds.length - 1)
-        + resourceActionButton('delete', '删除');
+      actions = resourceActionButton('edit', t('dialog.edit'))
+        + resourceActionButton('up', t('dialog.moveUp'), index <= 0)
+        + resourceActionButton('down', t('dialog.moveDown'), index === customIds.length - 1)
+        + resourceActionButton('delete', t('dialog.delete'));
     }
     return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
       + `<div class="resource-editor-summary"><span class="resource-editor-name">${esc(resource.name)}</span>`
@@ -402,7 +458,7 @@ $('resourceEditorList').addEventListener('click', async (event) => {
     }
     disarmDeleteConfirm();
     const result = await window.api.deleteResource(resource.id);
-    if (!result?.ok) { $('resourceFormError').textContent = result?.error || '删除失败'; return; }
+    if (!result?.ok) { $('resourceFormError').textContent = result?.error || t('dialog.deleteFailed'); return; }
     campusResources = result.resources || campusResources.filter((item) => item.id !== resource.id);
     renderResources();
     renderResourceEditorList();
@@ -440,11 +496,11 @@ $('resourceForm').addEventListener('submit', async (event) => {
     });
     if (!saved.ok) { $('resourceFormError').textContent = saved.error; return; }
     clearResourceEditor();
-    const message = editing ? '已保存修改' : '已添加到常用网站';
+    const message = editing ? t('resources.changesSaved') : t('resources.saved');
     $('resourceFormSaved').textContent = message;
     setResourceSaved(message);
   } catch (error) {
-    $('resourceFormError').textContent = error?.message || '保存失败';
+    $('resourceFormError').textContent = error?.message || t('dialog.saveFailed');
   }
 });
 
@@ -454,12 +510,12 @@ async function saveTower() {
   const port = Number($('towerPort').value);
   const maxAttempts = Number($('maxAttempts').value);
   if (!Number.isInteger(port) || port < 1025 || port > 65535) {
-    flashSaved('端口必须是 1025–65535 的整数', true);
+    flashSaved(t('tower.portInvalid'), true);
     $('towerPort').focus();
     return { ok: false };
   }
   if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 10) {
-    flashSaved('重试次数必须是 0–10 的整数', true);
+    flashSaved(t('tower.attemptsInvalid'), true);
     $('maxAttempts').focus();
     return { ok: false };
   }
@@ -477,7 +533,7 @@ async function saveTower() {
       routeDomains: $('routeDomains').value,
     });
     if (!result?.ok) {
-      flashSaved(result?.error || '保存失败，请重试', true);
+      flashSaved(result?.error || t('tower.saveFailed'), true);
       return result || { ok: false };
     }
     settings = result.settings || settings;
@@ -485,7 +541,7 @@ async function saveTower() {
     await refreshState();
     return result;
   } catch (error) {
-    flashSaved(error?.message || '保存失败，请重试', true);
+    flashSaved(error?.message || t('tower.saveFailed'), true);
     return { ok: false };
   } finally {
     towerSaving = false;
@@ -496,7 +552,7 @@ async function saveTower() {
 let flashTimer = null;
 function flashSaved(msg, isError = false) {
   clearTimeout(flashTimer);
-  $('towerSaved').textContent = msg || '已保存 ✓';
+  $('towerSaved').textContent = msg || t('tower.saved');
   $('towerSaved').classList.toggle('error', isError);
   flashTimer = setTimeout(() => {
     $('towerSaved').textContent = '';
@@ -507,7 +563,7 @@ $('towerSave').addEventListener('click', async () => {
   const result = await saveTower();
   if (result?.ok) {
     flashSaved(
-      result.warning || (result.reconnected ? '已保存并应用 ✓' : '已保存 ✓'),
+      result.warning || (result.reconnected ? t('tower.savedApplied') : t('tower.saved')),
       !!result.warning,
     );
   }
@@ -516,10 +572,10 @@ $('towerReconnect').addEventListener('click', async () => {
   const result = await saveTower();
   if (!result?.ok) return;
   if (!result.reconnected) {
-    flashSaved('重连中…');
+    flashSaved(t('tower.reconnecting'));
     await window.api.reconnect();
   }
-  flashSaved(result.warning || '已保存并重连 ✓', !!result.warning);
+  flashSaved(result.warning || t('tower.savedReconnected'), !!result.warning);
 });
 for (const id of [
   'towerPort', 'routeDomains', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
@@ -530,6 +586,13 @@ for (const id of [
 $('closeAction').addEventListener('change', async () => {
   await window.api.save({ closeAction: $('closeAction').value });
   settings.closeAction = $('closeAction').value;
+});
+$('language').addEventListener('change', async () => {
+  await window.api.save({ language: $('language').value });
+  settings.language = $('language').value;
+  // get-state returns the effective locale, so this repaints in the new
+  // language even for 'auto'; main also pushes it via the status channel.
+  await refreshState();
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refreshState({ preserveTower: true });
@@ -543,7 +606,7 @@ document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('clic
   else if (w === 'ssh') txt = await window.api.sshConfig();
   if (!txt) return;
   await window.api.copy(txt);
-  const old = b.textContent; b.textContent = '已复制'; b.classList.add('done');
+  const old = b.textContent; b.textContent = t('tower.copied'); b.classList.add('done');
   setTimeout(() => { b.textContent = old; b.classList.remove('done'); }, 1200);
 }));
 $('openBrowser').addEventListener('click', openCampus);
@@ -557,11 +620,19 @@ $('logoutBtn').addEventListener('click', async () => {
   await refreshState();
   $('lgPass').value = '';
   $('lgBtn').disabled = false;
-  $('lgBtn').textContent = '登录并连接';
+  $('lgBtn').textContent = t('login.submit');
   show('login');
 });
 $('openLogLink').addEventListener('click', (e) => { e.preventDefault(); window.api.openLog(); });
+$('checkUpdateBtn').addEventListener('click', async () => {
+  $('checkUpdateBtn').disabled = true;
+  try { await runUpdateCheck(true); }
+  finally { $('checkUpdateBtn').disabled = false; }
+});
 
-window.api.onStatus(renderConnect);
+window.api.onStatus((s) => {
+  renderConnect(s);
+  if (s.update) renderUpdateResult(s.update);
+});
 window.api.onTelemetry(renderTelemetry);
 init();
