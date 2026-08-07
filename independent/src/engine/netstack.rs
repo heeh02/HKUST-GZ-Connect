@@ -61,15 +61,25 @@ impl VirtualNetstack {
         let receive_health = Arc::clone(&healthy);
         let receive_bridge = std::thread::spawn(move || {
             let _lease = lease;
-            while let Ok(packet) = receiver.receive_ipv4() {
-                tx.send(&packet);
+            loop {
+                match receiver.receive_ipv4() {
+                    Ok(packet) => tx.send(&packet),
+                    Err(error) => {
+                        // The gateway closed or reset the data plane. Record the
+                        // underlying cause so tunnel drops are diagnosable from
+                        // engine.log instead of a bare "disconnected" line.
+                        eprintln!("VPN data plane receive failed: {error}");
+                        break;
+                    }
+                }
             }
             receive_health.store(false, Ordering::Release);
         });
         let send_health = Arc::clone(&healthy);
         let send_bridge = std::thread::spawn(move || {
             while let Some(packet) = rx.recv() {
-                if sender.send_ipv4(&packet).is_err() {
+                if let Err(error) = sender.send_ipv4(&packet) {
+                    eprintln!("VPN data plane send failed: {error}");
                     send_health.store(false, Ordering::Release);
                     break;
                 }

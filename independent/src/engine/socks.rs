@@ -141,7 +141,24 @@ impl SocksServer {
             return Ok(());
         };
         match request {
-            SocksRequest::Connect(remote) => match self.netstack.connect_tcp(remote).await {
+            SocksRequest::Connect(remote) => {
+                // Campus pages sometimes probe local services (agents, helper
+                // daemons). The browser deliberately routes loopback through
+                // the proxy so pages cannot reach this machine, but tunnelling
+                // those targets would deliver them to the GATEWAY's loopback,
+                // which its policy reads as an attack and drops the VPN
+                // session. Refuse loopback targets locally: the page just sees
+                // a closed port, and the tunnel never carries them.
+                if refused_target(&remote) {
+                    eprintln!("SOCKS5 refused loopback target {remote}");
+                    let _ = send_reply(&mut client, 5, None).await;
+                    return Ok(());
+                }
+                // Target-level visibility: when the gateway kills the data plane
+                // on policy violations, the last connects before the drop name
+                // the resource that triggered it.
+                eprintln!("SOCKS5 connect {remote}");
+                match self.netstack.connect_tcp(remote).await {
                 Ok(mut upstream) => {
                     send_reply(&mut client, 0, None).await?;
                     match tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
@@ -153,10 +170,16 @@ impl SocksServer {
                 }
                 Err(error) => {
                     let _ = send_reply(&mut client, 5, None).await;
-                    Err(error)
+                    // Name the target so unreachable-resource failures in
+                    // engine.log point at the exact host:port the VPN refused.
+                    Err(Error(format!("{error} (target {remote})")))
                 }
-            },
-            SocksRequest::UdpAssociate => self.handle_udp_associate(client).await,
+                }
+            }
+            SocksRequest::UdpAssociate => {
+                eprintln!("SOCKS5 udp-associate requested");
+                self.handle_udp_associate(client).await
+            }
         }
     }
 
@@ -492,6 +515,13 @@ fn encode_udp_response(remote: SocketAddr, payload: &[u8]) -> Result<Vec<u8>> {
     Ok(response)
 }
 
+// Targets the tunnel must never carry. A loopback destination would be
+// delivered to the gateway's own loopback, which its security policy treats
+// as an attack on the gateway and answers by dropping the VPN session.
+fn refused_target(remote: &SocketAddr) -> bool {
+    remote.ip().is_loopback()
+}
+
 async fn send_reply(client: &mut TcpStream, status: u8, bound: Option<SocketAddr>) -> Result<()> {
     let (address, port) = match bound {
         Some(SocketAddr::V4(value)) => (*value.ip(), value.port()),
@@ -525,6 +555,15 @@ mod tests {
             encode_udp_response("10.20.30.40:53".parse().unwrap(), b"dns-response").unwrap();
         assert_eq!(&response[..10], &[0, 0, 0, 1, 10, 20, 30, 40, 0, 53]);
         assert_eq!(&response[10..], b"dns-response");
+    }
+
+    #[test]
+    fn loopback_targets_are_refused_before_the_tunnel() {
+        assert!(refused_target(&"127.0.0.1:60540".parse().unwrap()));
+        assert!(refused_target(&"127.0.1.1:443".parse().unwrap()));
+        assert!(refused_target(&"[::1]:8443".parse().unwrap()));
+        assert!(!refused_target(&"10.120.18.63:443".parse().unwrap()));
+        assert!(!refused_target(&"103.189.154.38:443".parse().unwrap()));
     }
 
     #[tokio::test]
