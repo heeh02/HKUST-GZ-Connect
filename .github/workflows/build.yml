@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -21,13 +21,13 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install pinned Rust toolchain
         working-directory: independent
         run: rustup show active-toolchain
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
@@ -61,6 +61,26 @@ jobs:
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
 
+      - name: Run release performance disaster guards
+        if: matrix.platform == 'mac'
+        working-directory: independent
+        run: |
+          cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+            --ignored --nocapture --test-threads=1
+          cargo test --locked --release --test poll_latency_probe \
+            offline_netstack_poll_latency_matrix -- \
+            --ignored --nocapture --test-threads=1
+
+      - name: Exercise real Electron integration and browser soak
+        if: matrix.platform == 'mac'
+        working-directory: desktop
+        run: |
+          npm run test:main-integration
+          ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
+          npm run test:strict-proxy-auth
+          npm run test:renderer-layout
+          npm run test:browser-performance
+
       - name: Build independent engines (mac)
         if: matrix.platform == 'mac'
         working-directory: independent
@@ -68,11 +88,17 @@ jobs:
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           cargo build --locked --release --bin ec-engine --target aarch64-apple-darwin
           cargo build --locked --release --bin ec-engine --target x86_64-apple-darwin
+          cargo build --locked --release --bin ec-proxy-command --target aarch64-apple-darwin
+          cargo build --locked --release --bin ec-proxy-command --target x86_64-apple-darwin
           mkdir -p ../desktop/engine
           cp target/aarch64-apple-darwin/release/ec-engine \
             ../desktop/engine/ec-engine-darwin-arm64
           cp target/x86_64-apple-darwin/release/ec-engine \
             ../desktop/engine/ec-engine-darwin-amd64
+          cp target/aarch64-apple-darwin/release/ec-proxy-command \
+            ../desktop/engine/ec-proxy-command-darwin-arm64
+          cp target/x86_64-apple-darwin/release/ec-proxy-command \
+            ../desktop/engine/ec-proxy-command-darwin-amd64
           cp config/hkustgz.json ../desktop/engine/hkustgz.json
 
       - name: Build independent engine (Windows)
@@ -80,9 +106,10 @@ jobs:
         shell: pwsh
         working-directory: independent
         run: |
-          cargo build --locked --release --bin ec-engine
+          cargo build --locked --release --bin ec-engine --bin ec-proxy-command
           New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
           Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
+          Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
           Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
 
       # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
@@ -131,6 +158,8 @@ jobs:
           }
           test "$(lipo -archs release/mac-arm64/hkustgzconnect.app/Contents/Resources/engine/ec-engine-darwin-arm64)" = "arm64"
           test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-engine-darwin-amd64)" = "x86_64"
+          test "$(lipo -archs release/mac-arm64/hkustgzconnect.app/Contents/Resources/engine/ec-proxy-command-darwin-arm64)" = "arm64"
+          test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-proxy-command-darwin-amd64)" = "x86_64"
 
       - name: Verify packaged macOS applications
         if: matrix.platform == 'mac'
@@ -163,7 +192,7 @@ jobs:
         run: node build/verify-package.js release/win-unpacked/resources win32 x64
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hkustgzconnect-${{ matrix.platform }}
           path: |
@@ -171,10 +200,24 @@ jobs:
             desktop/release/*.exe
           if-no-files-found: error
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # The build matrix never receives a write-capable token. Only this small
+      # publish job can modify a release, and every action is commit-pinned.
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: hkustgzconnect-*
+          path: artifacts
+          merge-multiple: true
+      - name: Attach DMG and EXE assets to the tagged release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
-            desktop/release/*.dmg
-            desktop/release/*.exe
+            artifacts/*.dmg
+            artifacts/*.exe

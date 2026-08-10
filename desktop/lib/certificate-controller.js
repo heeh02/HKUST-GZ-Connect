@@ -1,0 +1,164 @@
+'use strict';
+
+const {
+  certificateFingerprint,
+  normalizeCertificateOrigin,
+} = require('./campus-certificate-trust');
+
+function certificateTime(value, locale = 'zh', t = (key) => key) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return t('cert.unknown');
+  try {
+    return new Date(seconds * 1000).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', {
+      hour12: false,
+    });
+  } catch {
+    return t('cert.unknown');
+  }
+}
+
+class CertificateController {
+  constructor({
+    trustStore,
+    dialog,
+    windowForPrompt,
+    locale,
+    t,
+  } = {}) {
+    this.trustStore = trustStore;
+    this.dialog = dialog;
+    this.windowForPrompt = typeof windowForPrompt === 'function' ? windowForPrompt : () => undefined;
+    this.locale = typeof locale === 'function' ? locale : () => 'zh';
+    this.t = typeof t === 'function' ? t : (key) => key;
+    this.decisions = new Map();
+    this.activePrompt = null;
+  }
+
+  async promptAndTrust({ origin, fingerprint, error, certificate, isCurrent = () => true }) {
+    if (!this.dialog?.showMessageBox || typeof this.trustStore?.trust !== 'function') return false;
+    const translate = this.t;
+    const locale = this.locale() === 'en' ? 'en' : 'zh';
+    const detail = [
+      translate('cert.site', { origin }),
+      translate('cert.chromiumError', { error: String(error || translate('cert.unknown')) }),
+      translate('cert.subject', {
+        subject: String(certificate?.subjectName || translate('cert.unknown')),
+      }),
+      translate('cert.issuer', {
+        issuer: String(certificate?.issuerName || translate('cert.unknown')),
+      }),
+      translate('cert.validity', {
+        start: certificateTime(certificate?.validStart, locale, translate),
+        end: certificateTime(certificate?.validExpiry, locale, translate),
+      }),
+      translate('cert.fingerprint', { fingerprint }),
+      '',
+      translate('cert.scope'),
+    ].join('\n');
+    const parent = this.windowForPrompt();
+    const usableParent = parent && !parent.isDestroyed?.() ? parent : undefined;
+    const result = await this.dialog.showMessageBox(usableParent, {
+      type: 'warning',
+      title: translate('cert.title'),
+      message: translate('cert.message', { origin }),
+      detail,
+      buttons: [translate('cert.trust'), translate('common.cancel')],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (result?.response !== 0 || !isCurrent()) return false;
+    await this.trustStore.trust(origin, fingerprint);
+    return isCurrent();
+  }
+
+  cancelAll() {
+    const records = new Set(this.decisions.values());
+    for (const record of records) {
+      record.cancelled = true;
+      record.resolveCancellation?.(false);
+    }
+    this.decisions.clear();
+    this.activePrompt = null;
+  }
+
+  async handle({ url, error, certificate, callback } = {}) {
+    let settled = false;
+    const finish = (allowed) => {
+      if (settled) return;
+      settled = true;
+      if (typeof callback === 'function') {
+        try { callback(allowed === true); } catch {}
+      }
+    };
+
+    try {
+      const origin = normalizeCertificateOrigin(url);
+      const fingerprint = certificateFingerprint(certificate?.data);
+      const pending = this.decisions.get(origin);
+
+      // An origin changing certificates while a decision is open is denied as
+      // one origin-level race, even if the second fingerprint was trusted by
+      // an older pin. It may be retried after the first decision settles.
+      if (pending && pending.fingerprint !== fingerprint) {
+        await pending.promise.catch(() => false);
+        finish(false);
+        return false;
+      }
+
+      if (this.trustStore?.isTrusted?.(origin, fingerprint) === true) {
+        finish(true);
+        return true;
+      }
+
+      let decision = pending?.promise;
+      if (!decision) {
+        // Native message boxes are process-modal enough to make a large set of
+        // different self-signed origins an effective UI denial of service.
+        // Same-origin requests still share one decision; every other untrusted
+        // origin fails closed while that one bounded prompt is active.
+        if (this.activePrompt) {
+          finish(false);
+          return false;
+        }
+        let resolveCancellation;
+        const cancellation = new Promise((resolve) => { resolveCancellation = resolve; });
+        const record = {
+          origin,
+          fingerprint,
+          promise: null,
+          cancelled: false,
+          resolveCancellation,
+        };
+        const prompt = this.promptAndTrust({
+          origin,
+          fingerprint,
+          error,
+          certificate,
+          isCurrent: () => !record.cancelled && this.activePrompt === record,
+        });
+        decision = Promise.race([prompt, cancellation]);
+        record.promise = decision;
+        this.decisions.set(origin, record);
+        this.activePrompt = record;
+        decision.finally(() => {
+          if (this.decisions.get(origin) === record) this.decisions.delete(origin);
+          if (this.activePrompt === record) this.activePrompt = null;
+          record.cancelled = true;
+          record.resolveCancellation = null;
+        }).catch(() => {});
+      }
+      const allowed = await decision;
+      finish(allowed === true);
+      return allowed === true;
+    } catch {
+      finish(false);
+      return false;
+    }
+  }
+}
+
+module.exports = {
+  CertificateController,
+  certificateTime,
+};

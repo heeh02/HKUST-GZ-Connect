@@ -1,6 +1,11 @@
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
 use crate::config::{GatewayConfiguration, parse_gateway_configuration};
 use crate::engine::data_plane::EasyConnectDataPlane;
+use crate::engine::provider::{
+    AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
+    CapabilityModel, NoAuthChallenge, ProviderError, ProviderResult, TransportBackend,
+    TransportCapabilities, engine_result, require_supported,
+};
 use crate::modern::{
     ModernSessionId, ModernTokenAcquisition, parse_sha256_pin, request_modern_token,
 };
@@ -18,6 +23,17 @@ use zeroize::{Zeroize, Zeroizing};
 const MODERN_ADDRESS_SETTLE_DELAY: Duration = Duration::from_secs(1);
 const DATA_PLANE_SETUP_ATTEMPTS: usize = 3;
 const DATA_PLANE_RETRY_STEP: Duration = Duration::from_secs(2);
+// The desktop gives the engine a finite grace period after requesting
+// shutdown.  Logout must retain the authenticated cookies while using a
+// shorter, independent deadline, rather than inheriting the normal 15-second
+// request timeout and colliding with that grace period.
+const LOGOUT_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct UnsupportedAuthDecision {
+    capability: Capability,
+    logout_before_return: bool,
+}
 
 pub struct AuthenticatedEngineSession {
     http: GatewaySession,
@@ -30,13 +46,89 @@ pub struct AuthenticatedEngineSession {
     configured_certificate_pin: Option<[u8; 32]>,
 }
 
+pub struct ProductionPasswordAuthProvider<'a> {
+    config: &'a Value,
+}
+
+impl<'a> ProductionPasswordAuthProvider<'a> {
+    pub const fn new(config: &'a Value) -> Self {
+        Self { config }
+    }
+}
+
+impl AuthProvider for ProductionPasswordAuthProvider<'_> {
+    type Session = AuthenticatedEngineSession;
+    type Challenge = NoAuthChallenge;
+
+    fn capabilities(&self) -> AuthenticationCapabilities {
+        AuthenticationCapabilities::password_only()
+    }
+
+    fn authenticate(
+        &self,
+        request: AuthRequest<'_>,
+    ) -> ProviderResult<AuthOutcome<Self::Session, Self::Challenge>> {
+        match request {
+            AuthRequest::Password { username, password } => {
+                AuthenticatedEngineSession::authenticate_password(self.config, username, password)
+                    .map(AuthOutcome::Authenticated)
+            }
+            AuthRequest::ChallengeResponse { method, .. } => {
+                let capability = method.capability();
+                require_supported(capability, self.capabilities().availability(method))?;
+                Err(ProviderError::unavailable(capability))
+            }
+        }
+    }
+}
+
+pub struct ModernL3TransportBackend;
+
+impl TransportBackend for ModernL3TransportBackend {
+    type Session = AuthenticatedEngineSession;
+    type DataPlane = EasyConnectDataPlane;
+
+    fn capabilities(&self) -> TransportCapabilities {
+        TransportCapabilities::modern_l3_only()
+    }
+
+    fn connect(&self, session: &Self::Session) -> ProviderResult<Self::DataPlane> {
+        engine_result(session.establish_modern_l3_data_plane())
+    }
+}
+
 impl AuthenticatedEngineSession {
     pub fn authenticate(config: &Value, username: &str, password: &str) -> Result<Self> {
+        Self::authenticate_with_provider_error(config, username, password).map_err(Error::from)
+    }
+
+    pub fn authenticate_with_provider_error(
+        config: &Value,
+        username: &str,
+        password: &str,
+    ) -> ProviderResult<Self> {
+        match ProductionPasswordAuthProvider::new(config)
+            .authenticate(AuthRequest::Password { username, password })?
+        {
+            AuthOutcome::Authenticated(session) => Ok(session),
+            AuthOutcome::ChallengeRequired(challenge) => match challenge {},
+        }
+    }
+
+    pub const fn capability_model() -> CapabilityModel {
+        CapabilityModel::production_password_l3()
+    }
+
+    fn authenticate_password(
+        config: &Value,
+        username: &str,
+        password: &str,
+    ) -> ProviderResult<Self> {
         let base_url = required_text(config, "base_url")?;
         let parsed_url =
             Url::parse(base_url).map_err(|_| Error("engine base URL is invalid".into()))?;
         if parsed_url.scheme() != "https" {
-            return Err(Error("engine base URL must use HTTPS".into()));
+            return Err(Error("engine base URL must use HTTPS".into()).into());
         }
         let gateway_host = parsed_url
             .host_str()
@@ -65,9 +157,7 @@ impl AuthenticatedEngineSession {
         let exponent = safe_int(&first_descendant_text(root, "RSA_ENCRYPT_EXP"), 65_537);
         let mid_attack = safe_int(&first_descendant_text(root, "MID_ATK_CHECK"), 0);
         if modulus.is_empty() || csrf.is_empty() || mid_attack != 0 {
-            return Err(Error(
-                "gateway password configuration is unsupported".into(),
-            ));
+            return Err(Error("gateway password configuration is unsupported".into()).into());
         }
         let password_material = Zeroizing::new(format!("{password}_{}", csrf.as_str()));
         let encrypted_password = Zeroizing::new(rsa_encrypt_hex(
@@ -93,23 +183,58 @@ impl AuthenticatedEngineSession {
             Some(&form),
         );
         form.values_mut().for_each(Zeroize::zeroize);
-        let (login, _, _) = login_result?;
+        let (login, _, _) = match login_result {
+            Ok(response) => response,
+            Err(error) => {
+                // The POST may have reached the gateway and installed a cookie
+                // even when reading/status validation failed locally. Always
+                // close that possible partial session before another desktop
+                // attempt competes with it.
+                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+                return Err(error.into());
+            }
+        };
         let login = Zeroizing::new(login);
-        let login_summary = auth_summary(&login, "engine password login")?;
+        let login_summary = match auth_summary(&login, "engine password login") {
+            Ok(summary) => summary,
+            Err(error) => {
+                // A syntactically changed response can still represent a
+                // successful server-side login. Parsing failure is therefore a
+                // cleanup boundary, not proof that no session exists.
+                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+                return Err(error.into());
+            }
+        };
         if login_summary.state != AuthState::Authenticated {
+            if let Some(decision) = unsupported_auth_decision(login_summary.state) {
+                if decision.logout_before_return {
+                    // A secondary-authentication response may already own a
+                    // server-side cookie/TwfID session. The provider cannot
+                    // continue that challenge yet, but it must not strand the
+                    // partial session and make the next attempt compete with it.
+                    let _ =
+                        http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+                }
+                return Err(ProviderError::unsupported(decision.capability));
+            }
+            // Password-required/failed/unknown states can also carry a cookie.
+            // Logout is idempotent and is safer than leaving a session that
+            // makes the next connection attempt race itself.
+            let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
             return Err(Error(format!(
                 "gateway authentication failed (error_code={}, state={:?})",
                 login_summary.error_code, login_summary.state
-            )));
+            ))
+            .into());
         }
-        let authenticated_setup: Result<_> = (|| {
+        let authenticated_setup: ProviderResult<_> = (|| {
             let modern_session = ModernSessionId::from_login_xml(&login)?;
             let configuration_path = required_endpoint(config, "session_config")?;
             let (configuration, _, _) = http.request(configuration_path, Method::GET, None)?;
             let configuration = Zeroizing::new(configuration);
             let gateway_configuration = parse_gateway_configuration(&configuration)?;
             if !gateway_configuration.has_l3_configuration {
-                return Err(Error("gateway supplied no L3 configuration".into()));
+                return Err(ProviderError::unavailable(Capability::TransportL3));
             }
             let acquisition = request_modern_token(base_url, &modern_session, timeout)?;
             let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
@@ -132,7 +257,8 @@ impl AuthenticatedEngineSession {
                     // Authentication already succeeded. Avoid leaking a
                     // server-side session when any later bootstrap stage
                     // fails; keep the original error as the useful cause.
-                    let _ = http.request(&logout_path, Method::GET, None);
+                    let _ =
+                        http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
                     return Err(error);
                 }
             };
@@ -149,6 +275,10 @@ impl AuthenticatedEngineSession {
     }
 
     pub fn establish_data_plane(&self) -> Result<EasyConnectDataPlane> {
+        ModernL3TransportBackend.connect(self).map_err(Error::from)
+    }
+
+    fn establish_modern_l3_data_plane(&self) -> Result<EasyConnectDataPlane> {
         // The gateway intermittently rejects an address request sent
         // immediately after token acquisition. Keep this pacing rule beside
         // the session transition so every frontend gets identical behavior.
@@ -174,8 +304,9 @@ impl AuthenticatedEngineSession {
 
     pub fn logout(self) -> Result<()> {
         self.http
-            .request(&self.logout_path, Method::GET, None)
+            .request_with_timeout(&self.logout_path, Method::GET, None, LOGOUT_TIMEOUT)
             .map(|_| ())
+            .map_err(|error| Error(format!("gateway logout failed: {error}")))
     }
 
     /// Establish the data plane while preserving the gateway's one-session
@@ -201,6 +332,23 @@ impl AuthenticatedEngineSession {
             }
         }
     }
+}
+
+fn unsupported_auth_decision(state: AuthState) -> Option<UnsupportedAuthDecision> {
+    let capability = match state {
+        AuthState::CaptchaRequired => Capability::AuthCaptcha,
+        AuthState::SmsRequired => Capability::AuthSms,
+        AuthState::TokenRequired => Capability::AuthToken,
+        AuthState::CertificateRequired => Capability::AuthCertificate,
+        AuthState::HidRequired => Capability::AuthHid,
+        AuthState::SsoRequired => Capability::AuthSso,
+        AuthState::SecondaryUnknown => Capability::AuthUnknownSecondary,
+        AuthState::Authenticated | AuthState::PasswordRequired | AuthState::Failed => return None,
+    };
+    Some(UnsupportedAuthDecision {
+        capability,
+        logout_before_return: true,
+    })
 }
 
 fn address_settle_delay(deadline: Instant, now: Instant) -> Duration {
@@ -263,5 +411,65 @@ mod tests {
         assert!(!retryable_data_plane_setup_error(&Error(
             "modern channel reply has an unexpected status".into()
         )));
+    }
+
+    #[test]
+    fn logout_deadline_is_short_and_independent() {
+        assert!(LOGOUT_TIMEOUT < Duration::from_secs(DEFAULT_TIMEOUT_SECONDS));
+        assert!(!LOGOUT_TIMEOUT.is_zero());
+    }
+
+    #[test]
+    fn secondary_authentication_states_map_to_explicit_capabilities() {
+        for (state, capability) in [
+            (AuthState::CaptchaRequired, Capability::AuthCaptcha),
+            (AuthState::SmsRequired, Capability::AuthSms),
+            (AuthState::TokenRequired, Capability::AuthToken),
+            (AuthState::CertificateRequired, Capability::AuthCertificate),
+            (AuthState::HidRequired, Capability::AuthHid),
+            (AuthState::SsoRequired, Capability::AuthSso),
+            (
+                AuthState::SecondaryUnknown,
+                Capability::AuthUnknownSecondary,
+            ),
+        ] {
+            assert_eq!(
+                unsupported_auth_decision(state),
+                Some(UnsupportedAuthDecision {
+                    capability,
+                    logout_before_return: true,
+                })
+            );
+        }
+        for state in [
+            AuthState::Authenticated,
+            AuthState::PasswordRequired,
+            AuthState::Failed,
+        ] {
+            assert_eq!(unsupported_auth_decision(state), None);
+        }
+    }
+
+    #[test]
+    fn password_adapter_preserves_existing_configuration_errors() {
+        let config = serde_json::json!({});
+        let provider_error =
+            match ProductionPasswordAuthProvider::new(&config).authenticate(AuthRequest::Password {
+                username: "synthetic-user",
+                password: "synthetic-password",
+            }) {
+                Err(error) => Error::from(error).to_string(),
+                Ok(_) => panic!("an empty config cannot authenticate"),
+            };
+        let wrapper_error = AuthenticatedEngineSession::authenticate(
+            &config,
+            "synthetic-user",
+            "synthetic-password",
+        )
+        .err()
+        .expect("an empty config cannot authenticate")
+        .to_string();
+        assert_eq!(provider_error, wrapper_error);
+        assert_eq!(wrapper_error, "engine configuration is missing base_url");
     }
 }

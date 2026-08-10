@@ -2,12 +2,34 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { classifyEngineOutput, engineFailureKind } = require('../lib/engine-output');
+const {
+  classifyEngineCode,
+  classifyEngineOutput,
+  engineFailureKind,
+  engineFailureKindFromCode,
+} = require('../lib/engine-output');
 
 test('native engine authentication failure is terminal and user-readable', () => {
   const message = classifyEngineOutput('ec-engine: gateway authentication failed', 1080);
   assert.match(message, /账号或密码错误/);
   assert.match(message, /停止自动重试/);
+});
+
+test('structured engine error codes are stable, readable and classify retry safety', () => {
+  assert.match(classifyEngineCode('AUTH_FAILED', 1080), /账号或密码错误/);
+  assert.match(classifyEngineCode('LOCAL_LISTENER_FAILED', 6180), /6180/);
+  assert.match(classifyEngineCode('CONFIGURATION_INVALID', 1080), /配置无效/);
+  assert.equal(engineFailureKindFromCode('AUTH_FAILED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
+  assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
+});
+
+test('unsupported MFA is distinct from a wrong password and never retried', () => {
+  assert.equal(
+    classifyEngineCode('UNSUPPORTED_AUTHENTICATION', 6180),
+    '网关鉴权方式不受支持（可能已改为 SSO/MFA）',
+  );
+  assert.equal(engineFailureKindFromCode('UNSUPPORTED_AUTHENTICATION'), 'terminal');
 });
 
 test('bind and authentication-method failures remain distinguishable', () => {

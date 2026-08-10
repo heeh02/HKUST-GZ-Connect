@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';" />
   <title>HKUST(GZ) Connect</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -96,6 +96,7 @@
               <div class="stat"><div class="k" data-i18n="stats.latency">网关延迟</div><div class="v" id="stPing">—</div></div>
               <div class="stat"><div class="k" data-i18n="stats.connections">活动连接</div><div class="v" id="stConn">0</div></div>
               <div class="stat"><div class="k" data-i18n="stats.campusIp">校内 IP</div><div class="v ip" id="stIp">—</div></div>
+              <div class="stat dns"><div class="k" data-i18n="stats.dnsMode">域名解析</div><div class="v dns" id="stDns">—</div></div>
             </div>
             <div class="card apps-card" id="appsCard" hidden>
               <div class="card-title" data-i18n="stats.appsTitle">正在使用隧道的程序</div>
@@ -128,6 +129,23 @@
         <div class="card">
           <div class="card-title" data-i18n="tower.connectionPort">连接与端口</div>
           <div class="frow"><span class="fk" data-i18n="tower.socksPort">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65535" /></div>
+          <div class="proxy-auth-setting">
+            <label class="sw" for="strictProxyAuth">
+              <span class="proxy-auth-label">
+                <strong data-i18n="tower.strictProxyAuth">严格本地代理认证</strong>
+                <small id="strictProxyAuthSummary" data-i18n="tower.strictProxyAuthSummary">默认关闭即可，不影响正常使用。</small>
+              </span>
+              <input type="checkbox" id="strictProxyAuth" aria-describedby="strictProxyAuthSummary" />
+            </label>
+            <details class="proxy-auth-details">
+              <summary>
+                <span class="proxy-auth-more" data-i18n="tower.strictProxyAuthMore">查看功能说明</span>
+                <span class="proxy-auth-less" data-i18n="tower.strictProxyAuthLess">收起功能说明</span>
+                <span class="proxy-auth-chevron" aria-hidden="true">⌄</span>
+              </summary>
+              <p id="strictProxyAuthHint" class="hint" data-i18n="tower.strictProxyAuthHint">例如实验室多人共用一台电脑时，开启后可降低其他本机程序或登录用户直接借用你校园隧道的风险；个人电脑通常保持关闭即可。开启前请先点击“复制 Clash 节点”更新一次 Clash，SSH 复制一次配置即可。开关会立即保存，已连接时自动重连。</p>
+            </details>
+          </div>
           <label class="sw"><span data-i18n="tower.autoReconnect">自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk" data-i18n="tower.maxAttempts">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
           <label class="sw"><span data-i18n="tower.startAtLogin">开机自启</span><input type="checkbox" id="startAtLogin" /></label>
@@ -139,6 +157,13 @@
           <div class="card-title" data-i18n="tower.routeDomains">默认分流网站</div>
           <textarea id="routeDomains" class="inp route-domains" rows="5" spellcheck="false" placeholder="每行一个域名，例如 hkust-gz.edu.cn" data-i18n-attr="placeholder:tower.routeDomainsPlaceholder"></textarea>
           <p class="hint" data-i18n="tower.routeDomainsHint">此列表只用于外部应用的 PAC 分流。应用内校园浏览器会把自身流量隔离地送入隧道，不依赖该列表。</p>
+          <div class="manager-entry">
+            <div>
+              <div class="manager-entry-title" data-i18n="routing.title">网站网络规则</div>
+              <p class="hint" data-i18n="routing.entryHint">为某个域名指定校园隧道或直连，并自动用于之后打开的同域名页面。</p>
+            </div>
+            <button id="manageRoutingRules" class="mini" type="button" data-i18n="routing.manage">管理规则</button>
+          </div>
         </div>
 
         <div class="card">
@@ -146,7 +171,8 @@
           <div class="frow"><span class="fk" data-i18n="tower.socksProxy">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks" data-i18n="tower.copy">复制</button></div>
           <div class="tools">
             <button class="mini" data-copy="pac" data-i18n="tower.copyPac">复制 PAC 地址</button>
-            <button class="mini" data-copy="ssh" data-i18n="tower.copySsh">复制 SSH 命令</button>
+            <button class="mini" data-copy="clash" data-i18n="tower.copyClash">复制 Clash 节点</button>
+            <button class="mini" data-copy="ssh" data-i18n="tower.copySsh">复制 SSH 配置</button>
             <button class="mini" id="openBrowser" data-i18n="tower.openBrowser">打开应用内校园浏览器</button>
             <button class="mini" id="openLog2" data-i18n="tower.openLog">打开日志</button>
           </div>
@@ -162,6 +188,7 @@
       <!-- NOTIFICATIONS / LOGS -->
       <section class="page" data-page="notif" hidden>
         <h2 class="page-h"><span data-i18n="notif.title">通知 / 日志</span> <button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></h2>
+        <div id="settingsNotice" class="local-notice" hidden></div>
         <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
       </section>
 
@@ -171,7 +198,7 @@
         <div class="card">
           <div class="card-title" data-i18n="settings.account">当前账号</div>
           <div class="acct" id="acct">—</div>
-          <div class="card-title" style="margin-top:12px" data-i18n="settings.gateway">网关</div>
+          <div class="card-title gateway-title" data-i18n="settings.gateway">网关</div>
           <div class="acct">remote.hkust-gz.edu.cn</div>
           <p class="hint" data-i18n="settings.gatewayHint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
         </div>
@@ -194,6 +221,15 @@
               <option value="minimize" data-i18n="settings.closeMinimize">最小化到托盘</option>
               <option value="quit" data-i18n="settings.closeQuit">直接退出程序</option>
             </select>
+          </div>
+        </div>
+        <div class="card">
+          <div class="manager-entry">
+            <div>
+              <div class="card-title" data-i18n="certificates.title">证书信任</div>
+              <p class="hint" data-i18n="certificates.entryHint">查看并撤销你曾为校园网站确认的证书例外。证书内容不会上传。</p>
+            </div>
+            <button id="manageCertificatePins" class="mini" type="button" data-i18n="certificates.manage">管理信任</button>
           </div>
         </div>
         <button id="logoutBtn" class="danger" data-i18n="settings.logout">退出登录 / 切换账号</button>
@@ -236,6 +272,70 @@
         <button id="saveResource" class="primary sm" type="submit">添加网站</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="routingRulesDialog" class="manager-dialog" aria-labelledby="routingRulesTitle" aria-describedby="routingRulesDescription">
+    <div class="manager-shell">
+      <div class="dialog-head">
+        <div>
+          <h3 id="routingRulesTitle" data-i18n="routing.title">网站网络规则</h3>
+          <p id="routingRulesDescription" data-i18n="routing.sub">规则只保存在这台电脑上；精确规则优先于包含子域规则。</p>
+        </div>
+        <button id="closeRoutingRulesDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:routing.close">×</button>
+      </div>
+      <div class="manager-body">
+        <div id="routingRuleList" class="manager-list" role="list" aria-label="已保存的网站网络规则" data-i18n-attr="aria-label:routing.listLabel"></div>
+        <p id="routingRuleListStatus" class="manager-empty" aria-live="polite"></p>
+        <form id="routingRuleForm" class="manager-form" novalidate>
+          <input id="routingOriginalHost" type="hidden" />
+          <input id="routingOriginalScope" type="hidden" />
+          <label class="manager-field manager-field-wide">
+            <span data-i18n="routing.host">域名或子域名</span>
+            <input id="routingRuleHost" class="inp" type="text" maxlength="253" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="routingRuleError"
+                   placeholder="例如 login.microsoftonline.com" data-i18n-attr="placeholder:routing.hostPlaceholder" />
+          </label>
+          <label class="manager-field">
+            <span data-i18n="routing.scope">匹配范围</span>
+            <select id="routingRuleScope" class="inp">
+              <option value="exact" data-i18n="routing.scopeExact">仅此域名</option>
+              <option value="subdomains" data-i18n="routing.scopeSubdomains">此域名及其子域名</option>
+            </select>
+          </label>
+          <label class="manager-field">
+            <span data-i18n="routing.route">网络路径</span>
+            <select id="routingRuleRoute" class="inp">
+              <option value="campus" data-i18n="routing.routeCampus">校园隧道</option>
+              <option value="direct" data-i18n="routing.routeDirect">直连</option>
+            </select>
+          </label>
+          <p id="routingRuleError" class="dialog-error manager-field-wide" role="alert"></p>
+          <p id="routingRuleSaved" class="dialog-saved manager-field-wide" aria-live="polite"></p>
+          <div class="manager-form-actions manager-field-wide">
+            <span id="routingRuleEditHint" class="dialog-edit-hint"></span>
+            <button id="cancelRoutingRule" class="ghost sm" type="button" data-i18n="routing.clear">清空</button>
+            <button id="saveRoutingRule" class="primary sm" type="submit" data-i18n="routing.add">添加规则</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="certificatePinsDialog" class="manager-dialog" aria-labelledby="certificatePinsTitle" aria-describedby="certificatePinsDescription">
+    <div class="manager-shell">
+      <div class="dialog-head">
+        <div>
+          <h3 id="certificatePinsTitle" data-i18n="certificates.title">证书信任</h3>
+          <p id="certificatePinsDescription" data-i18n="certificates.sub">这里只显示你明确确认过的 HTTPS 证书例外；撤销后网站将恢复正常证书校验。</p>
+        </div>
+        <button id="closeCertificatePinsDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:certificates.close">×</button>
+      </div>
+      <div class="manager-body certificate-manager-body">
+        <div id="certificatePinList" class="manager-list" role="list" aria-label="已信任的证书例外" data-i18n-attr="aria-label:certificates.listLabel"></div>
+        <p id="certificatePinStatus" class="manager-empty" aria-live="polite"></p>
+        <p id="certificatePinError" class="dialog-error" role="alert"></p>
+        <p id="certificatePinSaved" class="dialog-saved" aria-live="polite"></p>
+      </div>
+    </div>
   </dialog>
 
   <script src="i18n.js"></script>

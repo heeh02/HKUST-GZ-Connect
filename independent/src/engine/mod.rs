@@ -5,9 +5,13 @@
 //! does not require modifying the local proxy or userspace TCP/IP stack.
 
 pub mod data_plane;
+pub mod destination_policy;
 pub mod dns;
+pub mod event;
 pub mod ip_packet;
 pub mod netstack;
+pub mod provider;
 pub mod proxy;
 pub mod session;
 pub mod socks;
+pub mod socks_auth;

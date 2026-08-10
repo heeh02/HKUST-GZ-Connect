@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeCampusUrl } = require('./campus-browser');
 const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('./campus-route');
+const { isIsolatedNetworkHost } = require('./host-safety');
 
 const RESOURCE_FILE = path.join(__dirname, '..', 'assets', 'campus-resources.json');
 const MAX_RESOURCES = 32;
@@ -17,14 +18,18 @@ function normalizeResource(value, { builtin = false } = {}) {
     return null;
   }
   try {
-    const route = value.route === ROUTE_DIRECT || value.route === ROUTE_CAMPUS
+    let route = value.route === ROUTE_DIRECT || value.route === ROUTE_CAMPUS
       ? value.route
       : routeForUrl(value.url);
+    const url = normalizeCampusUrl(value.url);
+    if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(url).hostname)) {
+      route = ROUTE_CAMPUS;
+    }
     return {
       id,
       name,
       description,
-      url: normalizeCampusUrl(value.url),
+      url,
       route,
       builtin,
     };

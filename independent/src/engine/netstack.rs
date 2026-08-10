@@ -80,10 +80,14 @@ impl VirtualNetstack {
             while let Some(packet) = rx.recv() {
                 if let Err(error) = sender.send_ipv4(&packet) {
                     eprintln!("VPN data plane send failed: {error}");
-                    send_health.store(false, Ordering::Release);
                     break;
                 }
             }
+            // `None` means the userspace stack runner dropped its pipe. That is
+            // just as terminal as a gateway write failure: leaving the flag true
+            // would keep the engine in Connected with a live local listener but
+            // no component capable of producing outbound packets.
+            send_health.store(false, Ordering::Release);
         });
 
         Ok(Self {

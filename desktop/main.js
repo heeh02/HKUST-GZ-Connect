@@ -1,41 +1,99 @@
 'use strict';
 const {
   app, BrowserWindow, WebContentsView, ipcMain, shell, Menu, clipboard, safeStorage, session,
-  Tray, nativeImage, dialog,
+  Tray, nativeImage, dialog, powerMonitor, net: electronNet,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const net = require('node:net');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
 const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
-const { applySettingsPatch } = require('./lib/settings-update');
+const { applySettingsPatch, parseCredentialField } = require('./lib/settings-update');
 const {
-  hasStoredPassword, loadPassword: readPassword, savePassword: writePassword,
+  hasStoredPassword,
+  loadPassword: readPassword,
+  restorePasswordSnapshot,
+  savePassword: writePassword,
 } = require('./lib/credential-store');
+const {
+  recoverCredentialSettingsTransaction,
+  runCredentialSettingsMutation,
+} = require('./lib/credential-settings-transaction');
 const { resolveUserDataOverride } = require('./lib/app-data-dir');
-const { classifyEngineOutput, engineFailureKind } = require('./lib/engine-output');
+const {
+  classifyEngineCode,
+  classifyEngineOutput,
+  engineFailureKind,
+  engineFailureKindFromCode,
+} = require('./lib/engine-output');
+const { EngineEventParser } = require('./lib/engine-protocol');
 const { exactExecutablePattern } = require('./lib/engine-process');
+const {
+  EngineSupervisor,
+  loadEngineOwnerRecord,
+  removeEngineOwnerRecord,
+  windowsOwnedEngineCleanupInvocation,
+  writeEngineOwnerRecord,
+} = require('./lib/engine-supervisor');
+const { runConcurrentHealthRound } = require('./lib/health-supervisor');
 const { buildPac } = require('./lib/pac');
+const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
+const { savePacFile } = require('./lib/pac-file');
+const { pacDataUrl } = require('./lib/browser-session-manager');
 const { CampusBrowser } = require('./lib/campus-browser');
+const { AppConnectionEnumerator } = require('./lib/app-connection-enumerator');
 const { loadCampusResources, mergeCampusResources } = require('./lib/campus-resources');
 const { deleteCustomResource, reorderCustomResources, upsertCustomResource } = require('./lib/campus-resource-store');
-const { normalizeOpenRequest, requiresCampusTunnel } = require('./lib/campus-open-policy');
+const { normalizeOpenRequest } = require('./lib/campus-open-policy');
 const { ensureOwnerOnly } = require('./lib/private-file');
-const { appendLog, readLogTail, resetLog } = require('./lib/secure-log');
-const { planReconnect } = require('./lib/reconnect-policy');
-const { stopPhase } = require('./lib/stop-policy');
+const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
+const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/stop-policy');
 const { loadTrayImage } = require('./lib/tray-icon');
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
 const { probeSocksConnect } = require('./lib/socks-health');
+const { PROBE_TIMEOUT_MS, shouldRecover } = require('./lib/tunnel-health');
+const { TelemetryService } = require('./lib/telemetry-service');
+const { ConnectivityRecovery } = require('./lib/connectivity-recovery');
+const { NetworkStatusMonitor } = require('./lib/network-status-monitor');
+const { EphemeralProxyCredential } = require('./lib/proxy-credential');
 const {
-  PROBE_TIMEOUT_MS, TELEMETRY_TICK_MS, shouldProbe, shouldRecover,
-} = require('./lib/tunnel-health');
+  ExternalProxyCredentialStore,
+} = require('./lib/external-proxy-credential-store');
+const {
+  buildClashProxyYaml,
+  buildSshProxyCommand,
+  ensureProxyCredentialSidecar,
+  externalProxyHelperPath,
+} = require('./lib/external-proxy-config');
 const { CampusCredentialVault } = require('./lib/campus-credential-vault');
 const {
-  MAX_CERTIFICATE_PINS, loadCertificateTrust, saveCertificateTrust,
+  CampusCertificateTrustStore,
 } = require('./lib/campus-certificate-trust');
+const { routeCertificateError } = require('./lib/certificate-error-boundary');
 const { CONTROL_WINDOW, clampWindowSize } = require('./lib/window-layout');
 const { createT, effectiveLocale } = require('./lib/i18n');
+const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
+const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
+const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
+const { ConnectionStateMachine } = require('./lib/connection-state-machine');
+const {
+  allowedKeys,
+  boundedArray,
+  boundedString,
+  enumValue,
+  plainObject,
+} = require('./lib/ipc-guard');
+
+// The campus browser is intentionally constrained to the application's
+// proxy/PAC boundary. WebRTC data channels do not require camera or microphone
+// permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing
+// that boundary and exposing local interfaces. This switch must be set before
+// app.whenReady().
+app.commandLine.appendSwitch(
+  'force-webrtc-ip-handling-policy',
+  'disable_non_proxied_udp',
+);
 
 // ---------- profile override & single instance ----------
 // Automated package checks need to isolate every app-owned file, not merely
@@ -61,11 +119,45 @@ const SETTINGS = path.join(DATA, 'settings.json');
 const CRED = path.join(DATA, 'cred.bin');
 const LOG = path.join(DATA, 'engine.log');
 const PAC_FILE = path.join(DATA, 'routing.pac');
+const CAMPUS_BROWSER_PAC_FILE = path.join(DATA, 'campus-browser-routing.pac');
+const ROUTING_RULES = path.join(DATA, 'routing-rules.json');
 const CAMPUS_CREDENTIALS = path.join(DATA, 'campus-credentials.json');
 const CAMPUS_CERTIFICATE_TRUST = path.join(DATA, 'campus-certificate-trust.json');
+const ENGINE_OWNER = path.join(DATA, 'engine-owner.json');
+const CREDENTIAL_TRANSACTION = path.join(DATA, 'credential-settings-transaction.json');
+const PROXY_CREDENTIAL = path.join(DATA, 'proxy-credential.bin');
+const PROXY_HELPER_CREDENTIAL = path.join(DATA, 'proxy-helper-credential.txt');
 const GATEWAY_HOST = 'remote.hkust-gz.edu.cn';
 
-for (const privateFile of [SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_CREDENTIALS, CAMPUS_CERTIFICATE_TRUST]) {
+// The helper sidecar is a short-lived, owner-only plaintext projection of the
+// encrypted stable credential. It is valid only while this app owns (or is
+// about to start) the loopback listener, so never carry it across launches.
+try { fs.unlinkSync(PROXY_HELPER_CREDENTIAL); } catch (error) {
+  if (error?.code !== 'ENOENT') {
+    // A later strict connect/copy operation will fail closed if the path
+    // cannot be safely replaced. Compatibility mode remains usable.
+  }
+}
+
+const credentialTransactionPaths = Object.freeze({
+  settings: SETTINGS,
+  settingsBackup: `${SETTINGS}.bak`,
+  credential: CRED,
+});
+// This must run before any loadSettings(), credential read, or blanket chmod.
+// In particular, chmodding an attacker-replaced broad-permission journal
+// first would erase the evidence that makes recovery fail closed.
+let credentialTransactionRecovery = recoverCredentialSettingsTransaction(
+  CREDENTIAL_TRANSACTION,
+  credentialTransactionPaths,
+);
+let credentialTransactionBlocked = credentialTransactionRecovery.status === 'blocked';
+
+for (const privateFile of [
+  SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_BROWSER_PAC_FILE, ROUTING_RULES,
+  CAMPUS_CREDENTIALS, CAMPUS_CERTIFICATE_TRUST, ENGINE_OWNER,
+  PROXY_CREDENTIAL, PROXY_HELPER_CREDENTIAL,
+]) {
   ensureOwnerOnly(privateFile);
 }
 
@@ -73,22 +165,46 @@ let win = null;
 let tray = null;
 let campusBrowser = null;
 let isQuitting = false;
+let quitAllowed = false;
+let quitInFlight = null;
 let closePromptOpen = false;
-let engine = null;
 let connectInFlight = null;
+let disconnectInFlight = null;
 let reconnectInFlight = null;
-let userDisconnected = false;
-let attempts = 0;
+const connectionState = new ConnectionStateMachine();
 const MAX_ATTEMPTS = 3;
 let connectedAt = null;
 let gatewayIp = null;
-let telemetryTimer = null;
-let teleBusy = false;
 let tunnelProbeFailures = 0;
-let tunnelRecoveryInFlight = false;
-let probeInFlight = false;
-let lastTele = { connCount: 0, apps: [], latencyMs: null };
-let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
+let tunnelRecoveryInFlight = null;
+let telemetryGeneration = null;
+let activeProxyCredential = null;
+let stableProxyCredential = null;
+let lastTele = {
+  connCount: 0,
+  apps: [],
+  latencyMs: null,
+  tunnelHealth: 'unknown',
+  failedHealthTargets: [],
+};
+let state = {
+  connected: false,
+  connecting: false,
+  clientIp: null,
+  dnsMode: 'unknown',
+  lastError: null,
+  notice: null,
+  pacUrl: '',
+};
+const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
+const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
+const appConnectionEnumerator = new AppConnectionEnumerator();
+const logWriter = new BufferedLogWriter(LOG);
+const externalProxyCredentialStore = new ExternalProxyCredentialStore({
+  filePath: PROXY_CREDENTIAL,
+  safeStorage,
+  platform: process.platform,
+});
 // Last known "newer release exists" result. Failures never land here, so the
 // renderer can render it without distinguishing network errors from silence.
 let updateInfo = null;
@@ -96,39 +212,197 @@ let updateInfo = null;
 // the real locale, so early failures still render a coherent language.
 let locale = 'zh';
 let t = createT(locale);
+let settingsRecoveryNotice = null;
+let settingsRecoveryNoticeText = null;
+let settingsReadErrorText = null;
+let credentialRecoveryNoticeText = null;
+let credentialRecoveryErrorText = null;
 
 // ---------- settings & credentials ----------
 function loadSettings() {
-  return readSettings(SETTINGS);
+  return readSettings(SETTINGS, {
+    onRecovery: (notice) => { settingsRecoveryNotice = notice; },
+  });
+}
+function reportSettingsReadFailure(cause, { emitState = true } = {}) {
+  if (cause?.code === 'SETTINGS_READ_FAILED') return cause;
+  const message = t('error.settingsReadFailed');
+  const error = new Error(message, { cause });
+  error.code = 'SETTINGS_READ_FAILED';
+  error.userMessage = message;
+  settingsReadErrorText = message;
+  if (state.lastError !== message) {
+    state.lastError = message;
+    if (emitState) emit();
+  }
+  return error;
+}
+function loadSettingsOrReport(options) {
+  try {
+    const settings = loadSettings();
+    if (settingsReadErrorText) {
+      const shouldEmit = options?.emitState !== false && state.lastError === settingsReadErrorText;
+      if (state.lastError === settingsReadErrorText) state.lastError = null;
+      settingsReadErrorText = null;
+      if (shouldEmit) emit();
+    }
+    return settings;
+  }
+  catch (error) { throw reportSettingsReadFailure(error, options); }
 }
 // The saved language override ('zh'/'en') wins over the OS locale; 'auto'
 // follows the system, and Chinese remains the fallback when both are silent.
 function currentLocale() {
   return effectiveLocale(loadSettings().language, app.getLocale());
 }
-function saveSettings(settings) { return writeSettings(SETTINGS, settings); }
+function assertSettingsPersistenceAvailable() {
+  // Never overwrite a settings snapshot that the credential transaction must
+  // still restore. All settings/resource/routing writers pass this boundary,
+  // so a blocked startup recovery is fail-closed for persistence as well as
+  // for connection attempts.
+  if (credentialTransactionBlocked) {
+    const recovery = retryCredentialTransactionRecovery();
+    if (recovery.status === 'blocked') {
+      const message = t('error.credentialRecoveryBlocked');
+      const error = new Error(message);
+      error.code = 'CREDENTIAL_RECOVERY_BLOCKED';
+      error.userMessage = message;
+      throw error;
+    }
+  }
+}
+function saveSettings(settings) {
+  assertSettingsPersistenceAvailable();
+  return writeSettings(SETTINGS, settings);
+}
 function savePassword(pw) {
   return writePassword(CRED, pw, safeStorage, process.platform);
 }
 function loadPassword() {
+  if (credentialTransactionBlocked) return '';
   return readPassword(CRED, safeStorage, process.platform);
 }
-function hasStoredCredential() { return hasStoredPassword(CRED, process.platform); }
-function socksPort() { return Number(loadSettings().port) || 1080; }
-function campusResources(settings = loadSettings()) {
+function hasStoredCredential() {
+  return !credentialTransactionBlocked && hasStoredPassword(CRED, process.platform);
+}
+function syncRecoveryNotice(emitState = true) {
+  state.notice = [settingsRecoveryNoticeText, credentialRecoveryNoticeText]
+    .filter(Boolean)
+    .join('\n') || null;
+  if (emitState) emit();
+}
+function applyCredentialRecoveryOutcome(recovery, {
+  emitState = true,
+  clearedNoticeKey = 'error.credentialRecoveryCleared',
+  clearNotice = false,
+} = {}) {
+  credentialTransactionRecovery = recovery;
+  const recoverySafe = recovery?.status === 'credential-cleared' || (
+    recovery?.ok === true && ['none', 'recovered', 'committed'].includes(recovery.status)
+  );
+  credentialTransactionBlocked = !recoverySafe;
+
+  if (credentialRecoveryErrorText && state.lastError === credentialRecoveryErrorText) {
+    state.lastError = null;
+  }
+  credentialRecoveryErrorText = null;
+  if (credentialTransactionBlocked) {
+    credentialRecoveryNoticeText = null;
+    credentialRecoveryErrorText = t('error.credentialRecoveryBlocked');
+    state.lastError = credentialRecoveryErrorText;
+  } else if (recovery?.status === 'recovered') {
+    credentialRecoveryNoticeText = t('error.credentialRecoveryRecovered');
+  } else if (recovery?.status === 'credential-cleared') {
+    credentialRecoveryNoticeText = t(clearedNoticeKey);
+  } else if (clearNotice) {
+    credentialRecoveryNoticeText = null;
+  }
+  syncRecoveryNotice(emitState);
+  return recovery;
+}
+function retryCredentialTransactionRecovery() {
+  return applyCredentialRecoveryOutcome(recoverCredentialSettingsTransaction(
+    CREDENTIAL_TRANSACTION,
+    credentialTransactionPaths,
+  ));
+}
+function socksPort() { return Number(loadSettingsOrReport().port) || 1080; }
+function clearActiveProxyCredential(expectedGeneration = null) {
+  if (!activeProxyCredential) return false;
+  if (!activeProxyCredential.destroy(expectedGeneration)) return false;
+  activeProxyCredential = null;
+  return true;
+}
+function loadStableProxyCredential() {
+  if (stableProxyCredential) return stableProxyCredential;
+  stableProxyCredential = externalProxyCredentialStore.loadOrCreate();
+  return stableProxyCredential;
+}
+function removeExternalProxySidecar() {
+  try {
+    fs.unlinkSync(PROXY_HELPER_CREDENTIAL);
+    return true;
+  } catch (error) {
+    return error?.code === 'ENOENT';
+  }
+}
+function ensureExternalProxyAccess(port) {
+  const credential = loadStableProxyCredential();
+  ensureProxyCredentialSidecar({
+    filePath: PROXY_HELPER_CREDENTIAL,
+    port,
+    credential,
+    platform: process.platform,
+  });
+  return credential;
+}
+function generationProxyCredential(port) {
+  const stable = ensureExternalProxyAccess(port);
+  const injected = stable.copyForEngine();
+  try {
+    return new EphemeralProxyCredential({ credential: injected });
+  } finally {
+    injected.username.fill(0);
+    injected.password.fill(0);
+  }
+}
+function proxyHelperPath() {
+  return externalProxyHelperPath({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    desktopDir: __dirname,
+    platform: process.platform,
+    arch: process.arch,
+  });
+}
+function campusResources(settings = loadSettingsOrReport()) {
   return mergeCampusResources(loadCampusResources(), settings.customResources);
 }
-function certificateIsTrusted(origin, fingerprint) {
-  return loadCertificateTrust(CAMPUS_CERTIFICATE_TRUST).some((pin) =>
-    pin.origin === origin && pin.fingerprint === fingerprint);
+function safeCampusResources(settings = null) {
+  try { return campusResources(settings || loadSettingsOrReport()); }
+  catch (error) {
+    reportSettingsReadFailure(error);
+    return mergeCampusResources(loadCampusResources(), []);
+  }
 }
-function trustCertificate(origin, fingerprint) {
-  const current = loadCertificateTrust(CAMPUS_CERTIFICATE_TRUST)
-    .filter((pin) => pin.origin !== origin);
-  saveCertificateTrust(CAMPUS_CERTIFICATE_TRUST, [
-    ...current.slice(-(MAX_CERTIFICATE_PINS - 1)),
-    { origin, fingerprint },
-  ]);
+const certificateTrustStore = new CampusCertificateTrustStore({
+  filePath: CAMPUS_CERTIFICATE_TRUST,
+});
+function safeCertificatePins() {
+  try { return certificateTrustStore.list(); }
+  catch { return []; }
+}
+
+let serverCampusResources = [];
+const domainRoutePolicy = new DomainRoutePolicyStore({
+  filePath: ROUTING_RULES,
+  customResources: () => loadSettingsOrReport().customResources,
+  schoolDomains: () => loadSettingsOrReport().routeDomains,
+  serverResources: () => serverCampusResources,
+});
+function safeRoutingRules() {
+  try { return domainRoutePolicy.list(); }
+  catch { return []; }
 }
 
 // ---------- engine ----------
@@ -168,151 +442,660 @@ function emit() {
 // The gateway permits one session per account. Stop an orphaned independent
 // engine before starting the new owned child.
 function killStrayEngines(resolvedEnginePath) {
-  try {
-    if (process.platform === 'win32')
-      require('child_process').execFileSync('powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command',
-         "Get-Process -Name 'ec-engine*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
-        { stdio: 'ignore', timeout: 4000, windowsHide: true });
-    else {
-      const processPattern = exactExecutablePattern(resolvedEnginePath);
-      if (!processPattern) return;
-      require('child_process').execFileSync(
-        'pkill',
-        ['-f', processPattern],
-        { stdio: 'ignore', timeout: 3000 },
-      );
+  if (process.platform === 'win32') {
+    const owner = loadEngineOwnerRecord(ENGINE_OWNER);
+    try {
+      const invocation = windowsOwnedEngineCleanupInvocation(owner);
+      if (!invocation) return;
+      require('child_process').execFileSync(invocation.command, invocation.args, {
+        env: invocation.env,
+        stdio: 'ignore',
+        timeout: 4000,
+        windowsHide: true,
+      });
+    } catch {
+    } finally {
+      // A stale/corrupt record must not be retried forever. PID reuse is safe:
+      // PowerShell checks both the recorded PID and the actual executable path.
+      removeEngineOwnerRecord(ENGINE_OWNER);
     }
+    return;
+  }
+  try {
+    const processPattern = exactExecutablePattern(resolvedEnginePath);
+    if (!processPattern) return;
+    require('child_process').execFileSync(
+      'pkill',
+      ['-f', processPattern],
+      { stdio: 'ignore', timeout: 3000 },
+    );
   } catch {}
 }
 
-async function connect(isRetry) {
-  if (engine) return;
-  if (connectInFlight) return connectInFlight;
-  connectInFlight = connectOnce(isRetry);
-  try { return await connectInFlight; }
-  finally { connectInFlight = null; }
+function beginLifecycleIntent() {
+  // A manual connect/disconnect/reconnect always supersedes any recovery that
+  // was queued for a previous sleep or network outage.
+  connectivityRecovery.cancel();
+  return connectionState.beginConnectIntent();
 }
 
-async function connectOnce(isRetry) {
-  if (engine) return;
-  if (!isRetry) { attempts = 0; userDisconnected = false; }
-  const s = loadSettings();
-  const pw = loadPassword();
-  if (!s.username || !pw) { state.connecting = false; state.lastError = t('error.needCredentials'); emit(); return; }
-  state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
+function invalidateForConnectivity(reason, intent) {
+  if (!connectionState.pauseForConnectivity(intent, { isQuitting })) return;
+  // Keep the lifecycle intent stable: resume/online is allowed to recover
+  // this exact user-requested connection, while generation invalidation makes
+  // every old engine event, retry, and health probe inert immediately.
+  engineSupervisor.invalidate();
+  connectedAt = null;
+  state.connected = false;
+  state.connecting = false;
+  state.clientIp = null;
+  state.dnsMode = 'unknown';
+  state.lastError = t(reason === 'suspend'
+    ? 'error.connectionSuspended'
+    : 'error.networkUnavailable');
+  stopTelemetry();
   emit();
-  gatewayIp = GATEWAY_HOST;
-  if (userDisconnected) { state.connecting = false; emit(); return; }
-  try {
-    // Keep every attempt in one diagnostic session. Clearing the file on an
-    // automatic retry used to erase the failure that triggered that retry.
-    if (!isRetry) resetLog(LOG);
-    appendLog(LOG, `\n--- connection attempt ${attempts + 1} ---\n`);
-  } catch {}
-  const bin = enginePath();
-  if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = t('error.engineMissing', { path: bin }); emit(); return; }
-  const engineConfig = engineConfigPath();
-  if (!fs.existsSync(engineConfig)) { state.connecting = false; state.lastError = t('error.engineConfigMissing', { path: engineConfig }); emit(); return; }
+  ensureEngineStopped().then((result) => {
+    if (!connectionState.canContinue(intent) || result.ok) return;
+    state.lastError = t('error.engineStuck');
+    emit();
+  }).catch(() => {});
+}
 
-  killStrayEngines(bin); // gateway = one session per account; clear this app's orphan only
-  engine = spawn(bin, [
-    '--config', engineConfig,
-    '--credentials-stdin',
-    '--socks-bind', `127.0.0.1:${Number(s.port)}`,
-  ], { stdio: ['pipe', 'pipe', 'pipe'] });
-  // An engine that dies before reading stdin (missing library, wrong
-  // architecture) makes this write emit EPIPE. Without a listener that would
-  // become an uncaught exception and take the whole application down, so the
-  // failure is left to the 'exit' handler instead.
-  engine.stdin.on('error', () => {});
-  engine.stdin.end(`${s.username}\n${pw}\n`);
-  let diagnosticTail = '';
-  const onData = (d) => {
-    const chunk = d.toString();
-    try { appendLog(LOG, chunk); } catch {}
-    diagnosticTail = (diagnosticTail + chunk).slice(-512);
-    if (/SOCKS5 server listening/.test(diagnosticTail)) {
-      state.connecting = false; state.connected = true;
-      state.lastError = null;
-      connectedAt = Date.now(); startTelemetry(); emit();
-    }
-    if (/Client IP assigned/.test(diagnosticTail)) { state.clientIp = t('status.ipAssigned'); emit(); }
-    const classifiedError = classifyEngineOutput(diagnosticTail, s.port, t);
-    if (classifiedError) state.lastError = classifiedError;
-  };
-  engine.stdout.on('data', onData);
-  engine.stderr.on('data', onData);
-  engine.on('error', (err) => { state.connecting = false; state.lastError = t('error.engineStart', { message: err.message }); emit(); });
-  engine.on('exit', (code) => {
-    const wasConnected = state.connected;
-    const uptime = connectedAt ? (Date.now() - connectedAt) : 0;
-    engine = null;
-    state.connected = false; state.clientIp = null; connectedAt = null;
-    stopTelemetry();
-    const failureKind = engineFailureKind(diagnosticTail);
-    const terminalFailure = failureKind === 'terminal';
-    const cfg = loadSettings();
-    const autoOn = cfg.autoReconnect !== false;
-    const maxA = Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS;
-    // user-initiated stop or bad credentials → never auto-reconnect
-    if (userDisconnected || terminalFailure) { state.connecting = false; emit(); return; }
-    // Only a genuinely stable session earns a fresh retry budget. Merely
-    // opening SOCKS and then losing the data plane must keep counting, or a
-    // rejecting gateway can drive the app into an infinite login loop.
-    const retry = autoOn ? planReconnect({
-      attempts,
-      maxAttempts: maxA,
-      wasConnected,
-      uptimeMs: uptime,
-      failureKind,
-    }) : null;
-    if (retry) {
-      attempts = retry.attempt;
-      state.connecting = true;
-      state.lastError = wasConnected
-        ? t('error.reconnecting')
-        : (failureKind === 'gateway-transient'
-          ? t('error.gatewayRetrying')
-          : null);
-      emit();
-      setTimeout(() => connect(true), retry.delayMs);
-      return;
-    }
+async function recoverConnectivity(intent) {
+  let autoReconnect;
+  try {
+    autoReconnect = loadSettingsOrReport().autoReconnect !== false;
+  } catch {
+    connectionState.failIntent(intent);
     state.connecting = false;
-    if (failureKind === 'gateway-transient') {
-      state.lastError = t('error.gatewayRejected');
-    } else if (!state.lastError) {
-      state.lastError = wasConnected
-        ? t('error.reconnectFailed')
-        : (code ? t('error.connectFailed') : null);
+    return false;
+  }
+  if (!connectionState.canRecover(intent, { isQuitting, autoReconnect })) return false;
+  const stopped = await ensureEngineStopped();
+  if (!stopped.ok || !connectionState.canContinue(intent, { isQuitting })) {
+    if (!stopped.ok && connectionState.isCurrentIntent(intent)) {
+      state.lastError = t('error.engineStuck');
+      emit();
     }
+    return false;
+  }
+  if (!connectionState.resumeConnectivity(intent, { isQuitting, autoReconnect })) return false;
+  const result = await connect(false, intent);
+  return result.ok === true;
+}
+
+const connectivityRecovery = new ConnectivityRecovery({
+  invalidate: invalidateForConnectivity,
+  getLifecycleIntent: () => connectionState.currentRecoveryIntent({ isQuitting }),
+  shouldReconnect: async (intent) => {
+    try {
+      return connectionState.canRecover(intent, {
+        isQuitting,
+        autoReconnect: loadSettingsOrReport().autoReconnect !== false,
+      });
+    } catch {
+      connectionState.failIntent(intent);
+      state.connecting = false;
+      return false;
+    }
+  },
+  reconnect: recoverConnectivity,
+});
+
+const networkStatusMonitor = new NetworkStatusMonitor({
+  isOnline: () => electronNet.isOnline(),
+  onOffline: () => connectivityRecovery.networkOffline(),
+  onOnline: () => connectivityRecovery.networkOnline(),
+});
+
+async function connect(isRetry = false, expectedIntent = null) {
+  const intent = expectedIntent === null
+    ? (isRetry ? connectionState.snapshot().intent : beginLifecycleIntent())
+    : expectedIntent;
+  if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
+
+  // A connect requested while an earlier stop is draining waits for close;
+  // it never starts a second process into the exit/close interval.
+  if (disconnectInFlight) await disconnectInFlight;
+  if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
+  if (engineSupervisor.hasActive) return { ok: true, existing: true };
+  if (connectInFlight) {
+    await connectInFlight;
+    if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
+    if (engineSupervisor.hasActive) return { ok: true, existing: true };
+  }
+
+  const operation = connectOnce(isRetry, intent);
+  connectInFlight = operation;
+  try { return await operation; }
+  finally { if (connectInFlight === operation) connectInFlight = null; }
+}
+
+function handleEngineClose({ code, generation }, diagnosticTail, structuredFatalCode = null) {
+  // A delayed close from an already invalidated generation must not suspend a
+  // newer listener that is now serving the browser.
+  const supervisorGenerationCurrent = engineSupervisor.isCurrent(generation);
+  clearActiveProxyCredential(generation);
+  removeExternalProxySidecar();
+  if (!supervisorGenerationCurrent || !connectionState.isCurrentGeneration(generation)) return;
+  // Unexpected process death releases the configured loopback port before the
+  // close event reaches JavaScript. Repoint the persistent browser Session at
+  // its fail-closed PAC immediately; a later generation may restore it only
+  // after reporting listener_ready.
+  suspendOpenBrowserPolicy().catch((error) => {
+    state.lastError = t('error.browserRoutingAfterSave', { message: error.message });
+    emit();
+  });
+
+  const wasConnected = state.connected;
+  const uptime = connectedAt ? (Date.now() - connectedAt) : 0;
+  state.connected = false;
+  state.clientIp = null;
+  state.dnsMode = 'unknown';
+  connectedAt = null;
+  stopTelemetry();
+  const failureKind = structuredFatalCode
+    ? engineFailureKindFromCode(structuredFatalCode)
+    : engineFailureKind(diagnosticTail);
+  const terminalFailure = failureKind === 'terminal';
+  let cfg;
+  try {
+    cfg = loadSettings();
+  } catch (error) {
+    connectionState.engineClosed({
+      generation,
+      supervisorGenerationCurrent,
+      terminalFailure: true,
+    });
+    state.connecting = false;
+    state.lastError = reportSettingsReadFailure(error, { emitState: false }).message;
+    emit();
+    return;
+  }
+  const autoOn = cfg.autoReconnect !== false;
+  const maxA = Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS;
+  const decision = connectionState.engineClosed({
+    generation,
+    supervisorGenerationCurrent,
+    terminalFailure,
+    autoReconnect: autoOn,
+    maxAttempts: maxA,
+    wasConnected,
+    uptimeMs: uptime,
+    failureKind,
+  });
+
+  if (decision.action === 'settled' || decision.action === 'terminal') {
+    state.connecting = false;
+    emit();
+    return;
+  }
+
+  // Only a genuinely stable session earns a fresh retry budget. Merely
+  // opening SOCKS and then losing the data plane must keep counting, or a
+  // rejecting gateway can drive the app into an infinite login loop.
+  if (decision.action === 'retry') {
+    state.connecting = true;
+    state.lastError = wasConnected
+      ? t('error.reconnecting')
+      : (failureKind === 'gateway-transient'
+        ? t('error.gatewayRetrying')
+        : null);
+    emit();
+    const intent = connectionState.snapshot().intent;
+    engineSupervisor.schedule(generation, decision.delayMs, () => connect(true, intent));
+    return;
+  }
+
+  state.connecting = false;
+  if (failureKind === 'gateway-transient') {
+    state.lastError = t('error.gatewayRejected');
+  } else if (!state.lastError) {
+    state.lastError = wasConnected
+      ? t('error.reconnectFailed')
+      : (code ? t('error.connectFailed') : null);
+  }
+  emit();
+}
+
+function handleEngineExitBoundary({ generation }) {
+  // `exit` means the process has already released its loopback listener even
+  // though Node may not emit `close` until stdout/stderr drain. Close the
+  // in-process browser request gate synchronously in that interval so another
+  // local process cannot bind the configured port and impersonate the proxy.
+  if (!engineSupervisor.isCurrent(generation) ||
+      !connectionState.isCurrentGeneration(generation)) return;
+  clearActiveProxyCredential(generation);
+  removeExternalProxySidecar();
+  suspendOpenBrowserPolicy().catch((error) => {
+    state.lastError = t('error.browserRoutingAfterSave', { message: error.message });
     emit();
   });
 }
-function disconnect() { userDisconnected = true; connectedAt = null; stopTelemetry(); if (engine) engine.kill(); }
 
-function forceStopEngine() {
-  if (!engine) return;
-  try { engine.kill('SIGKILL'); } catch {}
+async function connectOnce(isRetry, intent) {
+  if (engineSupervisor.hasActive || !connectionState.canContinue(intent)) {
+    return { ok: false, stale: true };
+  }
+  if (!connectionState.beginConnectAttempt(intent, { isRetry })) {
+    return { ok: false, stale: true };
+  }
+  if (credentialTransactionBlocked) {
+    const recovery = retryCredentialTransactionRecovery();
+    if (recovery.status === 'blocked') {
+      connectionState.failIntent(intent);
+      state.connecting = false;
+      state.lastError = t('error.credentialRecoveryBlocked');
+      emit();
+      return { ok: false, blocked: true };
+    }
+  }
+  let s;
+  let pw;
+  state.connecting = true;
+  state.connected = false;
+  state.lastError = null;
+  state.clientIp = null;
+  state.dnsMode = 'unknown';
+  emit();
+  gatewayIp = GATEWAY_HOST;
+  if (!connectionState.canAttempt(intent)) {
+    state.connecting = false;
+    emit();
+    return { ok: false, stale: true };
+  }
+  try {
+    // Keep every attempt in one diagnostic session. Clearing the file on an
+    // automatic retry used to erase the failure that triggered that retry.
+    if (!isRetry) await logWriter.reset();
+    logWriter.append(`\n--- connection attempt ${connectionState.snapshot().attemptNumber} ---\n`);
+  } catch {}
+  if (!connectionState.canAttempt(intent)) {
+    state.connecting = false;
+    emit();
+    return { ok: false, stale: true };
+  }
+  if (credentialTransactionBlocked) {
+    const recovery = retryCredentialTransactionRecovery();
+    if (recovery.status === 'blocked') {
+      connectionState.failIntent(intent);
+      state.connecting = false;
+      state.lastError = t('error.credentialRecoveryBlocked');
+      emit();
+      return { ok: false, blocked: true };
+    }
+  }
+  // FINAL_CONNECTION_SNAPSHOT: log reset above is connectOnce's last async yield
+  // before spawn. Re-read the matching settings/credential pair now, then keep
+  // the path through EngineSupervisor.start() and stdin synchronous. A settings
+  // save during log I/O therefore either lands in this snapshot, or runs after
+  // the child is active and follows the normal reconnect path.
+  try {
+    s = loadSettings();
+    pw = loadPassword();
+  } catch (error) {
+    connectionState.failIntent(intent);
+    state.connecting = false;
+    state.lastError = reportSettingsReadFailure(error, { emitState: false }).message;
+    emit();
+    return { ok: false, settingsUnavailable: true };
+  }
+  if (!s.username || !pw) {
+    connectionState.failIntent(intent);
+    state.connecting = false;
+    state.lastError = t('error.needCredentials');
+    emit();
+    return { ok: false };
+  }
+  try {
+    if (s.username.length > 256 || pw.length > 4096) throw new Error('credential too long');
+    parseCredentialField(s.username, '账号');
+    parseCredentialField(pw, '密码');
+  } catch {
+    pw = '';
+    connectionState.failIntent(intent);
+    state.connecting = false;
+    state.lastError = t('error.invalidStoredCredentials');
+    emit();
+    return { ok: false, invalidCredentials: true };
+  }
+  const bin = enginePath();
+  if (!fs.existsSync(bin)) {
+    connectionState.failIntent(intent);
+    state.connecting = false;
+    state.lastError = t('error.engineMissing', { path: bin });
+    emit();
+    return { ok: false };
+  }
+  const engineConfig = engineConfigPath();
+  if (!fs.existsSync(engineConfig)) {
+    connectionState.failIntent(intent);
+    state.connecting = false;
+    state.lastError = t('error.engineConfigMissing', { path: engineConfig });
+    emit();
+    return { ok: false };
+  }
+
+  clearActiveProxyCredential();
+  let proxyCredential = null;
+  let proxyCredentialMode = 'none';
+  if (s.strictProxyAuth === true) {
+    try {
+      proxyCredential = generationProxyCredential(Number(s.port));
+      proxyCredentialMode = 'required';
+    } catch {
+      connectionState.failIntent(intent);
+      state.connecting = false;
+      state.lastError = t('error.proxyCredentialUnavailable');
+      emit();
+      return { ok: false };
+    }
+  } else if (stableProxyCredential || fs.existsSync(PROXY_CREDENTIAL)) {
+    // The packaged SSH helper reads its endpoint from the sidecar and offers
+    // both NO_AUTH and RFC1929, so one copied ProxyCommand keeps working when
+    // the user later changes port or toggles strict mode. Do not create this
+    // optional credential for ordinary compatibility-mode users who have
+    // never requested an external configuration; that avoids unnecessary OS
+    // secure-storage access. Failure never blocks the core tunnel itself.
+    try {
+      proxyCredential = generationProxyCredential(Number(s.port));
+      proxyCredentialMode = 'optional';
+    } catch {}
+  }
+
+  let resolvedBin;
+  try { resolvedBin = fs.realpathSync(bin); } catch { resolvedBin = path.resolve(bin); }
+  killStrayEngines(resolvedBin); // gateway = one session per account; clear this app's orphan only
+  let diagnosticTail = '';
+  let engineGeneration = null;
+  let ownedEngine = null;
+  let structuredFatalCode = null;
+  let legacyFallbackTimer = null;
+  connectionState.invalidateEngineGeneration();
+  const expectedEngineGeneration = engineSupervisor.currentGeneration + 1;
+  const engineArgs = [
+    '--config', engineConfig,
+    '--credentials-stdin',
+    '--socks-bind', `127.0.0.1:${Number(s.port)}`,
+    '--generation', String(expectedEngineGeneration),
+  ];
+  if (proxyCredentialMode === 'required') engineArgs.push('--socks-auth-stdin');
+  if (proxyCredentialMode === 'optional') engineArgs.push('--socks-auth-optional-stdin');
+  const started = engineSupervisor.start({
+    command: bin,
+    args: engineArgs,
+    options: { stdio: ['pipe', 'pipe', 'pipe'] },
+    onError: ({ error, generation }) => {
+      if (!engineSupervisor.isCurrent(generation)) return;
+      structuredFatalCode = 'EVENT_OUTPUT_FAILED';
+      state.connecting = false;
+      state.lastError = t('error.engineStart', { message: error.message });
+      emit();
+    },
+    onExit: handleEngineExitBoundary,
+    onClose: (result) => {
+      if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
+      if (ownedEngine) removeEngineOwnerRecord(ENGINE_OWNER, ownedEngine);
+      handleEngineClose(result, diagnosticTail, structuredFatalCode);
+    },
+  });
+  if (!started.ok) {
+    proxyCredential?.destroy();
+    removeExternalProxySidecar();
+    if (started.reason === 'spawn') {
+      connectionState.failIntent(intent);
+      state.connecting = false;
+      state.lastError = t('error.engineStart', { message: started.error.message });
+      emit();
+    }
+    return { ok: false, error: started.error };
+  }
+  const child = started.child;
+  engineGeneration = started.generation;
+  connectionState.bindEngineGeneration(engineGeneration);
+  if (engineGeneration !== expectedEngineGeneration) {
+    proxyCredential?.destroy();
+    removeExternalProxySidecar();
+    structuredFatalCode = 'EVENT_OUTPUT_FAILED';
+    state.lastError = classifyEngineCode(structuredFatalCode, s.port, t);
+    emit();
+    await engineSupervisor.stop({ graceMs: 0, forceWaitMs: STOP_FORCE_WAIT_MS });
+    return { ok: false };
+  }
+  if (proxyCredential) {
+    if (!proxyCredential.bindGeneration(engineGeneration, Number(s.port))) {
+      proxyCredential.destroy();
+      removeExternalProxySidecar();
+      structuredFatalCode = 'EVENT_OUTPUT_FAILED';
+      state.lastError = t('error.proxyCredentialUnavailable');
+      emit();
+      await engineSupervisor.stop({ graceMs: 0, forceWaitMs: STOP_FORCE_WAIT_MS });
+      return { ok: false };
+    }
+    activeProxyCredential = proxyCredential;
+  }
+  if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 0) {
+    ownedEngine = { pid: child.pid, executablePath: resolvedBin };
+    try { writeEngineOwnerRecord(ENGINE_OWNER, ownedEngine); } catch {}
+  }
+  // An engine that dies before reading stdin (missing library, wrong
+  // architecture) makes this write emit EPIPE. Without a listener that would
+  // become an uncaught exception and take the whole application down, so the
+  // failure is left to the supervisor's final close handler instead.
+  child.stdin.on('error', () => {});
+  let proxyCredentialLines = proxyCredential
+    ? proxyCredential.stdinSuffix(engineGeneration)
+    : '';
+  child.stdin.end(`${s.username}\n${pw}\n${proxyCredentialLines}`);
+  pw = '';
+  proxyCredentialLines = '';
+  const eventParser = new EngineEventParser();
+  let structuredApiSeen = false;
+  let legacyFallbackEnabled = false;
+  let legacyStdoutTail = '';
+  let listenerReady = false;
+  let browserActivationInFlight = null;
+
+  const finishConnected = () => {
+    if (!engineSupervisor.isCurrent(engineGeneration) || listenerReady === false ||
+        !connectionState.markConnected(engineGeneration)) return;
+    const wasConnected = state.connected;
+    state.connecting = false;
+    state.connected = true;
+    state.lastError = null;
+    if (!wasConnected) {
+      connectedAt = Date.now();
+      startTelemetry(engineGeneration);
+    }
+    emit();
+  };
+
+  const markConnected = () => {
+    if (!engineSupervisor.isCurrent(engineGeneration) || listenerReady === false) return;
+    if (!campusBrowser?.routingSuspended) {
+      finishConnected();
+      return;
+    }
+    if (browserActivationInFlight) return;
+    const activation = campusBrowser.resumeRoutingPolicy(Number(s.port));
+    browserActivationInFlight = activation;
+    activation.then(() => {
+      if (browserActivationInFlight === activation) browserActivationInFlight = null;
+      finishConnected();
+    }).catch((error) => {
+      if (browserActivationInFlight === activation) browserActivationInFlight = null;
+      if (!engineSupervisor.isCurrent(engineGeneration)) return;
+      // The engine is usable by authenticated external clients, while the
+      // built-in browser deliberately remains behind its request gate.
+      finishConnected();
+      state.lastError = t('error.browserRoutingAfterSave', { message: error.message });
+      emit();
+    });
+  };
+
+  const applyHumanDiagnostic = (chunk, allowReadiness) => {
+    diagnosticTail = (diagnosticTail + chunk).slice(-512);
+    if (!engineSupervisor.isCurrent(engineGeneration)) return;
+    if (allowReadiness && /SOCKS5 server listening/.test(diagnosticTail)) {
+      listenerReady = true;
+      markConnected();
+    }
+    if (allowReadiness && /Client IP assigned/.test(diagnosticTail)) {
+      state.clientIp = t('status.ipAssigned');
+      emit();
+    }
+    const classifiedError = classifyEngineOutput(diagnosticTail, s.port, t);
+    if (classifiedError) {
+      state.lastError = classifiedError;
+      emit();
+    }
+  };
+
+  const applyEngineEvent = (event) => {
+    if (!engineSupervisor.isCurrent(engineGeneration)) return;
+    if (event.type === 'state_changed' && event.generation !== engineGeneration) return;
+    if (event.type === 'stopped' && event.generation !== engineGeneration) return;
+    switch (event.type) {
+      case 'hello':
+        structuredApiSeen = true;
+        if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
+        legacyFallbackTimer = null;
+        break;
+      case 'state_changed':
+        if (event.state === 'connecting' || event.state === 'authenticating') {
+          if (!connectionState.markConnecting(engineGeneration)) break;
+          state.connecting = true;
+          emit();
+        } else if (event.state === 'connected') {
+          markConnected();
+        }
+        break;
+      case 'listener_ready':
+        if (event.port !== Number(s.port)) {
+          structuredFatalCode = 'LOCAL_LISTENER_FAILED';
+          state.lastError = classifyEngineCode(structuredFatalCode, s.port, t);
+          emit();
+          break;
+        }
+        listenerReady = true;
+        markConnected();
+        break;
+      case 'client_ip_assigned':
+        state.clientIp = t('status.ipAssigned');
+        emit();
+        break;
+      case 'dns_mode':
+        state.dnsMode = event.mode;
+        emit();
+        break;
+      case 'network_unhealthy':
+        state.lastError = t('error.tunnelRecovering');
+        emit();
+        break;
+      case 'fatal_error':
+        structuredFatalCode = event.code;
+        state.lastError = classifyEngineCode(event.code, s.port, t);
+        emit();
+        break;
+      default:
+        break;
+    }
+  };
+
+  legacyFallbackTimer = setTimeout(() => {
+    if (structuredApiSeen || !engineSupervisor.isCurrent(engineGeneration)) return;
+    legacyFallbackEnabled = true;
+    if (legacyStdoutTail) {
+      logWriter.append(legacyStdoutTail);
+      applyHumanDiagnostic(legacyStdoutTail, true);
+    }
+    applyHumanDiagnostic(diagnosticTail, true);
+  }, 750);
+  legacyFallbackTimer.unref?.();
+
+  child.stdout.on('data', (data) => {
+    const events = eventParser.feed(data);
+    if (events.length) {
+      structuredApiSeen = true;
+      if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
+      legacyFallbackTimer = null;
+      for (const event of events) applyEngineEvent(event);
+      return;
+    }
+    if (structuredApiSeen) return;
+    const chunk = data.toString();
+    legacyStdoutTail = (legacyStdoutTail + chunk).slice(-4096);
+    if (legacyFallbackEnabled) {
+      logWriter.append(chunk);
+      applyHumanDiagnostic(chunk, true);
+    }
+  });
+  child.stderr.on('data', (data) => {
+    const chunk = data.toString();
+    logWriter.append(chunk);
+    applyHumanDiagnostic(chunk, legacyFallbackEnabled);
+  });
+  return { ok: true, generation: engineGeneration };
 }
 
-function waitForConnectionIdle() {
-  const startedAt = Date.now();
-  let forced = false;
-  return new Promise((resolve) => {
-    const poll = () => {
-      if (!connectInFlight && !engine) return resolve(true);
-      const phase = stopPhase(Date.now() - startedAt);
-      if (phase === 'force' && !forced) {
-        forced = true;
-        forceStopEngine();
-      }
-      if (phase === 'failed') return resolve(false);
-      setTimeout(poll, 50);
-    };
-    poll();
+function ensureEngineStopped() {
+  if (disconnectInFlight) return disconnectInFlight;
+  // Establish the browser barrier before the engine releases its listener;
+  // otherwise another local account/process can bind the now-free port and
+  // impersonate the expected proxy. The synchronous request gate is the hard
+  // boundary: PAC/drain failures are surfaced but do not strand the engine.
+  const operation = stopEngineAfterBrowserSuspend({
+    suspendBrowser: suspendOpenBrowserPolicy,
+    browserBoundaryClosed: () => campusBrowser?.routingRequestsBlocked !== false,
+    closeBrowser: () => campusBrowser?.close(),
+    onSuspendError: (error) => {
+      state.lastError = t('error.browserRoutingAfterSave', { message: error.message });
+      emit();
+    },
+    stopEngine: () => engineSupervisor.stop({
+      graceMs: STOP_GRACE_MS,
+      forceWaitMs: STOP_FORCE_WAIT_MS,
+    }),
   });
+  disconnectInFlight = operation;
+  operation.finally(() => {
+    // The encrypted master remains stable, but the plaintext helper projection
+    // must not outlive the listener. Reconnect/resume recreates it before the
+    // next engine starts, including after a port change.
+    removeExternalProxySidecar();
+    if (disconnectInFlight === operation) disconnectInFlight = null;
+  });
+  return operation;
+}
+
+function initiateStop(wantsConnectedAfterStop) {
+  connectivityRecovery.cancel();
+  const intent = connectionState.beginStop(wantsConnectedAfterStop);
+  // Generation invalidation happens before waiting for close. Old probes,
+  // delayed retries, and output callbacks are stale from this exact point.
+  engineSupervisor.invalidate();
+  clearActiveProxyCredential();
+  connectedAt = null;
+  state.connected = false;
+  state.connecting = false;
+  state.clientIp = null;
+  state.dnsMode = 'unknown';
+  stopTelemetry();
+  emit();
+  return { intent, stopped: ensureEngineStopped() };
+}
+
+async function disconnect() {
+  const { intent, stopped } = initiateStop(false);
+  const result = await stopped;
+  removeExternalProxySidecar();
+  connectionState.stopCompleted(intent, result);
+  if (connectionState.isCurrentIntent(intent) && !result.ok) {
+    state.lastError = t('error.engineStuck');
+    emit();
+  }
+  return { ok: result.ok };
 }
 
 function waitForConnected(timeoutMs = 45000) {
@@ -320,7 +1103,11 @@ function waitForConnected(timeoutMs = 45000) {
   return new Promise((resolve) => {
     const poll = () => {
       if (state.connected) return resolve(true);
-      if (userDisconnected || (!state.connecting && !engine && state.lastError)) {
+      if (connectionState.shouldStopWaiting({
+        connecting: state.connecting,
+        hasActive: engineSupervisor.hasActive,
+        lastError: state.lastError,
+      })) {
         return resolve(false);
       }
       if (Date.now() >= deadline) return resolve(false);
@@ -330,30 +1117,39 @@ function waitForConnected(timeoutMs = 45000) {
   });
 }
 
-async function reconnect() {
-  if (reconnectInFlight) return reconnectInFlight;
-  reconnectInFlight = (async () => {
-    disconnect();
-    if (!await waitForConnectionIdle()) {
+async function reconnect(expectedGeneration = null) {
+  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) {
+    return { ok: false, stale: true };
+  }
+  if (reconnectInFlight && connectionState.isCurrentIntent(reconnectInFlight.intent) &&
+      connectionState.snapshot().desiredConnected) {
+    return reconnectInFlight.promise;
+  }
+  if (reconnectInFlight) await reconnectInFlight.promise;
+  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) {
+    return { ok: false, stale: true };
+  }
+
+  const { intent, stopped } = initiateStop(true);
+  const operation = (async () => {
+    const stopResult = await stopped;
+    connectionState.stopCompleted(intent, stopResult);
+    if (!stopResult.ok) {
       state.connecting = false;
       state.lastError = t('error.engineStuck');
       emit();
       return { ok: false };
     }
-    await connect();
-    return { ok: true };
+    if (!connectionState.resumeAfterStop(intent)) return { ok: false, stale: true };
+    return connect(false, intent);
   })();
-  try { return await reconnectInFlight; }
-  finally { reconnectInFlight = null; }
+  const record = { intent, promise: operation };
+  reconnectInFlight = record;
+  try { return await operation; }
+  finally { if (reconnectInFlight === record) reconnectInFlight = null; }
 }
 
 // ---------- telemetry: latency + which apps use the SOCKS tunnel ----------
-const net = require('net');
-function run(cmd, args, timeout) {
-  return new Promise((resolve) => {
-    require('child_process').execFile(cmd, args, { timeout, windowsHide: true }, (e, so) => resolve(so || ''));
-  });
-}
 function tcpPing(host, port) {
   return new Promise((resolve) => {
     if (!host) return resolve(null);
@@ -366,155 +1162,195 @@ function tcpPing(host, port) {
     sock.once('error', () => done(false));
   });
 }
-function friendly(n) {
-  if (/Chrome|chrome/.test(n)) return 'Google Chrome';
-  if (/Code Helper/.test(n)) return 'VS Code';
-  if (/Microsoft Edge|msedge/.test(n)) return 'Microsoft Edge';
-  if (/Lark|Feishu|飞书/.test(n)) return 'Lark/飞书';
-  if (/firefox/i.test(n)) return 'Firefox';
-  if (n === 'ssh' || n === 'sshd') return 'SSH';
-  if (/^(curl|wget|nc|node)$/.test(n)) return n;
-  return n;
-}
-const processNames = new Map();
-const MAX_TRACKED_PROCESS_NAMES = 256;
-async function listTunnelApps(proxyPorts, enginePid, appPid) {
-  const ports = new Set(proxyPorts.filter(
-    (port) => Number.isInteger(port) && port >= 1 && port <= 65535
-  ));
-  if (!ports.size) return { connCount: 0, apps: [] };
-  try {
-    if (process.platform === 'win32') {
-      const portFilter = [...ports].map((port) => `$_.RemotePort -eq ${port}`).join(' -or ');
-      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{${portFilter}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
-      const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 4000);
-      let arr = []; try { const j = JSON.parse(out); arr = Array.isArray(j) ? j : [j]; } catch {}
-      const apps = arr.filter((a) => a && a.Pid !== enginePid && a.Pid !== appPid)
-        .map((a) => ({ pid: a.Pid, name: friendly(a.Name || String(a.Pid)), count: a.Count }));
-      return { connCount: apps.reduce((s, a) => s + (a.count || 0), 0), apps };
-    }
-    const out = await run('lsof', ['-nP', '-iTCP@127.0.0.1', '-sTCP:ESTABLISHED', '-F', 'pcn'], 1500);
-    const tuples = new Map(); const cmd = new Map(); let pid = null;
-    for (const ln of out.split('\n')) {
-      const k = ln[0], v = ln.slice(1);
-      if (k === 'p') pid = Number(v);
-      else if (k === 'c') cmd.set(pid, v);
-      else if (k === 'n') {
-        const m = v.match(/->127\.0\.0\.1:(\d+)$/);
-        if (m && ports.has(Number(m[1])) && pid !== enginePid && pid !== appPid) tuples.set(v, pid);
-      }
-    }
-    const perPid = new Map();
-    for (const p of tuples.values()) perPid.set(p, (perPid.get(p) || 0) + 1);
-    const apps = [];
-    for (const [p, count] of perPid) {
-      // lsof truncates the command name, so the full one comes from ps. A pid
-      // keeps the same name for its whole life, so resolve each one once instead
-      // of spawning ps for every process on every telemetry tick.
-      let name = processNames.get(p);
-      if (name === undefined) {
-        const full = (await run('ps', ['-p', String(p), '-o', 'comm='], 800)).trim();
-        name = full ? full.split('/').pop() : (cmd.get(p) || String(p));
-        if (processNames.size >= MAX_TRACKED_PROCESS_NAMES) processNames.clear();
-        processNames.set(p, name);
-      }
-      apps.push({ pid: p, name: friendly(name), count });
-    }
-    apps.sort((a, b) => b.count - a.count);
-    return { connCount: tuples.size, apps };
-  } catch { return { connCount: 0, apps: [] }; }
-}
-function sendTelemetry() {
+function sendTelemetry(snapshot = lastTele) {
+  lastTele = snapshot;
   if (!win || win.isDestroyed()) return;
   win.webContents.send('telemetry', { connectedAt, ...lastTele });
 }
-function startTelemetry() {
+
+const telemetryService = new TelemetryService({
+  collectApps: () => appConnectionEnumerator.list({
+    ports: [socksPort()],
+    enginePid: engineSupervisor.currentChild?.pid ?? -1,
+    appPid: process.pid,
+  }),
+  collectLatency: () => tcpPing(gatewayIp, 443),
+  collectHealth: (generation) => checkTunnelHealth(generation),
+  emit: (snapshot, generation) => {
+    if (state.connected && engineSupervisor.isCurrent(generation) &&
+        telemetryGeneration === generation) sendTelemetry(snapshot);
+  },
+  isVisible: () => Boolean(win && !win.isDestroyed() && win.isVisible()),
+  isGenerationCurrent: (generation) => (
+    state.connected && engineSupervisor.isCurrent(generation) && telemetryGeneration === generation
+  ),
+});
+
+function startTelemetry(generation) {
   stopTelemetry();
-  let tick = 0;
-  const pump = async () => {
-    if (teleBusy || !state.connected) return;
-    teleBusy = true;
-    try {
-      const r = await listTunnelApps(
-        [socksPort()],
-        engine ? engine.pid : -1,
-        process.pid,
-      );
-      lastTele.connCount = r.connCount; lastTele.apps = r.apps;
-      if (tick % 2 === 0) lastTele.latencyMs = await tcpPing(gatewayIp, 443);
-      if (shouldProbe(tick) && !probeInFlight) {
-        probeInFlight = true;
-        // Deliberately not awaited. The probe deadline is longer than the tick
-        // interval and recovery is longer still, so awaiting it here would hold
-        // `teleBusy` and freeze the live counters for the whole probe.
-        checkTunnelHealth()
-          .catch(() => {})
-          .finally(() => { probeInFlight = false; });
-      }
-      sendTelemetry();
-    } finally {
-      // Advance even if a step above threw, otherwise the next pump repeats the
-      // same tick and probes the tunnel again immediately.
-      tick++;
-      teleBusy = false;
-    }
-  };
-  pump();
-  telemetryTimer = setInterval(pump, TELEMETRY_TICK_MS);
+  telemetryGeneration = generation;
+  telemetryService.start(generation);
 }
 function stopTelemetry() {
-  if (telemetryTimer) clearInterval(telemetryTimer);
-  telemetryTimer = null;
-  lastTele = { connCount: 0, apps: [], latencyMs: null };
+  telemetryGeneration = null;
+  telemetryService.stop();
+  lastTele = {
+    connCount: 0,
+    apps: [],
+    latencyMs: null,
+    tunnelHealth: 'unknown',
+    failedHealthTargets: [],
+  };
   tunnelProbeFailures = 0;
 }
 
-async function checkTunnelHealth() {
-  if (!state.connected || tunnelRecoveryInFlight) return;
-  const probeOptions = {
-    proxyPort: socksPort(),
-    targetPort: 443,
+async function checkTunnelHealth(generation) {
+  if (!state.connected || !engineSupervisor.isCurrent(generation) ||
+      (tunnelRecoveryInFlight && tunnelRecoveryInFlight.generation === generation)) return;
+  let proxyPort;
+  try {
+    proxyPort = Number(loadSettingsOrReport().port);
+  } catch {
+    return { kind: 'settings-unavailable', failedTargets: [] };
+  }
+  const result = await runConcurrentHealthRound({
+    generation,
+    isGenerationCurrent: (candidate) => (
+      engineSupervisor.isCurrent(candidate) && telemetryGeneration === candidate
+    ),
+    probe: probeSocksConnect,
+    proxyPort,
+    proxyCredentials: activeProxyCredential?.socksAuthentication(generation) || null,
     timeoutMs: PROBE_TIMEOUT_MS,
-  };
-  const first = await probeSocksConnect({
-    ...probeOptions,
-    targetHost: 'www.hkust-gz.edu.cn',
   });
-  const second = first || await probeSocksConnect({
-    ...probeOptions,
-    targetHost: 'library.hkust-gz.edu.cn',
-  });
-  if (second) {
+  if (result.kind === 'stale') return result;
+
+  // One successful independent target proves that the SOCKS/data plane is
+  // alive. Report the other as a site failure without consuming the tunnel's
+  // recovery budget.
+  if (result.kind === 'healthy' || result.kind === 'site-failure') {
     tunnelProbeFailures = 0;
-    return;
+    return result;
   }
   tunnelProbeFailures++;
+  let autoReconnect;
+  try {
+    autoReconnect = loadSettingsOrReport().autoReconnect;
+  } catch {
+    return { ...result, kind: 'settings-unavailable' };
+  }
   if (!shouldRecover({
     failures: tunnelProbeFailures,
-    autoReconnect: loadSettings().autoReconnect,
-  })) return;
+    autoReconnect,
+  })) {
+    return result;
+  }
+  if (!engineSupervisor.isCurrent(generation) ||
+      !connectionState.snapshot().desiredConnected) {
+    return { ...result, kind: 'stale' };
+  }
 
-  tunnelRecoveryInFlight = true;
+  const recoveryRecord = { generation };
+  tunnelRecoveryInFlight = recoveryRecord;
   state.lastError = t('error.tunnelRecovering');
   emit();
   try {
-    await reconnect();
+    await reconnect(generation);
   } finally {
-    tunnelProbeFailures = 0;
-    tunnelRecoveryInFlight = false;
+    if (tunnelRecoveryInFlight === recoveryRecord) {
+      tunnelProbeFailures = 0;
+      tunnelRecoveryInFlight = null;
+    }
   }
+  return result;
 }
 
 // ---------- PAC file (advanced app integration; no DNS probing) ----------
-function refreshPacFile(settings = loadSettings()) {
-  fs.writeFileSync(
-    PAC_FILE,
-    buildPac(settings.routeDomains, Number(settings.port)),
-    { mode: 0o600 },
-  );
-  ensureOwnerOnly(PAC_FILE);
+let currentPacUrl = pathToFileURL(PAC_FILE).href;
+function refreshPacFile(settings = loadSettingsOrReport()) {
+  const saved = savePacFile(PAC_FILE, buildPac(
+    settings.routeDomains,
+    Number(settings.port),
+    domainRoutePolicy.options(),
+  ));
+  currentPacUrl = saved.url;
+  return saved;
 }
-function pacUrl() { return pathToFileURL(PAC_FILE).href; }
+function pacUrl() { return currentPacUrl; }
+
+function browserPolicyProxyConfig(port) {
+  const proxyKind = loadSettingsOrReport().strictProxyAuth === true ? 'http' : 'socks5';
+  const source = domainRoutePolicy.buildPac(
+    Number(port),
+    { proxyKind, campusPrivateIpv4: true },
+  );
+  // Keep a durable diagnostic copy, while Chromium consumes an in-memory PAC.
+  // If the derived file disappears or cannot be re-read, Chromium must never
+  // silently fall back to DIRECT for a campus page.
+  savePacFile(
+    CAMPUS_BROWSER_PAC_FILE,
+    source,
+  );
+  return {
+    mode: 'pac_script',
+    pacScript: pacDataUrl(source),
+    proxyBypassRules: '<-loopback>',
+  };
+}
+
+async function suspendOpenBrowserPolicy() {
+  if (!campusBrowser) return null;
+  return campusBrowser.suspendRoutingPolicy();
+}
+
+async function resumeOpenBrowserPolicyIfLive() {
+  if (!campusBrowser || !state.connected || !engineSupervisor.hasActive) return null;
+  return campusBrowser.resumeRoutingPolicy(socksPort());
+}
+
+function runDomainPolicyTransaction(buildOperations) {
+  return routingPolicyTransactions.run(() => {
+    assertSettingsPersistenceAvailable();
+    const { commit, rollback, resumeBrowser = true } = buildOperations();
+    return {
+      suspend: suspendOpenBrowserPolicy,
+      commit,
+      applyExternal: () => refreshPacFile(loadSettingsOrReport()),
+      applyBrowser: resumeBrowser ? resumeOpenBrowserPolicyIfLive : null,
+      rollback,
+      restoreExternal: () => refreshPacFile(loadSettingsOrReport()),
+      restoreBrowser: resumeOpenBrowserPolicyIfLive,
+    };
+  });
+}
+
+const browserRoutingPolicy = {
+  appliesLiveSession: true,
+  list: () => domainRoutePolicy.list(),
+  resolve: (url, inheritedRoute) => domainRoutePolicy.resolve(url, inheritedRoute),
+  upsert: (payload) => runDomainPolicyTransaction(() => {
+    const previousRules = domainRoutePolicy.list();
+    return {
+      commit: () => domainRoutePolicy.upsert(payload),
+      rollback: () => domainRoutePolicy.replace(previousRules),
+    };
+  }),
+  remove: (payload) => runDomainPolicyTransaction(() => {
+    const previousRules = domainRoutePolicy.list();
+    return {
+      commit: () => domainRoutePolicy.remove(payload),
+      rollback: () => domainRoutePolicy.replace(previousRules),
+    };
+  }),
+  proxyConfig: (port) => browserPolicyProxyConfig(port),
+};
+
+async function ensureCampusReady() {
+  if (state.connected) return true;
+  const result = await connect();
+  if (!result?.ok && !state.connecting) return false;
+  return waitForConnected();
+}
 
 function getCampusBrowser() {
   if (!campusBrowser) {
@@ -529,13 +1365,20 @@ function getCampusBrowser() {
       session,
       dialog,
       certificateTrust: {
-        isTrusted: certificateIsTrusted,
-        trust: trustCertificate,
+        isTrusted: (origin, fingerprint) => certificateTrustStore.isTrusted(origin, fingerprint),
+        trust: (origin, fingerprint) => certificateTrustStore.trust(origin, fingerprint),
       },
       credentialVault,
       parentWindow: () => win,
       toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
+      toolbarPreload: path.join(__dirname, 'lib', 'campus-toolbar-contract.js'),
       campusPreload: path.join(__dirname, 'campus-preload.js'),
+      routingPolicy: browserRoutingPolicy,
+      ensureCampusReady,
+      onManageRoutingRules: () => {
+        showWindow();
+        win?.webContents.send('open-routing-rules');
+      },
       locale,
       t,
       onError: (message) => {
@@ -557,7 +1400,21 @@ async function connectAndOpenCampusBrowser(rawUrl) {
     return { ok: false, error: error.message };
   }
 
-  if (requiresCampusTunnel(request.route) && !state.connected) {
+  let resolution;
+  try {
+    resolution = domainRoutePolicy.resolve(request.url);
+  } catch (error) {
+    const message = error.userMessage || error.message;
+    state.lastError = message;
+    emit();
+    return { ok: false, error: message };
+  }
+  request.route = resolution.route;
+  // The campus browser always starts from a live tunnel even when its first
+  // host is routed DIRECT. This does not proxy the partner site, but it makes
+  // a subsequent SAML POST/redirect back to a campus host work immediately
+  // without losing request state while an engine starts in the background.
+  if (!state.connected) {
     await connect();
     if (!await waitForConnected()) {
       const error = state.lastError || t('error.connectTimeout');
@@ -571,7 +1428,9 @@ async function connectAndOpenCampusBrowser(rawUrl) {
     await getCampusBrowser().open(request.url, socksPort(), request.route);
     return { ok: true, url: request.url, route: request.route };
   } catch (error) {
-    const message = t('error.browserStart', { message: error.message });
+    const message = error.code === 'SETTINGS_READ_FAILED'
+      ? error.message
+      : t('error.browserStart', { message: error.message });
     state.lastError = message;
     emit();
     return { ok: false, error: message };
@@ -588,8 +1447,14 @@ async function runUpdateCheck() {
   if (result) {
     // The API answered, so the 24h throttle window starts here. Failures leave
     // the timestamp alone and are retried at the next launch.
-    const settings = loadSettings();
-    saveSettings({ ...settings, updateCheckedAt: Date.now() });
+    await routingPolicyTransactions.run(() => {
+      assertSettingsPersistenceAvailable();
+      const settings = loadSettingsOrReport();
+      return {
+        commit: () => saveSettings({ ...settings, updateCheckedAt: Date.now() }),
+        rollback: () => saveSettings(settings),
+      };
+    });
   }
   if (result && result.updateAvailable) {
     updateInfo = result;
@@ -600,14 +1465,88 @@ async function runUpdateCheck() {
 
 // Automatic checks run at most once every 24h (persisted across restarts and
 // long-running sessions); the settings-page button always forces a fresh check.
-function runAutomaticUpdateCheck() {
-  if (!shouldAutoCheck(loadSettings().updateCheckedAt)) return Promise.resolve(null);
+async function runAutomaticUpdateCheck() {
+  if (!shouldAutoCheck(loadSettingsOrReport().updateCheckedAt)) return null;
   return runUpdateCheck();
 }
 
 // ---------- IPC ----------
-ipcMain.handle('get-state', () => {
-  const settings = loadSettings();
+const CONTROL_RENDERER_FILE = path.join(__dirname, 'renderer', 'index.html');
+function trustedHandle(channel, handler) {
+  registerTrustedIpcHandlers({
+    ipcMain,
+    getWebContents: () => (
+      win && !win.isDestroyed() ? win.webContents : null
+    ),
+    allowedFiles: [CONTROL_RENDERER_FILE],
+    handlers: { [channel]: handler },
+  });
+}
+
+function routingIdentityFromIpc(value) {
+  const source = plainObject(value);
+  if (typeof source.includeSubdomains !== 'boolean') {
+    throw new TypeError('路由规则范围无效');
+  }
+  return {
+    host: boundedString(source.host, { minLength: 1, maxLength: 253, trim: true }),
+    includeSubdomains: source.includeSubdomains,
+  };
+}
+
+function routingRuleFromIpc(value) {
+  const source = plainObject(value);
+  return {
+    ...routingIdentityFromIpc(source),
+    route: enumValue(source.route, ['campus', 'direct']),
+    ...(source.previous == null ? {} : { previous: routingIdentityFromIpc(source.previous) }),
+  };
+}
+
+function settingsPatchFromIpc(value) {
+  const source = allowedKeys(value, [
+    'username', 'password', 'port', 'autoReconnect', 'maxAttempts', 'startAtLogin',
+    'autoConnect', 'strictProxyAuth', 'closeAction', 'language', 'routeDomains',
+  ]);
+  const result = { ...source };
+  if (source.username != null) {
+    result.username = boundedString(source.username, { maxLength: 256 });
+  }
+  if (source.password != null) {
+    result.password = boundedString(source.password, { maxLength: 4096 });
+  }
+  if (Array.isArray(source.routeDomains)) {
+    result.routeDomains = boundedArray(
+      source.routeDomains,
+      (item) => boundedString(item, { minLength: 1, maxLength: 253, trim: true }),
+      { maxLength: 64 },
+    );
+  } else if (source.routeDomains != null) {
+    result.routeDomains = boundedString(source.routeDomains, { maxLength: 4096 });
+  }
+  return result;
+}
+
+trustedHandle('get-state', () => {
+  let settings;
+  try {
+    settings = loadSettingsOrReport();
+  } catch (error) {
+    return {
+      ...state,
+      connectedAt,
+      settings: null,
+      hasPassword: false,
+      pacUrl: pacUrl(),
+      loggedIn: false,
+      locale,
+      platform: process.platform,
+      version: app.getVersion(),
+      update: updateInfo,
+      campusResources: safeCampusResources({ customResources: [] }),
+      lastError: error.message,
+    };
+  }
   const passwordPresent = hasStoredCredential();
   return {
     ...state,
@@ -623,42 +1562,286 @@ ipcMain.handle('get-state', () => {
     campusResources: campusResources(settings),
   };
 });
-ipcMain.handle('save-resource', (_e, payload) => {
-  const previous = loadSettings();
+
+trustedHandle('list-routing-rules', () => {
   try {
-    const result = upsertCustomResource(previous.customResources, payload);
-    saveSettings({ ...previous, customResources: result.resources });
-    return { ok: true, resource: result.resource, resources: campusResources() };
+    return { ok: true, rules: domainRoutePolicy.list() };
   } catch (error) {
-    return { ok: false, error: error.message, resources: campusResources(previous) };
+    return { ok: false, error: error.message, rules: safeRoutingRules() };
   }
 });
-ipcMain.handle('delete-resource', (_e, id) => {
-  const previous = loadSettings();
+trustedHandle('save-routing-rule', async (_e, payload) => {
   try {
-    const resources = deleteCustomResource(previous.customResources, id);
-    saveSettings({ ...previous, customResources: resources });
-    return { ok: true, resources: campusResources() };
+    const rule = routingRuleFromIpc(payload);
+    const result = await runDomainPolicyTransaction(() => {
+      const previousRules = domainRoutePolicy.list();
+      return {
+        commit: () => domainRoutePolicy.upsert(rule),
+        rollback: () => domainRoutePolicy.replace(previousRules),
+      };
+    });
+    return { ok: true, ...result, warning: null };
   } catch (error) {
-    return { ok: false, error: error.message, resources: campusResources(previous) };
+    return {
+      ok: false,
+      error: error.message,
+      rollbackIncomplete: error.rollbackIncomplete === true,
+      rules: safeRoutingRules(),
+    };
   }
 });
-ipcMain.handle('reorder-resources', (_e, ids) => {
-  const previous = loadSettings();
-  const resources = reorderCustomResources(previous.customResources, ids);
-  saveSettings({ ...previous, customResources: resources });
-  return { ok: true, resources: campusResources() };
+trustedHandle('delete-routing-rule', async (_e, payload) => {
+  try {
+    const identity = routingIdentityFromIpc(payload);
+    const rules = await runDomainPolicyTransaction(() => {
+      const previousRules = domainRoutePolicy.list();
+      return {
+        commit: () => domainRoutePolicy.remove(identity),
+        rollback: () => domainRoutePolicy.replace(previousRules),
+      };
+    });
+    return { ok: true, rules, warning: null };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message,
+      rollbackIncomplete: error.rollbackIncomplete === true,
+      rules: safeRoutingRules(),
+    };
+  }
 });
-ipcMain.handle('save', async (_e, p) => {
-  const previous = loadSettings();
+trustedHandle('list-certificate-pins', () => {
+  try {
+    return { ok: true, pins: certificateTrustStore.list() };
+  } catch (error) {
+    return { ok: false, error: error.message, pins: [] };
+  }
+});
+trustedHandle('delete-certificate-pin', (_e, payload) => {
+  try {
+    const source = plainObject(payload);
+    const pins = certificateTrustStore.delete({
+      origin: boundedString(source.origin, { minLength: 1, maxLength: 2048, trim: true }),
+      fingerprint: boundedString(source.fingerprint, {
+        minLength: 64,
+        maxLength: 64,
+        trim: true,
+      }),
+    });
+    return { ok: true, pins };
+  } catch (error) {
+    // A transient read error must not turn a failed revocation into another
+    // exception that escapes IPC. An empty fallback is deliberately
+    // fail-closed; the UI can retry once the backing file is readable again.
+    return { ok: false, error: error.message, pins: safeCertificatePins() };
+  }
+});
+
+trustedHandle('save-resource', async (_e, payload) => {
+  try {
+    plainObject(payload);
+    let result;
+    await runDomainPolicyTransaction(() => {
+      const previous = loadSettingsOrReport();
+      result = upsertCustomResource(previous.customResources, payload);
+      return {
+        commit: () => saveSettings({ ...previous, customResources: result.resources }),
+        rollback: () => saveSettings(previous),
+      };
+    });
+    return {
+      ok: true,
+      resource: result.resource,
+      resources: safeCampusResources(),
+      warning: null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message,
+      rollbackIncomplete: error.rollbackIncomplete === true,
+      resources: safeCampusResources(),
+    };
+  }
+});
+trustedHandle('delete-resource', async (_e, id) => {
+  try {
+    const safeId = boundedString(id, { minLength: 1, maxLength: 40, trim: true });
+    await runDomainPolicyTransaction(() => {
+      const previous = loadSettingsOrReport();
+      const resources = deleteCustomResource(previous.customResources, safeId);
+      return {
+        commit: () => saveSettings({ ...previous, customResources: resources }),
+        rollback: () => saveSettings(previous),
+      };
+    });
+    return { ok: true, resources: safeCampusResources(), warning: null };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message,
+      rollbackIncomplete: error.rollbackIncomplete === true,
+      resources: safeCampusResources(),
+    };
+  }
+});
+trustedHandle('reorder-resources', async (_e, ids) => {
+  try {
+    const safeIds = boundedArray(
+      ids,
+      (id) => boundedString(id, { minLength: 1, maxLength: 40, trim: true }),
+      { maxLength: 32 },
+    );
+    await runDomainPolicyTransaction(() => {
+      const previous = loadSettingsOrReport();
+      const resources = reorderCustomResources(previous.customResources, safeIds);
+      return {
+        commit: () => saveSettings({ ...previous, customResources: resources }),
+        rollback: () => saveSettings(previous),
+      };
+    });
+    return { ok: true, resources: safeCampusResources(), warning: null };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error.message,
+      rollbackIncomplete: error.rollbackIncomplete === true,
+      resources: safeCampusResources(),
+    };
+  }
+});
+trustedHandle('save', async (_e, rawPatch) => {
+  let previous = null;
+  let p;
   let next;
   let portChanged;
+  let proxyAuthChanged;
   try {
-    ({ settings: next, portChanged } = applySettingsPatch(previous, p));
+    previous = loadSettingsOrReport();
+    p = settingsPatchFromIpc(rawPatch);
+    ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(previous, p));
   } catch (error) {
-    return { ok: false, error: error.message, settings: previous };
+    return {
+      ok: false,
+      error: error.userMessage || error.message,
+      settings: previous,
+    };
   }
-  next = saveSettings(next);
+  const replacingPassword = typeof p.password === 'string' && p.password.length > 0;
+  // Select the serialized policy transaction from the payload shape, not an
+  // early settings snapshot. Another already-queued mutation can legitimately
+  // change the current port/auth contract before this operation is rebased.
+  const policyTransactionRequired = p.routeDomains != null || p.port != null ||
+    p.strictProxyAuth != null;
+  if (replacingPassword && policyTransactionRequired) {
+    // Credential commits are deliberately short, synchronous journaled
+    // transactions. A routing change has asynchronous PAC/browser apply and
+    // rollback phases, so combining both domains would reopen a crash window.
+    // The real UI already saves login credentials and network settings in
+    // separate actions; reject an unexpected combined IPC payload explicitly.
+    p.password = '';
+    return {
+      ok: false,
+      error: t('error.credentialPolicyCombined'),
+      settings: previous,
+    };
+  }
+
+  const commitCandidateSettings = () => {
+    const usernameChanged = p.username != null && next.username !== previous.username;
+    if (usernameChanged && !replacingPassword) {
+      throw Object.assign(new Error(t('error.usernameNeedsPassword')), {
+        userMessage: t('error.usernameNeedsPassword'),
+      });
+    }
+    if (!replacingPassword) {
+      next = saveSettings(next);
+      return next;
+    }
+
+    const transaction = runCredentialSettingsMutation({
+      journalPath: CREDENTIAL_TRANSACTION,
+      paths: credentialTransactionPaths,
+      mutate: () => {
+        if (!savePassword(p.password)) {
+          throw Object.assign(new Error('protected credential storage unavailable'), {
+            credentialStoreUnavailable: true,
+          });
+        }
+        next = saveSettings(next);
+        return next;
+      },
+    });
+    if (!transaction.ok) {
+      const passwordWasCleared = transaction.recovery?.status === 'credential-cleared';
+      applyCredentialRecoveryOutcome(transaction.recovery, {
+        clearedNoticeKey: 'error.settingsSaveFailedPasswordCleared',
+      });
+      const message = credentialTransactionBlocked
+        ? t('error.credentialRecoveryBlocked')
+        : (passwordWasCleared
+          ? t('error.settingsSaveFailedPasswordCleared')
+          : transaction.error?.credentialStoreUnavailable
+          ? t('error.passwordStoreUnavailable')
+          : t('error.settingsSaveFailed'));
+      throw Object.assign(new Error(message), {
+        userMessage: message,
+        rollbackIncomplete: credentialTransactionBlocked,
+      });
+    }
+    applyCredentialRecoveryOutcome(
+      { ok: true, status: 'committed' },
+      { clearNotice: true },
+    );
+    return transaction.value;
+  };
+
+  try {
+    if (policyTransactionRequired) {
+      await runDomainPolicyTransaction(() => {
+        // Rebase on the latest committed settings inside the policy queue so a
+        // resource mutation queued just before this save cannot be overwritten
+        // by an older renderer snapshot.
+        previous = loadSettingsOrReport();
+        ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(previous, p));
+        return {
+          commit: commitCandidateSettings,
+          rollback: () => saveSettings(previous),
+          // The old engine still owns the previous endpoint/authentication
+          // contract. Keep the browser behind its gate until reconnect's new
+          // listener_ready event installs the candidate policy.
+          resumeBrowser: !(portChanged || proxyAuthChanged),
+        };
+      });
+    } else {
+      // Every settings writer shares the same queue because customResources
+      // and routeDomains live in this document. A visually unrelated save
+      // must not race a suspended policy transaction and overwrite its newer
+      // source-of-truth snapshot.
+      await routingPolicyTransactions.run(() => {
+        assertSettingsPersistenceAvailable();
+        previous = loadSettingsOrReport();
+        ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(previous, p));
+        return {
+          commit: commitCandidateSettings,
+          // Password commits already own their rollback through the durable
+          // credential journal. A second outer rollback would race recovery.
+          rollback: replacingPassword ? undefined : () => saveSettings(previous),
+        };
+      });
+    }
+  } catch (saveError) {
+    p.password = '';
+    return {
+      ok: false,
+      error: saveError.userMessage || (policyTransactionRequired
+        ? saveError.message
+        : t('error.settingsSaveFailed')),
+      rollbackIncomplete: saveError.rollbackIncomplete === true,
+      settings: previous,
+    };
+  }
+  p.password = '';
   // A language change applies immediately: recompute the effective locale,
   // re-render the tray, hand the campus browser the new strings, and let
   // emit() push the new locale to the control panel.
@@ -669,77 +1852,154 @@ ipcMain.handle('save', async (_e, p) => {
     if (campusBrowser) campusBrowser.setLocale(locale, t);
     emit();
   }
-  // The PAC file only serves external applications. A write failure must not
-  // discard the settings that were already stored, nor the password below it.
-  let pacError = null;
-  try {
-    refreshPacFile(next);
-  } catch (error) {
-    pacError = t('error.pacWriteAfterSave', { message: error.message });
-  }
-  if (p && typeof p.password === 'string' && p.password.length && !savePassword(p.password)) {
-    return { ok: false, error: t('error.passwordStoreUnavailable') };
-  }
   if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
   let reconnected = false;
-  if (engine && portChanged) {
-    await reconnect();
-    reconnected = true;
+  if (engineSupervisor.hasActive && (portChanged || proxyAuthChanged)) {
+    const reconnectResult = await reconnect();
+    reconnected = reconnectResult?.ok === true;
   }
-  if (campusBrowser && portChanged) await campusBrowser.configure(next.port);
-  if (pacError) {
-    state.lastError = pacError;
+  const warnings = [];
+  if (warnings.length) {
+    state.lastError = warnings.join('\n');
     emit();
   }
   return {
     ok: true,
-    warning: pacError,
+    warning: warnings.join('\n') || null,
     settings: next,
     portChanged,
+    proxyAuthChanged,
     reconnected,
   };
 });
-ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
-ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
-ipcMain.handle('reconnect', reconnect);
-ipcMain.handle('ssh-config', () => {
-  const port = socksPort();
-  const note = '# Direct Host blocks only; do not combine with ProxyJump.';
-  if (process.platform === 'win32') {
-    const roots = [
-      process.env.ProgramFiles,
-      process.env['ProgramFiles(x86)'],
-      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '',
-    ].filter(Boolean);
-    const candidates = roots.map((root) => path.join(root, 'Git', 'mingw64', 'bin', 'connect.exe'));
-    const connectExe = (candidates.find((candidate) => fs.existsSync(candidate)) || 'connect.exe').replace(/\\/g, '/');
-    return `${note}\nProxyCommand "${connectExe}" -S 127.0.0.1:${port} %h %p`;
+trustedHandle('connect', () => connect());
+trustedHandle('disconnect', () => disconnect());
+trustedHandle('reconnect', () => reconnect());
+trustedHandle('ssh-config', () => {
+  try {
+    const port = socksPort();
+    ensureExternalProxyAccess(port);
+    return buildSshProxyCommand({
+      helperPath: proxyHelperPath(),
+      credentialFile: PROXY_HELPER_CREDENTIAL,
+    });
+  } catch {
+    throw new Error(t('error.proxyCredentialUnavailable'));
   }
-  return `${note}\nProxyCommand /usr/bin/nc -X 5 -x 127.0.0.1:${port} %h %p`;
 });
-ipcMain.handle('logout', () => {
-  disconnect();
-  try { fs.unlinkSync(CRED); } catch {}
-  return { ok: true };
+trustedHandle('copy-clash-node', async () => {
+  try {
+    const settings = loadSettingsOrReport();
+    // Always include the stable RFC1929 credential. In compatibility mode the
+    // engine's optional-auth contract accepts both legacy NO_AUTH clients and
+    // Mihomo, which offers only RFC1929 whenever a node has credentials. The
+    // same saved node therefore survives a later strict-mode change.
+    const credential = ensureExternalProxyAccess(Number(settings.port));
+    const generation = engineSupervisor.currentGeneration;
+    if (engineSupervisor.hasActive &&
+        !activeProxyCredential?.socksAuthentication(generation)) {
+      const switched = await reconnect();
+      if (!switched?.ok) {
+        return { ok: false, error: t('error.proxyCredentialUnavailable') };
+      }
+    }
+    clipboard.writeText(buildClashProxyYaml({
+      port: settings.port,
+      credential,
+    }));
+    // The renderer gets only completion status. In strict mode the generated
+    // username/password exist solely in the main process and OS clipboard.
+    return { ok: true };
+  } catch {
+    return { ok: false, error: t('error.proxyCredentialUnavailable') };
+  }
 });
-ipcMain.handle('get-logs', () => {
+trustedHandle('logout', () => routingPolicyTransactions.run(() => ({
+  commit: async () => {
+    const stopped = await disconnect();
+    if (!stopped.ok) return { ok: false, error: t('error.engineStuck') };
+    if (credentialTransactionBlocked) {
+      const recovery = retryCredentialTransactionRecovery();
+      if (recovery.status === 'blocked') {
+        return { ok: false, error: t('error.credentialRecoveryBlocked') };
+      }
+    }
+
+    let previous;
+    try {
+      previous = loadSettingsOrReport();
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+    const transaction = runCredentialSettingsMutation({
+      journalPath: CREDENTIAL_TRANSACTION,
+      paths: credentialTransactionPaths,
+      mutate: () => {
+        if (!restorePasswordSnapshot(CRED, { existed: false, data: null })) {
+          throw new Error('could not durably remove encrypted credential');
+        }
+        return saveSettings({ ...previous, username: '' });
+      },
+    });
+    if (!transaction.ok) {
+      const passwordWasCleared = transaction.recovery?.status === 'credential-cleared';
+      applyCredentialRecoveryOutcome(transaction.recovery, {
+        clearedNoticeKey: 'error.logoutFailedPasswordCleared',
+      });
+      const message = credentialTransactionBlocked
+        ? t('error.credentialRecoveryBlocked')
+        : (passwordWasCleared
+          ? t('error.logoutFailedPasswordCleared')
+          : t('error.logoutFailed'));
+      return {
+        ok: false,
+        error: message,
+        rollbackIncomplete: credentialTransactionBlocked,
+      };
+    }
+    applyCredentialRecoveryOutcome(
+      { ok: true, status: 'committed' },
+      { clearNotice: true },
+    );
+    return { ok: true, settings: transaction.value };
+  },
+})));
+trustedHandle('get-logs', async () => {
+  await logWriter.flush().catch(() => {});
   return readLogTail(LOG);
 });
-ipcMain.handle('open-log', () => { shell.openPath(LOG).catch(() => {}); });
-ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
-ipcMain.handle('open-campus-browser', (_event, url) => connectAndOpenCampusBrowser(url));
+trustedHandle('open-log', async () => {
+  await logWriter.flush().catch(() => {});
+  await shell.openPath(LOG).catch(() => {});
+});
+trustedHandle('copy', (_e, text) => {
+  clipboard.writeText(boundedString(text ?? '', { maxLength: 16 * 1024 }));
+  return { ok: true };
+});
+trustedHandle('open-campus-browser', (_event, request) => {
+  const source = request && typeof request === 'object' ? plainObject(request) : request;
+  if (typeof source === 'string') {
+    boundedString(source, { maxLength: 4096 });
+  } else {
+    boundedString(source.url ?? '', { maxLength: 4096 });
+    if (source.route != null) enumValue(source.route, ['campus', 'direct']);
+  }
+  return connectAndOpenCampusBrowser(source);
+});
 // Only an explicit button press forces a network check; entering the settings
 // page goes through the same 24h throttle as the timer.
-ipcMain.handle('check-update', (_event, force) => (
-  force ? runUpdateCheck() : runAutomaticUpdateCheck()
-));
-ipcMain.handle('open-external', (_event, url) => {
+trustedHandle('check-update', (_event, force) => {
+  if (typeof force !== 'boolean') throw new TypeError('更新检查参数无效');
+  return force ? runUpdateCheck() : runAutomaticUpdateCheck();
+});
+trustedHandle('open-external', (_event, url) => {
   // The renderer may only send users to this project's GitHub releases pages.
   if (!isAllowedReleaseUrl(url)) return { ok: false };
   shell.openExternal(url).catch(() => {});
   return { ok: true };
 });
-ipcMain.handle('resize', (_e, h) => {
+trustedHandle('resize', (_e, h) => {
+  if (!Number.isFinite(h)) throw new TypeError('窗口尺寸无效');
   if (win && !win.isDestroyed()) {
     const [w] = win.getContentSize();
     const next = clampWindowSize(w, h);
@@ -769,7 +2029,10 @@ function updateTray() {
     {
       label: state.connected ? t('tray.disconnect') : t('tray.connect'),
       enabled: !state.connecting,
-      click: () => { if (state.connected) disconnect(); else connect(); },
+      click: () => {
+        const operation = state.connected ? disconnect() : connect();
+        operation.catch(() => {});
+      },
     },
     { label: t('tray.openCampusBrowser'), click: () => { connectAndOpenCampusBrowser(); } },
     { type: 'separator' },
@@ -795,22 +2058,52 @@ function hideToTray() {
 }
 
 function rememberCloseAction(action) {
-  const next = loadSettings();
-  next.closeAction = action;
-  saveSettings(next);
+  return routingPolicyTransactions.run(() => {
+    assertSettingsPersistenceAvailable();
+    const previous = loadSettingsOrReport();
+    const next = { ...previous, closeAction: action };
+    return {
+      commit: () => saveSettings(next),
+      rollback: () => saveSettings(previous),
+    };
+  });
 }
 
 function requestQuit() {
-  if (isQuitting) return;
+  if (quitAllowed) {
+    app.quit();
+    return;
+  }
+  if (quitInFlight) return;
   isQuitting = true;
-  app.quit();
+  connectivityRecovery.dispose();
+  networkStatusMonitor.dispose();
+  const operation = (async () => {
+    try {
+      await disconnect();
+    } finally {
+      await logWriter.close().catch(() => {});
+      removeExternalProxySidecar();
+      stableProxyCredential?.destroy();
+      stableProxyCredential = null;
+      if (tray && !tray.isDestroyed()) tray.destroy();
+      tray = null;
+      quitAllowed = true;
+      app.quit();
+    }
+  })();
+  quitInFlight = operation;
+  operation.finally(() => {
+    if (quitInFlight === operation) quitInFlight = null;
+  });
 }
 
 async function handleWindowClose(event) {
   if (isQuitting) return;
   event.preventDefault();
 
-  const action = loadSettings().closeAction;
+  let action = 'ask';
+  try { action = loadSettingsOrReport().closeAction; } catch {}
   if (action === 'quit') {
     requestQuit();
     return;
@@ -837,10 +2130,10 @@ async function handleWindowClose(event) {
     });
 
     if (result.response === 0) {
-      if (result.checkboxChecked) rememberCloseAction('minimize');
+      if (result.checkboxChecked) await rememberCloseAction('minimize');
       hideToTray();
     } else if (result.response === 1) {
-      if (result.checkboxChecked) rememberCloseAction('quit');
+      if (result.checkboxChecked) await rememberCloseAction('quit');
       requestQuit();
     }
   } finally {
@@ -863,6 +2156,7 @@ function createWindow() {
       devTools: !app.isPackaged,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   // The control window only ever renders its own bundled page. Deny popups and
@@ -874,8 +2168,13 @@ function createWindow() {
     if (url !== controlContents.getURL()) event.preventDefault();
   });
   controlContents.on('will-attach-webview', (event) => event.preventDefault());
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('close', handleWindowClose);
+  win.loadFile(CONTROL_RENDERER_FILE);
+  win.on('close', (event) => {
+    handleWindowClose(event).catch((error) => {
+      state.lastError = error.userMessage || error.message;
+      emit();
+    });
+  });
   win.on('closed', () => { win = null; });
 }
 
@@ -920,18 +2219,51 @@ function installApplicationMenu() {
 }
 
 app.on('second-instance', showWindow);
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+app.on('certificate-error', (
+  event, webContents, url, error, certificate, callback, isMainFrame,
+) => {
   // This exception path belongs only to untrusted pages rendered by the campus
   // browser. The control window, the toolbar, and every unrelated Electron
   // request retain Chromium's normal certificate handling.
-  if (!campusBrowser?.ownsWebContents(webContents)) return;
+  routeCertificateError({
+    owned: campusBrowser?.ownsWebContents(webContents) === true,
+    isMainFrame,
+    event,
+    callback,
+    prompt: () => campusBrowser.handleCertificateError({ url, error, certificate, callback }),
+  });
+});
+app.on('login', (event, webContents, _details, authInfo, callback) => {
+  // Chromium cannot authenticate SOCKS5 itself, so strict mode exposes an
+  // authenticated HTTP CONNECT frontend on the same loopback port. Only a
+  // page owned by the isolated campus browser, the exact current engine
+  // generation, and the exact Basic challenge from 127.0.0.1 may receive the
+  // in-memory credential. Control UI and arbitrary WebContents are excluded.
+  const generation = engineSupervisor.currentGeneration;
+  if (!campusBrowser?.ownsWebContents(webContents) ||
+      !activeProxyCredential?.matchesProxyChallenge(authInfo, generation)) return;
   event.preventDefault();
-  campusBrowser.handleCertificateError({ url, error, certificate, callback })
-    .catch(() => callback(false));
+  activeProxyCredential.answerProxyChallenge(authInfo, generation, callback);
 });
 app.whenReady().then(() => {
-  locale = currentLocale();
+  try {
+    locale = currentLocale();
+  } catch {
+    locale = effectiveLocale('auto', app.getLocale());
+  }
   t = createT(locale);
+  try {
+    loadSettings();
+  } catch (error) {
+    state.lastError = reportSettingsReadFailure(error, { emitState: false }).message;
+  }
+  if (settingsRecoveryNotice) {
+    settingsRecoveryNoticeText = t(settingsRecoveryNotice.kind === 'restored'
+      ? 'error.settingsRestored'
+      : 'error.settingsDefaults');
+  }
+  applyCredentialRecoveryOutcome(credentialTransactionRecovery, { emitState: false });
+  syncRecoveryNotice(false);
   installApplicationMenu();
   // A PAC write can fail on a read-only or full user-data directory. That must
   // not leave the user with no window and no tray, so it is reported through the
@@ -939,13 +2271,21 @@ app.whenReady().then(() => {
   try {
     refreshPacFile();
   } catch (error) {
-    state.lastError = t('error.pacWriteAtBoot', { message: error.message });
+    const pacError = error.userMessage || t('error.pacWriteAtBoot', { message: error.message });
+    // Preserve an earlier credential-recovery or settings-read failure.  PAC
+    // generation is a separate startup boundary and must not hide the reason
+    // persistence/connection remains fail-closed.
+    state.lastError = [state.lastError, pacError].filter(Boolean).join('\n');
   }
   createTray();
   createWindow();
-  const settings = loadSettings();
-  if (settings.autoConnect !== false && settings.username && hasStoredCredential()) {
-    setTimeout(() => connect(), 500);
+  powerMonitor.on('suspend', () => connectivityRecovery.suspend());
+  powerMonitor.on('resume', () => connectivityRecovery.resume());
+  networkStatusMonitor.start().catch(() => {});
+  let settings = null;
+  try { settings = loadSettingsOrReport(); } catch {}
+  if (settings && settings.autoConnect !== false && settings.username && hasStoredCredential()) {
+    setTimeout(() => { connect().catch(() => {}); }, 500);
   }
   // Dev checkouts and CI would only ever hit the rate-limited API for no
   // benefit, so the automatic check is packaged-builds only. The settings
@@ -964,9 +2304,8 @@ app.whenReady().then(() => {
   app.exit(1);
 });
 app.on('window-all-closed', () => { /* Keep the tray process alive. */ });
-app.on('before-quit', () => {
-  isQuitting = true;
-  disconnect();
-  if (tray && !tray.isDestroyed()) tray.destroy();
-  tray = null;
+app.on('before-quit', (event) => {
+  if (quitAllowed) return;
+  event.preventDefault();
+  requestQuit();
 });

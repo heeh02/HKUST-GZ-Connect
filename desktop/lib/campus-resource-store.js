@@ -7,6 +7,7 @@ const {
   MAX_RESOURCES,
 } = require('./campus-resources');
 const { normalizeCampusUrl } = require('./campus-browser');
+const { isIsolatedNetworkHost } = require('./host-safety');
 
 const BUILTIN_IDS = new Set(['home', 'one-stop', 'library', 'new-student', 'outlook', 'canvas']);
 
@@ -29,6 +30,9 @@ function normalizedInput(payload, existing) {
     url = normalizeCampusUrl(source.url);
   } catch (error) {
     throw new Error(error.message);
+  }
+  if (source.route === 'direct' && isIsolatedNetworkHost(new URL(url).hostname)) {
+    throw new Error('本机、私网和特殊地址不能设为直连');
   }
   const resource = normalizeResource({ ...source, id, url });
   if (!resource) throw new Error('网站名称、描述或网址无效');

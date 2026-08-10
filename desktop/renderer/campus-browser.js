@@ -33,12 +33,7 @@ const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
 
 function command(name, value = '') {
-  const values = new URLSearchParams({
-    command: name,
-    value,
-    nonce: String(Date.now()),
-  });
-  window.location.hash = values.toString();
+  return window.campusToolbar?.command(name, value) === true;
 }
 
 back.addEventListener('click', () => command('back'));
@@ -54,6 +49,10 @@ document.getElementById('addressForm').addEventListener('submit', (event) => {
   command('navigate', address.value);
 });
 routeSelector.addEventListener('change', () => command('set-route', routeSelector.value));
+document.getElementById('routeRules').addEventListener(
+  'click',
+  () => command('manage-routing-rules'),
+);
 
 findInput.addEventListener('input', () => command('find', findInput.value));
 findInput.addEventListener('keydown', (event) => {
@@ -146,3 +145,10 @@ window.campusBrowserUI = {
     findInput.select();
   },
 };
+
+window.campusToolbar?.onState((next) => window.campusBrowserUI.setState(next || {}));
+window.campusToolbar?.onLocale((lang) => window.campusBrowserUI.setLocale(lang));
+window.campusToolbar?.onFocus((target) => {
+  if (target === 'find') window.campusBrowserUI.focusFind();
+  else if (target === 'address') window.campusBrowserUI.focusAddress();
+});

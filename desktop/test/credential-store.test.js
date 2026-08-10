@@ -5,7 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { hasStoredPassword } = require('../lib/credential-store');
+const {
+  clearPasswordSnapshot,
+  hasStoredPassword,
+  loadPassword,
+  restorePasswordSnapshot,
+  savePassword,
+  snapshotPasswordFile,
+} = require('../lib/credential-store');
 
 test('password presence is a non-decrypting private-file check', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-presence-'));
@@ -35,4 +42,109 @@ test('Windows presence check accepts the platform ACL model without safeStorage'
   fs.chmodSync(file, 0o644);
 
   assert.equal(hasStoredPassword(file, 'win32'), true);
+});
+
+test('oversized and symbolic credential blobs are rejected before decryption', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-bounds-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const oversized = path.join(directory, 'oversized.bin');
+  const target = path.join(directory, 'target.bin');
+  const link = path.join(directory, 'link.bin');
+  fs.writeFileSync(oversized, Buffer.alloc(64 * 1024 + 1), { mode: 0o600 });
+  fs.writeFileSync(target, Buffer.from('encrypted'), { mode: 0o600 });
+  fs.symlinkSync(target, link);
+  let decryptions = 0;
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    decryptString: () => { decryptions++; return 'secret'; },
+  };
+
+  assert.equal(hasStoredPassword(oversized, 'darwin'), false);
+  assert.equal(hasStoredPassword(link, 'darwin'), false);
+  assert.equal(loadPassword(oversized, safeStorage, 'darwin'), '');
+  assert.equal(loadPassword(link, safeStorage, 'darwin'), '');
+  assert.equal(decryptions, 0);
+});
+
+test('main VPN credential replacement is atomic and preserves the old blob on failure', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-atomic-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'credential.bin');
+  fs.writeFileSync(file, Buffer.from('encrypted:old-secret'), { mode: 0o600 });
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value) => Buffer.from(`encrypted:${value}`),
+  };
+  const failingFileSystem = Object.create(fs);
+  failingFileSystem.renameSync = () => { throw new Error('simulated commit failure'); };
+
+  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin', failingFileSystem), false);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
+  assert.deepEqual(
+    fs.readdirSync(directory).filter((entry) => entry.endsWith('.tmp')),
+    [],
+  );
+
+  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin'), true);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:new-secret');
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});
+
+test('encryption failure never truncates an existing VPN credential', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-encrypt-fail-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'credential.bin');
+  fs.writeFileSync(file, Buffer.from('encrypted:old-secret'), { mode: 0o600 });
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: () => { throw new Error('keychain unavailable'); },
+  };
+
+  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin'), false);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
+});
+
+test('credential replacement reports a post-rename directory-fsync failure', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-fsync-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'credential.bin');
+  fs.writeFileSync(file, Buffer.from('encrypted:old-secret'), { mode: 0o600 });
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value) => Buffer.from(`encrypted:${value}`),
+  };
+  const failingFileSystem = Object.create(fs);
+  let fsyncCalls = 0;
+  failingFileSystem.fsyncSync = (descriptor) => {
+    fsyncCalls++;
+    if (fsyncCalls === 2) throw new Error('simulated directory fsync failure');
+    return fs.fsyncSync(descriptor);
+  };
+
+  assert.equal(
+    savePassword(file, 'new-secret', safeStorage, 'darwin', failingFileSystem),
+    false,
+  );
+  assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:new-secret',
+    'the journal-owning caller must roll back a rename whose durability was not confirmed');
+});
+
+test('a settings transaction can restore and erase its encrypted password snapshot', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-rollback-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'credential.bin');
+  fs.writeFileSync(file, Buffer.from('encrypted:old-secret'), { mode: 0o600 });
+  const snapshot = snapshotPasswordFile(file);
+  assert.equal(snapshot.existed, true);
+  fs.writeFileSync(file, Buffer.from('encrypted:new-secret'), { mode: 0o600 });
+  assert.equal(restorePasswordSnapshot(file, snapshot), true);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
+  clearPasswordSnapshot(snapshot);
+  assert.equal(snapshot.data.every((byte) => byte === 0), true);
+
+  const missing = path.join(directory, 'new-credential.bin');
+  const absent = snapshotPasswordFile(missing);
+  fs.writeFileSync(missing, Buffer.from('encrypted:new-secret'), { mode: 0o600 });
+  assert.equal(restorePasswordSnapshot(missing, absent), true);
+  assert.equal(fs.existsSync(missing), false);
 });

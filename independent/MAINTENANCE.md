@@ -47,7 +47,12 @@ desktop / CLI
         -> session/config/resource parsers
         -> tunnel transport
         -> shared proxy policy
-            -> one SOCKS5 TCP/UDP listener
+            -> one loopback listener
+                -> SOCKS5 TCP/UDP (NO_AUTH compatibility mode)
+                -> SOCKS5 TCP/UDP or authenticated TCP (optional mode; selected per connection)
+                -> SOCKS5 TCP (RFC 1929 strict mode; UDP rejected)
+                -> authenticated HTTP CONNECT (strict mode only)
+                -> bounded authenticated HTTP/WS forwarding (strict mode only)
             -> DNS-neutral PAC in the desktop layer
         -> TUN is a separate optional frontend
 ```
@@ -79,6 +84,10 @@ desktop / CLI
 - Unknown authentication methods or frames fail closed with a structured
   `gateway_incompatible` event.
 - Parsers have strict size/depth limits and synthetic fuzz/regression inputs.
+- Resource catalogues expose opaque handles and a versioned redacted view.
+  Exact launch targets are non-serializable, authorization values remain
+  uninterpreted, and an offline parser must never be mistaken for authenticated
+  retrieval support.
 - Secrets are passed as secret inputs, never command-line arguments or logs.
 - Gateway trust and official-package publisher trust are separate decisions.
 
@@ -90,8 +99,8 @@ A release is blocked unless all applicable gates pass:
 - sanitized fixture tests for every supported gateway family;
 - official-client versus independent-engine black-box parity;
 - official package publisher verification plus binary/text/adapter hash review;
-- SOCKS TCP, SOCKS UDP, PAC routing, reconnect, idle lifetime, timeout, and
-  logout tests;
+- SOCKS TCP, SOCKS UDP, authenticated HTTP/WS forwarding, PAC routing,
+  reconnect, idle lifetime, timeout, and logout tests;
 - required secondary authentication tests;
 - supported OS/architecture packaging and signing;
 - security review of new binary formats, crypto, drivers, or attestation;
@@ -102,6 +111,41 @@ A release is blocked unless all applicable gates pass:
 The reviewed baseline may be updated only after the associated change is
 classified and the required gates pass. A baseline update is an approval
 record, not a repair.
+
+## Phase 6 offline performance guard
+
+Two explicitly ignored Rust tests provide a repeatable local regression matrix
+without contacting a gateway. Run them from `independent/` in release mode and
+with one test-harness thread:
+
+```bash
+cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+  --ignored --nocapture --test-threads=1
+cargo test --locked --release --test poll_latency_probe \
+  offline_netstack_poll_latency_matrix -- \
+  --ignored --nocapture --test-threads=1
+```
+
+Both matrices cover concurrency `1`, `8`, and `32` with payloads of `64`, `512`,
+and `1400` bytes. The SOCKS matrix exercises the production parser over an
+already-established loopback connection in compatible `NO_AUTH` and strict RFC
+1929 modes. Optional-mode method selection and its per-connection UDP boundary
+are covered by the regular loopback unit suite. The benchmark timer includes
+greeting, authentication when applicable,
+CONNECT, the success reply, and one payload echo. The netstack matrix connects
+two userspace stacks with an in-memory pipe and compares 2 ms and 1 ms threaded
+polling with the event-driven Tokio runner. Tokio measurements use a fixed four
+worker threads so the test topology does not silently follow host CPU count.
+
+Each result is emitted after `HKUSTGZ_PERF_JSON ` as one JSON object using the
+`hkustgzconnect.offline-performance.v1` schema. Store those lines with the build
+profile, OS, architecture, compiler version, and commit under test when making
+longitudinal comparisons. The checked limits are deliberately broad disaster
+guards for hangs and second-scale regressions; they are not latency objectives.
+These tests perform no gateway traffic and do not measure tunnel bandwidth,
+encryption cost, Internet/campus latency, or real EasyConnect throughput. Only
+an approved live canary can establish those properties. Do not optimize a
+production path solely from these offline measurements.
 
 ## Fallback and availability
 

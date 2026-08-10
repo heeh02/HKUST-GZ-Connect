@@ -32,5 +32,7 @@ test('PAC routes only explicit suffixes and literal private addresses', () => {
     'DIRECT',
   );
   assert.equal(context.FindProxyForURL('http://10.120.48.30/', '10.120.48.30'), 'SOCKS5 127.0.0.1:6180');
+  assert.equal(context.FindProxyForURL('http://127.0.0.1/', '127.0.0.1'), 'SOCKS5 127.0.0.1:6180');
+  assert.equal(context.FindProxyForURL('http://192.168.1.1/', '192.168.1.1'), 'SOCKS5 127.0.0.1:6180');
   assert.equal(context.FindProxyForURL('https://example.com/', 'example.com'), 'DIRECT');
 });

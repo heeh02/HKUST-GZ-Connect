@@ -57,7 +57,7 @@ function applySettingsPatch(previous, payload) {
     }
     next.language = source.language;
   }
-  for (const key of ['autoReconnect', 'startAtLogin', 'autoConnect']) {
+  for (const key of ['autoReconnect', 'startAtLogin', 'autoConnect', 'strictProxyAuth']) {
     if (source[key] != null) {
       if (typeof source[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
       next[key] = source[key];
@@ -67,6 +67,7 @@ function applySettingsPatch(previous, payload) {
   return {
     settings: normalizeSettings(next),
     portChanged: next.port !== normalizeSettings(previous).port,
+    proxyAuthChanged: next.strictProxyAuth !== normalizeSettings(previous).strictProxyAuth,
   };
 }
 

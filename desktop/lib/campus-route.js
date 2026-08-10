@@ -7,7 +7,19 @@ const DIRECT_PARTITION = 'persist:hkustgz-direct-browser';
 
 const DIRECT_PARTNER_HOSTS = Object.freeze([
   'outlook.office.com',
+  'microsoftonline.com',
+  'microsoftonline-p.com',
+  'msauth.net',
+  'msftauth.net',
+  'office.com',
+  'office.net',
   'hkust-gz.instructure.com',
+  'instructure.com',
+  'instructuremedia.com',
+]);
+const SCHOOL_CAMPUS_HOSTS = Object.freeze([
+  'hkust-gz.edu.cn',
+  'hkust.edu.hk',
 ]);
 
 function validRoute(route) {
@@ -18,12 +30,18 @@ function hostMatches(host, domain) {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
+function builtinRouteForHost(rawHost) {
+  const host = String(rawHost || '').toLowerCase().replace(/\.$/, '');
+  if (!host) return null;
+  if (DIRECT_PARTNER_HOSTS.some((domain) => hostMatches(host, domain))) return ROUTE_DIRECT;
+  if (SCHOOL_CAMPUS_HOSTS.some((domain) => hostMatches(host, domain))) return ROUTE_CAMPUS;
+  return null;
+}
+
 function routeForUrl(rawUrl) {
   try {
     const host = new URL(rawUrl).hostname.toLowerCase().replace(/\.$/, '');
-    return DIRECT_PARTNER_HOSTS.some((domain) => hostMatches(host, domain))
-      ? ROUTE_DIRECT
-      : ROUTE_CAMPUS;
+    return builtinRouteForHost(host) || ROUTE_CAMPUS;
   } catch {
     return ROUTE_CAMPUS;
   }
@@ -55,6 +73,9 @@ module.exports = {
   DIRECT_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
+  SCHOOL_CAMPUS_HOSTS,
+  builtinRouteForHost,
+  hostMatches,
   partitionForRoute,
   proxyConfigForRoute,
   routeForUrl,

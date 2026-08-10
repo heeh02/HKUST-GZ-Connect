@@ -29,7 +29,12 @@ The independent implementation separates these layers:
 4. Configuration: parse `conf.csp` without retaining credentials.
 5. Resources: parse `rclist.csp`, routes, domains, DNS, and resource policy.
 6. Tunnel transport: handshake, framing, sequencing, liveness, and errors.
-7. Local exposure: one SOCKS5 listener plus desktop PAC; optional TUN later.
+7. Local exposure: one loopback listener plus desktop PAC; SOCKS5 TCP/UDP by
+   default, a compatibility-first optional-auth contract that accepts
+   `NO_AUTH` or RFC 1929, and a strict RFC 1929 contract with authenticated HTTP
+   CONNECT on that same port; strict mode also has a bounded authenticated
+   absolute-form HTTP/WS forwarder, while default and optional modes reject
+   HTTP; optional TUN later.
 
 ## Known public endpoint families
 
@@ -97,7 +102,9 @@ svpn_rand_code=<CAPTCHA response or empty>
 
 8. `ErrorCode=1` is authenticated for the observed profile. A non-empty
    `NextService` transitions to the corresponding secondary-authentication
-   state instead of being treated as tunnel-ready.
+   state instead of being treated as tunnel-ready. Until a reviewed provider
+   implements that state, production performs a bounded best-effort logout and
+   returns the stable `UNSUPPORTED_AUTHENTICATION` machine code.
 9. After authentication, the observed profile returned XML from
    `/por/conf.csp?apiversion=1` and `/por/rclist.csp?apiversion=1`.
 10. Logout is `GET /por/logout.csp?apiversion=1`.
@@ -125,7 +132,12 @@ downgrades fail closed in the probe.
 - Live SOCKS5 UDP parity, gateway UDP reachability, and sustained datagram
   behavior. The local frontend implements RFC 1928 UDP ASSOCIATE for IPv4 and
   domain destinations, rejects fragmented SOCKS datagrams, and binds one
-  loopback client endpoint per control connection.
+  loopback client endpoint per control connection in the explicit `NO_AUTH`
+  compatibility mode. Optional authentication retains UDP only when that
+  connection selected `NO_AUTH`; its RFC 1929 branch and strict RFC 1929 mode
+  reject UDP ASSOCIATE because the datagrams carry no credentials and loopback
+  source IP cannot identify a local user. Learning the first datagram after an
+  authenticated exchange would permit cross-user relay theft.
 - aTrust detection and protocol handoff.
 
 Raw evidence for these questions belongs in the restricted lab, while only
@@ -133,11 +145,29 @@ sanitized behavior specifications and synthetic fixtures belong in Git.
 
 ## Configuration/resource parser observations
 
-The production profile passed the Rust transport and resource parsers in an
-approved credentialed run. Resource port policies use both hyphen (`80-90`)
-and tilde (`80~90`) range separators; empty, `0`, and `*` mean unrestricted.
-Sets may use commas, semicolons, pipes, or whitespace. Bounds outside
-`1..65535`, reversed ranges, and unknown syntax fail closed.
+The production profile passed the legacy Rust transport and resource
+field/port parsers in an approved credentialed run. The v1 directory parser
+below has not yet had an authorized live canary. Resource port policies use
+both hyphen (`80-90`) and tilde (`80~90`) range separators; empty, `0`, and `*`
+mean unrestricted. Sets may use commas, semicolons, pipes, or whitespace.
+Bounds outside `1..65535`, reversed ranges, and unknown syntax fail closed.
+
+The maintained resource parser additionally enforces document, element,
+nesting, group, resource, identifier, label, target, service and authorization
+limits. It rejects duplicate identifiers, unresolved group/default references,
+URL user information, unsupported URL schemes and ambiguous bare targets. The
+versioned presentation view contains opaque handles, labels, grouping, type,
+protocol, aggregate port policy and target shape, but never a vendor identifier,
+host, path, query, fragment, service value or raw authorization value. Exact
+launch material remains behind a non-serializable handle and has redacted
+`Debug` output.
+
+The observed `authorization` attribute has no reviewed value-to-policy mapping.
+The parser therefore reports only `not_declared` or `declared_unverified` and
+sets `authorization_decisions_available=false`. Authenticated retrieval,
+refresh and policy interpretation remain production-unavailable until an
+approved canary supplies evidence; no empty or fabricated catalogue is used as
+a fallback.
 
 ## L3 TCP tunnel behavior
 

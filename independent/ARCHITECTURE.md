@@ -8,7 +8,9 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 
 | Module | Owns | Must not own |
 | --- | --- | --- |
-| `engine/session.rs` | Login, configuration retrieval, token lifetime, logout | Packet forwarding or local proxy policy |
+| `engine/provider.rs` | Stable AuthProvider/ResourceProvider/TransportBackend traits, capability states, typed unsupported/unavailable errors | Vendor wire formats, UI state, credentials at rest |
+| `resource_catalogue.rs` | Bounded offline resource/group parser, opaque handles, redacted presentation schema and private launch-target resolution | Authenticated retrieval, authorization decisions, desktop rendering |
+| `engine/session.rs` | Password-auth and modern-L3 production adapters, configuration retrieval, token lifetime, logout | Packet forwarding or local proxy policy |
 | `modern.rs` | Active token, 64-byte channel-control contract, gateway endpoint resolution and socket setup | HTTP UI, DNS, or SOCKS |
 | `special_tls11.rs` | Isolated vendor TLS record/handshake compatibility | General-purpose TLS or authentication |
 | `engine/data_plane.rs` | Address lease and send/receive channel ownership | TCP/UDP socket semantics |
@@ -16,15 +18,32 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `engine/netstack.rs` | Userspace TCP/UDP stack, packet bridges, bounded TCP connect | Proxy parsing or DNS wire parsing |
 | `engine/dns.rs` | Bounded DNS A queries through VPN UDP plus a TTL-bounded answer cache | Public/system DNS fallback |
 | `engine/proxy.rs` | Shared destination validation plus gateway/system resolver policy | Listener lifecycle or gateway protocol |
-| `engine/socks.rs` | Loopback SOCKS5 TCP CONNECT and UDP ASSOCIATE relay | HTTP parsing or gateway protocol details |
+| `engine/socks_auth.rs` | Bounded stdin proxy credentials, zeroizing constant-time RFC 1929/Basic verification | argv, events, logging, or gateway authentication |
+| `engine/socks.rs` | One-port protocol detection and dispatch; compatible, optional-auth, and strict SOCKS5 contracts plus the strict HTTP frontend | HTTP message rewriting or gateway protocol details |
+| `engine/socks/http_forward.rs` | Strict-only bounded ordinary HTTP/WS parsing, header rewriting, body framing, and streaming | DNS, destination authorization, credentials, or gateway protocol details |
 | `bin/ec-engine.rs` | Process assembly, signals, health shutdown | Protocol encoding |
 | `desktop/lib/campus-browser.js` | Isolated browser session, proxy policy and safe navigation | Gateway authentication or packet formats |
 | `desktop/lib/tunnel-health.js` | When to probe the tunnel and how much evidence a restart requires | Probing itself, or engine lifecycle |
 
-The loopback SOCKS listener is the current shared frontend, not a permanent
-product constraint. Additional HTTP, per-application or managed system
-frontends may be added behind the same proxy policy. They must not modify
-system DNS or routes by default.
+The loopback listener is the current shared frontend, not a permanent product
+constraint. Its default contract is SOCKS5 `NO_AUTH`. The opt-in optional
+contract accepts both `NO_AUTH` and RFC 1929, preferring `NO_AUTH` when both are
+offered so legacy tools stay compatible. Its UDP decision follows the selected
+method: `NO_AUTH` retains UDP while RFC 1929 rejects it. The separate strict
+contract requires RFC 1929 for SOCKS5 and exposes Basic-authenticated HTTP
+CONNECT on the same port because Chromium does not support authenticated
+SOCKS5. It also accepts authenticated absolute-form `http://` and `ws://`
+requests through a
+separate one-request forwarder. That forwarder rebuilds origin-form and `Host`,
+strips proxy and hop-by-hop headers (including fields named by `Connection`),
+bounds headers, bodies, chunks, framing lines and idle response writes, and
+never parses a pipelined second request. HTTPS/WSS continue to use CONNECT.
+Default and optional modes do not expose any HTTP proxy. Strict mode also
+rejects UDP ASSOCIATE: RFC 1929 authenticates only its
+TCP control stream, and first-datagram endpoint learning on a shared loopback
+address would let another local user adopt the relay. Additional
+per-application or managed system frontends may be added behind the same
+destination policy. They must not modify system DNS or routes by default.
 
 ## Compatibility laboratory
 
@@ -57,6 +76,14 @@ addresses are excluded from Git.
 No UI file may encode gateway packet formats. No protocol module may read a
 password from disk or command-line arguments. No compatibility failure may
 silently fall back to disabled certificate validation.
+
+Provider capability semantics and the evidence gate for new adapters are
+specified in [`spec/PROVIDER_CONTRACTS.md`](spec/PROVIDER_CONTRACTS.md). The
+current model marks only password authentication and L3 transport supported;
+MFA families, WebVPN, unknown secondary authentication, authenticated resource
+retrieval, and resource authorization decisions fail explicitly until their
+own reviewed providers exist. `OfflineResourceDocumentProvider` is a parser
+harness, not a production retrieval adapter.
 
 ## Latency contract
 

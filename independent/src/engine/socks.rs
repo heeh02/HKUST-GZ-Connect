@@ -1,5 +1,7 @@
+use crate::engine::destination_policy::validate_tunnel_destination;
 use crate::engine::netstack::VirtualNetstack;
-use crate::engine::proxy::{NameResolver, resolve_host, validate_domain};
+use crate::engine::proxy::{NameResolver, resolve_authority, resolve_host, validate_domain};
+use crate::engine::socks_auth::ProxyAuthentication;
 use crate::{Error, Result};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -8,10 +10,23 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket as TokioUdpSocket};
 use tokio::sync::RwLock;
 use ts_netstack_smoltcp::netsock::UdpSocket as VirtualUdpSocket;
+use zeroize::Zeroizing;
+
+mod http_forward;
+
+use http_forward::{
+    HTTP_BAD_GATEWAY, HttpForwardRequest, ParsedHttpProxyRequest,
+    forward_request as forward_http_request,
+    read_authenticated_request as read_authenticated_http_request,
+};
 
 const SOCKS_VERSION: u8 = 5;
 const NO_AUTHENTICATION: u8 = 0;
+const USERNAME_PASSWORD_AUTHENTICATION: u8 = 2;
 const NO_ACCEPTABLE_METHODS: u8 = 0xff;
+const RFC1929_VERSION: u8 = 1;
+const RFC1929_SUCCESS: u8 = 0;
+const RFC1929_FAILURE: u8 = 1;
 const CONNECT_COMMAND: u8 = 1;
 const UDP_ASSOCIATE_COMMAND: u8 = 3;
 const ADDRESS_IPV4: u8 = 1;
@@ -33,16 +48,43 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONSECUTIVE_ACCEPT_FAILURES: u32 = 16;
 const ACCEPT_FAILURE_BACKOFF: Duration = Duration::from_millis(100);
 
+const HTTP_CONNECT_ESTABLISHED: &[u8] = b"HTTP/1.1 200 Connection Established\r\n\r\n";
+
 #[derive(Debug, Eq, PartialEq)]
-enum SocksRequest {
-    Connect(SocketAddr),
+enum ProxyRequest {
+    Connect {
+        remote: SocketAddr,
+        frontend: ConnectFrontend,
+    },
+    HttpForward {
+        remote: SocketAddr,
+        request: HttpForwardRequest,
+    },
     UdpAssociate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConnectFrontend {
+    Socks5,
+    HttpConnect,
+}
+
+enum NegotiatedFrontend {
+    Socks5 { udp_associate_allowed: bool },
+    Http(ParsedHttpProxyRequest),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NegotiatedSocksAuthentication {
+    None,
+    Rfc1929,
 }
 
 pub struct SocksServer {
     bind: SocketAddr,
     netstack: Arc<VirtualNetstack>,
     resolver: Arc<dyn NameResolver>,
+    authentication: ProxyAuthentication,
 }
 
 pub struct BoundSocksServer {
@@ -56,6 +98,15 @@ impl SocksServer {
         netstack: Arc<VirtualNetstack>,
         resolver: Arc<dyn NameResolver>,
     ) -> Result<Self> {
+        Self::new_with_authentication(bind, netstack, resolver, ProxyAuthentication::None)
+    }
+
+    pub fn new_with_authentication(
+        bind: SocketAddr,
+        netstack: Arc<VirtualNetstack>,
+        resolver: Arc<dyn NameResolver>,
+        authentication: ProxyAuthentication,
+    ) -> Result<Self> {
         if !bind.ip().is_loopback() || bind.port() == 0 {
             return Err(Error(
                 "SOCKS5 listener must use a nonzero loopback address".into(),
@@ -65,6 +116,7 @@ impl SocksServer {
             bind,
             netstack,
             resolver,
+            authentication,
         })
     }
 
@@ -118,7 +170,9 @@ impl BoundSocksServer {
                     let server = Arc::clone(&self.server);
                     connections.spawn(async move {
                         if let Err(error) = server.handle(client).await {
-                            eprintln!("SOCKS5 request failed: {error}");
+                            if should_report_request_error(&error) {
+                                eprintln!("local proxy request failed: {error}");
+                            }
                         }
                     });
                 }
@@ -133,6 +187,7 @@ impl SocksServer {
         let Some(request) = bounded_handshake(
             &mut client,
             self.resolver.as_ref(),
+            &self.authentication,
             GREETING_TIMEOUT,
             REQUEST_TIMEOUT,
         )
@@ -141,42 +196,47 @@ impl SocksServer {
             return Ok(());
         };
         match request {
-            SocksRequest::Connect(remote) => {
-                // Campus pages sometimes probe local services (agents, helper
-                // daemons). The browser deliberately routes loopback through
-                // the proxy so pages cannot reach this machine, but tunnelling
-                // those targets would deliver them to the GATEWAY's loopback,
-                // which its policy reads as an attack and drops the VPN
-                // session. Refuse loopback targets locally: the page just sees
-                // a closed port, and the tunnel never carries them.
-                if refused_target(&remote) {
-                    eprintln!("SOCKS5 refused loopback target {remote}");
-                    let _ = send_reply(&mut client, 5, None).await;
+            ProxyRequest::Connect { remote, frontend } => {
+                // Apply the same address policy as UDP after domain resolution.
+                // A prohibited target must never reach the userspace netstack.
+                if validate_tunnel_destination(remote).is_err() {
+                    eprintln!("local proxy destination rejected by safety policy");
+                    let _ = send_connect_reply(&mut client, frontend, false).await;
                     return Ok(());
                 }
-                // Target-level visibility: when the gateway kills the data plane
-                // on policy violations, the last connects before the drop name
-                // the resource that triggered it.
-                eprintln!("SOCKS5 connect {remote}");
                 match self.netstack.connect_tcp(remote).await {
                     Ok(mut upstream) => {
-                        send_reply(&mut client, 0, None).await?;
+                        send_connect_reply(&mut client, frontend, true).await?;
                         match tokio::io::copy_bidirectional(&mut client, &mut upstream).await {
                             // Either side hanging up ends a proxied session normally.
                             Ok(_) => Ok(()),
                             Err(error) if peer_departed(&error) => Ok(()),
-                            Err(_) => Err(Error("SOCKS5 stream forwarding failed".into())),
+                            Err(_) => Err(Error("proxy stream forwarding failed".into())),
                         }
                     }
-                    Err(error) => {
-                        let _ = send_reply(&mut client, 5, None).await;
-                        // Name the target so unreachable-resource failures in
-                        // engine.log point at the exact host:port the VPN refused.
-                        Err(Error(format!("{error} (target {remote})")))
+                    Err(_) => {
+                        let _ = send_connect_reply(&mut client, frontend, false).await;
+                        Err(Error("proxy upstream connection failed".into()))
                     }
                 }
             }
-            SocksRequest::UdpAssociate => {
+            ProxyRequest::HttpForward { remote, request } => {
+                if validate_tunnel_destination(remote).is_err() {
+                    eprintln!("local proxy destination rejected by safety policy");
+                    let _ = client.write_all(HTTP_BAD_GATEWAY).await;
+                    return Ok(());
+                }
+                match self.netstack.connect_tcp(remote).await {
+                    Ok(mut upstream) => {
+                        forward_http_request(&mut client, &mut upstream, request).await
+                    }
+                    Err(_) => {
+                        let _ = client.write_all(HTTP_BAD_GATEWAY).await;
+                        Err(Error("HTTP proxy upstream connection failed".into()))
+                    }
+                }
+            }
+            ProxyRequest::UdpAssociate => {
                 eprintln!("SOCKS5 udp-associate requested");
                 self.handle_udp_associate(client).await
             }
@@ -323,6 +383,19 @@ fn peer_departed(error: &std::io::Error) -> bool {
     )
 }
 
+/// Authentication negotiation failures are normal client rejections, not
+/// tunnel faults. Clash can retry these rapidly when its configured proxy
+/// contract does not match strict mode, so logging every attempt only hides
+/// actionable engine diagnostics.
+fn should_report_request_error(error: &Error) -> bool {
+    !matches!(
+        error.0.as_str(),
+        "SOCKS5 client offered no supported method"
+            | "SOCKS5 username/password authentication failed"
+            | "HTTP proxy authentication failed"
+    )
+}
+
 /// Reads the greeting and request under explicit deadlines so a client that
 /// connects and then stalls cannot hold one of the bounded connection slots.
 ///
@@ -330,48 +403,170 @@ fn peer_departed(error: &std::io::Error) -> bool {
 async fn bounded_handshake(
     client: &mut TcpStream,
     resolver: &dyn NameResolver,
+    authentication: &ProxyAuthentication,
     greeting_timeout: Duration,
     request_timeout: Duration,
-) -> Result<Option<SocksRequest>> {
-    let greeted = tokio::time::timeout(greeting_timeout, negotiate_no_authentication(client))
-        .await
-        .map_err(|_| Error("SOCKS5 authentication greeting timed out".into()))??;
-    if !greeted {
+) -> Result<Option<ProxyRequest>> {
+    let frontend =
+        tokio::time::timeout(greeting_timeout, negotiate_frontend(client, authentication))
+            .await
+            .map_err(|_| Error("local proxy authentication greeting timed out".into()))??;
+    let Some(frontend) = frontend else {
         return Ok(None);
-    }
-    tokio::time::timeout(request_timeout, read_request(client, resolver))
-        .await
-        .map_err(|_| Error("SOCKS5 request timed out".into()))?
-        .map(Some)
+    };
+    tokio::time::timeout(
+        request_timeout,
+        read_frontend_request(client, frontend, resolver),
+    )
+    .await
+    .map_err(|_| Error("local proxy request timed out".into()))?
+    .map(Some)
 }
 
-/// Returns `Ok(false)` when the client disconnected instead of greeting.
-async fn negotiate_no_authentication(client: &mut TcpStream) -> Result<bool> {
-    let mut header = [0_u8; 2];
-    if let Err(error) = client.read_exact(&mut header).await {
+/// Returns `Ok(None)` when the client disconnected instead of greeting.
+async fn negotiate_frontend(
+    client: &mut TcpStream,
+    authentication: &ProxyAuthentication,
+) -> Result<Option<NegotiatedFrontend>> {
+    let mut first = [0_u8; 1];
+    if let Err(error) = client.read_exact(&mut first).await {
         if peer_departed(&error) {
-            return Ok(false);
+            return Ok(None);
         }
         return Err(error.into());
     }
-    if header[0] != SOCKS_VERSION || header[1] == 0 || usize::from(header[1]) > MAX_AUTH_METHODS {
+    if first[0] == SOCKS_VERSION {
+        let negotiated_authentication = negotiate_socks5(client, authentication).await?;
+        // RFC 1929 authenticates only the TCP control connection. A standard
+        // SOCKS5 UDP relay has no credential field, and every local user shares
+        // the same loopback IP. Learning the UDP source from its first datagram
+        // would therefore let another local process race and adopt an
+        // authenticated client's relay. In optional mode UDP therefore follows
+        // the selected method, not merely the listener-wide policy: NO_AUTH
+        // keeps compatibility while RFC 1929 fails closed.
+        return Ok(Some(NegotiatedFrontend::Socks5 {
+            udp_associate_allowed: negotiated_authentication == NegotiatedSocksAuthentication::None,
+        }));
+    }
+    if first[0].is_ascii_alphabetic() && authentication.is_required() {
+        let request = read_authenticated_http_request(client, first[0], authentication).await?;
+        return Ok(Some(NegotiatedFrontend::Http(request)));
+    }
+    Err(Error("unsupported local proxy protocol".into()))
+}
+
+async fn negotiate_socks5(
+    client: &mut TcpStream,
+    authentication: &ProxyAuthentication,
+) -> Result<NegotiatedSocksAuthentication> {
+    let method_count = usize::from(client.read_u8().await?);
+    if method_count == 0 || method_count > MAX_AUTH_METHODS {
         return Err(Error("invalid SOCKS5 authentication greeting".into()));
     }
-    let mut methods = vec![0_u8; usize::from(header[1])];
+    let mut methods = vec![0_u8; method_count];
     client.read_exact(&mut methods).await?;
-    let method = if methods.contains(&NO_AUTHENTICATION) {
-        NO_AUTHENTICATION
-    } else {
-        NO_ACCEPTABLE_METHODS
-    };
+    // Optional mode prefers NO_AUTH even when RFC 1929 is also offered. That
+    // preserves compatibility for clients such as Clash while an explicit
+    // RFC-1929-only client can still authenticate.
+    let method =
+        if authentication.accepts_no_authentication() && methods.contains(&NO_AUTHENTICATION) {
+            NO_AUTHENTICATION
+        } else if authentication.accepts_rfc1929()
+            && methods.contains(&USERNAME_PASSWORD_AUTHENTICATION)
+        {
+            USERNAME_PASSWORD_AUTHENTICATION
+        } else {
+            NO_ACCEPTABLE_METHODS
+        };
     client.write_all(&[SOCKS_VERSION, method]).await?;
     if method == NO_ACCEPTABLE_METHODS {
         return Err(Error("SOCKS5 client offered no supported method".into()));
     }
-    Ok(true)
+    if method == USERNAME_PASSWORD_AUTHENTICATION {
+        authenticate_rfc1929(client, authentication).await?;
+    }
+    Ok(if method == NO_AUTHENTICATION {
+        NegotiatedSocksAuthentication::None
+    } else {
+        NegotiatedSocksAuthentication::Rfc1929
+    })
 }
 
-async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Result<SocksRequest> {
+async fn authenticate_rfc1929(
+    client: &mut TcpStream,
+    authentication: &ProxyAuthentication,
+) -> Result<()> {
+    let mut header = [0_u8; 2];
+    client.read_exact(&mut header).await?;
+    let username_length = usize::from(header[1]);
+    let mut username = Zeroizing::new(vec![0_u8; username_length]);
+    client.read_exact(&mut username).await?;
+    let password_length = usize::from(client.read_u8().await?);
+    let mut password = Zeroizing::new(vec![0_u8; password_length]);
+    client.read_exact(&mut password).await?;
+
+    let credentials_match = authentication.verify_rfc1929(&username, &password);
+    let valid = header[0] == RFC1929_VERSION
+        && username_length != 0
+        && password_length != 0
+        && credentials_match;
+    let status = if valid {
+        RFC1929_SUCCESS
+    } else {
+        RFC1929_FAILURE
+    };
+    client.write_all(&[RFC1929_VERSION, status]).await?;
+    if !valid {
+        return Err(Error(
+            "SOCKS5 username/password authentication failed".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn read_frontend_request(
+    client: &mut TcpStream,
+    frontend: NegotiatedFrontend,
+    resolver: &dyn NameResolver,
+) -> Result<ProxyRequest> {
+    match frontend {
+        NegotiatedFrontend::Socks5 {
+            udp_associate_allowed,
+        } => read_socks_request(client, resolver, udp_associate_allowed).await,
+        NegotiatedFrontend::Http(ParsedHttpProxyRequest::Connect { authority }) => {
+            let remote = match resolve_authority(&authority, None, resolver).await {
+                Ok(remote) => remote,
+                Err(_) => {
+                    let _ = client.write_all(HTTP_BAD_GATEWAY).await;
+                    return Err(Error("HTTP CONNECT destination resolution failed".into()));
+                }
+            };
+            Ok(ProxyRequest::Connect {
+                remote,
+                frontend: ConnectFrontend::HttpConnect,
+            })
+        }
+        NegotiatedFrontend::Http(ParsedHttpProxyRequest::Forward(request)) => {
+            let address = match resolve_host(request.host(), resolver).await {
+                Ok(address) => address,
+                Err(_) => {
+                    let _ = client.write_all(HTTP_BAD_GATEWAY).await;
+                    return Err(Error("HTTP proxy destination resolution failed".into()));
+                }
+            };
+            Ok(ProxyRequest::HttpForward {
+                remote: SocketAddr::new(IpAddr::V4(address), request.port()),
+                request,
+            })
+        }
+    }
+}
+
+async fn read_socks_request(
+    client: &mut TcpStream,
+    resolver: &dyn NameResolver,
+    udp_associate_allowed: bool,
+) -> Result<ProxyRequest> {
     let mut header = [0_u8; 4];
     client.read_exact(&mut header).await?;
     if header[0] != SOCKS_VERSION || header[2] != 0 {
@@ -386,6 +581,14 @@ async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Re
         send_reply(client, 7, None).await?;
         return Err(Error("unsupported SOCKS5 command".into()));
     }
+    if command == UDP_ASSOCIATE_COMMAND && !udp_associate_allowed {
+        // Reject from the fixed header alone. Reading or learning a UDP source
+        // endpoint cannot make RFC 1929 protect the unauthenticated datagrams.
+        send_reply(client, 7, None).await?;
+        return Err(Error(
+            "SOCKS5 UDP ASSOCIATE is unavailable after local proxy authentication".into(),
+        ));
+    }
     if header[3] == ADDRESS_IPV6 {
         // Tell the client the address family is unsupported instead of letting
         // it wait for a reply that never arrives.
@@ -397,17 +600,17 @@ async fn read_request(client: &mut TcpStream, resolver: &dyn NameResolver) -> Re
     let address = consume_address(client, header[3], resolver, command == CONNECT_COMMAND).await?;
     let port = client.read_u16().await?;
     if command == UDP_ASSOCIATE_COMMAND {
-        return Ok(SocksRequest::UdpAssociate);
+        return Ok(ProxyRequest::UdpAssociate);
     }
     let address = address.ok_or_else(|| Error("SOCKS5 destination is missing".into()))?;
     if address.is_unspecified() || port == 0 {
         send_reply(client, 8, None).await?;
         return Err(Error("SOCKS5 destination is invalid".into()));
     }
-    Ok(SocksRequest::Connect(SocketAddr::new(
-        IpAddr::V4(address),
-        port,
-    )))
+    Ok(ProxyRequest::Connect {
+        remote: SocketAddr::new(IpAddr::V4(address), port),
+        frontend: ConnectFrontend::Socks5,
+    })
 }
 
 async fn consume_address(
@@ -497,10 +700,9 @@ async fn parse_udp_request<'a>(
     if datagram.len() - offset > MAX_UDP_PAYLOAD_BYTES {
         return Err(Error("SOCKS5 UDP payload is too large".into()));
     }
-    Ok((
-        SocketAddr::new(IpAddr::V4(address), port),
-        &datagram[offset..],
-    ))
+    let remote = SocketAddr::new(IpAddr::V4(address), port);
+    validate_tunnel_destination(remote)?;
+    Ok((remote, &datagram[offset..]))
 }
 
 fn encode_udp_response(remote: SocketAddr, payload: &[u8]) -> Result<Vec<u8>> {
@@ -513,13 +715,6 @@ fn encode_udp_response(remote: SocketAddr, payload: &[u8]) -> Result<Vec<u8>> {
     response.extend_from_slice(&remote.port().to_be_bytes());
     response.extend_from_slice(payload);
     Ok(response)
-}
-
-// Targets the tunnel must never carry. A loopback destination would be
-// delivered to the gateway's own loopback, which its security policy treats
-// as an attack on the gateway and answers by dropping the VPN session.
-fn refused_target(remote: &SocketAddr) -> bool {
-    remote.ip().is_loopback()
 }
 
 async fn send_reply(client: &mut TcpStream, status: u8, bound: Option<SocketAddr>) -> Result<()> {
@@ -544,10 +739,45 @@ async fn send_reply(client: &mut TcpStream, status: u8, bound: Option<SocketAddr
     Ok(())
 }
 
+async fn send_connect_reply(
+    client: &mut TcpStream,
+    frontend: ConnectFrontend,
+    success: bool,
+) -> Result<()> {
+    match frontend {
+        ConnectFrontend::Socks5 => send_reply(client, if success { 0 } else { 5 }, None).await,
+        ConnectFrontend::HttpConnect => client
+            .write_all(if success {
+                HTTP_CONNECT_ESTABLISHED
+            } else {
+                HTTP_BAD_GATEWAY
+            })
+            .await
+            .map_err(Error::from),
+    }
+}
+
+#[cfg(test)]
+mod benchmark;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::engine::proxy::ResolveFuture;
+
+    #[test]
+    fn routine_proxy_authentication_rejections_do_not_flood_engine_logs() {
+        for message in [
+            "SOCKS5 client offered no supported method",
+            "SOCKS5 username/password authentication failed",
+            "HTTP proxy authentication failed",
+        ] {
+            assert!(!should_report_request_error(&Error(message.into())));
+        }
+        assert!(should_report_request_error(&Error(
+            "proxy stream forwarding failed".into()
+        )));
+    }
 
     #[test]
     fn udp_response_round_trips_source_and_payload() {
@@ -558,12 +788,12 @@ mod tests {
     }
 
     #[test]
-    fn loopback_targets_are_refused_before_the_tunnel() {
-        assert!(refused_target(&"127.0.0.1:60540".parse().unwrap()));
-        assert!(refused_target(&"127.0.1.1:443".parse().unwrap()));
-        assert!(refused_target(&"[::1]:8443".parse().unwrap()));
-        assert!(!refused_target(&"10.120.18.63:443".parse().unwrap()));
-        assert!(!refused_target(&"103.189.154.38:443".parse().unwrap()));
+    fn tcp_targets_use_the_shared_destination_policy() {
+        assert!(validate_tunnel_destination("0.0.0.1:443".parse().unwrap()).is_err());
+        assert!(validate_tunnel_destination("127.0.0.1:60540".parse().unwrap()).is_err());
+        assert!(validate_tunnel_destination("169.254.1.2:443".parse().unwrap()).is_err());
+        assert!(validate_tunnel_destination("240.0.0.1:443".parse().unwrap()).is_err());
+        assert!(validate_tunnel_destination("10.120.18.63:443".parse().unwrap()).is_ok());
     }
 
     #[tokio::test]
@@ -604,6 +834,36 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn udp_targets_use_the_shared_destination_policy() {
+        let this_network = [0, 0, 0, 1, 0, 0, 0, 1, 0, 53, 1];
+        assert!(
+            parse_udp_request(&this_network, &crate::engine::proxy::RejectDomainResolver,)
+                .await
+                .is_err()
+        );
+
+        let loopback = [0, 0, 0, 1, 127, 0, 0, 1, 0, 53, 1];
+        assert!(
+            parse_udp_request(&loopback, &crate::engine::proxy::RejectDomainResolver,)
+                .await
+                .is_err()
+        );
+
+        let reserved = [0, 0, 0, 1, 240, 0, 0, 1, 0, 53, 1];
+        assert!(
+            parse_udp_request(&reserved, &crate::engine::proxy::RejectDomainResolver,)
+                .await
+                .is_err()
+        );
+
+        let campus = [0, 0, 0, 1, 10, 20, 30, 40, 0, 53, 1];
+        let (remote, _) = parse_udp_request(&campus, &crate::engine::proxy::RejectDomainResolver)
+            .await
+            .unwrap();
+        assert_eq!(remote, "10.20.30.40:53".parse().unwrap());
+    }
+
     async fn connected_pair() -> (TcpStream, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -612,12 +872,503 @@ mod tests {
         (client, server)
     }
 
+    fn rfc1929_packet(username: &[u8], password: &[u8]) -> Vec<u8> {
+        let mut packet = vec![RFC1929_VERSION, username.len() as u8];
+        packet.extend_from_slice(username);
+        packet.push(password.len() as u8);
+        packet.extend_from_slice(password);
+        packet
+    }
+
+    async fn negotiate_strict_socks(client: &mut TcpStream) {
+        client
+            .write_all(&[
+                SOCKS_VERSION,
+                2,
+                NO_AUTHENTICATION,
+                USERNAME_PASSWORD_AUTHENTICATION,
+            ])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, USERNAME_PASSWORD_AUTHENTICATION]);
+        client
+            .write_all(&rfc1929_packet(b"proxy-user", b"proxy-pass"))
+            .await
+            .unwrap();
+        let mut status = [0_u8; 2];
+        client.read_exact(&mut status).await.unwrap();
+        assert_eq!(status, [RFC1929_VERSION, RFC1929_SUCCESS]);
+    }
+
+    #[tokio::test]
+    async fn strict_rfc1929_authentication_precedes_tcp_connect() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        negotiate_strict_socks(&mut client).await;
+        client
+            .write_all(&[
+                SOCKS_VERSION,
+                CONNECT_COMMAND,
+                0,
+                ADDRESS_IPV4,
+                10,
+                20,
+                30,
+                40,
+                1,
+                187,
+            ])
+            .await
+            .unwrap();
+        assert_eq!(
+            handshake.await.unwrap().unwrap(),
+            Some(ProxyRequest::Connect {
+                remote: "10.20.30.40:443".parse().unwrap(),
+                frontend: ConnectFrontend::Socks5,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn strict_rfc1929_rejects_udp_associate_before_learning_an_endpoint() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        negotiate_strict_socks(&mut client).await;
+        client
+            // The fixed header is sufficient: strict mode must reject before
+            // accepting an address whose UDP source another local user could
+            // race to claim.
+            .write_all(&[SOCKS_VERSION, UDP_ASSOCIATE_COMMAND, 0, ADDRESS_IPV4])
+            .await
+            .unwrap();
+        let mut reply = [0_u8; 10];
+        tokio::time::timeout(Duration::from_secs(1), client.read_exact(&mut reply))
+            .await
+            .expect("strict UDP rejection must not wait for an endpoint")
+            .unwrap();
+        assert_eq!(reply[..4], [SOCKS_VERSION, 7, 0, ADDRESS_IPV4]);
+        let error = handshake
+            .await
+            .unwrap()
+            .expect_err("strict authentication cannot secure SOCKS5 UDP datagrams");
+        assert_eq!(
+            error.to_string(),
+            "SOCKS5 UDP ASSOCIATE is unavailable after local proxy authentication"
+        );
+    }
+
+    #[tokio::test]
+    async fn compatibility_mode_keeps_udp_associate() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &ProxyAuthentication::None,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 1, NO_AUTHENTICATION])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, NO_AUTHENTICATION]);
+        client
+            .write_all(&[
+                SOCKS_VERSION,
+                UDP_ASSOCIATE_COMMAND,
+                0,
+                ADDRESS_IPV4,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ])
+            .await
+            .unwrap();
+        assert_eq!(
+            handshake.await.unwrap().unwrap(),
+            Some(ProxyRequest::UdpAssociate)
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_mode_prefers_no_auth_and_keeps_udp_compatibility() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::optional("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        // Put RFC 1929 first to prove server policy, rather than client order,
+        // selects the compatibility method when both are available.
+        client
+            .write_all(&[
+                SOCKS_VERSION,
+                2,
+                USERNAME_PASSWORD_AUTHENTICATION,
+                NO_AUTHENTICATION,
+            ])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, NO_AUTHENTICATION]);
+        client
+            .write_all(&[
+                SOCKS_VERSION,
+                UDP_ASSOCIATE_COMMAND,
+                0,
+                ADDRESS_IPV4,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ])
+            .await
+            .unwrap();
+        assert_eq!(
+            handshake.await.unwrap().unwrap(),
+            Some(ProxyRequest::UdpAssociate)
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_rfc1929_only_client_is_verified_and_cannot_open_udp_relay() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::optional("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 1, USERNAME_PASSWORD_AUTHENTICATION])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, USERNAME_PASSWORD_AUTHENTICATION]);
+        client
+            .write_all(&rfc1929_packet(b"proxy-user", b"proxy-pass"))
+            .await
+            .unwrap();
+        let mut status = [0_u8; 2];
+        client.read_exact(&mut status).await.unwrap();
+        assert_eq!(status, [RFC1929_VERSION, RFC1929_SUCCESS]);
+        client
+            .write_all(&[SOCKS_VERSION, UDP_ASSOCIATE_COMMAND, 0, ADDRESS_IPV4])
+            .await
+            .unwrap();
+        let mut reply = [0_u8; 10];
+        tokio::time::timeout(Duration::from_secs(1), client.read_exact(&mut reply))
+            .await
+            .expect("authenticated optional UDP rejection must not wait for an endpoint")
+            .unwrap();
+        assert_eq!(reply[..4], [SOCKS_VERSION, 7, 0, ADDRESS_IPV4]);
+        let error = handshake.await.unwrap().unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "SOCKS5 UDP ASSOCIATE is unavailable after local proxy authentication"
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_rfc1929_only_client_must_supply_valid_credentials() {
+        let (mut client, mut server) = connected_pair().await;
+        let negotiation = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::optional("proxy-user", "proxy-pass").unwrap();
+            negotiate_frontend(&mut server, &authentication).await
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 1, USERNAME_PASSWORD_AUTHENTICATION])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, USERNAME_PASSWORD_AUTHENTICATION]);
+        client
+            .write_all(&rfc1929_packet(b"proxy-user", b"wrong-pass"))
+            .await
+            .unwrap();
+        let mut status = [0_u8; 2];
+        client.read_exact(&mut status).await.unwrap();
+        assert_eq!(status, [RFC1929_VERSION, RFC1929_FAILURE]);
+        let error = match negotiation.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("invalid optional credentials must be rejected"),
+        };
+        assert_eq!(error, "SOCKS5 username/password authentication failed");
+        assert!(!error.contains("wrong-pass"));
+    }
+
+    #[tokio::test]
+    async fn optional_frontend_does_not_enable_http_proxying() {
+        let (mut client, mut server) = connected_pair().await;
+        let negotiation = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::optional("proxy-user", "proxy-pass").unwrap();
+            negotiate_frontend(&mut server, &authentication).await
+        });
+        client
+            .write_all(
+                b"CONNECT 10.20.30.40:443 HTTP/1.1\r\n\
+                  Proxy-Authorization: Basic cHJveHktdXNlcjpwcm94eS1wYXNz\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let error = match negotiation.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("optional mode must not expose the HTTP frontend"),
+        };
+        assert_eq!(error, "unsupported local proxy protocol");
+    }
+
+    async fn rejected_rfc1929_exchange(username: &[u8], password: &[u8]) -> ([u8; 2], String) {
+        let (mut client, mut server) = connected_pair().await;
+        let negotiation = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            negotiate_frontend(&mut server, &authentication).await
+        });
+        client
+            .write_all(&[SOCKS_VERSION, 1, USERNAME_PASSWORD_AUTHENTICATION])
+            .await
+            .unwrap();
+        let mut method = [0_u8; 2];
+        client.read_exact(&mut method).await.unwrap();
+        assert_eq!(method, [SOCKS_VERSION, USERNAME_PASSWORD_AUTHENTICATION]);
+        client
+            .write_all(&rfc1929_packet(username, password))
+            .await
+            .unwrap();
+        let mut status = [0_u8; 2];
+        client.read_exact(&mut status).await.unwrap();
+        let error = match negotiation.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("invalid credentials must be rejected"),
+        };
+        (status, error)
+    }
+
+    #[tokio::test]
+    async fn all_rfc1929_credential_failures_have_one_response_and_diagnostic() {
+        let wrong_username = rejected_rfc1929_exchange(b"wrong-user", b"proxy-pass").await;
+        let wrong_password = rejected_rfc1929_exchange(b"proxy-user", b"wrong-pass").await;
+        assert_eq!(wrong_username.0, [RFC1929_VERSION, RFC1929_FAILURE]);
+        assert_eq!(wrong_password.0, wrong_username.0);
+        assert_eq!(wrong_password.1, wrong_username.1);
+        assert!(!wrong_username.1.contains("wrong-user"));
+        assert!(!wrong_password.1.contains("wrong-pass"));
+    }
+
+    #[tokio::test]
+    async fn authenticated_http_connect_uses_the_same_connect_request() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        client
+            .write_all(
+                b"CONNECT 10.20.30.40:443 HTTP/1.1\r\n\
+                  Host: 10.20.30.40:443\r\n\
+                  Proxy-Authorization: Basic cHJveHktdXNlcjpwcm94eS1wYXNz\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            handshake.await.unwrap().unwrap(),
+            Some(ProxyRequest::Connect {
+                remote: "10.20.30.40:443".parse().unwrap(),
+                frontend: ConnectFrontend::HttpConnect,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn http_resolution_failure_response_and_error_do_not_echo_the_target() {
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        let private_target = "private-campus-target.example";
+        client
+            .write_all(
+                format!(
+                    "CONNECT {private_target}:443 HTTP/1.1\r\n\
+                     Proxy-Authorization: Basic cHJveHktdXNlcjpwcm94eS1wYXNz\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.unwrap();
+        let error = match handshake.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("an unresolved target must fail closed"),
+        };
+        assert_eq!(response, HTTP_BAD_GATEWAY);
+        assert!(!error.contains(private_target));
+        assert_eq!(error, "HTTP CONNECT destination resolution failed");
+    }
+
+    async fn rejected_http_exchange(request: &[u8]) -> (Vec<u8>, String) {
+        let (mut client, mut server) = connected_pair().await;
+        let negotiation = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            negotiate_frontend(&mut server, &authentication).await
+        });
+        client.write_all(request).await.unwrap();
+        let mut response = Vec::new();
+        client.read_to_end(&mut response).await.unwrap();
+        let error = match negotiation.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("invalid HTTP proxy exchange must be rejected"),
+        };
+        (response, error)
+    }
+
+    #[tokio::test]
+    async fn missing_and_wrong_http_basic_credentials_get_the_same_407() {
+        let missing = rejected_http_exchange(
+            b"CONNECT 10.20.30.40:443 HTTP/1.1\r\nHost: 10.20.30.40:443\r\n\r\n",
+        )
+        .await;
+        let wrong = rejected_http_exchange(
+            b"CONNECT 10.20.30.40:443 HTTP/1.1\r\n\
+              Proxy-Authorization: Basic d3Jvbmc6Y3JlZGVudGlhbA==\r\n\r\n",
+        )
+        .await;
+        assert_eq!(missing.0, http_forward::HTTP_AUTHENTICATION_REQUIRED);
+        assert_eq!(wrong.0, missing.0);
+        assert_eq!(wrong.1, missing.1);
+        assert!(!wrong.1.contains("d3Jvbmc6Y3JlZGVudGlhbA"));
+    }
+
+    #[tokio::test]
+    async fn strict_frontend_accepts_authenticated_absolute_form_http() {
+        struct HttpResolver;
+        impl NameResolver for HttpResolver {
+            fn resolve_ipv4<'a>(&'a self, host: &'a str) -> ResolveFuture<'a> {
+                Box::pin(async move {
+                    if host == "campus.example" {
+                        Ok(Ipv4Addr::new(10, 20, 30, 40))
+                    } else {
+                        Err(Error("not found".into()))
+                    }
+                })
+            }
+        }
+        let (mut client, mut server) = connected_pair().await;
+        let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::required("proxy-user", "proxy-pass").unwrap();
+            bounded_handshake(
+                &mut server,
+                &HttpResolver,
+                &authentication,
+                Duration::from_secs(5),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        client
+            .write_all(
+                b"GET http://campus.example/private HTTP/1.1\r\n\
+                  Proxy-Authorization: Basic cHJveHktdXNlcjpwcm94eS1wYXNz\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let Some(ProxyRequest::HttpForward { remote, request }) = handshake.await.unwrap().unwrap()
+        else {
+            panic!("authenticated absolute-form HTTP must use the forwarding path");
+        };
+        assert_eq!(remote, "10.20.30.40:80".parse().unwrap());
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("campus.example"));
+        assert!(!debug.contains("/private"));
+    }
+
+    #[tokio::test]
+    async fn default_frontend_does_not_enable_http_proxying() {
+        let (mut client, mut server) = connected_pair().await;
+        let negotiation = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::None;
+            negotiate_frontend(&mut server, &authentication).await
+        });
+        client
+            .write_all(b"CONNECT 10.20.30.40:443 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+        let error = match negotiation.await.unwrap() {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("HTTP must stay disabled in compatibility mode"),
+        };
+        assert_eq!(error, "unsupported local proxy protocol");
+    }
+
     #[tokio::test]
     async fn stalled_client_cannot_hold_a_connection_slot() {
         let (_client, mut server) = connected_pair().await;
         let error = bounded_handshake(
             &mut server,
             &crate::engine::proxy::RejectDomainResolver,
+            &ProxyAuthentication::None,
             Duration::from_millis(50),
             Duration::from_millis(50),
         )
@@ -630,9 +1381,11 @@ mod tests {
     async fn stalled_request_after_a_valid_greeting_also_times_out() {
         let (mut client, mut server) = connected_pair().await;
         let handshake = tokio::spawn(async move {
+            let authentication = ProxyAuthentication::None;
             bounded_handshake(
                 &mut server,
                 &crate::engine::proxy::RejectDomainResolver,
+                &authentication,
                 Duration::from_secs(5),
                 Duration::from_millis(50),
             )
@@ -661,6 +1414,7 @@ mod tests {
         let outcome = bounded_handshake(
             &mut server,
             &crate::engine::proxy::RejectDomainResolver,
+            &ProxyAuthentication::None,
             Duration::from_secs(5),
             Duration::from_secs(5),
         )
@@ -703,7 +1457,12 @@ mod tests {
     async fn ipv6_requests_receive_an_address_type_reply() {
         let (mut client, mut server) = connected_pair().await;
         let request = tokio::spawn(async move {
-            read_request(&mut server, &crate::engine::proxy::RejectDomainResolver).await
+            read_socks_request(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                true,
+            )
+            .await
         });
         let mut ipv6_request = vec![SOCKS_VERSION, CONNECT_COMMAND, 0, ADDRESS_IPV6];
         ipv6_request.extend_from_slice(&[0; 16]);
@@ -719,7 +1478,12 @@ mod tests {
     async fn unsupported_command_is_rejected_before_waiting_for_its_address() {
         let (mut client, mut server) = connected_pair().await;
         let request = tokio::spawn(async move {
-            read_request(&mut server, &crate::engine::proxy::RejectDomainResolver).await
+            read_socks_request(
+                &mut server,
+                &crate::engine::proxy::RejectDomainResolver,
+                true,
+            )
+            .await
         });
         client
             .write_all(&[SOCKS_VERSION, 2, 0, ADDRESS_IPV6])

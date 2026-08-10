@@ -7,11 +7,11 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
 const { CampusBrowser, FIND_BAR_HEIGHT, TOOLBAR_HEIGHT } = require('../lib/campus-browser');
-const { DIRECT_PARTITION } = require('../lib/campus-route');
+const { CAMPUS_PARTITION } = require('../lib/campus-route');
 
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
 // local error page immediately instead of hanging the test.
-const DEAD_URL = 'http://127.0.0.1:1/x';
+const DEAD_URL = 'http://route-switch.example.invalid:1/x';
 
 async function waitFor(window, expression, description) {
   const deadline = Date.now() + 5000;
@@ -32,9 +32,8 @@ async function waitForMain(condition, description) {
 }
 
 function toolbarCommand(browser, command, value = '') {
-  const hash = new URLSearchParams({ command, value, nonce: String(Date.now()) }).toString();
   return browser.window.webContents.executeJavaScript(
-    `window.location.hash = ${JSON.stringify(hash)}`,
+    `window.campusToolbar.command(${JSON.stringify(command)}, ${JSON.stringify(value)})`,
   );
 }
 
@@ -73,8 +72,8 @@ async function assertRouteSwitch(browser) {
   await waitForMain(() => browser.activeTab()?.route === 'direct', 'route switch to direct');
   assert.equal(
     browser.activeTab().view.webContents.session,
-    session.fromPartition(DIRECT_PARTITION),
-    'a direct tab must use the direct session partition',
+    session.fromPartition(CAMPUS_PARTITION),
+    'route changes must preserve the one browser session and its SSO state',
   );
   await waitFor(
     browser.window,
@@ -144,6 +143,7 @@ async function main() {
     credentialVault: null,
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     onError: (message) => errors.push(message),
   });

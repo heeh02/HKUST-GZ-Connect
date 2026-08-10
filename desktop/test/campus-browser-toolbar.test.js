@@ -14,4 +14,12 @@ test('browser toolbar exposes the active tab network route', () => {
   assert.match(html, /value="campus"/);
   assert.match(html, /value="direct"/);
   assert.match(js, /command\('set-route'/);
+  assert.match(html, /id="routeRules"/);
+  assert.match(js, /command\('manage-routing-rules'/);
+});
+
+test('browser toolbar uses a typed preload channel and never encodes commands in its URL', () => {
+  assert.match(js, /window\.campusToolbar\?\.command/);
+  assert.match(js, /window\.campusToolbar\?\.onState/);
+  assert.doesNotMatch(js, /window\.location\.hash|location\.hash\s*=/);
 });

@@ -37,4 +37,43 @@ function engineFailureKind(text) {
   return 'unknown';
 }
 
-module.exports = { classifyEngineOutput, engineFailureKind };
+function classifyEngineCode(code, socksPort, t = createT('zh')) {
+  switch (code) {
+    case 'AUTH_FAILED': return t('engine.authFailed');
+    case 'UNSUPPORTED_AUTHENTICATION': return t('engine.authUnsupported');
+    case 'CREDENTIALS_INVALID': return t('error.needCredentials');
+    case 'INVALID_ARGUMENTS':
+    case 'CONFIGURATION_INVALID': return t('engine.configurationInvalid');
+    case 'LOCAL_LISTENER_FAILED': return t('engine.portBusy', { port: socksPort });
+    case 'DATA_PLANE_SETUP_FAILED':
+    case 'NETWORK_DISCONNECTED': return t('engine.channelClosed');
+    case 'LOGOUT_FAILED':
+    case 'SHUTDOWN_SIGNAL_FAILED': return t('error.engineStuck');
+    case 'EVENT_OUTPUT_FAILED': return t('engine.eventOutputFailed');
+    default: return t('error.connectFailed');
+  }
+}
+
+function engineFailureKindFromCode(code) {
+  if ([
+    'AUTH_FAILED',
+    'UNSUPPORTED_AUTHENTICATION',
+    'CREDENTIALS_INVALID',
+    'INVALID_ARGUMENTS',
+    'CONFIGURATION_INVALID',
+    'LOCAL_LISTENER_FAILED',
+    'EVENT_OUTPUT_FAILED',
+  ]
+    .includes(code)) return 'terminal';
+  if (['DATA_PLANE_SETUP_FAILED', 'NETWORK_DISCONNECTED'].includes(code)) {
+    return 'gateway-transient';
+  }
+  return 'unknown';
+}
+
+module.exports = {
+  classifyEngineCode,
+  classifyEngineOutput,
+  engineFailureKind,
+  engineFailureKindFromCode,
+};

@@ -1,0 +1,148 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { atomicWritePrivateFile } = require('./credential-store');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+
+const LOOPBACK_HOST = '127.0.0.1';
+const MAX_PROXY_SIDECAR_BYTES = 1024;
+
+function validPort(value) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1025 || port > 65535) {
+    throw new TypeError('proxy port is invalid');
+  }
+  return port;
+}
+
+function credentialText(credential, callback) {
+  if (!credential || typeof credential.withStrings !== 'function') {
+    throw new TypeError('stable proxy credential is required');
+  }
+  return credential.withStrings((username, password) => {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(username) ||
+        !/^[A-Za-z0-9_-]{16,128}$/.test(password)) {
+      throw new Error('stable proxy credential is invalid');
+    }
+    return callback(username, password);
+  });
+}
+
+function sidecarContents(port, credential) {
+  const endpoint = `${LOOPBACK_HOST}:${validPort(port)}`;
+  return credentialText(
+    credential,
+    (username, password) => Buffer.from(`${endpoint}\n${username}\n${password}`, 'utf8'),
+  );
+}
+
+function existingSidecarMatches(filePath, expected, { platform, fileSystem } = {}) {
+  let existing = null;
+  try {
+    existing = readPrivateFileBounded(filePath, {
+      maxBytes: MAX_PROXY_SIDECAR_BYTES,
+      platform,
+      fileSystem,
+    }).data;
+    return existing.length === expected.length && crypto.timingSafeEqual(existing, expected);
+  } catch {
+    return false;
+  } finally {
+    existing?.fill(0);
+  }
+}
+
+function ensureProxyCredentialSidecar({
+  filePath,
+  port,
+  credential,
+  platform = process.platform,
+  fileSystem,
+} = {}) {
+  if (typeof filePath !== 'string' || !filePath) {
+    throw new TypeError('proxy credential sidecar path is invalid');
+  }
+  const contents = sidecarContents(port, credential);
+  try {
+    if (existingSidecarMatches(filePath, contents, { platform, fileSystem })) {
+      return { ok: true, changed: false, filePath };
+    }
+    if (!atomicWritePrivateFile(filePath, contents, fileSystem)) {
+      try { (fileSystem || fs).unlinkSync(filePath); } catch {}
+      throw new Error('could not write proxy helper credential');
+    }
+    if (!ensureOwnerOnly(filePath)) {
+      try { (fileSystem || fs).unlinkSync(filePath); } catch {}
+      throw new Error('could not protect proxy helper credential');
+    }
+    return { ok: true, changed: true, filePath };
+  } finally {
+    contents.fill(0);
+  }
+}
+
+function helperExecutableName(platform = process.platform, arch = process.arch) {
+  const platformName = platform === 'win32'
+    ? 'windows'
+    : (platform === 'darwin' ? 'darwin' : 'linux');
+  const architecture = arch === 'arm64' ? 'arm64' : 'amd64';
+  return `ec-proxy-command-${platformName}-${architecture}${platform === 'win32' ? '.exe' : ''}`;
+}
+
+function externalProxyHelperPath({
+  isPackaged,
+  resourcesPath,
+  desktopDir,
+  platform = process.platform,
+  arch = process.arch,
+} = {}) {
+  const root = isPackaged
+    ? path.join(resourcesPath, 'engine')
+    : path.join(desktopDir, 'engine');
+  return path.join(root, helperExecutableName(platform, arch));
+}
+
+function quoteSshArgument(value) {
+  const text = String(value);
+  if (!text || /[\r\n\0]/.test(text)) throw new TypeError('SSH argument is invalid');
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function buildSshProxyCommand({ helperPath, credentialFile }) {
+  return [
+    '# Direct Host blocks only; do not combine with ProxyJump.',
+    `ProxyCommand ${quoteSshArgument(helperPath)} --credential-file ` +
+      `${quoteSshArgument(credentialFile)} -- %h %p`,
+  ].join('\n');
+}
+
+function buildClashProxyYaml({ port, credential = null, name = 'HKUST(GZ) Connect' } = {}) {
+  const lines = [
+    'proxies:',
+    `  - name: ${JSON.stringify(String(name))}`,
+    `    type: ${JSON.stringify('socks5')}`,
+    `    server: ${JSON.stringify(LOOPBACK_HOST)}`,
+    `    port: ${validPort(port)}`,
+  ];
+  if (credential) {
+    credentialText(credential, (username, password) => {
+      lines.push(`    username: ${JSON.stringify(username)}`);
+      lines.push(`    password: ${JSON.stringify(password)}`);
+    });
+  }
+  lines.push('    udp: false');
+  return `${lines.join('\n')}\n`;
+}
+
+module.exports = {
+  LOOPBACK_HOST,
+  MAX_PROXY_SIDECAR_BYTES,
+  buildClashProxyYaml,
+  buildSshProxyCommand,
+  ensureProxyCredentialSidecar,
+  externalProxyHelperPath,
+  helperExecutableName,
+  quoteSshArgument,
+};

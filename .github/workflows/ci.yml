@@ -25,8 +25,8 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -56,23 +56,31 @@ jobs:
           bash -n scripts/rebuild-mac.sh
           bash -n scripts/build-engine.sh
 
-  desktop-renderer-layout:
+  desktop-electron:
     timeout-minutes: 15
     runs-on: macos-latest
     defaults:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - name: Install dependencies including Electron runtime
         run: npm ci
+      - name: Exercise the real Electron main process
+        run: npm run test:main-integration
+      - name: Exercise campus-browser toolbar IPC
+        run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
+      - name: Exercise Chromium strict proxy authentication
+        run: npm run test:strict-proxy-auth
       - name: Measure the resource manager at compact window sizes
         run: npm run test:renderer-layout
+      - name: Run browser tab-switch and lifecycle soak gate
+        run: npm run test:browser-performance
 
   engine:
     timeout-minutes: 20
@@ -81,7 +89,7 @@ jobs:
       run:
         working-directory: independent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Check formatting
@@ -90,5 +98,12 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run engine tests
         run: cargo test --locked
-      - name: Build the shipped engine binary
-        run: cargo build --locked --release --bin ec-engine
+      - name: Run offline performance disaster guards
+        run: |
+          cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+            --ignored --nocapture --test-threads=1
+          cargo test --locked --release --test poll_latency_probe \
+            offline_netstack_poll_latency_matrix -- \
+            --ignored --nocapture --test-threads=1
+      - name: Build shipped native binaries
+        run: cargo build --locked --release --bin ec-engine --bin ec-proxy-command

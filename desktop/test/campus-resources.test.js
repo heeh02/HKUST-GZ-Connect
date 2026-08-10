@@ -63,3 +63,14 @@ test('custom resources are bounded, normalized, and merged after built-ins', () 
   assert.equal(merged[0].builtin, true);
   assert.equal(merged[1].builtin, false);
 });
+
+test('legacy direct private shortcuts are migrated to the campus tunnel', () => {
+  const [resource] = normalizeCustomResources([{
+    id: 'legacy-router',
+    name: 'Legacy private site',
+    description: '',
+    url: 'http://192.168.1.10:8080/',
+    route: 'direct',
+  }]);
+  assert.equal(resource.route, 'campus');
+});

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Resource>
+  <Dns data="synthetic-policy" dnsserver="192.0.2.53" filter="example.test"/>
+  <Other defaultRcId="vendor-resource-one"/>
+  <RcGroups>
+    <Group id="vendor-group-one" name="教学资源" type="synthetic"/>
+    <Group id="vendor-group-two" name="行政资源" type="synthetic"/>
+  </RcGroups>
+  <Rcs>
+    <Rc id="vendor-resource-one" type="web" proto="https"
+        host="https://catalogue.example.test/launch/private?access_token=fixture-access-token#fixture-session"
+        port="443" svc="web" rc_grp_id="vendor-group-one"
+        authorization="vendor-opaque-grant" name="合成教学门户"/>
+    <Rc id="vendor-resource-two" type="tcp" proto="tcp"
+        host="ssh.example.test" port="22,80-90" svc="fixture-private-service"
+        rc_grp_id="vendor-group-one" name="合成终端服务"/>
+    <Rc id="vendor-resource-three" type="application" proto="udp"
+        host="192.0.2.44" port="5000~5010" svc="fixture-app"
+        rc_grp_id="vendor-group-two" authorization="vendor-opaque-deny"
+        name="合成应用"/>
+  </Rcs>
+  <service>
+    <UserName>synthetic-user</UserName>
+    <Password>synthetic-password</Password>
+    <Token>fixture-access-token</Token>
+  </service>
+</Resource>

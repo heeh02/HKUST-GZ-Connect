@@ -93,6 +93,7 @@ input {
 .route-selector { height: 29px; max-width: 116px; border: 1px solid var(--line); border-radius: 9px; background: #f4f7fb; color: var(--navy); padding: 0 4px; font-size: 11px; font-weight: 700; cursor: pointer; }
 .route-selector:hover { border-color: var(--gold); background: #fffcf4; }
 .route-selector:focus { outline: 0; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(168,132,44,.12); }
+.route-rules { flex: 0 0 29px; }
 .security.direct { background: #a8842c; }
 .state {
   flex: 0 1 auto; min-width: 58px; color: var(--muted); font-size: 11px; font-weight: 650;

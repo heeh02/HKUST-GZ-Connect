@@ -1,0 +1,255 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+const {
+  EngineSupervisor,
+  MAX_ENGINE_OWNER_RECORD_BYTES,
+  WINDOWS_ENGINE_PATH_ENV,
+  WINDOWS_ENGINE_PID_ENV,
+  WINDOWS_EXACT_CLEANUP_SCRIPT,
+  loadEngineOwnerRecord,
+  removeEngineOwnerRecord,
+  sameWindowsExecutablePath,
+  windowsOwnedEngineCleanupInvocation,
+  writeEngineOwnerRecord,
+} = require('../lib/engine-supervisor');
+
+function fakeChild() {
+  const child = new EventEmitter();
+  child.pid = 4321;
+  child.killCalls = [];
+  child.kill = (signal) => {
+    child.killCalls.push(signal || 'SIGTERM');
+    return true;
+  };
+  return child;
+}
+
+test('spawn error, exit, and close converge exactly once at close', async () => {
+  const child = fakeChild();
+  const events = [];
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  const started = supervisor.start({
+    command: '/app/ec-engine',
+    onError: ({ error }) => events.push(['error', error.message]),
+    onExit: ({ code }) => events.push(['exit', code]),
+    onClose: ({ code, spawnError }) => events.push(['close', code, spawnError.message]),
+  });
+
+  assert.equal(started.ok, true);
+  child.emit('error', new Error('ENOENT'));
+  assert.equal(supervisor.hasActive, true, 'error must not release process ownership');
+  child.emit('exit', 127, null);
+  assert.equal(supervisor.hasActive, true, 'exit must wait for stdio close');
+  child.emit('close', 127, null);
+  child.emit('close', 127, null);
+
+  assert.equal(supervisor.hasActive, false);
+  assert.deepEqual(events, [
+    ['error', 'ENOENT'],
+    ['exit', 127],
+    ['close', 127, 'ENOENT'],
+  ]);
+  assert.equal((await started.closed).code, 127);
+});
+
+test('a synchronous spawn failure never leaves a ghost active engine', () => {
+  const failure = new Error('spawn failed synchronously');
+  const supervisor = new EngineSupervisor({ spawnProcess: () => { throw failure; } });
+  let reported = null;
+  const result = supervisor.start({
+    command: '/app/ec-engine',
+    onError: ({ error }) => { reported = error; },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'spawn');
+  assert.equal(result.error, failure);
+  assert.equal(reported, failure);
+  assert.equal(supervisor.hasActive, false);
+  assert.equal(supervisor.currentChild, null);
+});
+
+test('the supervisor rejects a duplicate start until close', () => {
+  const children = [fakeChild(), fakeChild()];
+  let spawnCalls = 0;
+  const supervisor = new EngineSupervisor({ spawnProcess: () => children[spawnCalls++] });
+
+  const first = supervisor.start({ command: '/app/ec-engine' });
+  const duplicate = supervisor.start({ command: '/app/ec-engine' });
+  assert.equal(first.ok, true);
+  assert.equal(duplicate.ok, false);
+  assert.equal(duplicate.reason, 'active');
+  assert.equal(spawnCalls, 1);
+
+  children[0].emit('close', 0, null);
+  assert.equal(supervisor.start({ command: '/app/ec-engine' }).ok, true);
+  assert.equal(spawnCalls, 2);
+});
+
+test('graceful stop owns the child until its close event', async () => {
+  const child = fakeChild();
+  child.kill = (signal) => {
+    child.killCalls.push(signal || 'SIGTERM');
+    queueMicrotask(() => child.emit('close', 0, signal || 'SIGTERM'));
+    return true;
+  };
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  supervisor.start({ command: '/app/ec-engine' });
+
+  const stopped = await supervisor.stop({ graceMs: 100, forceWaitMs: 100 });
+  assert.equal(stopped.ok, true);
+  assert.equal(stopped.phase, 'grace');
+  assert.deepEqual(child.killCalls, ['SIGTERM']);
+  assert.equal(supervisor.hasActive, false);
+});
+
+test('stop escalates once to SIGKILL and still finalizes only on close', async () => {
+  const child = fakeChild();
+  const deadlines = [];
+  const supervisor = new EngineSupervisor({
+    spawnProcess: () => child,
+    setTimeoutFn: (callback) => {
+      deadlines.push(callback);
+      return deadlines.length;
+    },
+    clearTimeoutFn: () => {},
+  });
+  supervisor.start({ command: '/app/ec-engine' });
+
+  const stopping = supervisor.stop({ graceMs: 10, forceWaitMs: 10 });
+  assert.deepEqual(child.killCalls, ['SIGTERM']);
+  deadlines[0]();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(child.killCalls, ['SIGTERM', 'SIGKILL']);
+  assert.equal(supervisor.hasActive, true);
+  child.emit('close', null, 'SIGKILL');
+
+  const result = await stopping;
+  assert.equal(result.ok, true);
+  assert.equal(result.phase, 'force');
+  assert.equal(supervisor.hasActive, false);
+});
+
+test('generation invalidation cancels delayed retries', () => {
+  const timers = new Map();
+  let nextTimer = 1;
+  const supervisor = new EngineSupervisor({
+    spawnProcess: () => fakeChild(),
+    setTimeoutFn: (callback) => {
+      const id = nextTimer++;
+      timers.set(id, callback);
+      return id;
+    },
+    clearTimeoutFn: (id) => timers.delete(id),
+  });
+  const generation = supervisor.currentGeneration;
+  let called = false;
+  assert.equal(supervisor.schedule(generation, 50, () => { called = true; }), true);
+  supervisor.invalidate();
+  for (const callback of timers.values()) callback();
+  assert.equal(called, false);
+});
+
+test('generation invalidation also wins after a retry timer fires but before its microtask', async () => {
+  let fireTimer;
+  const supervisor = new EngineSupervisor({
+    spawnProcess: () => fakeChild(),
+    setTimeoutFn: (callback) => {
+      fireTimer = callback;
+      return 1;
+    },
+    clearTimeoutFn: () => {},
+  });
+  let called = false;
+  supervisor.schedule(supervisor.currentGeneration, 0, () => { called = true; });
+  fireTimer();
+  supervisor.invalidate();
+  await Promise.resolve();
+  assert.equal(called, false);
+});
+
+test('engine ownership is persisted atomically and removed only by its owner', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-engine-owner-'));
+  const file = path.join(directory, 'engine-owner.json');
+  const owner = {
+    pid: 4321,
+    executablePath: 'C:\\Program Files\\HKUST(GZ) Connect\\ec-engine-windows-amd64.exe',
+  };
+  try {
+    writeEngineOwnerRecord(file, owner);
+    assert.deepEqual(loadEngineOwnerRecord(file), { version: 1, ...owner });
+    if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    assert.equal(removeEngineOwnerRecord(file, { ...owner, pid: 9876 }), false);
+    assert.equal(fs.existsSync(file), true);
+    assert.equal(removeEngineOwnerRecord(file, {
+      ...owner,
+      executablePath: 'C:\\Other\\ec-engine-windows-amd64.exe',
+    }), false);
+    assert.equal(fs.existsSync(file), true);
+    assert.equal(removeEngineOwnerRecord(file, owner), true);
+    assert.equal(fs.existsSync(file), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('engine ownership never follows symbolic links or reads oversized records', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-engine-owner-bounds-'));
+  const target = path.join(directory, 'target.json');
+  const link = path.join(directory, 'engine-owner.json');
+  const oversized = path.join(directory, 'oversized.json');
+  const owner = {
+    version: 1,
+    pid: 4321,
+    executablePath: 'C:\\Program Files\\HKUST(GZ) Connect\\ec-engine-windows-amd64.exe',
+  };
+  try {
+    fs.writeFileSync(target, JSON.stringify(owner), { mode: 0o600 });
+    fs.symlinkSync(target, link);
+    fs.writeFileSync(oversized, 'x'.repeat(MAX_ENGINE_OWNER_RECORD_BYTES + 1), { mode: 0o600 });
+
+    assert.equal(loadEngineOwnerRecord(link), null);
+    assert.equal(loadEngineOwnerRecord(oversized), null);
+    assert.equal(fs.readFileSync(target, 'utf8'), JSON.stringify(owner));
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('Windows orphan cleanup requires both the recorded PID and resolved executable path', () => {
+  const executable = 'C:\\Program Files\\HKUST(GZ) Connect\\ec-engine-windows-amd64.exe';
+  const owner = { version: 1, pid: 4321, executablePath: executable };
+  const invocation = windowsOwnedEngineCleanupInvocation(
+    owner,
+    { SystemRoot: 'C:\\Windows' },
+  );
+
+  assert.equal(invocation.command, 'powershell.exe');
+  assert.equal(invocation.env[WINDOWS_ENGINE_PATH_ENV], executable);
+  assert.equal(invocation.env[WINDOWS_ENGINE_PID_ENV], '4321');
+  assert.equal(invocation.env.SystemRoot, 'C:\\Windows');
+  assert.equal(invocation.args.at(-1), WINDOWS_EXACT_CLEANUP_SCRIPT);
+  assert.equal(WINDOWS_EXACT_CLEANUP_SCRIPT.includes(executable), false);
+  assert.match(WINDOWS_EXACT_CLEANUP_SCRIPT, /ProcessId/);
+  assert.match(WINDOWS_EXACT_CLEANUP_SCRIPT, /ExecutablePath/);
+  assert.doesNotMatch(WINDOWS_EXACT_CLEANUP_SCRIPT, /Get-Process\s+-Name/);
+  assert.equal(
+    sameWindowsExecutablePath(executable, 'C:\\Other\\ec-engine-windows-amd64.exe'),
+    false,
+    'a reused PID at another executable path must never match the owner record',
+  );
+  assert.equal(windowsOwnedEngineCleanupInvocation({
+    ...owner,
+    executablePath: 'relative\\ec-engine.exe',
+  }), null, 'an invalid recorded path must never be used for cleanup');
+  assert.equal(windowsOwnedEngineCleanupInvocation(
+    { ...owner, pid: -1 },
+  ), null);
+});

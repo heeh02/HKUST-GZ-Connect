@@ -8,6 +8,7 @@ use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use sha2::{Digest, Sha256};
+use socket2::{SockRef, TcpKeepalive};
 use std::fmt::{Debug, Formatter};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
@@ -697,10 +698,31 @@ pub fn parse_server_hello_session_id(records: &[u8]) -> Result<Zeroizing<Vec<u8>
 /// gateway to acknowledge the previous one, so interactive traffic pays a
 /// delayed-ACK stall on every packet instead of a single round trip.
 pub(crate) fn connect_gateway_tcp(address: SocketAddr, timeout: Duration) -> Result<TcpStream> {
-    let stream = TcpStream::connect_timeout(&address, timeout)?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
-    stream.set_nodelay(true)?;
+    const KEEPALIVE_IDLE: Duration = Duration::from_secs(15);
+    const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
+    let stream = TcpStream::connect_timeout(&address, timeout).map_err(|error| {
+        Error(format!(
+            "cannot connect to the gateway TCP endpoint: {error}"
+        ))
+    })?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|error| Error(format!("cannot set the gateway TCP read timeout: {error}")))?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(|error| Error(format!("cannot set the gateway TCP write timeout: {error}")))?;
+    stream.set_nodelay(true).map_err(|error| {
+        Error(format!(
+            "cannot disable Nagle on the gateway TCP socket: {error}"
+        ))
+    })?;
+    let keepalive = TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    SockRef::from(&stream)
+        .set_tcp_keepalive(&keepalive)
+        .map_err(|error| Error(format!("cannot enable gateway TCP keepalive: {error}")))?;
     Ok(stream)
 }
 
@@ -903,6 +925,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let stream = connect_gateway_tcp(address, Duration::from_secs(7)).unwrap();
         assert!(stream.nodelay().unwrap());
+        assert!(SockRef::from(&stream).keepalive().unwrap());
         assert_eq!(stream.read_timeout().unwrap(), Some(Duration::from_secs(7)));
         assert_eq!(
             stream.write_timeout().unwrap(),

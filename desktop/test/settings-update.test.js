@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { applySettingsPatch, parseCredentialField, parsePort } = require('../lib/settings-update');
+const { PROXY_SECURITY_VERSION, normalizeSettings } = require('../lib/settings-store');
 
 test('numeric-string Windows port is preserved as an integer', () => {
   const result = applySettingsPatch({ port: 1080 }, { port: '6180' });
@@ -33,6 +34,22 @@ test('the language override is validated like the close action', () => {
   assert.equal(applySettingsPatch({}, { language: 'en' }).settings.language, 'en');
   assert.equal(applySettingsPatch({ language: 'en' }, {}).settings.language, 'en');
   assert.throws(() => applySettingsPatch({}, { language: 'fr' }), /语言/);
+});
+
+test('strict local proxy authentication is boolean and requests an engine restart', () => {
+  const previous = normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: PROXY_SECURITY_VERSION,
+    port: 6180,
+  });
+  const changed = applySettingsPatch(previous, { strictProxyAuth: true });
+  assert.equal(changed.settings.strictProxyAuth, true);
+  assert.equal(changed.proxyAuthChanged, true);
+  assert.equal(changed.portChanged, false);
+  assert.throws(
+    () => applySettingsPatch(previous, { strictProxyAuth: 'true' }),
+    /布尔值/,
+  );
 });
 
 test('credentials with control characters cannot reframe the engine stdin protocol', () => {

@@ -15,15 +15,21 @@ legacy TCP state machine and an isolated native implementation of the active
 modern TLS 1.1 transport. The modular runtime now includes bounded IPv4
 framing, a userspace TCP/UDP stack, gateway DNS when supplied, a
 profile-controlled system DNS fallback, and one loopback SOCKS5 TCP/UDP
-frontend. An approved end-to-end SOCKS5 run reached the dedicated campus test
-endpoint, and the domain-selective PAC loaded the campus site in an isolated
-Chrome profile. The maintained netstack fork prevents stale-handle panics when
-a pending UDP receive is closed. The current live UDP target returned no
-response without destabilizing the engine; sustained load, multi-flow,
-sleep/resume, and reconnect canaries remain release gates.
+frontend. The same port can optionally require local proxy credentials and
+accept authenticated HTTP CONNECT plus bounded ordinary HTTP/WebSocket
+forwarding for clients that cannot authenticate to a SOCKS5 proxy. An approved
+end-to-end SOCKS5 run reached the dedicated campus
+test endpoint, and the domain-selective PAC loaded the campus site in an
+isolated Chrome profile. The maintained netstack fork prevents stale-handle
+panics when a pending UDP receive is closed. The current live UDP target
+returned no response without destabilizing the engine; sustained load,
+multi-flow, sleep/resume, and reconnect canaries remain release gates.
 
 Module responsibilities and change rules are defined in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
+The offline resource-directory boundary is defined in
+[`spec/RESOURCE_CATALOGUE_V1.md`](spec/RESOURCE_CATALOGUE_V1.md); it does not
+claim production retrieval support.
 
 ## Safety boundary
 
@@ -98,9 +104,12 @@ unset probe_account
 
 The probe performs discovery, password configuration, one password
 authentication, structural inspection of configuration/resources, and logout.
-It outputs only status codes, booleans, sizes, and XML field names. It never
-serializes account identifiers, credentials, RSA/CSRF material, cookies,
-session identifiers, or response values.
+The resource stage also runs the bounded offline catalogue parser, but emits
+only aggregate counts and capability flags. It never serializes resource
+labels, vendor identifiers, hosts, paths, queries, fragments, services, raw
+authorization values, account identifiers, credentials, RSA/CSRF material,
+cookies, session identifiers, or response values. This parser pass does not
+enable authenticated catalogue retrieval in the production engine.
 
 Add `--modern-tunnel-probe` only in an approved lab. It derives the in-memory
 48-byte token, verifies the special TLS server identity, requests a virtual
@@ -176,11 +185,51 @@ as a general TLS implementation.
 standard input, keeps the authenticated HTTPS session and address lease alive,
 bridges EasyConnect IP packets into a userspace stack, resolves proxy domains
 through gateway-supplied VPN DNS when present, or through an explicitly
-enabled system resolver fallback, and exposes one SOCKS5 TCP/UDP frontend. It
-does not bind an HTTP or DNS proxy port. It exits when the data plane fails so
-its supervisor can reconnect the whole session. Local TCP connection attempts
-are bounded so a dead destination cannot hold a proxy task forever. Setup read
-timeouts do not expire an otherwise healthy idle receive channel.
+enabled system resolver fallback, and exposes one loopback proxy frontend. It
+does not bind a second HTTP or DNS proxy port. It exits when the data plane
+fails so its supervisor can reconnect the whole session. Local TCP connection
+attempts are bounded so a dead destination cannot hold a proxy task forever.
+Setup read timeouts do not expire an otherwise healthy idle receive channel.
+
+By default, that frontend keeps the compatible SOCKS5 `NO_AUTH` behavior and
+stdin contains exactly the gateway username and password lines. Passing either
+`--socks-auth-optional-stdin` or `--socks-auth-stdin` changes stdin to exactly
+four lines, in this order:
+
+```text
+gateway username
+gateway password
+local proxy username
+local proxy password
+```
+
+The flags are mutually exclusive. The two local values are UTF-8, 1–255 bytes,
+contain no control characters, and the username cannot contain `:`. They are
+held in zeroizing memory and never appear in argv, engine events, or
+diagnostics.
+
+`--socks-auth-optional-stdin` is the compatibility-first desktop contract. It
+accepts both SOCKS5 `NO_AUTH` and RFC 1929. If a client offers both, the engine
+selects `NO_AUTH`, so existing Clash and SSH configurations remain unchanged;
+an RFC-1929-only client must provide the configured credentials. HTTP-shaped
+first packets remain disabled in this mode. UDP ASSOCIATE is available only on
+a connection that negotiated `NO_AUTH`. If that connection selected RFC 1929,
+UDP receives command-not-supported because SOCKS UDP datagrams contain no
+credential capable of preventing another loopback user from adopting the
+relay.
+
+`--socks-auth-stdin` is the strict contract and selects only RFC 1929. On the
+same loopback port it also accepts Basic-authenticated HTTP/1.0 or HTTP/1.1
+proxy requests for Chromium-family clients that do not implement authenticated
+SOCKS5. HTTPS and WSS retain `CONNECT`; absolute-form `http://` and `ws://`
+requests use a separate bounded forwarder that rebuilds origin-form, emits one
+authoritative `Host`, removes proxy and hop-by-hop headers, and never handles a
+pipelined second request. Content-Length and validated chunked uploads stream
+with fixed memory bounds; `100-continue` is handled locally, while ambiguous
+framing and nonempty chunk trailers fail closed. WebSocket upgrades switch to
+duplex streaming only after the authenticated, rewritten handshake. Missing
+and incorrect HTTP credentials receive one fixed 407 response before method or
+target validation. Strict mode always rejects SOCKS5 UDP ASSOCIATE.
 
 `Cargo.lock` and `rust-toolchain.toml` are committed. CI therefore tests a
 reviewed compiler/dependency graph instead of silently adopting new packages.

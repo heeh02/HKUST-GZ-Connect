@@ -21,8 +21,12 @@ const HANDSHAKE: u8 = 22;
 const CHANGE_CIPHER_SPEC: u8 = 20;
 const APPLICATION_DATA: u8 = 23;
 const ALERT: u8 = 21;
+const HEARTBEAT: u8 = 24;
 const MAX_RECORD_PAYLOAD: usize = 18_432;
 const MAX_SERVER_FLIGHT: usize = 64 * 1024;
+const MAX_HEARTBEAT_PAYLOAD: usize = 4 * 1024;
+const MIN_HEARTBEAT_PADDING: usize = 16;
+const MAX_CONTROL_RECORDS_PER_READ: usize = 16;
 const SHA1_MAC_LEN: usize = 20;
 const TLS_RECORD_HEADER_LEN: usize = 5;
 
@@ -40,6 +44,19 @@ struct RecordCipher {
     mac_key: Zeroizing<[u8; SHA1_MAC_LEN]>,
     cipher: Rc4_128,
     sequence: u64,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct TlsAlert {
+    level: u8,
+    description: u8,
+    name: &'static str,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum HeartbeatMessage<'a> {
+    Request(&'a [u8]),
+    Response(&'a [u8]),
 }
 
 impl RecordCipher {
@@ -104,6 +121,114 @@ impl RecordCipher {
 
 fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
     left.len() == right.len() && bool::from(left.ct_eq(right))
+}
+
+fn parse_alert(plaintext: &[u8]) -> Result<TlsAlert> {
+    if plaintext.len() != 2 {
+        return Err(Error("TLS alert must contain exactly two bytes".into()));
+    }
+    let level = plaintext[0];
+    if !matches!(level, 1 | 2) {
+        return Err(Error("TLS alert has an unknown level".into()));
+    }
+    let description = plaintext[1];
+    let name = alert_description_name(description)
+        .ok_or_else(|| Error("TLS alert has an unknown description".into()))?;
+    Ok(TlsAlert {
+        level,
+        description,
+        name,
+    })
+}
+
+fn alert_description_name(description: u8) -> Option<&'static str> {
+    Some(match description {
+        0 => "close_notify",
+        10 => "unexpected_message",
+        20 => "bad_record_mac",
+        21 => "decryption_failed",
+        22 => "record_overflow",
+        30 => "decompression_failure",
+        40 => "handshake_failure",
+        41 => "no_certificate",
+        42 => "bad_certificate",
+        43 => "unsupported_certificate",
+        44 => "certificate_revoked",
+        45 => "certificate_expired",
+        46 => "certificate_unknown",
+        47 => "illegal_parameter",
+        48 => "unknown_ca",
+        49 => "access_denied",
+        50 => "decode_error",
+        51 => "decrypt_error",
+        60 => "export_restriction",
+        70 => "protocol_version",
+        71 => "insufficient_security",
+        80 => "internal_error",
+        90 => "user_canceled",
+        100 => "no_renegotiation",
+        110 => "unsupported_extension",
+        _ => return None,
+    })
+}
+
+fn peer_alert_error(alert: &TlsAlert) -> Error {
+    if alert.description == 0 {
+        Error("TLS peer closed the authenticated channel".into())
+    } else {
+        let level = if alert.level == 2 { "fatal" } else { "warning" };
+        Error(format!("TLS peer sent {level} alert {}", alert.name))
+    }
+}
+
+fn parse_heartbeat(plaintext: &[u8]) -> Result<HeartbeatMessage<'_>> {
+    let header = plaintext
+        .get(..3)
+        .ok_or_else(|| Error("TLS heartbeat is truncated".into()))?;
+    let payload_length = usize::from(u16::from_be_bytes([header[1], header[2]]));
+    if payload_length > MAX_HEARTBEAT_PAYLOAD {
+        return Err(Error(
+            "TLS heartbeat payload exceeds the safety limit".into(),
+        ));
+    }
+    let payload_end = 3_usize
+        .checked_add(payload_length)
+        .ok_or_else(|| Error("TLS heartbeat length overflow".into()))?;
+    let payload = plaintext
+        .get(3..payload_end)
+        .ok_or_else(|| Error("TLS heartbeat payload is truncated".into()))?;
+    let padding_length = plaintext.len().saturating_sub(payload_end);
+    if padding_length < MIN_HEARTBEAT_PADDING {
+        return Err(Error("TLS heartbeat padding is too short".into()));
+    }
+    match header[0] {
+        1 => Ok(HeartbeatMessage::Request(payload)),
+        2 => Ok(HeartbeatMessage::Response(payload)),
+        _ => Err(Error("TLS heartbeat has an unknown message type".into())),
+    }
+}
+
+fn build_heartbeat_response(
+    payload: &[u8],
+    padding: &[u8; MIN_HEARTBEAT_PADDING],
+) -> Result<Zeroizing<Vec<u8>>> {
+    if payload.len() > MAX_HEARTBEAT_PAYLOAD {
+        return Err(Error(
+            "TLS heartbeat payload exceeds the safety limit".into(),
+        ));
+    }
+    let mut response = Zeroizing::new(Vec::with_capacity(
+        3 + payload.len() + MIN_HEARTBEAT_PADDING,
+    ));
+    response.push(2);
+    response.extend_from_slice(
+        &u16::try_from(payload.len())
+            .map_err(|_| Error("TLS heartbeat payload exceeds the wire limit".into()))?
+            .to_be_bytes(),
+    );
+    response.extend_from_slice(payload);
+    response.extend_from_slice(padding);
+    Ok(response)
 }
 
 fn p_hash<M: Mac + Clone + hmac::digest::KeyInit>(
@@ -211,9 +336,6 @@ fn read_record(stream: &mut TcpStream) -> Result<(u8, Zeroizing<Vec<u8>>)> {
     }
     let mut payload = Zeroizing::new(vec![0_u8; length]);
     stream.read_exact(&mut payload)?;
-    if header[0] == ALERT {
-        return Err(Error("special TLS server returned an alert".into()));
-    }
     Ok((header[0], payload))
 }
 
@@ -225,6 +347,10 @@ fn parse_server_flight(stream: &mut TcpStream) -> Result<ServerFlight> {
     let mut offset = 0;
     loop {
         let (content_type, payload) = read_record(stream)?;
+        if content_type == ALERT {
+            let alert = parse_alert(&payload)?;
+            return Err(peer_alert_error(&alert));
+        }
         if content_type != HANDSHAKE {
             return Err(Error("unexpected record before ServerHelloDone".into()));
         }
@@ -409,10 +535,19 @@ impl SpecialTls11Stream {
         transcript.extend_from_slice(&client_finished);
 
         let (content_type, change_cipher_spec) = read_record(&mut stream)?;
+        if content_type == ALERT {
+            let alert = parse_alert(&change_cipher_spec)?;
+            return Err(peer_alert_error(&alert));
+        }
         if content_type != CHANGE_CIPHER_SPEC || change_cipher_spec.as_slice() != [1] {
             return Err(Error("TLS server ChangeCipherSpec is invalid".into()));
         }
         let (content_type, encrypted_server_finished) = read_record(&mut stream)?;
+        if content_type == ALERT {
+            let plaintext = server_cipher.decrypt(ALERT, &encrypted_server_finished)?;
+            let alert = parse_alert(&plaintext)?;
+            return Err(peer_alert_error(&alert));
+        }
         if content_type != HANDSHAKE {
             return Err(Error("TLS server Finished record is missing".into()));
         }
@@ -454,17 +589,49 @@ impl SpecialTls11Stream {
     }
 
     pub fn read_application_data(&mut self, maximum: usize) -> Result<Zeroizing<Vec<u8>>> {
-        let (content_type, ciphertext) = read_record(&mut self.stream)?;
-        if content_type != APPLICATION_DATA {
-            return Err(Error("expected TLS application data".into()));
-        }
-        let plaintext = self.server_cipher.decrypt(APPLICATION_DATA, &ciphertext)?;
-        if plaintext.is_empty() || plaintext.len() > maximum {
+        if maximum == 0 || maximum > 16 * 1024 {
             return Err(Error(
-                "TLS application response has an invalid length".into(),
+                "TLS application response limit has an invalid length".into(),
             ));
         }
-        Ok(plaintext)
+        for _ in 0..MAX_CONTROL_RECORDS_PER_READ {
+            let (content_type, ciphertext) = read_record(&mut self.stream)?;
+            match content_type {
+                APPLICATION_DATA => {
+                    let plaintext = self.server_cipher.decrypt(APPLICATION_DATA, &ciphertext)?;
+                    if plaintext.is_empty() || plaintext.len() > maximum {
+                        return Err(Error(
+                            "TLS application response has an invalid length".into(),
+                        ));
+                    }
+                    return Ok(plaintext);
+                }
+                ALERT => {
+                    let plaintext = self.server_cipher.decrypt(ALERT, &ciphertext)?;
+                    let alert = parse_alert(&plaintext)?;
+                    return Err(peer_alert_error(&alert));
+                }
+                HEARTBEAT => {
+                    let plaintext = self.server_cipher.decrypt(HEARTBEAT, &ciphertext)?;
+                    match parse_heartbeat(&plaintext)? {
+                        HeartbeatMessage::Request(payload) => {
+                            let mut padding = Zeroizing::new([0_u8; MIN_HEARTBEAT_PADDING]);
+                            OsRng.fill_bytes(padding.as_mut());
+                            let response = build_heartbeat_response(payload, &padding)?;
+                            let encrypted = self.client_cipher.encrypt(HEARTBEAT, &response)?;
+                            write_record(&mut self.stream, HEARTBEAT, &encrypted)?;
+                        }
+                        HeartbeatMessage::Response(_) => {}
+                    }
+                }
+                _ => {
+                    return Err(Error("unexpected authenticated TLS record type".into()));
+                }
+            }
+        }
+        Err(Error(
+            "too many consecutive TLS control records before application data".into(),
+        ))
     }
 }
 
@@ -530,5 +697,146 @@ mod tests {
             b"bounded payload"
         );
         assert!(receiver.decrypt(APPLICATION_DATA, &ciphertext).is_err());
+    }
+
+    #[test]
+    fn synthetic_alert_fixture_is_exact_and_known() {
+        assert_eq!(
+            parse_alert(&[1, 0]).unwrap(),
+            TlsAlert {
+                level: 1,
+                description: 0,
+                name: "close_notify",
+            }
+        );
+        assert_eq!(
+            parse_alert(&[2, 20]).unwrap(),
+            TlsAlert {
+                level: 2,
+                description: 20,
+                name: "bad_record_mac",
+            }
+        );
+        for malformed in [
+            &[][..],
+            &[1][..],
+            &[1, 0, 0][..],
+            &[3, 0][..],
+            &[2, 255][..],
+        ] {
+            assert!(parse_alert(malformed).is_err());
+        }
+    }
+
+    #[test]
+    fn synthetic_heartbeat_request_echoes_only_the_bounded_payload() {
+        let payload = b"gateway-liveness";
+        let mut request = vec![1, 0, payload.len() as u8];
+        request.extend_from_slice(payload);
+        request.extend_from_slice(&[0xa5; MIN_HEARTBEAT_PADDING + 7]);
+        assert_eq!(
+            parse_heartbeat(&request).unwrap(),
+            HeartbeatMessage::Request(payload)
+        );
+
+        let response = build_heartbeat_response(payload, &[0x5a; MIN_HEARTBEAT_PADDING]).unwrap();
+        assert_eq!(response[0], 2);
+        assert_eq!(
+            u16::from_be_bytes([response[1], response[2]]) as usize,
+            payload.len()
+        );
+        assert_eq!(&response[3..3 + payload.len()], payload);
+        assert_eq!(
+            &response[3 + payload.len()..],
+            &[0x5a; MIN_HEARTBEAT_PADDING]
+        );
+        assert!(!response.contains(&0xa5));
+    }
+
+    #[test]
+    fn synthetic_heartbeat_fixture_rejects_heartbleed_shapes() {
+        let declared_too_long = [1, 0, 32, 1, 2, 3, 4, 0, 0, 0, 0];
+        assert!(parse_heartbeat(&declared_too_long).is_err());
+
+        let mut short_padding = vec![1, 0, 1, 7];
+        short_padding.extend_from_slice(&[0; MIN_HEARTBEAT_PADDING - 1]);
+        assert!(parse_heartbeat(&short_padding).is_err());
+
+        let mut oversized = vec![1];
+        oversized.extend_from_slice(&((MAX_HEARTBEAT_PAYLOAD + 1) as u16).to_be_bytes());
+        oversized.extend_from_slice(&vec![0; MAX_HEARTBEAT_PAYLOAD + 1]);
+        oversized.extend_from_slice(&[0; MIN_HEARTBEAT_PADDING]);
+        assert!(parse_heartbeat(&oversized).is_err());
+
+        let mut unknown_type = vec![3, 0, 0];
+        unknown_type.extend_from_slice(&[0; MIN_HEARTBEAT_PADDING]);
+        assert!(parse_heartbeat(&unknown_type).is_err());
+    }
+
+    #[test]
+    fn authenticated_heartbeat_fixture_is_mac_bound_to_its_record_type() {
+        let plaintext = {
+            let mut value = vec![2, 0, 1, 7];
+            value.extend_from_slice(&[0; MIN_HEARTBEAT_PADDING]);
+            value
+        };
+        let mut sender = RecordCipher::new([11; 20], [13; 16]);
+        let mut receiver = RecordCipher::new([11; 20], [13; 16]);
+        let ciphertext = sender.encrypt(HEARTBEAT, &plaintext).unwrap();
+        let decoded = receiver.decrypt(HEARTBEAT, &ciphertext).unwrap();
+        assert_eq!(
+            parse_heartbeat(&decoded).unwrap(),
+            HeartbeatMessage::Response(&[7])
+        );
+
+        let mut wrong_type_receiver = RecordCipher::new([11; 20], [13; 16]);
+        assert!(
+            wrong_type_receiver
+                .decrypt(APPLICATION_DATA, &ciphertext)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn authenticated_stream_answers_heartbeat_before_returning_application_data() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client_socket = TcpStream::connect(address).unwrap();
+        let (mut server_socket, _) = listener.accept().unwrap();
+
+        let server = std::thread::spawn(move || {
+            let payload = b"bounded-probe";
+            let mut heartbeat = vec![1, 0, payload.len() as u8];
+            heartbeat.extend_from_slice(payload);
+            heartbeat.extend_from_slice(&[0x44; MIN_HEARTBEAT_PADDING]);
+            let mut outbound = RecordCipher::new([17; 20], [19; 16]);
+            let encrypted = outbound.encrypt(HEARTBEAT, &heartbeat).unwrap();
+            write_record(&mut server_socket, HEARTBEAT, &encrypted).unwrap();
+            let encrypted = outbound
+                .encrypt(APPLICATION_DATA, b"tunneled-packet")
+                .unwrap();
+            write_record(&mut server_socket, APPLICATION_DATA, &encrypted).unwrap();
+
+            let (content_type, encrypted) = read_record(&mut server_socket).unwrap();
+            assert_eq!(content_type, HEARTBEAT);
+            let mut inbound = RecordCipher::new([23; 20], [29; 16]);
+            let plaintext = inbound.decrypt(HEARTBEAT, &encrypted).unwrap();
+            assert_eq!(
+                parse_heartbeat(&plaintext).unwrap(),
+                HeartbeatMessage::Response(payload)
+            );
+            assert_eq!(plaintext.len(), 3 + payload.len() + MIN_HEARTBEAT_PADDING);
+        });
+
+        let mut client = SpecialTls11Stream {
+            stream: client_socket,
+            client_cipher: RecordCipher::new([23; 20], [29; 16]),
+            server_cipher: RecordCipher::new([17; 20], [19; 16]),
+        };
+        assert_eq!(
+            client.read_application_data(128).unwrap().as_slice(),
+            b"tunneled-packet"
+        );
+        server.join().unwrap();
     }
 }

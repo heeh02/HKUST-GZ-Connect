@@ -49,4 +49,10 @@ test('shortcut mutations reject invalid user input', () => {
   assert.throws(() => upsertCustomResource([], { name: '', url: 'https://example.com' }), /名称/);
   assert.throws(() => upsertCustomResource([], { name: '缺网址' }), /网址/);
   assert.throws(() => upsertCustomResource([], { name: '脚本', url: 'javascript:alert(1)' }), /HTTP/);
+  assert.throws(() => upsertCustomResource([], {
+    name: '本机服务', url: 'https://127.0.0.1:8443', route: 'direct',
+  }), /不能设为直连/);
+  assert.equal(upsertCustomResource([], {
+    name: '校园 IP', url: 'https://103.189.154.10:4433', route: 'campus',
+  }).resource.route, 'campus');
 });

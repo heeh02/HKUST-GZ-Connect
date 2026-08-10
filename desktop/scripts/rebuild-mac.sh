@@ -62,5 +62,8 @@ fi
 echo "✓ installed $INSTALLED (1 copy on disk)"
 echo "  User data and saved passwords were untouched:"
 echo "    ~/Library/Application Support/hkustgzconnect"
-echo "  The build is ad-hoc signed, so macOS asks for keychain access once —"
-echo "  click 「始终允许」and the VPN password is reused without re-entry."
+if codesign -dv --verbose=2 "$INSTALLED" 2>&1 | grep '^Authority=Apple Development:' >/dev/null; then
+  echo "  The build keeps the local Apple Development signing identity."
+else
+  echo "  The build is ad-hoc signed, so macOS may ask for keychain access once."
+fi

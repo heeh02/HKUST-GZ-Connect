@@ -1,3 +1,4 @@
+use crate::engine::destination_policy::validate_tunnel_destination;
 use crate::engine::netstack::VirtualNetstack;
 use crate::engine::proxy::{NameResolver, ResolveFuture};
 use crate::{Error, Result};
@@ -169,11 +170,7 @@ impl VpnDnsResolver {
         servers: Vec<Ipv4Addr>,
         timeout: Duration,
     ) -> Result<Self> {
-        if servers.is_empty() || servers.iter().any(Ipv4Addr::is_unspecified) {
-            return Err(Error(
-                "VPN DNS configuration contains no valid server".into(),
-            ));
-        }
+        validate_dns_servers(&servers)?;
         Ok(Self {
             netstack,
             servers,
@@ -214,6 +211,23 @@ impl VpnDnsResolver {
             .insert(host, address, ttl_seconds, Instant::now());
         Ok(address)
     }
+}
+
+fn validate_dns_servers(servers: &[Ipv4Addr]) -> Result<()> {
+    if servers.is_empty() {
+        return Err(Error(
+            "VPN DNS configuration contains no valid server".into(),
+        ));
+    }
+    for server in servers {
+        // Gateway configuration is authenticated input, not trusted routing
+        // authority. Apply the same destination policy as SOCKS TCP/UDP so a
+        // bad profile cannot make the client contact gateway-loopback,
+        // link-local, multicast, or reserved addresses through raw UDP.
+        validate_tunnel_destination(SocketAddr::new(IpAddr::V4(*server), DNS_PORT))
+            .map_err(|_| Error("VPN DNS configuration contains a prohibited server".into()))?;
+    }
+    Ok(())
 }
 
 /// Runs every attempt concurrently and yields the first success.
@@ -409,6 +423,27 @@ fn parse_a_response(data: &[u8], expected_id: u16) -> Result<(Ipv4Addr, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gateway_dns_servers_obey_the_shared_destination_policy() {
+        assert!(validate_dns_servers(&[Ipv4Addr::new(10, 20, 30, 53)]).is_ok());
+        for prohibited in [
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::new(169, 254, 1, 1),
+            Ipv4Addr::new(224, 0, 0, 1),
+            Ipv4Addr::new(240, 0, 0, 1),
+            Ipv4Addr::BROADCAST,
+        ] {
+            let error = validate_dns_servers(&[prohibited]).unwrap_err();
+            assert_eq!(
+                error.to_string(),
+                "VPN DNS configuration contains a prohibited server"
+            );
+            assert!(!error.to_string().contains(&prohibited.to_string()));
+        }
+        assert!(validate_dns_servers(&[]).is_err());
+    }
 
     #[test]
     fn query_encoding_is_bounded() {

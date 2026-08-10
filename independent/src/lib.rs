@@ -6,6 +6,7 @@ pub mod engine;
 pub mod modern;
 pub mod probe;
 pub mod protocol_map;
+pub mod resource_catalogue;
 pub mod special_tls11;
 pub mod tunnel;
 pub mod watch;

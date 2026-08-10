@@ -15,13 +15,14 @@ const {
   campusWindowChrome,
   nextZoomFactor,
   normalizeCampusUrl,
+  errorPage,
+  redactedFailedUrl,
   safePopupUrl,
 } = require('../lib/campus-browser');
 const {
   DIRECT_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
-  proxyConfigForRoute,
 } = require('../lib/campus-route');
 const { certificateFingerprint } = require('../lib/campus-certificate-trust');
 
@@ -42,6 +43,31 @@ test('campus URLs reject executable schemes and embedded credentials', () => {
   assert.throws(() => normalizeCampusUrl('https://user:pass@example.internal'), /格式/);
   assert.equal(safePopupUrl('https://example.internal/sso'), true);
   assert.equal(safePopupUrl('file:///etc/passwd'), false);
+});
+
+test('browser error pages retain only the origin of a sensitive failed URL', () => {
+  const sensitive = 'https://sso.example.edu/saml/login/secret-path?SAMLRequest=very-secret&token=x#fragment';
+  assert.equal(redactedFailedUrl(sensitive, 'unknown'), 'https://sso.example.edu');
+  assert.equal(redactedFailedUrl('not a URL', 'unknown'), 'unknown');
+
+  const page = errorPage(sensitive, 'ERR_TIMED_OUT');
+  const html = decodeURIComponent(page.slice(page.indexOf(',') + 1));
+  assert.match(html, /https:\/\/sso\.example\.edu/);
+  assert.doesNotMatch(html, /secret-path|SAMLRequest|very-secret|token=x|fragment/);
+});
+
+test('campus page navigation and redirects cannot escape into file or custom schemes', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080);
+  const contents = browser.activeTab().view.webContents;
+  for (const eventName of ['will-navigate', 'will-redirect']) {
+    let prevented = false;
+    contents.emit(eventName, { preventDefault: () => { prevented = true; } }, 'file:///etc/passwd');
+    assert.equal(prevented, true, eventName);
+    prevented = false;
+    contents.emit(eventName, { preventDefault: () => { prevented = true; } }, 'https://sso.example.edu/');
+    assert.equal(prevented, false, eventName);
+  }
 });
 
 test('campus browser proxy is loopback-only SOCKS5', () => {
@@ -110,7 +136,7 @@ test('a certificate exception needs confirmation and is scoped to one campus-bro
       trust: (origin, fingerprint) => stored.set(origin, fingerprint),
     },
   });
-  browser.tabs = [{ view: { webContents: ownedContents } }];
+  browser.tabManager.add({ view: { webContents: ownedContents } });
 
   assert.equal(browser.ownsWebContents(ownedContents), true);
   assert.equal(browser.ownsWebContents({}), false);
@@ -157,12 +183,84 @@ test('a certificate exception needs confirmation and is scoped to one campus-bro
   assert.deepEqual(decisions, [true, true, false], 'a different port must not inherit the pin');
 });
 
-test('campus browser uses route-specific persistent sessions and never the system proxy', async () => {
+test('concurrent certificate errors for the same origin and fingerprint share one decision', async () => {
+  let resolvePrompt;
+  let promptCount = 0;
+  let trustCount = 0;
+  const prompt = new Promise((resolve) => { resolvePrompt = resolve; });
+  const browser = new CampusBrowser({
+    dialog: {
+      showMessageBox: async () => {
+        promptCount++;
+        return prompt;
+      },
+    },
+    certificateTrust: {
+      isTrusted: () => false,
+      trust: () => { trustCount++; },
+    },
+  });
+  const decisions = [];
+  const request = (name) => browser.handleCertificateError({
+    url: 'https://103.189.154.10:4433/login',
+    error: 'net::ERR_CERT_AUTHORITY_INVALID',
+    certificate: { data: CERTIFICATE_PEM },
+    callback: (allowed) => decisions.push([name, allowed]),
+  });
+
+  const first = request('first');
+  const second = request('second');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(promptCount, 1);
+  resolvePrompt({ response: 0 });
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+  assert.deepEqual(decisions.sort(), [['first', true], ['second', true]]);
+  assert.equal(trustCount, 1);
+  assert.equal(browser.certificateDecisions.size, 0);
+});
+
+test('a concurrent different certificate for one origin is denied instead of prompting twice', async () => {
+  let resolvePrompt;
+  let promptCount = 0;
+  const prompt = new Promise((resolve) => { resolvePrompt = resolve; });
+  const browser = new CampusBrowser({
+    dialog: {
+      showMessageBox: async () => {
+        promptCount++;
+        return prompt;
+      },
+    },
+    certificateTrust: { isTrusted: () => false, trust: () => {} },
+  });
+  const alteredCertificate = [
+    '-----BEGIN CERTIFICATE-----',
+    Buffer.from('different-fixture-certificate-der').toString('base64'),
+    '-----END CERTIFICATE-----',
+  ].join('\n');
+  const first = browser.handleCertificateError({
+    url: 'https://race.example/login',
+    certificate: { data: CERTIFICATE_PEM },
+    callback: () => {},
+  });
+  const changed = browser.handleCertificateError({
+    url: 'https://race.example/other',
+    certificate: { data: alteredCertificate },
+    callback: () => {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(promptCount, 1);
+  resolvePrompt({ response: 0 });
+  assert.deepEqual(await Promise.all([first, changed]), [true, false]);
+  assert.equal(promptCount, 1);
+});
+
+test('campus browser keeps one persistent session and routes each domain through PAC', async () => {
   const calls = [];
   function makeSession(name) {
     return {
       name,
       setProxy: async (config) => calls.push([name, 'proxy', config]),
+      forceReloadProxyConfig: async () => calls.push([name, 'reload-proxy']),
       closeAllConnections: async () => calls.push([name, 'close-connections']),
     };
   };
@@ -231,7 +329,11 @@ test('campus browser uses route-specific persistent sessions and never the syste
   await browser.open('portal.example.internal', 1080);
 
   assert.deepEqual(calls[0], ['partition', CAMPUS_PARTITION]);
-  assert.deepEqual(calls[1], ['campus', 'proxy', proxyConfigForRoute(ROUTE_CAMPUS, 1080)]);
+  assert.equal(calls[1][0], 'campus');
+  assert.equal(calls[1][1], 'proxy');
+  assert.equal(calls[1][2].mode, 'pac_script');
+  assert.equal(calls[1][2].proxyBypassRules, '<-loopback>');
+  assert.match(calls[1][2].pacScript, /^data:application\/x-ns-proxy-autoconfig;base64,/);
   assert.ok(calls.some((call) => call[0] === 'toolbar'));
   assert.ok(calls.some((call) =>
     call[0] === 'load' && call[1] === 'https://portal.example.internal/'));
@@ -240,31 +342,77 @@ test('campus browser uses route-specific persistent sessions and never the syste
   assert.equal(browser.view.options.webPreferences.nodeIntegration, false);
   assert.equal(browser.view.options.webPreferences.sandbox, true);
   assert.equal(browser.view.options.webPreferences.webSecurity, true);
+  assert.equal(browser.view.options.webPreferences.backgroundThrottling, true);
 
   await browser.open('outlook.office.com/owa/', 1080, ROUTE_DIRECT);
   assert.equal(browser.tabs.length, 2);
   assert.equal(browser.activeTab().view.webContents.getURL(), 'https://outlook.office.com/owa/');
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
-  assert.equal(browser.activeTab().view.options.webPreferences.session, directSession);
+  assert.equal(browser.activeTab().view.options.webPreferences.session, campusSession,
+    'direct and campus hosts retain the same cookie/session jar');
   assert.equal(browser.switchTab(browser.tabs[0].id), true);
   assert.equal(browser.activeTab().view.webContents.getURL(), 'https://portal.example.internal/');
   assert.equal(browser.closeTab(browser.activeTabId), true);
   assert.equal(browser.tabs.length, 1);
 
   const firstId = browser.tabs[0].id;
+  const originalView = browser.tabs[0].view;
   assert.equal(await browser.setTabRoute(firstId, ROUTE_CAMPUS), true);
   assert.equal(browser.tabs[0].route, ROUTE_CAMPUS);
   assert.equal(browser.tabs[0].view.options.webPreferences.session, campusSession);
+  assert.equal(browser.tabs[0].view, originalView,
+    'route changes must not discard POST, cookies, history, or WebContents state');
   assert.equal(browser.tabs[0].view.webContents.getURL(), 'https://outlook.office.com/owa/');
 
-  await browser.configure(6180, ROUTE_CAMPUS);
-  assert.ok(calls.some((call) =>
-    call[0] === 'campus' && call[1] === 'proxy' && call[2].proxyRules === 'socks5://127.0.0.1:6180'));
+  await browser.configure(6180);
+  const latestPac = calls.filter((call) => call[0] === 'campus' && call[1] === 'proxy').at(-1)[2];
+  const encoded = latestPac.pacScript.split(',').at(-1);
+  assert.match(Buffer.from(encoded, 'base64').toString('utf8'), /127\.0\.0\.1:6180/);
+  assert.equal(calls.some((call) => call[0] === 'direct' && call[1] === 'proxy'), false,
+    'a second route-specific session must never be configured');
+});
+
+test('a transactional routing policy owns the live Session update exactly once', async () => {
+  const mutations = [];
+  const routingPolicy = {
+    appliesLiveSession: true,
+    resolve: () => ({ route: ROUTE_CAMPUS, source: 'default', matchedRule: null }),
+    proxyConfig: async (port) => ({
+      mode: 'pac_script',
+      pacScript: `data:application/x-ns-proxy-autoconfig;base64,${Buffer.from(
+        `function FindProxyForURL(){return "SOCKS5 127.0.0.1:${port}";}`,
+      ).toString('base64')}`,
+      proxyBypassRules: '<-loopback>',
+    }),
+    upsert: async (payload) => { mutations.push(payload); },
+  };
+  const { browser } = createFakeBrowser({ routingPolicy });
+  await browser.open('portal.example.internal', 1080);
+  let localConfigureCalls = 0;
+  const configure = browser.configure.bind(browser);
+  browser.configure = (...args) => {
+    localConfigureCalls++;
+    return configure(...args);
+  };
+
+  assert.equal(await browser.setTabRoute(browser.activeTabId, ROUTE_DIRECT), true);
+  assert.deepEqual(mutations, [{
+    host: 'portal.example.internal',
+    includeSubdomains: false,
+    route: ROUTE_DIRECT,
+  }]);
+  assert.equal(localConfigureCalls, 0,
+    'the main-process transaction already activated or safely suspended the Session');
 });
 
 test('a provisional load failure keeps the failed URL and shows an error page', async () => {
   function makeSession(name) {
-    return { name, setProxy: async () => {}, closeAllConnections: async () => {} };
+    return {
+      name,
+      setProxy: async () => {},
+      forceReloadProxyConfig: async () => {},
+      closeAllConnections: async () => {},
+    };
   }
   const sessions = new Map([
     ['persist:hkustgz-campus-browser', makeSession('campus')],
@@ -359,6 +507,7 @@ function createFakeBrowser(extra = {}) {
     const routeSession = new EventEmitter();
     routeSession.name = name;
     routeSession.setProxy = async () => {};
+    routeSession.forceReloadProxyConfig = async () => {};
     routeSession.closeAllConnections = async () => {};
     return routeSession;
   }
@@ -373,6 +522,11 @@ function createFakeBrowser(extra = {}) {
         scripts.push(script);
       }
       return Promise.resolve();
+    }
+    send(channel, payload) {
+      if (channel === 'campus-toolbar-state') {
+        scripts.push(`window.campusBrowserUI&&window.campusBrowserUI.setState(${JSON.stringify(payload)})`);
+      }
     }
     getTitle() { return 'Test'; }
     getURL() { return this.url || ''; }
@@ -395,9 +549,17 @@ function createFakeBrowser(extra = {}) {
     constructor(options) {
       this.options = options;
       this.webContents = new FakeWebContents();
+      this.boundsCalls = [];
+      this.visible = null;
     }
-    setBounds(bounds) { calls.push(['bounds', bounds]); }
-    setVisible() {}
+    setBounds(bounds) {
+      this.boundsCalls.push(bounds);
+      calls.push(['bounds', bounds]);
+    }
+    setVisible(visible) {
+      this.visible = visible;
+      calls.push(['visible', visible]);
+    }
   }
   class FakeBrowserWindow extends EventEmitter {
     constructor() {
@@ -426,6 +588,10 @@ function createFakeBrowser(extra = {}) {
   return { browser, calls, scripts, sessions };
 }
 
+function nextImmediate() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function toolbarState(scripts) {
   const last = scripts.filter((script) => script.includes('setState(')).at(-1);
   return JSON.parse(last.slice(last.indexOf('setState(') + 9, -1));
@@ -441,23 +607,119 @@ test('a load slower than ten seconds is flagged per tab', async (t) => {
   const { browser, scripts } = createFakeBrowser();
   await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
   const tab = browser.activeTab();
+  await nextImmediate();
 
   tab.view.webContents.emit('did-start-loading');
+  await nextImmediate();
   assert.deepEqual(loadingState(scripts), { loading: true, slow: false });
   t.mock.timers.tick(SLOW_LOADING_HINT_MS);
+  await nextImmediate();
   assert.deepEqual(loadingState(scripts), { loading: true, slow: true });
 
   const other = browser.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
   assert.equal(browser.activeTab().id, other.id);
+  await nextImmediate();
   assert.deepEqual(loadingState(scripts), { loading: false, slow: false },
     'switching to a fresh tab must not show the slow hint');
 
   browser.switchTab(tab.id);
+  await nextImmediate();
   assert.deepEqual(loadingState(scripts), { loading: true, slow: true },
     'switching back must restore the slow tab state');
 
   tab.view.webContents.emit('did-stop-loading');
+  await nextImmediate();
   assert.deepEqual(loadingState(scripts), { loading: false, slow: false });
+});
+
+test('resize work is coalesced and only the visible tab is laid out', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080);
+  await nextImmediate();
+  const first = browser.activeTab();
+  const second = browser.createTab('library.example.internal');
+  await nextImmediate();
+
+  assert.equal(first.view.visible, false);
+  assert.equal(second.view.visible, true);
+  assert.equal(first.view.options.webPreferences.backgroundThrottling, true);
+  assert.equal(second.view.options.webPreferences.backgroundThrottling, true);
+
+  const firstLayouts = first.view.boundsCalls.length;
+  const secondLayouts = second.view.boundsCalls.length;
+  for (let index = 0; index < 32; index++) browser.window.emit('resize');
+  assert.equal(second.view.boundsCalls.length, secondLayouts,
+    'resize does not synchronously reflow a renderer for every event');
+  await nextImmediate();
+  assert.equal(first.view.boundsCalls.length, firstLayouts,
+    'hidden tabs are not needlessly laid out');
+  assert.equal(second.view.boundsCalls.length, secondLayouts + 1,
+    'one event-loop burst produces exactly one active-tab layout');
+
+  browser.switchTab(first.id);
+  assert.equal(first.view.visible, true);
+  assert.equal(second.view.visible, false);
+  assert.equal(first.view.boundsCalls.length, firstLayouts + 1,
+    'a hidden tab receives current bounds immediately before it becomes visible');
+});
+
+test('toolbar events are coalesced, deduplicated, and cancelled during teardown', async () => {
+  const { browser, scripts } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080);
+  await nextImmediate();
+  scripts.length = 0;
+  const tab = browser.activeTab();
+  const contents = tab.view.webContents;
+
+  contents.url = 'https://portal.example.internal/dashboard';
+  contents.emit('did-navigate', {}, contents.url);
+  contents.emit('did-navigate-in-page');
+  contents.emit('page-title-updated');
+  assert.equal(scripts.length, 0, 'page-event bursts wait for their shared bounded update');
+  await nextImmediate();
+  assert.equal(scripts.length, 1, 'one event-loop burst sends one toolbar state');
+
+  contents.emit('page-title-updated');
+  await nextImmediate();
+  assert.equal(scripts.length, 1, 'an unchanged state is not resent');
+
+  scripts.length = 0;
+  contents.emit('page-title-updated');
+  assert.notEqual(browser.scheduledToolbarUpdate, null);
+  const window = browser.window;
+  window.emit('closed');
+  assert.equal(browser.scheduledToolbarUpdate, null);
+  assert.equal(browser.scheduledLayout, null);
+  await nextImmediate();
+  assert.equal(scripts.length, 0, 'closed windows cannot receive a stale toolbar update');
+
+  const { browser: closingBrowser } = createFakeBrowser();
+  await closingBrowser.open('portal.example.internal', 1080);
+  await nextImmediate();
+  closingBrowser.window.emit('resize');
+  closingBrowser.activeTab().view.webContents.emit('page-title-updated');
+  closingBrowser.close();
+  assert.equal(closingBrowser.scheduledToolbarUpdate, null);
+  assert.equal(closingBrowser.scheduledLayout, null,
+    'the public close boundary cancels work even if a fake window emits no closed event');
+});
+
+test('closing a background tab cancels stale resize work before scheduling fresh state', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080);
+  const first = browser.activeTab();
+  const second = browser.createTab('library.example.internal');
+  await nextImmediate();
+  const activeLayouts = second.view.boundsCalls.length;
+
+  browser.window.emit('resize');
+  assert.notEqual(browser.scheduledLayout, null);
+  assert.equal(browser.closeTab(first.id), true);
+  assert.equal(browser.scheduledLayout, null,
+    'the closed-tab boundary cancels a resize captured against the old tab set');
+  await nextImmediate();
+  assert.equal(second.view.boundsCalls.length, activeLayouts,
+    'the cancelled resize cannot reflow the surviving tab later');
 });
 
 test('zoom shortcuts step once per key press and stay clamped', async () => {
@@ -569,4 +831,154 @@ test('downloads ask for a save location and surface failures', async () => {
   const headless = makeItem('no-dialog.bin');
   await bare.handleDownload(headless);
   assert.equal(headless.cancelled, true, 'without a dialog the download cannot proceed');
+});
+
+test('site passwords are offered only after a successful later navigation', async () => {
+  const prompts = [];
+  const saved = [];
+  const vault = {
+    get: async () => null,
+    save: async (...credential) => saved.push(credential),
+  };
+  const { browser } = createFakeBrowser({
+    credentialVault: vault,
+    dialog: {
+      showMessageBox: async (_window, options) => {
+        prompts.push(options);
+        return { response: 0 };
+      },
+    },
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const tab = browser.activeTab();
+  const contents = tab.view.webContents;
+  const candidate = {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'local-secret',
+  };
+
+  contents.emit('ipc-message', {}, 'campus-credential-candidate', candidate);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.length, 0, 'submitting a form must not immediately ask to save');
+  assert.equal(saved.length, 0);
+
+  contents.url = 'https://portal.example.edu/home';
+  contents.emit('did-navigate', {}, contents.url);
+  contents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://portal.example.edu',
+    hasLoginForm: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(prompts.length, 1);
+  assert.deepEqual(saved, [[
+    'https://sso.example.edu',
+    'student001',
+    'local-secret',
+  ]], 'the saved scope stays on the exact HTTPS origin that received the password');
+  assert.equal(tab.pendingCredential, null);
+});
+
+test('a post-navigation login form is treated as failure and never saved', async () => {
+  let promptCount = 0;
+  let saveCount = 0;
+  const { browser } = createFakeBrowser({
+    credentialVault: {
+      get: async () => null,
+      save: async () => { saveCount++; },
+    },
+    dialog: {
+      showMessageBox: async () => {
+        promptCount++;
+        return { response: 0 };
+      },
+    },
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const tab = browser.activeTab();
+  const contents = tab.view.webContents;
+  contents.emit('ipc-message', {}, 'campus-credential-candidate', {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'wrong-secret',
+  });
+  contents.emit('did-navigate', {}, 'https://sso.example.edu/login?error=1');
+  contents.url = 'https://sso.example.edu/login?error=1';
+  contents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: true,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(promptCount, 0);
+  assert.equal(saveCount, 0);
+  assert.equal(tab.pendingCredential, null);
+});
+
+test('an HTTP authentication failure never offers the submitted password', async () => {
+  let prompts = 0;
+  const { browser } = createFakeBrowser({
+    dialog: {
+      showMessageBox: async () => { prompts++; return { response: 0 }; },
+    },
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const tab = browser.activeTab();
+  const contents = tab.view.webContents;
+  browser.stageCredentialCandidate(tab, {
+    origin: 'https://sso.example.edu',
+    username: 'student',
+    password: 'not-saved',
+  });
+  contents.url = 'https://sso.example.edu/login';
+  contents.emit('did-navigate', {}, contents.url, 401, 'Unauthorized');
+  contents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts, 0);
+  assert.equal(tab.pendingCredential, null, 'a rejected response discards the candidate');
+});
+
+test('renderer crash is isolated to one tab and reload retries its last URL', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal/course', 1080);
+  const tab = browser.activeTab();
+  const contents = tab.view.webContents;
+  const originalUrl = contents.getURL();
+
+  contents.emit('render-process-gone', {}, { reason: 'crashed' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(tab.failedUrl, originalUrl);
+  assert.equal(tab.crashed, true);
+  assert.match(contents.getURL(), /^data:text\/html/);
+  assert.equal(browser.tabs.length, 1);
+
+  browser.handleToolbarCommand('about:blank#command=reload');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(contents.getURL(), originalUrl);
+  assert.equal(tab.crashed, false);
+  assert.equal(tab.failedUrl, '');
+});
+
+test('tab, renderer, and window teardown cancel pending certificate decisions', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080);
+  let cancellations = 0;
+  browser.certificateController.cancelAll = () => { cancellations++; };
+
+  assert.equal(browser.closeTab(browser.activeTabId), true);
+  assert.equal(cancellations, 1);
+  const active = browser.activeTab();
+  browser.handleRendererCrash(active, { reason: 'crashed' });
+  assert.equal(cancellations, 2);
+
+  const window = browser.window;
+  window.emit('closed');
+  assert.equal(cancellations, 3);
+  browser.close();
+  assert.equal(cancellations, 4);
 });

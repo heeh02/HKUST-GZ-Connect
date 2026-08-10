@@ -1,12 +1,11 @@
 use crate::adapter::{ControlLayout, OfficialPrefaceAdapter};
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
-use crate::config::{
-    parse_gateway_configuration, parse_resource_configuration, parse_tunnel_bootstrap,
-};
+use crate::config::{parse_gateway_configuration, parse_tunnel_bootstrap};
 use crate::modern::{
     ModernSessionId, parse_sha256_pin, probe_modern_empty_channels, probe_special_tls_contract,
     request_modern_token,
 };
+use crate::resource_catalogue::parse_resource_catalogue;
 use crate::tunnel::{
     CLIENT_MESSAGE_LEN, ClientMessage, HandshakeEvent, Preface, SERVER_MESSAGE_LEN,
     SERVER_SYNC_LEN, ServerMessage, ServerReply, SessionContext, TunnelHandshake, TunnelKind,
@@ -34,7 +33,7 @@ const TUNNEL_PROBE_TIMEOUT_SECONDS: u64 = 10;
 const SERVER_RESET_BACKOFF_SECONDS: u64 = 3;
 
 pub fn read_credentials<R: Read>(mut stream: R) -> Result<(String, String)> {
-    let mut payload = Vec::new();
+    let mut payload = Zeroizing::new(Vec::new());
     stream
         .by_ref()
         .take((MAX_CREDENTIAL_BYTES + 1) as u64)
@@ -42,8 +41,11 @@ pub fn read_credentials<R: Read>(mut stream: R) -> Result<(String, String)> {
     if payload.len() > MAX_CREDENTIAL_BYTES {
         return Err(Error("credential input exceeds the size limit".into()));
     }
-    let text =
-        String::from_utf8(payload).map_err(|_| Error("credential input must be UTF-8".into()))?;
+    // Keep the complete stdin allocation zeroizing across success, oversize,
+    // UTF-8, and shape failures. Callers separately zeroize the two returned
+    // line copies.
+    let text = std::str::from_utf8(payload.as_slice())
+        .map_err(|_| Error("credential input must be UTF-8".into()))?;
     let lines = text.lines().collect::<Vec<_>>();
     if lines.len() != 2 {
         return Err(Error(
@@ -175,12 +177,43 @@ impl GatewaySession {
         method: reqwest::Method,
         form: Option<&BTreeMap<String, String>>,
     ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
+        self.request_inner(path, method, form, None)
+    }
+
+    /// Sends one request with a deadline independent of the session default.
+    ///
+    /// Logout uses this path so graceful shutdown cannot consume the desktop's
+    /// entire process-stop grace period.  The request still uses the same
+    /// `Client`, and therefore the authenticated cookie jar and TLS policy.
+    pub fn request_with_timeout(
+        &self,
+        path: &str,
+        method: reqwest::Method,
+        form: Option<&BTreeMap<String, String>>,
+        timeout: Duration,
+    ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
+        if timeout.is_zero() {
+            return Err(Error("gateway request timeout must be nonzero".into()));
+        }
+        self.request_inner(path, method, form, Some(timeout))
+    }
+
+    fn request_inner(
+        &self,
+        path: &str,
+        method: reqwest::Method,
+        form: Option<&BTreeMap<String, String>>,
+        timeout: Option<Duration>,
+    ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
         let url = endpoint_url(&self.base_url, path)?;
         let mut request = self
             .client
             .request(method, &url)
             .header(USER_AGENT, &self.user_agent)
             .header(ACCEPT, "application/xml,text/xml,*/*;q=0.1");
+        if let Some(timeout) = timeout {
+            request = request.timeout(timeout);
+        }
         if let Some(form) = form {
             request = request
                 .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -895,7 +928,7 @@ pub fn run_probe_with_tunnel(
                             Ok(("transport_parser", summary))
                         })
                     } else {
-                        parse_resource_configuration(&data)
+                        parse_resource_catalogue(&data)
                             .map(|value| ("resource_parser", value.safe_summary()))
                     };
                     match parser_summary {
@@ -962,6 +995,7 @@ mod tests {
         assert_eq!(password, "synthetic-pass");
         assert!(read_credentials("user\npass\nextra\n".as_bytes()).is_err());
         assert!(read_credentials(b"user\npass\0word\n".as_slice()).is_err());
+        assert!(read_credentials(b"user\npass\xff\n".as_slice()).is_err());
         assert!(read_credentials(vec![b'x'; MAX_CREDENTIAL_BYTES + 1].as_slice()).is_err());
     }
 

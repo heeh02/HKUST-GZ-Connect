@@ -39,3 +39,9 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /@media\s*\(max-width:\s*619px\)/);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
 });
+
+test('update download uses one stable delegated listener', () => {
+  assert.match(appJs, /\$\('updateHint'\)\.addEventListener\('click'/);
+  assert.match(appJs, /event\.target\?\.closest\?\.\('#updateDownload'\)/);
+  assert.doesNotMatch(appJs, /\$\('updateDownload'\)\.addEventListener/);
+});

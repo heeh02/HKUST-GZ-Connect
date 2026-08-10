@@ -24,7 +24,7 @@ enabled that feature.
 | Password lifecycle | Initial/expired password change and password policy display | Not implemented | Structured `password_change_required` challenge |
 | Anonymous/Web-only login | Anonymous and security-check-degraded Web access | Not implemented | Separate profile capability, disabled by default |
 | Session configuration | L3/TCP configuration and VPN DNS discovery | Supported for the active L3 profile | Preserve strict parser and version adapters |
-| Resource catalogue | Groups, Web resources, public/private folders and application resources | Resource-list parser exists; catalogue is not exposed to the desktop | Add a sanitized resource provider and UI; never log raw resource data |
+| Resource catalogue | Groups, Web resources, public/private folders and application resources | Bounded offline provider parses groups/resources into opaque handles and a redacted v1 view; authenticated retrieval remains unavailable | Validate retrieval/refresh and authorization semantics in an approved canary before desktop exposure |
 | Campus browsing | Resource page and external browser launch | Isolated in-app campus browser | Default novice path; no external browser or Clash required |
 | Application access | TCP and UDP application traffic | TCP supported; UDP frontend exists, live service coverage incomplete | Keep UDP canary as a release gate |
 | Remote application | Remote-app launch and notices | Not implemented | Independent launcher adapter only if the school enables it |
@@ -82,6 +82,13 @@ Desktop
        -> Frontend
           campus_browser | socks | pac | optional_managed_system
 ```
+
+The implemented Rust traits and current fail-closed capability matrix are
+defined in [`PROVIDER_CONTRACTS.md`](PROVIDER_CONTRACTS.md). This boundary does
+not imply that CAPTCHA/MFA, WebVPN, or authenticated resource retrieval is
+implemented. In particular, the presence of an `authorization` attribute is
+reported only as `declared_unverified`; it is never converted to an allow/deny
+decision without a reviewed gateway-specific policy adapter.
 
 The control protocol must represent, without UI-specific fields:
 

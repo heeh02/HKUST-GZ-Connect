@@ -1,11 +1,10 @@
 'use strict';
 
 const { domainToASCII } = require('url');
+const { ROUTE_DIRECT, SCHOOL_CAMPUS_HOSTS } = require('./campus-route');
+const { buildDomainRoutePac } = require('./domain-route-policy');
 
-const DEFAULT_ROUTE_DOMAINS = Object.freeze([
-  'hkust-gz.edu.cn',
-  'hkust.edu.hk',
-]);
+const DEFAULT_ROUTE_DOMAINS = SCHOOL_CAMPUS_HOSTS;
 const MAX_ROUTE_DOMAINS = 64;
 
 function normalizeRouteDomains(input) {
@@ -40,24 +39,13 @@ function normalizeRouteDomains(input) {
   return normalized.length ? normalized : [...DEFAULT_ROUTE_DOMAINS];
 }
 
-function buildPac(routeDomains, port) {
+function buildPac(routeDomains, port, options = {}) {
   const domains = normalizeRouteDomains(routeDomains);
-  const proxyPort = Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 1080;
-  return `'use strict';
-var ROUTE_DOMAINS = ${JSON.stringify(domains)};
-function FindProxyForURL(url, host) {
-  host = String(host || "").toLowerCase().replace(/\\.$/, "");
-  if (host.slice(0, 3) === "10.") return "SOCKS5 127.0.0.1:${proxyPort}";
-  for (var i = 0; i < ROUTE_DOMAINS.length; i++) {
-    var domain = ROUTE_DOMAINS[i];
-    if (host === domain ||
-        (host.length > domain.length &&
-         host.slice(-(domain.length + 1)) === "." + domain))
-      return "SOCKS5 127.0.0.1:${proxyPort}";
-  }
-  return "DIRECT";
-}
-`;
+  const proxyPort = Number.isInteger(port) && port >= 1025 && port <= 65535 ? port : 1080;
+  return buildDomainRoutePac({ ...options, schoolDomains: domains }, proxyPort, {
+    defaultRoute: ROUTE_DIRECT,
+    campusPrivateIpv4: true,
+  });
 }
 
 module.exports = { DEFAULT_ROUTE_DOMAINS, buildPac, normalizeRouteDomains };

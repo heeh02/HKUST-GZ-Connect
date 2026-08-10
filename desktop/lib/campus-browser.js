@@ -5,14 +5,21 @@ const {
   CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
-  partitionForRoute,
-  proxyConfigForRoute,
   routeForUrl,
 } = require('./campus-route');
+const { resolveDomainRouteForUrl } = require('./domain-route-policy');
+const { normalizeRuleHost } = require('./routing-rule-store');
+const { normalizeToolbarCommand } = require('./campus-toolbar-contract');
+const { CertificateController } = require('./certificate-controller');
+const { CredentialController } = require('./credential-controller');
 const {
-  certificateFingerprint,
-  normalizeCertificateOrigin,
-} = require('./campus-certificate-trust');
+  BrowserSessionManager,
+  applyCampusSessionPolicy,
+  campusProxyConfig,
+  createMemoryRoutingPolicy,
+  pacDataUrl,
+} = require('./browser-session-manager');
+const { DEFAULT_MAX_TABS, TabManager } = require('./tab-manager');
 const { createT } = require('./i18n');
 const TOOLBAR_HEIGHT = 76;
 const FIND_BAR_HEIGHT = 34;
@@ -21,6 +28,7 @@ const MAX_URL_LENGTH = 2048;
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
+const MAX_TABS = DEFAULT_MAX_TABS;
 
 function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('zh')) {
   let value = String(input || '').trim() || fallback;
@@ -40,26 +48,6 @@ function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('
     throw new Error(t('url.invalid'));
   }
   return parsed.href;
-}
-
-function campusProxyConfig(port) {
-  return proxyConfigForRoute(ROUTE_CAMPUS, port);
-}
-
-// A campus web page is untrusted content. Nothing it renders needs the camera,
-// microphone, location, notifications, or a USB/serial device, so every request
-// is refused without prompting the user.
-function applyCampusSessionPolicy(campusSession) {
-  if (typeof campusSession.setPermissionRequestHandler === 'function') {
-    campusSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  }
-  if (typeof campusSession.setPermissionCheckHandler === 'function') {
-    campusSession.setPermissionCheckHandler(() => false);
-  }
-  if (typeof campusSession.setDevicePermissionHandler === 'function') {
-    campusSession.setDevicePermissionHandler(() => false);
-  }
-  return campusSession;
 }
 
 function campusWindowChrome(platform) {
@@ -99,14 +87,24 @@ function nextZoomFactor(current, key) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(target * 10) / 10));
 }
 
-function certificateTime(value, locale = 'zh', t = createT('zh')) {
-  const seconds = Number(value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return t('cert.unknown');
-  try {
-    return new Date(seconds * 1000).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', { hour12: false });
-  } catch {
-    return t('cert.unknown');
-  }
+function navigationForContents(contents) {
+  const modern = contents?.navigationHistory;
+  const call = (method, fallback = false) => {
+    const target = typeof modern?.[method] === 'function' ? modern : contents;
+    if (typeof target?.[method] !== 'function') return fallback;
+    try {
+      const result = target[method]();
+      return method.startsWith('can') ? result === true : true;
+    } catch {
+      return fallback;
+    }
+  };
+  return {
+    canGoBack: () => call('canGoBack'),
+    canGoForward: () => call('canGoForward'),
+    goBack: () => call('goBack'),
+    goForward: () => call('goForward'),
+  };
 }
 
 function escapeHtml(value) {
@@ -119,10 +117,25 @@ function escapeHtml(value) {
   }[character]));
 }
 
+// Failure URLs frequently carry SAML assertions, OAuth codes, and other
+// one-time credentials in their query or path.  Keep the exact URL on the tab
+// for retry, but only render its origin into the user-visible error document so
+// screenshots and copied diagnostics cannot disclose those secrets.
+function redactedFailedUrl(value, fallback) {
+  try {
+    const parsed = new URL(String(value || ''));
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) return fallback;
+    return parsed.origin;
+  } catch {
+    return fallback;
+  }
+}
+
 function errorPage(failedUrl, description, t = createT('zh')) {
-  const url = escapeHtml(failedUrl || t('errorPage.unknownUrl'));
+  const url = escapeHtml(redactedFailedUrl(failedUrl, t('errorPage.unknownUrl')));
   const reason = escapeHtml(description || t('errorPage.networkFailed'));
   const html = `<!doctype html><meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
     <meta name="color-scheme" content="light">
     <title>${escapeHtml(t('errorPage.title'))}</title>
     <style>
@@ -147,7 +160,11 @@ class CampusBrowser {
     credentialVault,
     parentWindow,
     toolbarFile,
+    toolbarPreload,
     campusPreload,
+    routingPolicy,
+    ensureCampusReady,
+    onManageRoutingRules,
     locale,
     t,
     onError,
@@ -156,28 +173,64 @@ class CampusBrowser {
     this.WebContentsView = WebContentsView;
     this.session = session;
     this.dialog = dialog;
-    this.certificateTrust = certificateTrust;
     this.credentialVault = credentialVault;
     this.parentWindow = parentWindow;
     this.toolbarFile = toolbarFile;
+    this.toolbarPreload = toolbarPreload;
     this.campusPreload = campusPreload;
+    this.routingPolicy = routingPolicy || createMemoryRoutingPolicy();
+    this.ensureCampusReady = typeof ensureCampusReady === 'function'
+      ? ensureCampusReady
+      : async () => true;
+    this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
     this.onError = onError;
+    this.certificateController = new CertificateController({
+      trustStore: certificateTrust,
+      dialog,
+      windowForPrompt: () => this.window,
+      locale: () => this.locale,
+      t: (key, vars) => this.t(key, vars),
+    });
+    this.credentialController = new CredentialController({
+      vault: credentialVault,
+      dialog,
+      originForTab: (tab) => this.tabOrigin(tab),
+      windowForPrompt: () => this.window,
+      t: (key, vars) => this.t(key, vars),
+      onError: (message) => this.onError?.(message),
+    });
     this.window = null;
     this.view = null;
-    this.tabs = [];
-    this.activeTabId = null;
-    this.nextTabId = 1;
-    this.configuredPort = null;
-    this.sessions = new Map();
-    this.sessionKeys = new Map();
-    this.campusSession = null;
-    this.credentialPrompts = new Set();
+    this.tabManager = new TabManager({ maxTabs: MAX_TABS });
+    this.browserSessionManager = new BrowserSessionManager({
+      session,
+      routingPolicy: this.routingPolicy,
+      onSessionReady: (browserSession) => this.applyDownloadHandler(browserSession),
+    });
+    // One-release compatibility for diagnostics/tests; ownership and mutation
+    // live exclusively in CertificateController.
+    this.certificateDecisions = this.certificateController.decisions;
     this.downloadSessions = new Set();
     this.findOpen = false;
     this.lastFindQuery = '';
+    this.scheduledLayout = null;
+    this.scheduledToolbarUpdate = null;
+    this.lastToolbarState = null;
   }
+
+  // Keep the existing CampusBrowser diagnostics/test surface while all state
+  // mutations flow through the dedicated managers.
+  get tabs() { return this.tabManager.tabs; }
+  get activeTabId() { return this.tabManager.activeTabId; }
+  get nextTabId() { return this.tabManager.nextTabId; }
+  get configuredPort() { return this.browserSessionManager.configuredPort; }
+  get sessions() { return this.browserSessionManager.sessions; }
+  get sessionKey() { return this.browserSessionManager.sessionKey; }
+  get campusSession() { return this.browserSessionManager.campusSession; }
+  get routingSuspended() { return this.browserSessionManager.suspended; }
+  get routingRequestsBlocked() { return this.browserSessionManager.requestsBlocked; }
 
   ownsWebContents(webContents) {
     return !!webContents && this.tabs.some((tab) => tab?.view?.webContents === webContents);
@@ -190,65 +243,16 @@ class CampusBrowser {
     this.t = typeof nextT === 'function' ? nextT : createT(this.locale);
     if (!this.window || this.window.isDestroyed()) return;
     this.window.setTitle(this.t('browser.windowTitle'));
-    this.window.webContents.executeJavaScript(
-      `window.campusBrowserUI&&window.campusBrowserUI.setLocale(${JSON.stringify(this.locale)})`,
-    ).catch(() => {});
+    this.window.webContents.send?.('campus-toolbar-locale', this.locale);
     this.updateToolbar();
   }
 
-  async handleCertificateError({ url, error, certificate, callback }) {
-    let settled = false;
-    const finish = (allowed) => {
-      if (settled) return;
-      settled = true;
-      if (typeof callback === 'function') callback(allowed);
-    };
-    try {
-      const origin = normalizeCertificateOrigin(url);
-      const fingerprint = certificateFingerprint(certificate?.data);
-      if (this.certificateTrust?.isTrusted?.(origin, fingerprint)) {
-        finish(true);
-        return true;
-      }
-      if (!this.dialog?.showMessageBox || !this.certificateTrust?.trust) {
-        finish(false);
-        return false;
-      }
-      const detail = [
-        this.t('cert.site', { origin }),
-        this.t('cert.chromiumError', { error: String(error || this.t('cert.unknown')) }),
-        this.t('cert.subject', { subject: String(certificate?.subjectName || this.t('cert.unknown')) }),
-        this.t('cert.issuer', { issuer: String(certificate?.issuerName || this.t('cert.unknown')) }),
-        this.t('cert.validity', {
-          start: certificateTime(certificate?.validStart, this.locale, this.t),
-          end: certificateTime(certificate?.validExpiry, this.locale, this.t),
-        }),
-        this.t('cert.fingerprint', { fingerprint }),
-        '',
-        this.t('cert.scope'),
-      ].join('\n');
-      const parent = this.window && !this.window.isDestroyed?.() ? this.window : undefined;
-      const result = await this.dialog.showMessageBox(parent, {
-        type: 'warning',
-        title: this.t('cert.title'),
-        message: this.t('cert.message', { origin }),
-        detail,
-        buttons: [this.t('cert.trust'), this.t('common.cancel')],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      });
-      if (result?.response !== 0) {
-        finish(false);
-        return false;
-      }
-      this.certificateTrust.trust(origin, fingerprint);
-      finish(true);
-      return true;
-    } catch {
-      finish(false);
-      return false;
-    }
+  async decideCertificateTrust({ origin, fingerprint, error, certificate }) {
+    return this.certificateController.promptAndTrust({ origin, fingerprint, error, certificate });
+  }
+
+  async handleCertificateError(request) {
+    return this.certificateController.handle(request);
   }
 
   // Electron would otherwise silently drop downloads because the campus
@@ -288,56 +292,144 @@ class CampusBrowser {
     }
   }
 
-  async configure(port, route = ROUTE_CAMPUS) {
-    const partition = partitionForRoute(route);
-    const routeSession = applyCampusSessionPolicy(this.session.fromPartition(partition));
-    this.applyDownloadHandler(routeSession);
-    const key = route === ROUTE_DIRECT ? route : `${route}:${port}`;
-    if (this.sessionKeys.get(route) !== key) {
-      await routeSession.setProxy(proxyConfigForRoute(route, port));
-      await routeSession.closeAllConnections();
-      this.sessionKeys.set(route, key);
-    }
-    this.sessions.set(route, routeSession);
-    if (route === ROUTE_CAMPUS) {
-      this.configuredPort = port;
-      this.campusSession = routeSession;
-    }
-    return routeSession;
+  async policyProxyConfig(port) {
+    return this.browserSessionManager.policyProxyConfig(port);
+  }
+
+  async configure(port, { force = false } = {}) {
+    return this.browserSessionManager.configure(port, { force });
+  }
+
+  suspendRoutingPolicy() {
+    return this.browserSessionManager.suspend();
+  }
+
+  resumeRoutingPolicy(port = this.configuredPort) {
+    return this.browserSessionManager.resume(port);
+  }
+
+  async refreshRoutingPolicy() {
+    if (this.configuredPort) await this.configure(this.configuredPort, { force: true });
+    this.updateAllTabRoutes();
+    this.updateToolbar();
   }
 
   activeTab() {
-    return this.tabs.find((tab) => tab.id === this.activeTabId) || null;
+    return this.tabManager.active();
   }
 
-  layout() {
-    if (!this.window || this.window.isDestroyed()) return;
+  cancelScheduledLayout() {
+    if (this.scheduledLayout === null) return;
+    clearImmediate(this.scheduledLayout);
+    this.scheduledLayout = null;
+  }
+
+  scheduleLayout() {
+    if (this.scheduledLayout !== null || !this.window || this.window.isDestroyed()) return;
+    const scheduledWindow = this.window;
+    this.scheduledLayout = setImmediate(() => {
+      this.scheduledLayout = null;
+      if (this.window !== scheduledWindow || scheduledWindow.isDestroyed()) return;
+      this.applyLayout();
+    });
+    this.scheduledLayout.unref?.();
+  }
+
+  applyLayout() {
+    const active = this.activeTab();
+    if (!this.window || this.window.isDestroyed() || !active) return;
+    if (active.view.webContents.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
     const toolbarHeight = TOOLBAR_HEIGHT + (this.findOpen ? FIND_BAR_HEIGHT : 0);
-    const bounds = {
+    active.view.setBounds({
       x: 0,
       y: toolbarHeight,
       width: Math.max(1, width),
       height: Math.max(1, height - toolbarHeight),
-    };
-    for (const tab of this.tabs) tab.view.setBounds(bounds);
+    });
+  }
+
+  layout() {
+    this.cancelScheduledLayout();
+    this.applyLayout();
   }
 
   currentUrl(tab) {
     if (!tab) return '';
     if (tab.failedUrl) return tab.failedUrl;
     if (tab.view.webContents.isDestroyed()) return '';
-    const current = tab.view.webContents.getURL();
-    return current.startsWith('data:') ? '' : current;
+    try {
+      const current = tab.view.webContents.getURL();
+      return current.startsWith('data:') ? '' : current;
+    } catch {
+      return '';
+    }
   }
 
-  updateToolbar() {
+  resolveRoute(rawUrl, inheritedRoute = null, requestedRoute = null) {
+    let resolution;
+    try {
+      resolution = this.routingPolicy.resolve(rawUrl, inheritedRoute);
+    } catch {
+      resolution = null;
+    }
+    if (!resolution || ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(resolution.route)) {
+      resolution = resolveDomainRouteForUrl(rawUrl, { inheritedRoute });
+    }
+    if (resolution.source === 'default' &&
+        [ROUTE_CAMPUS, ROUTE_DIRECT].includes(requestedRoute)) {
+      return { route: requestedRoute, source: 'requested', matchedRule: null };
+    }
+    return resolution;
+  }
+
+  updateTabRoute(tab, rawUrl = this.currentUrl(tab)) {
+    if (!tab || !rawUrl) return null;
+    const resolution = this.resolveRoute(rawUrl);
+    tab.route = resolution.route;
+    tab.routeSource = resolution.source;
+    tab.matchedRule = resolution.matchedRule;
+    return resolution;
+  }
+
+  updateAllTabRoutes() {
+    for (const tab of this.tabs) {
+      const url = this.currentUrl(tab) || tab.failedUrl;
+      if (url) this.updateTabRoute(tab, url);
+    }
+  }
+
+  cancelScheduledToolbarUpdate() {
+    if (this.scheduledToolbarUpdate === null) return;
+    clearImmediate(this.scheduledToolbarUpdate);
+    this.scheduledToolbarUpdate = null;
+  }
+
+  scheduleToolbarUpdate() {
+    if (this.scheduledToolbarUpdate !== null ||
+        !this.window || this.window.isDestroyed()) return;
+    const scheduledWindow = this.window;
+    this.scheduledToolbarUpdate = setImmediate(() => {
+      this.scheduledToolbarUpdate = null;
+      if (this.window !== scheduledWindow || scheduledWindow.isDestroyed()) return;
+      this.sendToolbarState();
+    });
+    this.scheduledToolbarUpdate.unref?.();
+  }
+
+  cancelScheduledUpdates() {
+    this.cancelScheduledLayout();
+    this.cancelScheduledToolbarUpdate();
+  }
+
+  sendToolbarState() {
     if (!this.window || this.window.isDestroyed()) return;
     const active = this.activeTab();
     // A crashed or closed renderer (e.g. the page died while the slow-load
     // timer was pending) must not take the main process down with it.
     if (active && active.view.webContents.isDestroyed()) return;
     const activeTitle = active?.view.webContents.getTitle() || '';
+    const navigation = navigationForContents(active?.view.webContents);
     const state = {
       url: this.currentUrl(active),
       title: activeTitle,
@@ -345,9 +437,10 @@ class CampusBrowser {
       slow: !!active?.slow,
       findOpen: this.findOpen,
       route: active?.route || ROUTE_CAMPUS,
+      routeSource: active?.routeSource || 'default',
       routeLabel: active?.route === ROUTE_DIRECT ? this.t('route.direct') : this.t('route.campus'),
-      canGoBack: !!active && active.view.webContents.canGoBack(),
-      canGoForward: !!active && active.view.webContents.canGoForward(),
+      canGoBack: !!active && navigation.canGoBack(),
+      canGoForward: !!active && navigation.canGoForward(),
       activeTabId: this.activeTabId,
       tabs: this.tabs.map((tab) => ({
         id: tab.id,
@@ -358,21 +451,41 @@ class CampusBrowser {
         route: tab.route,
       })),
     };
-    const script = `window.campusBrowserUI&&window.campusBrowserUI.setState(${JSON.stringify(state)})`;
-    this.window.webContents.executeJavaScript(script).catch(() => {});
+    const serialized = JSON.stringify(state);
+    if (serialized === this.lastToolbarState) return;
+    const send = this.window.webContents?.send;
+    if (typeof send !== 'function') return;
+    try {
+      send.call(this.window.webContents, 'campus-toolbar-state', state);
+      this.lastToolbarState = serialized;
+    } catch {
+      // Window teardown can race the final page event. The closed handler also
+      // cancels future updates, so there is nothing useful to surface here.
+    }
   }
 
-  handleToolbarCommand(target) {
-    let parsed;
-    try {
-      parsed = new URL(target);
-    } catch {
-      return;
+  updateToolbar() {
+    this.cancelScheduledToolbarUpdate();
+    this.sendToolbarState();
+  }
+
+  handleToolbarCommand(input) {
+    let normalized = null;
+    if (input && typeof input === 'object') {
+      normalized = normalizeToolbarCommand(input.command, input.value);
+    } else if (typeof input === 'string') {
+      // One-release parser for old toolbar pages. The current toolbar never
+      // mutates its URL; it sends typed commands through its preload.
+      try {
+        const parsed = new URL(input);
+        const values = new URLSearchParams(parsed.hash.slice(1));
+        normalized = normalizeToolbarCommand(values.get('command'), values.get('value') || '');
+      } catch {}
     }
-    const values = new URLSearchParams(parsed.hash.slice(1));
-    const command = values.get('command') || '';
-    const value = values.get('value') || '';
+    if (!normalized) return false;
+    const { command, value } = normalized;
     const active = this.activeTab();
+    const navigation = navigationForContents(active?.view.webContents);
 
     if (command === 'new-tab') this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
     else if (command === 'switch-tab') this.switchTab(Number(value));
@@ -385,10 +498,13 @@ class CampusBrowser {
     else if (command === 'manage-credential' && active) {
       this.manageCredential(active);
     }
-    else if (command === 'back' && active?.view.webContents.canGoBack()) {
-      active.view.webContents.goBack();
-    } else if (command === 'forward' && active?.view.webContents.canGoForward()) {
-      active.view.webContents.goForward();
+    else if (command === 'manage-routing-rules') {
+      if (typeof this.onManageRoutingRules === 'function') this.onManageRoutingRules();
+    }
+    else if (command === 'back' && navigation.canGoBack()) {
+      navigation.goBack();
+    } else if (command === 'forward' && navigation.canGoForward()) {
+      navigation.goForward();
     } else if (command === 'reload' && active) {
       active.failedUrl
         ? this.navigate(active.failedUrl, active)
@@ -416,6 +532,7 @@ class CampusBrowser {
         findNext: true,
       });
     }
+    return true;
   }
 
   // The find bar is per-window: it stays open across tab switches, but matches
@@ -426,9 +543,7 @@ class CampusBrowser {
     this.layout();
     this.updateToolbar();
     if (open) {
-      this.window.webContents.executeJavaScript(
-        'window.campusBrowserUI&&window.campusBrowserUI.focusFind()',
-      ).catch(() => {});
+      this.window.webContents.send?.('campus-toolbar-focus', 'find');
       return;
     }
     const active = this.activeTab();
@@ -454,6 +569,14 @@ class CampusBrowser {
       if (safePopupUrl(url)) setImmediate(() => this.createTab(url));
       return { action: 'deny' };
     });
+    const rejectNonWebNavigation = (event, url) => {
+      if (!safePopupUrl(url)) event?.preventDefault?.();
+    };
+    // A compromised campus page cannot turn this isolated WebContents into a
+    // file/custom-protocol reader. Cover both script/user navigations and HTTP
+    // redirects; regular HTTP(S), fragment, and history navigation remain.
+    contents.on('will-navigate', rejectNonWebNavigation);
+    contents.on('will-redirect', rejectNonWebNavigation);
     contents.on('did-start-loading', () => {
       tab.loading = true;
       if (!tab.renderingError) tab.failedUrl = '';
@@ -461,19 +584,24 @@ class CampusBrowser {
       tab.slowTimer = setTimeout(() => {
         tab.slowTimer = null;
         tab.slow = true;
-        this.updateToolbar();
+        this.scheduleToolbarUpdate();
       }, SLOW_LOADING_HINT_MS);
       tab.slowTimer.unref?.();
-      this.updateToolbar();
+      this.scheduleToolbarUpdate();
     });
     contents.on('did-stop-loading', () => {
       tab.loading = false;
       tab.renderingError = false;
       this.clearSlowTimer(tab);
-      this.updateToolbar();
+      this.scheduleToolbarUpdate();
     });
-    for (const eventName of ['did-navigate', 'did-navigate-in-page', 'page-title-updated']) {
-      contents.on(eventName, () => this.updateToolbar());
+    contents.on('did-navigate', (_event, url, httpResponseCode = 0) => {
+      this.markCredentialNavigation(tab, url, httpResponseCode);
+      this.updateTabRoute(tab, url);
+      this.scheduleToolbarUpdate();
+    });
+    for (const eventName of ['did-navigate-in-page', 'page-title-updated']) {
+      contents.on(eventName, () => this.scheduleToolbarUpdate());
     }
     // Provisional failures (DNS, reset, timeout before the page commits) do not
     // fire did-fail-load; without this handler the tab stayed blank and the
@@ -484,20 +612,27 @@ class CampusBrowser {
       tab.loading = false;
       tab.failedUrl = failedUrl;
       tab.renderingError = true;
+      this.clearCredentialCandidate(tab);
       this.clearSlowTimer(tab);
       contents.loadURL(errorPage(failedUrl, description, this.t)).catch(() => {});
-      this.updateToolbar();
+      this.scheduleToolbarUpdate();
     };
     contents.on('did-fail-load', handleLoadFailure);
     contents.on('did-fail-provisional-load', handleLoadFailure);
     contents.on('ipc-message', (_event, channel, candidate) => {
       if (channel === 'campus-credential-candidate') {
-        this.offerCredential(tab, candidate);
+        this.credentialController.stage(tab, candidate);
+      } else if (channel === 'campus-credential-page-state') {
+        this.credentialController.confirmPageState(tab, candidate).catch(() => {});
       }
+    });
+    contents.on('render-process-gone', (_event, details) => {
+      this.handleRendererCrash(tab, details);
     });
     contents.on('before-input-event', (event, input) => {
       const commandKey = process.platform === 'darwin' ? input.meta : input.control;
       const key = String(input.key || '').toLowerCase();
+      const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
         this.createTab(DEFAULT_CAMPUS_HOME);
@@ -506,9 +641,7 @@ class CampusBrowser {
         this.closeTab(tab.id);
       } else if (commandKey && key === 'l') {
         event.preventDefault();
-        this.window?.webContents.executeJavaScript(
-          'window.campusBrowserUI&&window.campusBrowserUI.focusAddress()',
-        ).catch(() => {});
+        this.window?.webContents.send?.('campus-toolbar-focus', 'address');
       } else if (commandKey && key === 'r') {
         event.preventDefault();
         tab.failedUrl ? this.navigate(tab.failedUrl, tab) : contents.reload();
@@ -519,16 +652,16 @@ class CampusBrowser {
                  input.type === 'keyDown') {
         event.preventDefault();
         contents.setZoomFactor(nextZoomFactor(contents.getZoomFactor(), key));
-      } else if (input.alt && ['left', 'arrowleft'].includes(key) && contents.canGoBack()) {
+      } else if (input.alt && ['left', 'arrowleft'].includes(key) && navigation.canGoBack()) {
         event.preventDefault();
-        contents.goBack();
-      } else if (input.alt && ['right', 'arrowright'].includes(key) && contents.canGoForward()) {
+        navigation.goBack();
+      } else if (input.alt && ['right', 'arrowright'].includes(key) && navigation.canGoForward()) {
         event.preventDefault();
-        contents.goForward();
+        navigation.goForward();
       } else if (commandKey && /^[1-9]$/.test(key)) {
         event.preventDefault();
         const index = key === '9' ? this.tabs.length - 1 : Number(key) - 1;
-        const selected = this.tabs[index];
+        const selected = this.tabManager.at(index);
         if (selected) this.switchTab(selected.id);
       }
     });
@@ -544,40 +677,47 @@ class CampusBrowser {
     }
   }
 
-  async offerCredential(tab, candidate) {
-    if (!this.credentialVault || !this.dialog || !candidate ||
-        typeof candidate !== 'object') return;
-    const origin = this.tabOrigin(tab);
-    const username = String(candidate.username || '');
-    let password = String(candidate.password || '');
-    if (!origin || candidate.origin !== origin || !password ||
-        username.length > 320 || password.length > 4096 ||
-        this.credentialPrompts.has(origin)) return;
+  clearCredentialCandidate(tab) {
+    this.credentialController.clear(tab);
+  }
 
-    this.credentialPrompts.add(origin);
-    try {
-      const existing = await this.credentialVault.get(origin);
-      if (existing?.username === username && existing.password === password) return;
-      if (!this.window || this.window.isDestroyed()) return;
-      const result = await this.dialog.showMessageBox(this.window, {
-        type: 'question',
-        title: this.t('cred.saveTitle'),
-        message: this.t('cred.saveMessage', { host: new URL(origin).hostname }),
-        detail: this.t('cred.saveDetail'),
-        buttons: [this.t('cred.save'), this.t('cred.later')],
-        defaultId: 0,
-        cancelId: 1,
-        noLink: true,
-      });
-      if (result.response === 0) {
-        await this.credentialVault.save(origin, username, password);
-      }
-    } catch {
-      if (this.onError) this.onError(this.t('cred.writeFailed'));
-    } finally {
-      password = '';
-      this.credentialPrompts.delete(origin);
-    }
+  stageCredentialCandidate(tab, candidate) {
+    return this.credentialController.stage(tab, candidate);
+  }
+
+  markCredentialNavigation(tab, rawUrl, httpResponseCode = 0) {
+    return this.credentialController.markNavigation(tab, rawUrl, httpResponseCode);
+  }
+
+  async confirmCredentialAfterPageState(tab, pageState) {
+    return this.credentialController.confirmPageState(tab, pageState);
+  }
+
+  async offerCredential(candidate) {
+    return this.credentialController.offer(candidate);
+  }
+
+  handleRendererCrash(tab, details = {}) {
+    if (!tab || !this.tabManager.contains(tab) || tab.view.webContents.isDestroyed() ||
+        details.reason === 'clean-exit') return;
+    this.certificateController.cancelAll();
+    const contents = tab.view.webContents;
+    const failedUrl = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
+    const reason = String(details.reason || 'crashed').slice(0, 80);
+    tab.loading = false;
+    tab.failedUrl = safePopupUrl(failedUrl) ? failedUrl : DEFAULT_CAMPUS_HOME;
+    tab.renderingError = true;
+    tab.crashed = true;
+    this.clearCredentialCandidate(tab);
+    this.clearSlowTimer(tab);
+    contents.loadURL(errorPage(
+      tab.failedUrl,
+      this.t('errorPage.rendererCrash', { reason }),
+      this.t,
+    )).catch(() => {
+      if (this.onError) this.onError(this.t('errorPage.rendererCrash', { reason }));
+    });
+    this.scheduleToolbarUpdate();
   }
 
   async manageCredential(tab) {
@@ -623,6 +763,10 @@ class CampusBrowser {
 
   createTab(rawUrl = DEFAULT_CAMPUS_HOME, route = routeForUrl(rawUrl)) {
     if (!this.window || this.window.isDestroyed()) return null;
+    if (!this.tabManager.canAdd()) {
+      if (this.onError) this.onError(this.t('tab.limit', { count: MAX_TABS }));
+      return null;
+    }
     let url;
     try {
       url = normalizeCampusUrl(rawUrl, undefined, this.t);
@@ -630,8 +774,9 @@ class CampusBrowser {
       if (this.onError) this.onError(error.message);
       return null;
     }
-    const routeSession = this.sessions.get(route);
+    const routeSession = this.browserSessionManager.sessionForRoute(ROUTE_CAMPUS);
     if (!routeSession) return null;
+    const resolution = this.resolveRoute(url, null, route);
     const view = new this.WebContentsView({
       webPreferences: {
         session: routeSession,
@@ -642,19 +787,28 @@ class CampusBrowser {
         sandbox: true,
         webSecurity: true,
         safeDialogs: true,
+        backgroundThrottling: true,
       },
     });
     const tab = {
-      id: this.nextTabId++,
       view,
       failedUrl: '',
       loading: false,
       slow: false,
       slowTimer: null,
       renderingError: false,
-      route,
+      crashed: false,
+      pendingCredential: null,
+      pendingCredentialTimer: null,
+      route: resolution.route,
+      routeSource: resolution.source,
+      matchedRule: resolution.matchedRule,
     };
-    this.tabs.push(tab);
+    this.tabManager.add(tab);
+    // A newly attached view is hidden until switchTab has applied the current
+    // window bounds and made exactly one tab visible. This avoids a one-frame
+    // flash where two renderer surfaces can both paint.
+    view.setVisible(false);
     this.window.contentView.addChildView(view);
     this.attachPageEvents(tab);
     this.switchTab(tab.id);
@@ -664,68 +818,84 @@ class CampusBrowser {
 
   async setTabRoute(id, route) {
     if (![ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
-    const tab = this.tabs.find((candidate) => candidate.id === id);
-    if (!tab || tab.route === route || !this.window || this.window.isDestroyed()) return false;
+    const tab = this.tabManager.find(id);
+    if (!tab || !this.window || this.window.isDestroyed()) return false;
+    // A route-switch request invalidates the in-flight page regardless of
+    // whether reconnecting/configuring the requested route later succeeds.
+    this.clearCredentialCandidate(tab);
     const url = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
-    await this.configure(this.configuredPort || 1080, route);
-    this.clearSlowTimer(tab);
-    const oldView = tab.view;
-    this.window.contentView.removeChildView(oldView);
-    if (!oldView.webContents.isDestroyed()) oldView.webContents.close();
-    const view = new this.WebContentsView({
-      webPreferences: {
-        session: this.sessions.get(route),
-        preload: this.campusPreload,
-        devTools: false,
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-        webSecurity: true,
-        safeDialogs: true,
-      },
+    let host;
+    try {
+      host = normalizeRuleHost(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+    if (route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+
+    await this.routingPolicy.upsert({
+      host,
+      includeSubdomains: false,
+      route,
     });
-    tab.view = view;
+    if (this.routingPolicy.appliesLiveSession !== true) {
+      await this.configure(this.configuredPort || 1080, { force: true });
+    }
+    this.clearSlowTimer(tab);
+    this.updateAllTabRoutes();
     tab.route = route;
-    this.window.contentView.addChildView(view);
-    this.attachPageEvents(tab);
-    this.switchTab(tab.id);
-    this.navigate(url, tab);
+    tab.routeSource = 'user-exact';
+    tab.matchedRule = { host, includeSubdomains: false };
+    if (tab.failedUrl || tab.renderingError) {
+      this.navigate(url, tab);
+    } else if (!tab.view.webContents.isDestroyed()) {
+      if (typeof tab.view.webContents.reloadIgnoringCache === 'function') {
+        tab.view.webContents.reloadIgnoringCache();
+      } else {
+        tab.view.webContents.reload();
+      }
+    }
+    this.scheduleToolbarUpdate();
     return true;
   }
 
   switchTab(id) {
-    const selected = this.tabs.find((tab) => tab.id === id);
+    const selected = this.tabManager.select(id);
     if (!selected) return false;
-    this.activeTabId = id;
     this.view = selected.view;
-    for (const tab of this.tabs) tab.view.setVisible(tab.id === id);
     this.layout();
-    this.updateToolbar();
+    for (const tab of this.tabs) {
+      if (tab.id !== selected.id) tab.view.setVisible(false);
+    }
+    selected.view.setVisible(true);
+    this.scheduleToolbarUpdate();
     return true;
   }
 
   closeTab(id) {
-    const index = this.tabs.findIndex((tab) => tab.id === id);
-    if (index === -1) return false;
-    const [tab] = this.tabs.splice(index, 1);
+    const removal = this.tabManager.remove(id);
+    if (!removal) return false;
+    this.cancelScheduledUpdates();
+    this.certificateController.cancelAll();
+    const { tab, replacement, empty } = removal;
     this.clearSlowTimer(tab);
+    this.clearCredentialCandidate(tab);
     this.window.contentView.removeChildView(tab.view);
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
 
-    if (!this.tabs.length) {
-      this.activeTabId = null;
+    if (empty) {
       this.view = null;
       this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
-    } else if (this.activeTabId === id) {
-      const replacement = this.tabs[Math.min(index, this.tabs.length - 1)];
+    } else if (replacement) {
       this.switchTab(replacement.id);
     } else {
-      this.updateToolbar();
+      this.scheduleToolbarUpdate();
     }
     return true;
   }
 
   async createWindow() {
+    this.cancelScheduledUpdates();
+    this.lastToolbarState = null;
     this.window = new this.BrowserWindow({
       width: 1040,
       height: 740,
@@ -737,6 +907,7 @@ class CampusBrowser {
       ...campusWindowChrome(process.platform),
       parent: process.platform === 'darwin' ? undefined : this.parentWindow(),
       webPreferences: {
+        preload: this.toolbarPreload,
         devTools: false,
         nodeIntegration: false,
         contextIsolation: true,
@@ -746,20 +917,23 @@ class CampusBrowser {
       },
     });
     await this.window.loadFile(this.toolbarFile, { query: { lang: this.locale } });
-    this.window.webContents.on('did-navigate-in-page', (_event, url) => {
-      this.handleToolbarCommand(url);
+    this.window.webContents.on('ipc-message', (_event, channel, payload) => {
+      if (channel === 'campus-toolbar-command') this.handleToolbarCommand(payload);
     });
-    this.window.on('resize', () => this.layout());
+    this.window.on('resize', () => this.scheduleLayout());
     this.window.on('closed', () => {
+      this.cancelScheduledUpdates();
+      this.certificateController.cancelAll();
       for (const tab of this.tabs) {
         this.clearSlowTimer(tab);
+        this.clearCredentialCandidate(tab);
         if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
       }
-      this.tabs = [];
-      this.activeTabId = null;
+      this.tabManager.clear();
       this.view = null;
       this.window = null;
       this.findOpen = false;
+      this.lastToolbarState = null;
     });
   }
 
@@ -772,39 +946,54 @@ class CampusBrowser {
       return false;
     }
     if (!tab || tab.view.webContents.isDestroyed()) return false;
+    this.updateTabRoute(tab, url);
     tab.failedUrl = '';
     tab.renderingError = false;
+    tab.crashed = false;
     tab.view.webContents.loadURL(url).catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
     });
+    this.scheduleToolbarUpdate();
     return true;
   }
 
   async open(rawUrl, port, route = routeForUrl(rawUrl)) {
     const url = normalizeCampusUrl(rawUrl, undefined, this.t);
-    const selectedRoute = [ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)
-      ? route
-      : routeForUrl(url);
-    await this.configure(port, selectedRoute);
+    const resolution = this.resolveRoute(url, null, route);
+    if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) {
+      throw new Error(this.t('error.connectTimeout'));
+    }
+    // ensureCampusReady() proves the current engine generation has reached its
+    // listener-ready boundary. Only then may a Session suspended during a
+    // previous disconnect be pointed back at the live loopback frontend.
+    if (this.routingSuspended) await this.resumeRoutingPolicy(port);
+    else await this.configure(port);
     if (!this.window || this.window.isDestroyed()) await this.createWindow();
 
     if (this.window.isMinimized()) this.window.restore();
     this.window.show();
     this.window.focus();
-    this.createTab(url, selectedRoute);
+    this.createTab(url, resolution.route);
     return url;
   }
 
   close() {
+    this.cancelScheduledUpdates();
+    this.certificateController.cancelAll();
     if (this.window && !this.window.isDestroyed()) {
       this.window.close();
       return;
     }
+    for (const tab of this.tabs) {
+      this.clearSlowTimer(tab);
+      this.clearCredentialCandidate(tab);
+    }
     this.window = null;
     this.view = null;
-    this.tabs = [];
-    this.activeTabId = null;
+    this.tabManager.clear();
+    this.findOpen = false;
+    this.lastToolbarState = null;
   }
 }
 
@@ -813,6 +1002,7 @@ module.exports = {
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
+  MAX_TABS,
   SLOW_LOADING_HINT_MS,
   TOOLBAR_HEIGHT,
   applyCampusSessionPolicy,
@@ -820,6 +1010,9 @@ module.exports = {
   campusWindowChrome,
   errorPage,
   nextZoomFactor,
+  navigationForContents,
   normalizeCampusUrl,
+  pacDataUrl,
+  redactedFailedUrl,
   safePopupUrl,
 };

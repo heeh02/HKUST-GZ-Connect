@@ -23,6 +23,12 @@ function requiredEngineName(platform, arch) {
   return `ec-engine-${platformName}-${architectureName(arch)}${extension}`;
 }
 
+function requiredProxyCommandName(platform, arch) {
+  const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
+  const extension = platformName === 'windows' ? '.exe' : '';
+  return `ec-proxy-command-${platformName}-${architectureName(arch)}${extension}`;
+}
+
 function assertEnginePresent(resourcesDir, platform, arch) {
   const name = requiredEngineName(platform, arch);
   const enginePath = path.join(resourcesDir, name);
@@ -32,9 +38,20 @@ function assertEnginePresent(resourcesDir, platform, arch) {
   return enginePath;
 }
 
+function assertProxyCommandPresent(resourcesDir, platform, arch) {
+  const name = requiredProxyCommandName(platform, arch);
+  const helperPath = path.join(resourcesDir, name);
+  if (!fs.existsSync(helperPath) || !fs.statSync(helperPath).isFile() || fs.statSync(helperPath).size === 0) {
+    throw new Error(`missing packaged SSH proxy helper: ${helperPath}`);
+  }
+  return helperPath;
+}
+
 exports.architectureName = architectureName;
 exports.requiredEngineName = requiredEngineName;
 exports.assertEnginePresent = assertEnginePresent;
+exports.requiredProxyCommandName = requiredProxyCommandName;
+exports.assertProxyCommandPresent = assertProxyCommandPresent;
 
 function discoverLocalAppleIdentity() {
   try {
@@ -50,15 +67,17 @@ function discoverLocalAppleIdentity() {
   }
 }
 
-function signMacPackage(appPath, enginePath, identity) {
+function signMacPackage(appPath, executablePaths, identity) {
   const signer = identity ? identity.hash : '-';
   const timestamp = identity && identity.kind === 'developer-id' ? '--timestamp' : '--timestamp=none';
   const run = (args) => execFileSync('codesign', args, { stdio: 'inherit' });
 
-  // Sign the extra native executable first, then seal its containing app.
+  // Sign the extra native executables first, then seal their containing app.
   // Do not catch these calls: silently falling back after a selected Apple
   // identity fails would produce a misleading package.
-  run(['--force', timestamp, '--sign', signer, enginePath]);
+  for (const executablePath of [].concat(executablePaths)) {
+    run(['--force', timestamp, '--sign', signer, executablePath]);
+  }
   run(['--force', '--deep', timestamp, '--sign', signer, appPath]);
   run(['--verify', '--deep', '--strict', appPath]);
 }
@@ -72,8 +91,12 @@ exports.default = async function afterPack(context) {
   const resourcesDir = context.electronPlatformName === 'darwin'
     ? path.join(appPath, 'Contents', 'Resources')
     : path.join(context.appOutDir, 'resources');
+  const packagedEngineDirectory = path.join(resourcesDir, 'engine');
   const enginePath = assertEnginePresent(
-    path.join(resourcesDir, 'engine'), context.electronPlatformName, context.arch,
+    packagedEngineDirectory, context.electronPlatformName, context.arch,
+  );
+  const proxyCommandPath = assertProxyCommandPresent(
+    packagedEngineDirectory, context.electronPlatformName, context.arch,
   );
   if (context.electronPlatformName !== 'darwin') return;
   if (shouldDelegateSigning(process.env)) {
@@ -81,6 +104,6 @@ exports.default = async function afterPack(context) {
     return;
   }
   const identity = discoverLocalAppleIdentity();
-  signMacPackage(appPath, enginePath, identity);
+  signMacPackage(appPath, [enginePath, proxyCommandPath], identity);
   console.log(`[afterPack] ${identity ? identity.kind : 'ad-hoc'} signed + verified:`, appPath);
 };

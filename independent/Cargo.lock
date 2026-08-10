@@ -344,11 +344,13 @@ dependencies = [
 name = "ec-compat"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "flate2",
  "geiserx_ts_netstack_smoltcp",
  "hex",
  "hmac",
  "iced-x86",
+ "libc",
  "md-5",
  "object",
  "rand 0.8.7",
@@ -361,6 +363,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "socket2",
  "subtle",
  "tar",
  "time",

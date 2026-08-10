@@ -34,11 +34,17 @@ path = "src/bin/ec-adapter-check.rs"
 name = "ec-engine"
 path = "src/bin/ec-engine.rs"
 
+[[bin]]
+name = "ec-proxy-command"
+path = "src/bin/ec-proxy-command.rs"
+
 [dependencies]
+base64 = "0.22"
 flate2 = "1.1"
 hex = "0.4"
 hmac = "0.12"
 iced-x86 = { version = "1.21", default-features = false, features = ["decoder", "std"] }
+libc = "0.2"
 md-5 = "0.10"
 object = { version = "0.37", default-features = false, features = ["read_core", "elf", "macho", "pe"] }
 rand = "0.8"
@@ -51,6 +57,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
 sha2 = "0.10"
+socket2 = "0.6"
 subtle = "2.6"
 tar = "0.4"
 time = { version = "0.3", features = ["formatting"] }

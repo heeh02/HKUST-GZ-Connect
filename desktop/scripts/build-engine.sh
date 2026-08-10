@@ -28,9 +28,11 @@ run_cargo() {
 }
 
 cd "$ROOT/independent"
-run_cargo build --locked --release --bin ec-engine
+run_cargo build --locked --release --bin ec-engine --bin ec-proxy-command
 mkdir -p "$HERE/engine"
 cp target/release/ec-engine "$HERE/engine/ec-engine-$PLATFORM-$ARCH"
+cp target/release/ec-proxy-command "$HERE/engine/ec-proxy-command-$PLATFORM-$ARCH"
 cp config/hkustgz.json "$HERE/engine/hkustgz.json"
 chmod 755 "$HERE/engine/ec-engine-$PLATFORM-$ARCH"
-echo "staged independent engine: engine/ec-engine-$PLATFORM-$ARCH"
+chmod 755 "$HERE/engine/ec-proxy-command-$PLATFORM-$ARCH"
+echo "staged independent binaries: engine/ec-engine-$PLATFORM-$ARCH, engine/ec-proxy-command-$PLATFORM-$ARCH"

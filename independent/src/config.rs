@@ -118,7 +118,7 @@ impl GatewayConfiguration {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Resource {
     pub identifier: String,
     pub resource_type: String,
@@ -129,32 +129,66 @@ pub struct Resource {
     pub group_identifier: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl std::fmt::Debug for Resource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Resource")
+            .field("identifier", &"<redacted>")
+            .field("resource_type", &"<redacted>")
+            .field("protocol", &"<redacted>")
+            .field("host", &"<redacted>")
+            .field("ports", &"<redacted>")
+            .field("service", &"<redacted>")
+            .field("group_identifier", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct ResourceConfiguration {
     pub resources: Vec<Resource>,
     pub dns_policy_present: bool,
     pub default_resource_identifier: String,
 }
 
+impl std::fmt::Debug for ResourceConfiguration {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ResourceConfiguration")
+            .field("resource_count", &self.resources.len())
+            .field("dns_policy_present", &self.dns_policy_present)
+            .field(
+                "default_resource_present",
+                &!self.default_resource_identifier.is_empty(),
+            )
+            .finish()
+    }
+}
+
 impl ResourceConfiguration {
     pub fn safe_summary(&self) -> Value {
-        let mut protocols = BTreeMap::<String, usize>::new();
-        let mut types = BTreeMap::<String, usize>::new();
+        let mut protocols = BTreeMap::<&'static str, usize>::new();
+        let mut types = BTreeMap::<&'static str, usize>::new();
         for resource in &self.resources {
-            *protocols
-                .entry(if resource.protocol.is_empty() {
-                    "unspecified".into()
-                } else {
-                    resource.protocol.clone()
-                })
-                .or_default() += 1;
-            *types
-                .entry(if resource.resource_type.is_empty() {
-                    "unspecified".into()
-                } else {
-                    resource.resource_type.clone()
-                })
-                .or_default() += 1;
+            let protocol = match resource.protocol.to_ascii_lowercase().as_str() {
+                "" => "unspecified",
+                "http" => "http",
+                "https" => "https",
+                "tcp" => "tcp",
+                "udp" => "udp",
+                _ => "other",
+            };
+            let resource_type = match resource.resource_type.to_ascii_lowercase().as_str() {
+                "" => "unspecified",
+                "web" => "web",
+                "tcp" => "tcp",
+                "udp" => "udp",
+                "app" | "application" | "remote_app" | "remoteapp" => "application",
+                "folder" | "group" => "folder",
+                _ => "other",
+            };
+            *protocols.entry(protocol).or_default() += 1;
+            *types.entry(resource_type).or_default() += 1;
         }
         json!({
             "resource_count": self.resources.len(),
@@ -520,5 +554,29 @@ mod tests {
         assert_eq!(summary["protocol_counts"]["tcp"], 1);
         assert!(!summary.to_string().contains("host.example.test"));
         assert!(!format!("{resources:?}").contains("Synthetic SSH"));
+        assert!(!format!("{resources:?}").contains("host.example.test"));
+    }
+
+    #[test]
+    fn legacy_resource_debug_never_exposes_a_target_query() {
+        let resources = parse_resource_configuration(
+            br#"<Resource><Rcs><Rc id="private-id" type="token=private-type" proto="session=private-protocol" host="https://example.test/private?token=fixture-secret" svc="private-service"/></Rcs></Resource>"#,
+        )
+        .unwrap();
+        let debug = format!("{resources:?} {:?}", resources.resources[0]);
+        let summary = resources.safe_summary().to_string();
+        for private in [
+            "private-id",
+            "example.test",
+            "fixture-secret",
+            "private-service",
+            "private-type",
+            "private-protocol",
+        ] {
+            assert!(!debug.contains(private));
+            assert!(!summary.contains(private));
+        }
+        assert_eq!(resources.safe_summary()["protocol_counts"]["other"], 1);
+        assert_eq!(resources.safe_summary()["type_counts"]["other"], 1);
     }
 }
