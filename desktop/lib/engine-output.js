@@ -71,9 +71,40 @@ function engineFailureKindFromCode(code) {
   return 'unknown';
 }
 
+function classifyEngineStopReason(reason, socksPort, t = createT('zh')) {
+  switch (reason) {
+    case 'user_requested': return null;
+    case 'local_service_failed': return t('engine.portBusy', { port: socksPort });
+    case 'network_unhealthy': return t('engine.channelClosed');
+    case 'logout_failed':
+    case 'shutdown_failed': return t('error.engineStuck');
+    case 'event_output_failed': return t('engine.eventOutputFailed');
+    case 'startup_failed': return t('error.connectFailed');
+    default: return null;
+  }
+}
+
+function engineFailureKindFromStopReason(reason) {
+  if (['local_service_failed', 'logout_failed', 'shutdown_failed', 'event_output_failed']
+    .includes(reason)) return 'terminal';
+  if (reason === 'network_unhealthy') return 'gateway-transient';
+  return 'unknown';
+}
+
+function resolveEngineFailureKind({ code = null, stopReason = null, diagnosticText = '' } = {}) {
+  const codeKind = code ? engineFailureKindFromCode(code) : 'unknown';
+  if (codeKind !== 'unknown') return codeKind;
+  const stopKind = engineFailureKindFromStopReason(stopReason);
+  if (stopKind !== 'unknown') return stopKind;
+  return engineFailureKind(diagnosticText);
+}
+
 module.exports = {
   classifyEngineCode,
   classifyEngineOutput,
+  classifyEngineStopReason,
   engineFailureKind,
   engineFailureKindFromCode,
+  engineFailureKindFromStopReason,
+  resolveEngineFailureKind,
 };

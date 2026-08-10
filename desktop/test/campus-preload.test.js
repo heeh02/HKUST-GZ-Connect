@@ -3,9 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  createSpaCredentialMonitor,
   credentialFromForm,
   isPasswordChangeForm,
   pageCredentialState,
+  SPA_CREDENTIAL_SETTLE_MS,
 } = require('../campus-preload');
 
 function input(properties = {}) {
@@ -90,4 +92,78 @@ test('page state reports whether the post-navigation document still has a login 
     hasLoginForm: false,
   });
   assert.equal(pageCredentialState({ forms: [] }, { protocol: 'http:', origin: 'http://x' }), null);
+});
+
+test('SPA login waits for a stable same-origin password-form removal', () => {
+  const login = form([
+    input({ autocomplete: 'username', value: 'student001' }),
+    input({ type: 'password', autocomplete: 'current-password', value: 'secret' }),
+  ]);
+  const pageDocument = { documentElement: {}, forms: [login] };
+  const timers = [];
+  const cleared = [];
+  const states = [];
+  let observerCallback = null;
+  let disconnected = false;
+  class FakeMutationObserver {
+    constructor(callback) { observerCallback = callback; }
+    observe(_target, options) { this.options = options; }
+    disconnect() { disconnected = true; }
+  }
+  const monitor = createSpaCredentialMonitor({
+    pageDocument,
+    pageLocation: HTTPS_LOCATION,
+    onState: (state) => states.push(state),
+    MutationObserverClass: FakeMutationObserver,
+    setTimer: (callback, delay) => {
+      const handle = { callback, delay, unref() { this.unrefCalled = true; } };
+      timers.push(handle);
+      return handle;
+    },
+    clearTimer: (handle) => cleared.push(handle),
+  });
+
+  assert.equal(monitor.arm(HTTPS_LOCATION.origin), true);
+  assert.equal(timers.length, 0, 'the submitted login form still blocks confirmation');
+  pageDocument.forms = [];
+  observerCallback();
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, SPA_CREDENTIAL_SETTLE_MS);
+  assert.equal(timers[0].unrefCalled, true);
+
+  pageDocument.forms = [login];
+  observerCallback();
+  assert.deepEqual(cleared, [timers[0]], 'a returning password form cancels the candidate state');
+  assert.deepEqual(states, []);
+
+  pageDocument.forms = [];
+  observerCallback();
+  timers[1].callback();
+  assert.deepEqual(states, [{
+    origin: HTTPS_LOCATION.origin,
+    hasLoginForm: false,
+    transition: 'same-document',
+  }]);
+  observerCallback();
+  assert.equal(states.length, 1, 'one submission can produce at most one SPA confirmation');
+  monitor.stop();
+  assert.equal(disconnected, true);
+});
+
+test('SPA monitoring is restricted to the exact current HTTPS origin', () => {
+  const pageDocument = { documentElement: {}, forms: [] };
+  class FakeMutationObserver { observe() {} disconnect() {} }
+  const httpsMonitor = createSpaCredentialMonitor({
+    pageDocument,
+    pageLocation: HTTPS_LOCATION,
+    MutationObserverClass: FakeMutationObserver,
+  });
+  assert.equal(httpsMonitor.arm('https://other.example.edu'), false);
+
+  const httpMonitor = createSpaCredentialMonitor({
+    pageDocument,
+    pageLocation: { protocol: 'http:', origin: 'http://sso.example.edu' },
+    MutationObserverClass: FakeMutationObserver,
+  });
+  assert.equal(httpMonitor.arm('http://sso.example.edu'), false);
 });

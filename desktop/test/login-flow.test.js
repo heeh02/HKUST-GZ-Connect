@@ -27,6 +27,18 @@ test('failed login returns to the form without losing the password', () => {
   );
 });
 
+test('real renderer can supply its active locale to the shared login logic', () => {
+  assert.deepEqual(
+    evaluateLoginProgress(true, { connecting: true }, (key) => `translated:${key}`),
+    {
+      pending: true,
+      view: 'login',
+      clearPassword: false,
+      error: 'translated:login.connecting',
+    },
+  );
+});
+
 test('renderer handles a rejected password-save IPC without clearing the form', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'app.js'), 'utf8');
   assert.match(source, /try\s*\{\s*saved\s*=\s*await window\.api\.save\(\{ username: u, password: p \}\)/s);

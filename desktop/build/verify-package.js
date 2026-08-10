@@ -91,6 +91,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/app-data-dir.js',
     '/lib/i18n.js',
     '/lib/login-flow.js',
+    '/lib/resource-view.js',
+    '/lib/engine-control-client.js',
+    '/lib/engine-protocol-session.js',
     '/lib/settings-update.js',
     '/lib/tunnel-health.js',
     '/lib/update-check.js',
@@ -109,13 +112,19 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
   const packagedPreload = asar.extractFile(archive, 'preload.js').toString('utf8');
   const packagedMain = asar.extractFile(archive, 'main.js').toString('utf8');
-  if (/\.\.\/lib\/(?:login-flow|resource-view)\.js/.test(packagedIndex)) {
-    throw new Error('renderer must not depend on split helper scripts');
+  for (const helper of ['login-flow', 'resource-view']) {
+    if (!packagedIndex.includes(`../lib/${helper}.js`)) {
+      throw new Error(`renderer does not load its shared helper: ${helper}`);
+    }
   }
   for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
-    if (!packagedRenderer.includes(`function ${helper}`)) {
-      throw new Error(`renderer helper is not self-contained: ${helper}`);
+    if (packagedRenderer.includes(`function ${helper}`)) {
+      throw new Error(`renderer duplicates its shared helper: ${helper}`);
     }
+  }
+  if (!packagedRenderer.includes('window.loginFlow') ||
+      !packagedRenderer.includes('window.resourceView')) {
+    throw new Error('renderer does not consume the packaged shared helper APIs');
   }
   assertCustomResourceManager({
     html: packagedIndex,

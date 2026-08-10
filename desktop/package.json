@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
@@ -8,6 +8,8 @@
   "scripts": {
     "test": "node --test",
     "test:browser-performance": "electron e2e/browser-performance.electron.js",
+    "test:idle-performance": "electron scripts/idle-performance-baseline.js",
+    "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
     "test:main-integration": "electron e2e/main-integration.electron.js",
     "test:strict-proxy-auth": "electron e2e/strict-proxy-auth.electron.js",
@@ -49,12 +51,24 @@
       {
         "from": "engine",
         "to": "engine",
-        "filter": ["ec-engine-*", "ec-engine.exe", "ec-proxy-command-*", "ec-proxy-command.exe", "hkustgz.json"]
+        "filter": [
+          "ec-engine-*",
+          "ec-engine.exe",
+          "ec-proxy-command-*",
+          "ec-proxy-command.exe",
+          "hkustgz.json"
+        ]
       }
     ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.utilities"
     },
@@ -63,7 +77,14 @@
     },
     "win": {
       "icon": "build/icon.ico",
-      "target": [{ "target": "nsis", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -71,7 +92,9 @@
       "perMachine": false
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Network"
     }
   }

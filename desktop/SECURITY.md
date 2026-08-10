@@ -28,6 +28,11 @@ changes can be supported without review.
 - Before an engine releases its fixed local port, the browser closes a
   synchronous request gate, installs a fail-closed PAC, and drains connections.
   Only `listener_ready` for the current generation can reopen that gate.
+- Engine Event API v1 is bounded one-way lifecycle/health output. Optional
+  Control API v2 reuses the already inherited private stdin/stdout pipes after
+  the fixed credential prefix; it opens no listener and its closed frame schema
+  cannot carry arbitrary credentials, tokens, URLs, or destinations. Closing
+  the control channel is not a tunnel-shutdown request.
 - Chromium WebRTC is started with `disable_non_proxied_udp`. Explicit
   localhost, loopback, link-local, WebSocket, and legacy localhost aliases are
   denied again at `webRequest` because PAC mode cannot override Chromium's
@@ -36,9 +41,14 @@ changes can be supported without review.
   owner-only and local. Only an owned main-frame navigation can prompt; all
   subresource certificate errors fail closed. Prompts are globally
   single-flight and lifecycle cancellation rejects pending callbacks.
-- Website credentials are exact HTTPS-origin scoped, saved only after a later
-  successful navigation and explicit confirmation, and encrypted by the OS.
-  Linux `basic_text` fallback is rejected.
+- Website credentials are exact HTTPS-origin scoped and encrypted by the OS.
+  A traditional login may be offered only after a later successful main-frame
+  navigation. A same-document SPA login may be offered only on the submitted
+  HTTPS origin, before any main-frame commit, after every password form stays
+  absent for a bounded settling interval. A remaining/reappearing password
+  form cancels confirmation; password-change/reset forms are never captured.
+  Both paths still require an explicit save confirmation. Linux `basic_text`
+  fallback is rejected.
 
 ## Account and policy persistence / 账号与策略持久化
 
@@ -68,8 +78,12 @@ changes can be supported without review.
 Passwords, proxy credentials, cookies, tokens, raw authentication responses,
 full resource URLs with queries, assigned addresses, and target addresses must
 not enter engine stdout events, application logs, diagnostics, Git, CI
-artifacts, or release notes. Engine stdout is bounded NDJSON API v1; human
-diagnostics go to redacted stderr/log files with bounded rotation.
+artifacts, or release notes. Engine stdout carries bounded Event API v1 NDJSON
+and correlated bounded Control API v2 responses; neither schema contains a
+secret field. Human diagnostics go to redacted stderr/log files with bounded
+rotation. Control input frames begin only after the private stdin credential
+prefix and likewise have no arbitrary secret payload; the fact that both use
+one inherited pipe does not make credentials part of Control v2.
 
 The explicit **Copy Clash Node** action necessarily places the local proxy
 credential on the operating-system clipboard, and Clash stores the pasted
@@ -105,8 +119,10 @@ credential remains prohibited.
 ## Required review gates / 必须通过的门禁
 
 Every release must pass desktop unit tests, real Electron main/toolbar/layout
-tests, browser lifecycle soak, dependency audit, Rust format/Clippy/tests,
-offline performance matrices, package-content verification, secret scanning,
-and unsigned macOS/Windows launch checks. Live gateway TCP, UDP, DNS, sleep,
-network-change, forced-logout, and new authentication canaries require explicit
-school authorization and sanitized evidence.
+tests, SPA credential confirmation tests, true two-process route-restart
+persistence, browser lifecycle/hidden-idle guards, dependency audit, Rust
+format/Clippy/tests, offline performance matrices, package-content
+verification, secret scanning, and unsigned macOS/Windows launch checks. Live
+gateway TCP, UDP, DNS, sleep, network-change, forced-logout, and new
+authentication canaries require explicit school authorization and sanitized
+evidence.

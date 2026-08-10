@@ -114,6 +114,59 @@ test('a candidate is offered only after a successful matching page state', async
   assert.equal(tab.pendingCredential, null);
 });
 
+test('a stable SPA transition can offer an exact-origin candidate without navigation', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate());
+
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+    transition: 'same-document',
+  }), true);
+  assert.equal(state.prompts.length, 1, 'SPA success still requires an explicit user prompt');
+  assert.deepEqual(state.saved, [[
+    'https://sso.example.edu', 'student001', 'local-secret',
+  ]]);
+  assert.equal(tab.pendingCredential, null);
+});
+
+test('SPA evidence cannot cross origins or override a main-frame navigation', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate());
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://other.example.edu',
+    hasLoginForm: false,
+    transition: 'same-document',
+  }), false);
+  assert.equal(state.prompts.length, 0);
+  assert.ok(tab.pendingCredential);
+
+  state.controller.markNavigation(tab, 'https://sso.example.edu/home', 200);
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+    transition: 'same-document',
+  }), false, 'a committed document must use navigation evidence instead');
+  assert.equal(state.prompts.length, 0);
+});
+
+test('a failed same-document login clears its staged password', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate({ password: 'wrong-secret' }));
+  const retained = tab.pendingCredential;
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: true,
+    transition: 'same-document',
+  }), false);
+  assert.equal(retained.password, '');
+  assert.equal(tab.pendingCredential, null);
+  assert.equal(state.prompts.length, 0);
+});
+
 test('401, 403, other rejected responses, and insecure navigation clear secrets immediately', () => {
   for (const [url, status] of [
     ['https://sso.example.edu/login', 401],

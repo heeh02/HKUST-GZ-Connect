@@ -18,13 +18,14 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgPass"[^>]*autocomplete="current-password"/);
   assert.doesNotMatch(html, /id="lgPass"[^>]*(?:disabled|readonly)/);
   assert.match(css, /\.inp\s*\{[^}]*-webkit-user-select:\s*text/);
-  assert.doesNotMatch(html, /\.\.\/lib\/login-flow\.js/);
-  assert.doesNotMatch(html, /\.\.\/lib\/resource-view\.js/);
+  assert.match(html, /<script src="\.\.\/lib\/login-flow\.js"><\/script>/);
+  assert.match(html, /<script src="\.\.\/lib\/resource-view\.js"><\/script>/);
   assert.match(appJs, /updateLoginProgress\(s\)/);
-  assert.match(appJs, /function evaluateLoginProgress\(pending, state = \{\}\)/);
-  assert.match(appJs, /function visibleResources\(resources, expanded/);
-  assert.doesNotMatch(appJs, /window\.resourceView/);
-  assert.doesNotMatch(appJs, /window\.loginFlow/);
+  assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
+  assert.match(appJs, /const \{ routeLabel, visibleResources \} = window\.resourceView/);
+  assert.doesNotMatch(appJs, /function evaluateLoginProgress\(/);
+  assert.doesNotMatch(appJs, /function visibleResources\(/);
+  assert.doesNotMatch(appJs, /function routeLabel\(/);
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
 });
 

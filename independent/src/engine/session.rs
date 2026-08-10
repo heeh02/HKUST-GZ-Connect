@@ -1,14 +1,12 @@
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
-use crate::config::{GatewayConfiguration, parse_gateway_configuration};
+use crate::config::parse_gateway_configuration;
 use crate::engine::data_plane::EasyConnectDataPlane;
 use crate::engine::provider::{
     AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
     CapabilityModel, NoAuthChallenge, ProviderError, ProviderResult, TransportBackend,
-    TransportCapabilities, engine_result, require_supported,
+    TransportCapabilities, require_supported,
 };
-use crate::modern::{
-    ModernSessionId, ModernTokenAcquisition, parse_sha256_pin, request_modern_token,
-};
+use crate::modern::{ModernSessionId, parse_sha256_pin, request_modern_token};
 use crate::probe::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
 use crate::xml::{first_descendant_text, parse_xml};
 use crate::{Error, Result};
@@ -35,14 +33,43 @@ struct UnsupportedAuthDecision {
     logout_before_return: bool,
 }
 
-pub struct AuthenticatedEngineSession {
+/// Password-authenticated gateway state.
+///
+/// This owns only the authenticated HTTP cookie jar, logout endpoint, and the
+/// opaque gateway session identifier returned by login. It intentionally does
+/// not contain a Modern L3 token, parsed L3 configuration, DNS result, tunnel
+/// certificate pin, or data plane.
+pub struct AuthenticatedGatewaySession {
     http: GatewaySession,
     logout_path: String,
+    modern_session: ModernSessionId,
+}
+
+/// Backward-compatible Rust name for existing engine consumers. New code
+/// should use [`AuthenticatedGatewaySession`] to keep the auth-only boundary
+/// explicit.
+pub type AuthenticatedEngineSession = AuthenticatedGatewaySession;
+
+pub struct ModernL3Connection {
+    data_plane: EasyConnectDataPlane,
+    dns_servers: Vec<Ipv4Addr>,
+}
+
+impl ModernL3Connection {
+    pub fn dns_servers(&self) -> &[Ipv4Addr] {
+        &self.dns_servers
+    }
+
+    pub fn into_data_plane(self) -> EasyConnectDataPlane {
+        self.data_plane
+    }
+}
+
+pub struct ModernL3TransportBackend {
+    base_url: String,
     gateway_host: String,
     timeout: Duration,
-    acquisition: ModernTokenAcquisition,
-    data_plane_not_before: Instant,
-    gateway_configuration: GatewayConfiguration,
+    configuration_path: String,
     configured_certificate_pin: Option<[u8; 32]>,
 }
 
@@ -57,7 +84,7 @@ impl<'a> ProductionPasswordAuthProvider<'a> {
 }
 
 impl AuthProvider for ProductionPasswordAuthProvider<'_> {
-    type Session = AuthenticatedEngineSession;
+    type Session = AuthenticatedGatewaySession;
     type Challenge = NoAuthChallenge;
 
     fn capabilities(&self) -> AuthenticationCapabilities {
@@ -70,7 +97,7 @@ impl AuthProvider for ProductionPasswordAuthProvider<'_> {
     ) -> ProviderResult<AuthOutcome<Self::Session, Self::Challenge>> {
         match request {
             AuthRequest::Password { username, password } => {
-                AuthenticatedEngineSession::authenticate_password(self.config, username, password)
+                AuthenticatedGatewaySession::authenticate_password(self.config, username, password)
                     .map(AuthOutcome::Authenticated)
             }
             AuthRequest::ChallengeResponse { method, .. } => {
@@ -82,22 +109,120 @@ impl AuthProvider for ProductionPasswordAuthProvider<'_> {
     }
 }
 
-pub struct ModernL3TransportBackend;
+impl ModernL3TransportBackend {
+    pub fn new(config: &Value) -> Result<Self> {
+        let base_url = required_text(config, "base_url")?;
+        let parsed_url =
+            Url::parse(base_url).map_err(|_| Error("engine base URL is invalid".into()))?;
+        if parsed_url.scheme() != "https" {
+            return Err(Error("engine base URL must use HTTPS".into()));
+        }
+        let gateway_host = parsed_url
+            .host_str()
+            .ok_or_else(|| Error("engine gateway host is missing".into()))?
+            .to_owned();
+        let timeout = Duration::from_secs(
+            config["timeout_seconds"]
+                .as_u64()
+                .unwrap_or(DEFAULT_TIMEOUT_SECONDS),
+        );
+        let configuration_path = required_endpoint(config, "session_config")?.to_owned();
+        let configured_certificate_pin = config["modern_tunnel"]["special_tls_leaf_sha256"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .map(parse_sha256_pin)
+            .transpose()?;
+        Ok(Self {
+            base_url: base_url.to_owned(),
+            gateway_host,
+            timeout,
+            configuration_path,
+            configured_certificate_pin,
+        })
+    }
+
+    /// Establish Modern L3 and clean up the authenticated gateway session if
+    /// any transport-only bootstrap or data-plane stage fails.
+    pub fn connect_or_logout(
+        &self,
+        session: AuthenticatedGatewaySession,
+    ) -> Result<(AuthenticatedGatewaySession, ModernL3Connection)> {
+        match self.connect(&session) {
+            Ok(connection) => Ok((session, connection)),
+            Err(error) => {
+                let error = Error::from(error);
+                let _ = session.logout();
+                Err(error)
+            }
+        }
+    }
+
+    fn establish_modern_l3(
+        &self,
+        session: &AuthenticatedGatewaySession,
+    ) -> ProviderResult<ModernL3Connection> {
+        let (configuration, _, _) =
+            session
+                .http
+                .request(&self.configuration_path, Method::GET, None)?;
+        let configuration = Zeroizing::new(configuration);
+        let gateway_configuration = parse_gateway_configuration(&configuration)?;
+        if !gateway_configuration.has_l3_configuration {
+            return Err(ProviderError::unavailable(Capability::TransportL3));
+        }
+        let dns_servers = gateway_configuration
+            .l3_dns
+            .iter()
+            .filter_map(|value| value.parse().ok())
+            .collect();
+        let acquisition =
+            request_modern_token(&self.base_url, &session.modern_session, self.timeout)?;
+        let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
+        let mut attempt = 1;
+        loop {
+            // The gateway intermittently rejects an address request sent
+            // immediately after token acquisition. Keep this transport pacing
+            // inside the Modern backend rather than the auth session.
+            std::thread::sleep(address_settle_delay(data_plane_not_before, Instant::now()));
+            match EasyConnectDataPlane::connect(
+                &self.gateway_host,
+                &acquisition,
+                self.timeout,
+                self.configured_certificate_pin.as_ref(),
+            ) {
+                Ok(data_plane) => {
+                    return Ok(ModernL3Connection {
+                        data_plane,
+                        dns_servers,
+                    });
+                }
+                Err(error)
+                    if attempt < DATA_PLANE_SETUP_ATTEMPTS
+                        && retryable_data_plane_setup_error(&error) =>
+                {
+                    std::thread::sleep(DATA_PLANE_RETRY_STEP * attempt as u32);
+                    attempt += 1;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+}
 
 impl TransportBackend for ModernL3TransportBackend {
-    type Session = AuthenticatedEngineSession;
-    type DataPlane = EasyConnectDataPlane;
+    type Session = AuthenticatedGatewaySession;
+    type DataPlane = ModernL3Connection;
 
     fn capabilities(&self) -> TransportCapabilities {
         TransportCapabilities::modern_l3_only()
     }
 
     fn connect(&self, session: &Self::Session) -> ProviderResult<Self::DataPlane> {
-        engine_result(session.establish_modern_l3_data_plane())
+        self.establish_modern_l3(session)
     }
 }
 
-impl AuthenticatedEngineSession {
+impl AuthenticatedGatewaySession {
     pub fn authenticate(config: &Value, username: &str, password: &str) -> Result<Self> {
         Self::authenticate_with_provider_error(config, username, password).map_err(Error::from)
     }
@@ -130,14 +255,12 @@ impl AuthenticatedEngineSession {
         if parsed_url.scheme() != "https" {
             return Err(Error("engine base URL must use HTTPS".into()).into());
         }
-        let gateway_host = parsed_url
+        parsed_url
             .host_str()
-            .ok_or_else(|| Error("engine gateway host is missing".into()))?
-            .to_owned();
+            .ok_or_else(|| Error("engine gateway host is missing".into()))?;
         let timeout_seconds = config["timeout_seconds"]
             .as_u64()
             .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
-        let timeout = Duration::from_secs(timeout_seconds);
         let user_agent = config["user_agent"]
             .as_str()
             .unwrap_or("EasyConnect_windows");
@@ -227,79 +350,21 @@ impl AuthenticatedEngineSession {
             ))
             .into());
         }
-        let authenticated_setup: ProviderResult<_> = (|| {
-            let modern_session = ModernSessionId::from_login_xml(&login)?;
-            let configuration_path = required_endpoint(config, "session_config")?;
-            let (configuration, _, _) = http.request(configuration_path, Method::GET, None)?;
-            let configuration = Zeroizing::new(configuration);
-            let gateway_configuration = parse_gateway_configuration(&configuration)?;
-            if !gateway_configuration.has_l3_configuration {
-                return Err(ProviderError::unavailable(Capability::TransportL3));
+        let modern_session = match ModernSessionId::from_login_xml(&login) {
+            Ok(session) => session,
+            Err(error) => {
+                // A successful password login must still yield a usable opaque
+                // gateway session handle. Clean it up if that auth artifact is
+                // malformed, before any transport backend is involved.
+                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+                return Err(error.into());
             }
-            let acquisition = request_modern_token(base_url, &modern_session, timeout)?;
-            let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
-            let configured_certificate_pin = config["modern_tunnel"]["special_tls_leaf_sha256"]
-                .as_str()
-                .filter(|value| !value.is_empty())
-                .map(parse_sha256_pin)
-                .transpose()?;
-            Ok((
-                acquisition,
-                data_plane_not_before,
-                gateway_configuration,
-                configured_certificate_pin,
-            ))
-        })();
-        let (acquisition, data_plane_not_before, gateway_configuration, configured_certificate_pin) =
-            match authenticated_setup {
-                Ok(setup) => setup,
-                Err(error) => {
-                    // Authentication already succeeded. Avoid leaking a
-                    // server-side session when any later bootstrap stage
-                    // fails; keep the original error as the useful cause.
-                    let _ =
-                        http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                    return Err(error);
-                }
-            };
+        };
         Ok(Self {
             http,
             logout_path,
-            gateway_host,
-            timeout,
-            acquisition,
-            data_plane_not_before,
-            gateway_configuration,
-            configured_certificate_pin,
+            modern_session,
         })
-    }
-
-    pub fn establish_data_plane(&self) -> Result<EasyConnectDataPlane> {
-        ModernL3TransportBackend.connect(self).map_err(Error::from)
-    }
-
-    fn establish_modern_l3_data_plane(&self) -> Result<EasyConnectDataPlane> {
-        // The gateway intermittently rejects an address request sent
-        // immediately after token acquisition. Keep this pacing rule beside
-        // the session transition so every frontend gets identical behavior.
-        std::thread::sleep(address_settle_delay(
-            self.data_plane_not_before,
-            Instant::now(),
-        ));
-        EasyConnectDataPlane::connect(
-            &self.gateway_host,
-            &self.acquisition,
-            self.timeout,
-            self.configured_certificate_pin.as_ref(),
-        )
-    }
-
-    pub fn dns_servers(&self) -> Vec<Ipv4Addr> {
-        self.gateway_configuration
-            .l3_dns
-            .iter()
-            .filter_map(|value| value.parse().ok())
-            .collect()
     }
 
     pub fn logout(self) -> Result<()> {
@@ -307,30 +372,6 @@ impl AuthenticatedEngineSession {
             .request_with_timeout(&self.logout_path, Method::GET, None, LOGOUT_TIMEOUT)
             .map(|_| ())
             .map_err(|error| Error(format!("gateway logout failed: {error}")))
-    }
-
-    /// Establish the data plane while preserving the gateway's one-session
-    /// invariant. A failed address/send/receive setup happens after login, so
-    /// returning without logout would leave a server-side session behind and
-    /// make the desktop retry compete with its own stale session.
-    pub fn establish_data_plane_or_logout(self) -> Result<(Self, EasyConnectDataPlane)> {
-        let mut attempt = 1;
-        loop {
-            match self.establish_data_plane() {
-                Ok(data_plane) => return Ok((self, data_plane)),
-                Err(error)
-                    if attempt < DATA_PLANE_SETUP_ATTEMPTS
-                        && retryable_data_plane_setup_error(&error) =>
-                {
-                    std::thread::sleep(DATA_PLANE_RETRY_STEP * attempt as u32);
-                    attempt += 1;
-                }
-                Err(error) => {
-                    let _ = self.logout();
-                    return Err(error);
-                }
-            }
-        }
     }
 }
 

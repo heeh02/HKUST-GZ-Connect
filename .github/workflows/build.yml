@@ -80,6 +80,8 @@ jobs:
           npm run test:strict-proxy-auth
           npm run test:renderer-layout
           npm run test:browser-performance
+          npm run test:routing-restart
+          npm run test:idle-performance
 
       - name: Build independent engines (mac)
         if: matrix.platform == 'mac'

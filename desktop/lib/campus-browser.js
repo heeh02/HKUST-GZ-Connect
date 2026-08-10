@@ -470,18 +470,9 @@ class CampusBrowser {
   }
 
   handleToolbarCommand(input) {
-    let normalized = null;
-    if (input && typeof input === 'object') {
-      normalized = normalizeToolbarCommand(input.command, input.value);
-    } else if (typeof input === 'string') {
-      // One-release parser for old toolbar pages. The current toolbar never
-      // mutates its URL; it sends typed commands through its preload.
-      try {
-        const parsed = new URL(input);
-        const values = new URLSearchParams(parsed.hash.slice(1));
-        normalized = normalizeToolbarCommand(values.get('command'), values.get('value') || '');
-      } catch {}
-    }
+    const normalized = input && typeof input === 'object'
+      ? normalizeToolbarCommand(input.command, input.value)
+      : null;
     if (!normalized) return false;
     const { command, value } = normalized;
     const active = this.activeTab();

@@ -138,12 +138,17 @@ fn generic_consumers_can_swap_mock_providers_without_vendor_protocol_types() {
 fn current_production_adapters_advertise_only_password_and_l3() {
     let config = json!({});
     let auth = ProductionPasswordAuthProvider::new(&config);
+    let transport_config = json!({
+        "base_url": "https://gateway.example.test",
+        "endpoints": { "session_config": "/por/conf.csp" }
+    });
+    let transport = ModernL3TransportBackend::new(&transport_config).unwrap();
     assert_eq!(
         auth.capabilities(),
         AuthenticationCapabilities::password_only()
     );
     assert_eq!(
-        ModernL3TransportBackend.capabilities(),
+        transport.capabilities(),
         TransportCapabilities::modern_l3_only()
     );
     assert_eq!(

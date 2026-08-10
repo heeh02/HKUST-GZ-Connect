@@ -4,6 +4,7 @@ const { ipcRenderer } = require('electron');
 
 const MAX_USERNAME_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 4096;
+const SPA_CREDENTIAL_SETTLE_MS = 2000;
 const PASSWORD_CHANGE_HINT = /(?:^|[^a-z])(?:new|confirm|repeat|retype|change|reset)(?:$|[^a-z])|(?:new|confirm|repeat|retype|change|reset)password|password(?:new|confirm|repeat|retype|change|reset)|新密码|确认密码|重复密码/i;
 
 function visibleInput(input) {
@@ -79,12 +80,103 @@ function pageCredentialState(pageDocument = globalThis.document,
   };
 }
 
+// Traditional logins commit a new main-frame document, which is confirmed by
+// did-navigate in the main process. Some SSO pages instead replace the login
+// form inside one SPA document. Observe only after a valid login submission,
+// retain only its exact origin (never the password), and require the password
+// form to stay absent before reporting that same-document transition.
+function createSpaCredentialMonitor({
+  pageDocument = globalThis.document,
+  pageLocation = globalThis.location,
+  onState,
+  MutationObserverClass = globalThis.MutationObserver,
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+  settleMs = SPA_CREDENTIAL_SETTLE_MS,
+} = {}) {
+  let armedOrigin = '';
+  let emitted = false;
+  let timer = null;
+  let observer = null;
+
+  const cancelTimer = () => {
+    if (!timer) return;
+    clearTimer(timer);
+    timer = null;
+  };
+  const matchingState = () => {
+    const state = pageCredentialState(pageDocument, pageLocation);
+    return state && state.origin === armedOrigin ? state : null;
+  };
+  const evaluate = () => {
+    if (!armedOrigin || emitted) return false;
+    const state = matchingState();
+    if (!state || state.hasLoginForm) {
+      cancelTimer();
+      return false;
+    }
+    if (timer) return true;
+    timer = setTimer(() => {
+      timer = null;
+      const settled = matchingState();
+      if (!settled || settled.hasLoginForm || emitted) return;
+      emitted = true;
+      armedOrigin = '';
+      if (typeof onState === 'function') {
+        onState({ ...settled, transition: 'same-document' });
+      }
+    }, Math.max(0, Number(settleMs) || SPA_CREDENTIAL_SETTLE_MS));
+    timer?.unref?.();
+    return true;
+  };
+  const ensureObserver = () => {
+    if (observer || typeof MutationObserverClass !== 'function') return !!observer;
+    const target = pageDocument?.documentElement || pageDocument;
+    if (!target) return false;
+    observer = new MutationObserverClass(evaluate);
+    observer.observe(target, {
+      attributes: true,
+      attributeFilter: ['disabled', 'type'],
+      childList: true,
+      subtree: true,
+    });
+    return true;
+  };
+
+  return {
+    arm(origin) {
+      cancelTimer();
+      emitted = false;
+      armedOrigin = '';
+      if (typeof origin !== 'string' || pageLocation?.protocol !== 'https:' ||
+          origin !== pageLocation.origin || !ensureObserver()) return false;
+      armedOrigin = origin;
+      evaluate();
+      return true;
+    },
+    evaluate,
+    stop() {
+      cancelTimer();
+      armedOrigin = '';
+      emitted = false;
+      observer?.disconnect?.();
+      observer = null;
+    },
+  };
+}
+
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRenderer) {
   window.addEventListener('DOMContentLoaded', () => {
+    const spaCredentialMonitor = createSpaCredentialMonitor({
+      onState: (state) => ipcRenderer.send('campus-credential-page-state', state),
+    });
     document.addEventListener('submit', (event) => {
       if (!(event.target instanceof HTMLFormElement)) return;
       const credential = credentialFromForm(event.target);
-      if (credential) ipcRenderer.send('campus-credential-candidate', credential);
+      if (credential) {
+        ipcRenderer.send('campus-credential-candidate', credential);
+        spaCredentialMonitor.arm(credential.origin);
+      }
     }, true);
 
     // A candidate is deliberately not treated as a successful login at submit
@@ -93,6 +185,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
     // the candidate once the destination page no longer contains that form.
     const state = pageCredentialState();
     if (state) ipcRenderer.send('campus-credential-page-state', state);
+    window.addEventListener('pagehide', () => spaCredentialMonitor.stop(), { once: true });
   });
 
   ipcRenderer.on('campus-credential-fill', (_event, credential) => {
@@ -123,10 +216,12 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
 
 if (typeof module !== 'undefined') {
   module.exports = {
+    createSpaCredentialMonitor,
     credentialFromForm,
     isPasswordChangeForm,
     loginPasswordInput,
     pageCredentialState,
+    SPA_CREDENTIAL_SETTLE_MS,
     visibleInput,
   };
 }

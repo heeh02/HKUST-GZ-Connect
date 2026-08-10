@@ -24,10 +24,15 @@ const { resolveUserDataOverride } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
-  engineFailureKind,
-  engineFailureKindFromCode,
+  classifyEngineStopReason,
+  resolveEngineFailureKind,
 } = require('./lib/engine-output');
 const { EngineEventParser } = require('./lib/engine-protocol');
+const { EngineControlClient } = require('./lib/engine-control-client');
+const {
+  ENGINE_HELLO_TIMEOUT_MS,
+  EngineProtocolSession,
+} = require('./lib/engine-protocol-session');
 const { exactExecutablePattern } = require('./lib/engine-process');
 const {
   EngineSupervisor,
@@ -179,6 +184,7 @@ let tunnelProbeFailures = 0;
 let tunnelRecoveryInFlight = null;
 let telemetryGeneration = null;
 let activeProxyCredential = null;
+let activeEngineControl = null;
 let stableProxyCredential = null;
 let lastTele = {
   connCount: 0,
@@ -332,6 +338,18 @@ function clearActiveProxyCredential(expectedGeneration = null) {
   if (!activeProxyCredential.destroy(expectedGeneration)) return false;
   activeProxyCredential = null;
   return true;
+}
+function clearActiveEngineControl(expectedGeneration = null) {
+  if (!activeEngineControl || (expectedGeneration !== null &&
+      activeEngineControl.generation !== expectedGeneration)) return false;
+  activeEngineControl.client.close();
+  activeEngineControl = null;
+  return true;
+}
+function requestActiveEngineControlShutdown() {
+  const control = activeEngineControl;
+  if (!control || !control.client.negotiated) return false;
+  return control.client.shutdown().then(() => true);
 }
 function loadStableProxyCredential() {
   if (stableProxyCredential) return stableProxyCredential;
@@ -572,10 +590,12 @@ async function connect(isRetry = false, expectedIntent = null) {
   finally { if (connectInFlight === operation) connectInFlight = null; }
 }
 
-function handleEngineClose({ code, generation }, diagnosticTail, structuredFatalCode = null) {
+function handleEngineClose({ code, generation }, diagnosticTail,
+  structuredFatalCode = null, structuredStopReason = null, stoppedSocksPort = 1080) {
   // A delayed close from an already invalidated generation must not suspend a
   // newer listener that is now serving the browser.
   const supervisorGenerationCurrent = engineSupervisor.isCurrent(generation);
+  clearActiveEngineControl(generation);
   clearActiveProxyCredential(generation);
   removeExternalProxySidecar();
   if (!supervisorGenerationCurrent || !connectionState.isCurrentGeneration(generation)) return;
@@ -595,10 +615,15 @@ function handleEngineClose({ code, generation }, diagnosticTail, structuredFatal
   state.dnsMode = 'unknown';
   connectedAt = null;
   stopTelemetry();
-  const failureKind = structuredFatalCode
-    ? engineFailureKindFromCode(structuredFatalCode)
-    : engineFailureKind(diagnosticTail);
+  const failureKind = resolveEngineFailureKind({
+    code: structuredFatalCode,
+    stopReason: structuredStopReason,
+    diagnosticText: diagnosticTail,
+  });
   const terminalFailure = failureKind === 'terminal';
+  if (!structuredFatalCode && !state.lastError) {
+    state.lastError = classifyEngineStopReason(structuredStopReason, stoppedSocksPort, t);
+  }
   let cfg;
   try {
     cfg = loadSettings();
@@ -666,6 +691,7 @@ function handleEngineExitBoundary({ generation }) {
   // local process cannot bind the configured port and impersonate the proxy.
   if (!engineSupervisor.isCurrent(generation) ||
       !connectionState.isCurrentGeneration(generation)) return;
+  clearActiveEngineControl(generation);
   clearActiveProxyCredential(generation);
   removeExternalProxySidecar();
   suspendOpenBrowserPolicy().catch((error) => {
@@ -811,7 +837,8 @@ async function connectOnce(isRetry, intent) {
   let engineGeneration = null;
   let ownedEngine = null;
   let structuredFatalCode = null;
-  let legacyFallbackTimer = null;
+  let protocolSession = null;
+  let protocolHelloTimer = null;
   connectionState.invalidateEngineGeneration();
   const expectedEngineGeneration = engineSupervisor.currentGeneration + 1;
   const engineArgs = [
@@ -819,6 +846,7 @@ async function connectOnce(isRetry, intent) {
     '--credentials-stdin',
     '--socks-bind', `127.0.0.1:${Number(s.port)}`,
     '--generation', String(expectedEngineGeneration),
+    '--control-api-v2-stdin',
   ];
   if (proxyCredentialMode === 'required') engineArgs.push('--socks-auth-stdin');
   if (proxyCredentialMode === 'optional') engineArgs.push('--socks-auth-optional-stdin');
@@ -835,9 +863,15 @@ async function connectOnce(isRetry, intent) {
     },
     onExit: handleEngineExitBoundary,
     onClose: (result) => {
-      if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
+      if (protocolHelloTimer) clearTimeout(protocolHelloTimer);
       if (ownedEngine) removeEngineOwnerRecord(ENGINE_OWNER, ownedEngine);
-      handleEngineClose(result, diagnosticTail, structuredFatalCode);
+      handleEngineClose(
+        result,
+        diagnosticTail,
+        structuredFatalCode,
+        protocolSession?.stoppedReason || null,
+        Number(s.port),
+      );
     },
   });
   if (!started.ok) {
@@ -863,6 +897,9 @@ async function connectOnce(isRetry, intent) {
     await engineSupervisor.stop({ graceMs: 0, forceWaitMs: STOP_FORCE_WAIT_MS });
     return { ok: false };
   }
+  protocolSession = new EngineProtocolSession(engineGeneration);
+  const engineControlClient = new EngineControlClient({ writable: child.stdin });
+  activeEngineControl = { generation: engineGeneration, client: engineControlClient };
   if (proxyCredential) {
     if (!proxyCredential.bindGeneration(engineGeneration, Number(s.port))) {
       proxyCredential.destroy();
@@ -887,15 +924,27 @@ async function connectOnce(isRetry, intent) {
   let proxyCredentialLines = proxyCredential
     ? proxyCredential.stdinSuffix(engineGeneration)
     : '';
-  child.stdin.end(`${s.username}\n${pw}\n${proxyCredentialLines}`);
+  // Control API v2 reuses this inherited private pipe after the fixed two- or
+  // four-line credential prefix. Keep stdin open: closing it disables only
+  // the optional control plane, while credentials and control frames remain
+  // distinct bounded parsers in the engine.
+  child.stdin.write(`${s.username}\n${pw}\n${proxyCredentialLines}`);
   pw = '';
   proxyCredentialLines = '';
   const eventParser = new EngineEventParser();
-  let structuredApiSeen = false;
-  let legacyFallbackEnabled = false;
-  let legacyStdoutTail = '';
   let listenerReady = false;
   let browserActivationInFlight = null;
+  let controlHandshakeStarted = false;
+
+  const startControlHandshake = () => {
+    if (controlHandshakeStarted || !engineSupervisor.isCurrent(engineGeneration)) return;
+    controlHandshakeStarted = true;
+    // The engine intentionally begins consuming control actions only after
+    // authentication and L3 setup. A failed optional handshake must not tear
+    // down an otherwise healthy tunnel; stop retains the bounded SIGTERM
+    // fallback when v2 is unavailable.
+    engineControlClient.handshake().catch(() => {});
+  };
 
   const finishConnected = () => {
     if (!engineSupervisor.isCurrent(engineGeneration) || listenerReady === false ||
@@ -934,17 +983,9 @@ async function connectOnce(isRetry, intent) {
     });
   };
 
-  const applyHumanDiagnostic = (chunk, allowReadiness) => {
+  const applyHumanDiagnostic = (chunk) => {
     diagnosticTail = (diagnosticTail + chunk).slice(-512);
     if (!engineSupervisor.isCurrent(engineGeneration)) return;
-    if (allowReadiness && /SOCKS5 server listening/.test(diagnosticTail)) {
-      listenerReady = true;
-      markConnected();
-    }
-    if (allowReadiness && /Client IP assigned/.test(diagnosticTail)) {
-      state.clientIp = t('status.ipAssigned');
-      emit();
-    }
     const classifiedError = classifyEngineOutput(diagnosticTail, s.port, t);
     if (classifiedError) {
       state.lastError = classifiedError;
@@ -953,14 +994,11 @@ async function connectOnce(isRetry, intent) {
   };
 
   const applyEngineEvent = (event) => {
-    if (!engineSupervisor.isCurrent(engineGeneration)) return;
-    if (event.type === 'state_changed' && event.generation !== engineGeneration) return;
-    if (event.type === 'stopped' && event.generation !== engineGeneration) return;
+    if (!engineSupervisor.isCurrent(engineGeneration) || !protocolSession.accept(event)) return;
     switch (event.type) {
       case 'hello':
-        structuredApiSeen = true;
-        if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
-        legacyFallbackTimer = null;
+        if (protocolHelloTimer) clearTimeout(protocolHelloTimer);
+        protocolHelloTimer = null;
         break;
       case 'state_changed':
         if (event.state === 'connecting' || event.state === 'authenticating') {
@@ -979,6 +1017,7 @@ async function connectOnce(isRetry, intent) {
           break;
         }
         listenerReady = true;
+        startControlHandshake();
         markConnected();
         break;
       case 'client_ip_assigned':
@@ -998,43 +1037,34 @@ async function connectOnce(isRetry, intent) {
         state.lastError = classifyEngineCode(event.code, s.port, t);
         emit();
         break;
+      case 'stopped':
+        // EngineProtocolSession retains the generation-bound reason for the
+        // authoritative process close boundary.
+        break;
       default:
         break;
     }
   };
 
-  legacyFallbackTimer = setTimeout(() => {
-    if (structuredApiSeen || !engineSupervisor.isCurrent(engineGeneration)) return;
-    legacyFallbackEnabled = true;
-    if (legacyStdoutTail) {
-      logWriter.append(legacyStdoutTail);
-      applyHumanDiagnostic(legacyStdoutTail, true);
-    }
-    applyHumanDiagnostic(diagnosticTail, true);
-  }, 750);
-  legacyFallbackTimer.unref?.();
+  protocolHelloTimer = setTimeout(() => {
+    if (protocolSession.helloSeen || !engineSupervisor.isCurrent(engineGeneration)) return;
+    structuredFatalCode = 'EVENT_OUTPUT_FAILED';
+    state.connecting = false;
+    state.lastError = classifyEngineCode(structuredFatalCode, s.port, t);
+    emit();
+    engineSupervisor.stop({ graceMs: 1000, forceWaitMs: STOP_FORCE_WAIT_MS }).catch(() => {});
+  }, ENGINE_HELLO_TIMEOUT_MS);
+  protocolHelloTimer.unref?.();
 
   child.stdout.on('data', (data) => {
+    engineControlClient.feed(data);
     const events = eventParser.feed(data);
-    if (events.length) {
-      structuredApiSeen = true;
-      if (legacyFallbackTimer) clearTimeout(legacyFallbackTimer);
-      legacyFallbackTimer = null;
-      for (const event of events) applyEngineEvent(event);
-      return;
-    }
-    if (structuredApiSeen) return;
-    const chunk = data.toString();
-    legacyStdoutTail = (legacyStdoutTail + chunk).slice(-4096);
-    if (legacyFallbackEnabled) {
-      logWriter.append(chunk);
-      applyHumanDiagnostic(chunk, true);
-    }
+    for (const event of events) applyEngineEvent(event);
   });
   child.stderr.on('data', (data) => {
     const chunk = data.toString();
     logWriter.append(chunk);
-    applyHumanDiagnostic(chunk, legacyFallbackEnabled);
+    applyHumanDiagnostic(chunk);
   });
   return { ok: true, generation: engineGeneration };
 }
@@ -1054,6 +1084,7 @@ function ensureEngineStopped() {
       emit();
     },
     stopEngine: () => engineSupervisor.stop({
+      requestGracefulStop: requestActiveEngineControlShutdown,
       graceMs: STOP_GRACE_MS,
       forceWaitMs: STOP_FORCE_WAIT_MS,
     }),

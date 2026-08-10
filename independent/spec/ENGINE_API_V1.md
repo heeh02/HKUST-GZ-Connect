@@ -4,6 +4,13 @@
 including its newline terminator, is at most 1024 bytes and is flushed before
 the next lifecycle action. Human-readable diagnostics use stderr only.
 
+When the opt-in `--control-api-v2-stdin` transport is active, the same stdout
+stream can additionally contain the independently versioned, at-most-2048-byte
+`control_hello`, `control_result`, and `control_error` responses defined in
+[`ENGINE_CONTROL_API_V2.md`](ENGINE_CONTROL_API_V2.md). No v1 event shape or
+ordering rule changes, and launchers that do not opt in receive only this v1
+contract.
+
 The optional `--generation <u64>` argument identifies one desktop connection
 attempt. It defaults to `0` for older launchers. Generation is present on every
 `state_changed` and final `stopped` event so a delayed event from an old engine

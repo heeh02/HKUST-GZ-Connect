@@ -137,6 +137,143 @@ test('stop escalates once to SIGKILL and still finalizes only on close', async (
   assert.equal(supervisor.hasActive, false);
 });
 
+test('Control v2 stop waits for close without sending a signal', async () => {
+  const child = fakeChild();
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  const started = supervisor.start({ command: '/app/ec-engine' });
+  let requestContext = null;
+
+  const stopping = supervisor.stop({
+    requestGracefulStop: (context) => {
+      requestContext = context;
+      queueMicrotask(() => child.emit('close', 0, null));
+      return { ok: true };
+    },
+    controlGraceMs: 100,
+    graceMs: 100,
+    forceWaitMs: 100,
+  });
+
+  const result = await stopping;
+  assert.equal(result.ok, true);
+  assert.equal(result.phase, 'control');
+  assert.equal(requestContext.child, child);
+  assert.equal(requestContext.generation, started.generation);
+  assert.deepEqual(child.killCalls, []);
+});
+
+test('concurrent Control v2 stops share one flight and one request', async () => {
+  const child = fakeChild();
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  supervisor.start({ command: '/app/ec-engine' });
+  let requests = 0;
+  const options = {
+    requestGracefulStop: () => { requests += 1; },
+    controlGraceMs: 100,
+    graceMs: 100,
+    forceWaitMs: 100,
+  };
+
+  const first = supervisor.stop(options);
+  const second = supervisor.stop(options);
+  assert.equal(first, second);
+  assert.equal(requests, 1);
+  child.emit('close', 0, null);
+
+  assert.equal((await first).phase, 'control');
+  assert.equal(requests, 1);
+});
+
+test('a rejected Control v2 stop falls back to SIGTERM', async () => {
+  const child = fakeChild();
+  child.kill = (signal) => {
+    child.killCalls.push(signal || 'SIGTERM');
+    queueMicrotask(() => child.emit('close', 0, signal || 'SIGTERM'));
+    return true;
+  };
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  supervisor.start({ command: '/app/ec-engine' });
+
+  const stopping = supervisor.stop({
+    requestGracefulStop: () => Promise.reject(new Error('control pipe closed')),
+    controlGraceMs: 100,
+    graceMs: 100,
+    forceWaitMs: 100,
+  });
+  const result = await stopping;
+
+  assert.equal(result.ok, true);
+  assert.equal(result.phase, 'grace');
+  assert.deepEqual(child.killCalls, ['SIGTERM']);
+});
+
+test('a timed-out Control v2 stop escalates through SIGTERM and SIGKILL', async () => {
+  const child = fakeChild();
+  const deadlines = [];
+  const supervisor = new EngineSupervisor({
+    spawnProcess: () => child,
+    setTimeoutFn: (callback) => {
+      deadlines.push(callback);
+      return deadlines.length;
+    },
+    clearTimeoutFn: () => {},
+  });
+  supervisor.start({ command: '/app/ec-engine' });
+  const stopping = supervisor.stop({
+    requestGracefulStop: () => {},
+    controlGraceMs: 10,
+    graceMs: 10,
+    forceWaitMs: 10,
+  });
+
+  assert.deepEqual(child.killCalls, []);
+  deadlines[0]();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(child.killCalls, ['SIGTERM']);
+  deadlines[1]();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(child.killCalls, ['SIGTERM', 'SIGKILL']);
+  child.emit('close', null, 'SIGKILL');
+
+  const result = await stopping;
+  assert.equal(result.ok, true);
+  assert.equal(result.phase, 'force');
+});
+
+test('a stale Control v2 deadline never signals a replacement child', async () => {
+  const oldChild = fakeChild();
+  const newChild = fakeChild();
+  const deadlines = [];
+  let spawnCalls = 0;
+  const supervisor = new EngineSupervisor({
+    spawnProcess: () => [oldChild, newChild][spawnCalls++],
+    setTimeoutFn: (callback) => {
+      deadlines.push(callback);
+      return deadlines.length;
+    },
+    clearTimeoutFn: () => {},
+  });
+  supervisor.start({ command: '/app/ec-engine' });
+  const stopping = supervisor.stop({
+    requestGracefulStop: () => {},
+    controlGraceMs: 10,
+    graceMs: 10,
+    forceWaitMs: 10,
+  });
+
+  deadlines[0]();
+  oldChild.emit('close', 0, null);
+  assert.equal(supervisor.start({ command: '/app/ec-engine' }).ok, true);
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(oldChild.killCalls, []);
+  assert.deepEqual(newChild.killCalls, []);
+  assert.equal((await stopping).phase, 'grace');
+});
+
 test('generation invalidation cancels delayed retries', () => {
   const timers = new Map();
   let nextTimer = 1;

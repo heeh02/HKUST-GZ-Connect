@@ -41,7 +41,9 @@ that work is in progress.
 
 ```text
 desktop / CLI
-    -> versioned local engine API
+    <- Engine Event API v1: bounded one-way lifecycle/health NDJSON
+    <-> optional Engine Control API v2: private bounded requests/responses
+    -> versioned engine/provider boundaries
         -> auth state machine
         -> gateway-version capability adapters
         -> session/config/resource parsers
@@ -91,6 +93,42 @@ desktop / CLI
 - Secrets are passed as secret inputs, never command-line arguments or logs.
 - Gateway trust and official-package publisher trust are separate decisions.
 
+## Engine Event v1 and Control v2
+
+The two local APIs are complementary and must not be merged into an
+unversioned stream of ad-hoc messages:
+
+- Event API v1 is one-way, from engine to supervisor, on bounded stdout NDJSON.
+  It reports lifecycle and health. The generation-bound structured `stopped`
+  event is the terminal reason used at process close; human stderr text is not
+  an authoritative state protocol.
+- Control API v2 is opt-in and bidirectional. The supervisor appends bounded
+  control frames to the same inherited private stdin pipe after the fixed
+  credential prefix, and receives request-ID-correlated responses on the
+  bounded machine stdout stream. It creates no TCP or Unix-domain listener.
+  Its closed request schema contains no arbitrary secret, URL or destination
+  payload.
+- Without `--control-api-v2-stdin`, credential input retains the established
+  read-to-EOF contract. With the flag, EOF at a control-frame boundary closes
+  only the control channel; it is not a shutdown request. EOF inside a frame or
+  invalid framing closes that control channel without echoing input. An
+  explicit v2 shutdown request or the existing signal supervisor is required
+  to stop the engine.
+- The current implemented v2 capabilities are `engine.shutdown`,
+  `request.cancel`, and `control.close`. `require_capability` can name known
+  future provider families only so it can return a typed
+  `unsupported_capability`. A capability enum, provider trait, offline parser,
+  mock, or recognized authentication state is evidence of an extension point,
+  not an implemented resource catalogue, WebVPN, CAPTCHA, MFA, SSO, certificate
+  or HID feature.
+
+The canonical framing, bounds, handshake, EOF, cancellation and capability
+semantics are in
+[`spec/ENGINE_CONTROL_API_V2.md`](spec/ENGINE_CONTROL_API_V2.md). Any compatible
+supervisor must preserve the graceful-stop budget and the bounded
+signal/force-stop fallback; a broken optional control exchange must not strand
+the engine or silently turn stdin close into logout.
+
 ## Release gates
 
 A release is blocked unless all applicable gates pass:
@@ -100,7 +138,8 @@ A release is blocked unless all applicable gates pass:
 - official-client versus independent-engine black-box parity;
 - official package publisher verification plus binary/text/adapter hash review;
 - SOCKS TCP, SOCKS UDP, authenticated HTTP/WS forwarding, PAC routing,
-  reconnect, idle lifetime, timeout, and logout tests;
+  reconnect, idle lifetime, timeout, logout, Event v1 terminal-state and
+  Control v2 graceful-stop/EOF tests;
 - required secondary authentication tests;
 - supported OS/architecture packaging and signing;
 - security review of new binary formats, crypto, drivers, or attestation;

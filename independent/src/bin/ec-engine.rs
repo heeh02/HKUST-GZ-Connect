@@ -1,3 +1,6 @@
+use ec_compat::engine::control::{
+    ControlAction, ControlExchange, ControlFrameReader, ControlSession, MAX_ACTIVE_REQUESTS,
+};
 use ec_compat::engine::dns::VpnDnsResolver;
 use ec_compat::engine::event::{
     AddressFamily, DnsMode, EngineErrorCode, EngineEvent, EngineEventEmitter, EngineState,
@@ -7,10 +10,11 @@ use ec_compat::engine::ip_packet::stack_mtu;
 use ec_compat::engine::netstack::VirtualNetstack;
 use ec_compat::engine::provider::ProviderError;
 use ec_compat::engine::proxy::{NameResolver, RejectDomainResolver, SystemDnsResolver};
-use ec_compat::engine::session::AuthenticatedEngineSession;
+use ec_compat::engine::session::{AuthenticatedGatewaySession, ModernL3TransportBackend};
 use ec_compat::engine::socks::SocksServer;
 use ec_compat::engine::socks_auth::{
     EngineCredentials, ProxyAuthenticationMode, read_engine_credentials,
+    read_engine_credentials_prefix,
 };
 use ec_compat::watch::load_json;
 use ec_compat::{Error, Result};
@@ -20,17 +24,48 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+const CONTROL_SHUTDOWN_CANCEL_WINDOW: Duration = Duration::from_millis(100);
+
 struct EngineArguments {
     config: PathBuf,
     bind: SocketAddr,
     generation: u64,
     proxy_authentication_mode: ProxyAuthenticationMode,
+    control_api_v2_stdin: bool,
 }
 
 struct EngineFailure {
     code: EngineErrorCode,
     stop_reason: StopReason,
     error: Error,
+}
+
+#[derive(Default)]
+struct PendingControlActions {
+    shutdowns: std::collections::BTreeMap<u64, tokio::time::Instant>,
+}
+
+impl PendingControlActions {
+    fn apply(&mut self, action: ControlAction, now: tokio::time::Instant) -> bool {
+        match action {
+            ControlAction::Shutdown { request_id } => {
+                self.shutdowns
+                    .insert(request_id, now + CONTROL_SHUTDOWN_CANCEL_WINDOW);
+                false
+            }
+            ControlAction::Cancel {
+                request_to_cancel, ..
+            } => {
+                self.shutdowns.remove(&request_to_cancel);
+                false
+            }
+            ControlAction::Close { .. } => true,
+        }
+    }
+
+    fn next_shutdown_deadline(&self) -> Option<tokio::time::Instant> {
+        self.shutdowns.values().copied().min()
+    }
 }
 
 impl EngineFailure {
@@ -62,6 +97,10 @@ impl<W: Write> EngineLifecycle<W> {
 
     fn emit(&mut self, event: EngineEvent) -> Result<()> {
         self.events.emit(&event)
+    }
+
+    fn emit_control(&mut self, exchange: &ControlExchange) -> Result<()> {
+        self.events.emit_control(&exchange.response)
     }
 
     fn state(&mut self, state: EngineState) -> Result<()> {
@@ -102,6 +141,7 @@ fn validate_arguments(args: &[String]) -> Result<()> {
     let mut socks_seen = false;
     let mut generation_seen = false;
     let mut socks_auth_seen = false;
+    let mut control_api_seen = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -126,6 +166,10 @@ fn validate_arguments(args: &[String]) -> Result<()> {
             }
             "--socks-auth-stdin" | "--socks-auth-optional-stdin" if !socks_auth_seen => {
                 socks_auth_seen = true;
+                index += 1;
+            }
+            "--control-api-v2-stdin" if !control_api_seen => {
+                control_api_seen = true;
                 index += 1;
             }
             _ => {
@@ -184,12 +228,53 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     } else {
         ProxyAuthenticationMode::None
     };
+    let control_api_v2_stdin = args
+        .iter()
+        .any(|argument| argument == "--control-api-v2-stdin");
     Ok(EngineArguments {
         config,
         bind,
         generation,
         proxy_authentication_mode,
+        control_api_v2_stdin,
     })
+}
+
+fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlExchange>> {
+    let (sender, receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
+    std::thread::Builder::new()
+        .name("ec-engine-control".into())
+        .spawn(move || {
+            let stdin = std::io::stdin();
+            if control_reader_loop(stdin.lock(), sender).is_err() {
+                // Framing errors are intentionally generic: never echo a raw
+                // control line that might have been supplied by a faulty
+                // caller. EOF is a normal control-channel close and does not
+                // reach this branch or stop the engine.
+                eprintln!("ec-engine: invalid engine control frame; control channel closed");
+            }
+        })
+        .map_err(|_| Error("engine control reader could not start".into()))?;
+    Ok(receiver)
+}
+
+fn control_reader_loop<R: std::io::Read>(
+    reader: R,
+    sender: tokio::sync::mpsc::Sender<ControlExchange>,
+) -> Result<()> {
+    let mut reader = ControlFrameReader::new(reader);
+    let mut session = ControlSession::new();
+    while let Some(request) = reader.read_request()? {
+        let exchange = session.handle(request);
+        let closes_channel = matches!(exchange.action, Some(ControlAction::Close { .. }));
+        if sender.blocking_send(exchange).is_err() {
+            return Ok(());
+        }
+        if closes_channel {
+            return Ok(());
+        }
+    }
+    Ok(())
 }
 
 fn generation_hint(args: &[String]) -> u64 {
@@ -304,19 +389,35 @@ async fn run_engine<W: Write>(
     lifecycle
         .state(EngineState::Authenticating)
         .map_err(event_output_failure)?;
+    let credentials = if arguments.control_api_v2_stdin {
+        read_engine_credentials_prefix(std::io::stdin().lock(), arguments.proxy_authentication_mode)
+    } else {
+        read_engine_credentials(std::io::stdin().lock(), arguments.proxy_authentication_mode)
+    }
+    .map_err(|error| {
+        failure(
+            EngineErrorCode::CredentialsInvalid,
+            StopReason::StartupFailed,
+            error,
+        )
+    })?;
+    let mut control_receiver = if arguments.control_api_v2_stdin {
+        Some(start_control_reader().map_err(|error| {
+            failure(
+                EngineErrorCode::LocalListenerFailed,
+                StopReason::StartupFailed,
+                error,
+            )
+        })?)
+    } else {
+        None
+    };
     let EngineCredentials {
         gateway_username,
         gateway_password,
         proxy_authentication,
-    } = read_engine_credentials(std::io::stdin().lock(), arguments.proxy_authentication_mode)
-        .map_err(|error| {
-            failure(
-                EngineErrorCode::CredentialsInvalid,
-                StopReason::StartupFailed,
-                error,
-            )
-        })?;
-    let session = AuthenticatedEngineSession::authenticate_with_provider_error(
+    } = credentials;
+    let session = AuthenticatedGatewaySession::authenticate_with_provider_error(
         &config,
         &gateway_username,
         &gateway_password,
@@ -325,14 +426,28 @@ async fn run_engine<W: Write>(
     drop(gateway_password);
     drop(gateway_username);
 
-    let dns_servers = session.dns_servers();
-    let (session, data_plane) = session.establish_data_plane_or_logout().map_err(|error| {
-        failure(
-            EngineErrorCode::DataPlaneSetupFailed,
-            StopReason::StartupFailed,
-            error,
-        )
-    })?;
+    let transport_backend = match ModernL3TransportBackend::new(&config) {
+        Ok(backend) => backend,
+        Err(error) => {
+            let _ = session.logout();
+            return Err(failure(
+                EngineErrorCode::DataPlaneSetupFailed,
+                StopReason::StartupFailed,
+                error,
+            ));
+        }
+    };
+    let (session, transport) = transport_backend
+        .connect_or_logout(session)
+        .map_err(|error| {
+            failure(
+                EngineErrorCode::DataPlaneSetupFailed,
+                StopReason::StartupFailed,
+                error,
+            )
+        })?;
+    let dns_servers = transport.dns_servers().to_vec();
+    let data_plane = transport.into_data_plane();
     let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());
     let netstack = match VirtualNetstack::start(data_plane, mtu) {
         Ok(netstack) => Arc::new(netstack),
@@ -454,13 +569,41 @@ async fn run_engine<W: Write>(
             }
         };
         tokio::pin!(service_exit);
-        tokio::select! {
-            signal = shutdown_signal() => match signal {
-                Ok(()) => ShutdownCause::UserRequested,
-                Err(error) => ShutdownCause::SignalFailed(error),
-            },
-            error = &mut service_exit => ShutdownCause::LocalServiceFailed(error),
-            _ = wait_for_unhealthy(health) => ShutdownCause::NetworkDisconnected,
+        let signal = shutdown_signal();
+        tokio::pin!(signal);
+        let unhealthy = wait_for_unhealthy(health);
+        tokio::pin!(unhealthy);
+        let mut pending_control_actions = PendingControlActions::default();
+        loop {
+            let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
+            tokio::select! {
+                signal = &mut signal => break match signal {
+                    Ok(()) => ShutdownCause::UserRequested,
+                    Err(error) => ShutdownCause::SignalFailed(error),
+                },
+                error = &mut service_exit => break ShutdownCause::LocalServiceFailed(error),
+                _ = &mut unhealthy => break ShutdownCause::NetworkDisconnected,
+                _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
+                    break ShutdownCause::UserRequested;
+                }
+                exchange = receive_control(&mut control_receiver), if control_receiver.is_some() => {
+                    let Some(exchange) = exchange else {
+                        // Closing the inherited stdin control stream is not a
+                        // request to stop the VPN. Signal/process supervision
+                        // remains the legacy-compatible shutdown path.
+                        control_receiver = None;
+                        continue;
+                    };
+                    if let Err(error) = lifecycle.emit_control(&exchange) {
+                        break ShutdownCause::ControlOutputFailed(error);
+                    }
+                    if exchange.action.is_some_and(|action| {
+                        pending_control_actions.apply(action, tokio::time::Instant::now())
+                    }) {
+                            control_receiver = None;
+                    }
+                }
+            }
         }
     };
     services.abort_all();
@@ -523,6 +666,28 @@ async fn run_engine<W: Write>(
                 Error("VPN data plane disconnected".into()),
             ))
         }
+        ShutdownCause::ControlOutputFailed(error) => {
+            if let Err(logout_error) = logout {
+                eprintln!("ec-engine: {logout_error}");
+            }
+            Err(event_output_failure(error))
+        }
+    }
+}
+
+async fn receive_control(
+    receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlExchange>>,
+) -> Option<ControlExchange> {
+    match receiver {
+        Some(receiver) => receiver.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn wait_for_control_shutdown(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
     }
 }
 
@@ -531,6 +696,7 @@ enum ShutdownCause {
     SignalFailed(Error),
     LocalServiceFailed(Error),
     NetworkDisconnected,
+    ControlOutputFailed(Error),
 }
 
 #[cfg(unix)]
@@ -589,10 +755,82 @@ mod tests {
     fn generation_is_optional_and_defaults_to_zero() {
         let parsed = parse_arguments(&valid_arguments()).unwrap();
         assert_eq!(parsed.generation, 0);
+        assert!(!parsed.control_api_v2_stdin);
         assert_eq!(
             parsed.proxy_authentication_mode,
             ProxyAuthenticationMode::None
         );
+    }
+
+    #[test]
+    fn control_v2_stdin_is_opt_in_and_duplicate_safe() {
+        let mut arguments = valid_arguments();
+        arguments.push("--control-api-v2-stdin".into());
+        assert!(parse_arguments(&arguments).unwrap().control_api_v2_stdin);
+        arguments.push("--control-api-v2-stdin".into());
+        assert!(parse_arguments(&arguments).is_err());
+    }
+
+    #[test]
+    fn synthetic_control_reader_preserves_eof_and_typed_actions() {
+        let wire = b"{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":2,\"command\":{\"name\":\"require_capability\",\"capability\":\"transport.web_vpn\"}}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":3,\"command\":{\"name\":\"shutdown\"}}\n{\"type\":\"cancel\",\"apiVersion\":2,\"requestId\":4,\"requestToCancel\":3}\n{\"type\":\"close\",\"apiVersion\":2,\"requestId\":5}\n";
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
+        control_reader_loop(wire.as_slice(), sender).unwrap();
+
+        let hello = receiver.blocking_recv().unwrap();
+        assert!(matches!(
+            hello.response,
+            ec_compat::engine::control::ControlResponse::Hello { .. }
+        ));
+        let unsupported = receiver.blocking_recv().unwrap();
+        assert!(matches!(
+            unsupported.response,
+            ec_compat::engine::control::ControlResponse::Error {
+                error: ec_compat::engine::control::ControlProtocolError::UnsupportedCapability {
+                    capability: ec_compat::engine::control::ControlCapability::TransportWebVpn,
+                },
+                ..
+            }
+        ));
+        assert_eq!(unsupported.action, None);
+        let shutdown = receiver.blocking_recv().unwrap();
+        assert_eq!(
+            shutdown.action,
+            Some(ControlAction::Shutdown { request_id: 3 })
+        );
+        let cancel = receiver.blocking_recv().unwrap();
+        assert_eq!(
+            cancel.action,
+            Some(ControlAction::Cancel {
+                request_id: 4,
+                request_to_cancel: 3,
+            })
+        );
+        let close = receiver.blocking_recv().unwrap();
+        assert_eq!(close.action, Some(ControlAction::Close { request_id: 5 }));
+        // Reader EOF/close drops only this bounded channel. There is no
+        // synthesized Shutdown action.
+        assert!(receiver.blocking_recv().is_none());
+    }
+
+    #[test]
+    fn queued_shutdown_is_cancellable_before_its_bounded_commit_window() {
+        let now = tokio::time::Instant::now();
+        let mut pending = PendingControlActions::default();
+        assert!(!pending.apply(ControlAction::Shutdown { request_id: 41 }, now));
+        assert_eq!(
+            pending.next_shutdown_deadline(),
+            Some(now + CONTROL_SHUTDOWN_CANCEL_WINDOW)
+        );
+        assert!(!pending.apply(
+            ControlAction::Cancel {
+                request_id: 42,
+                request_to_cancel: 41,
+            },
+            now,
+        ));
+        assert_eq!(pending.next_shutdown_deadline(), None);
+        assert!(pending.apply(ControlAction::Close { request_id: 43 }, now));
     }
 
     #[test]

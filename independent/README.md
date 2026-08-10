@@ -27,6 +27,8 @@ multi-flow, sleep/resume, and reconnect canaries remain release gates.
 
 Module responsibilities and change rules are defined in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Implementation status and real-environment evidence are tracked conservatively
+in [`../ROADMAP.md`](../ROADMAP.md).
 The offline resource-directory boundary is defined in
 [`spec/RESOURCE_CATALOGUE_V1.md`](spec/RESOURCE_CATALOGUE_V1.md); it does not
 claim production retrieval support.
@@ -191,6 +193,16 @@ fails so its supervisor can reconnect the whole session. Local TCP connection
 attempts are bounded so a dead destination cannot hold a proxy task forever.
 Setup read timeouts do not expire an otherwise healthy idle receive channel.
 
+Authentication ownership is separate from Modern L3 ownership.
+`AuthenticatedGatewaySession` retains only the authenticated HTTPS cookie jar,
+logout endpoint, and opaque gateway session identifier. It does not own parsed
+L3 configuration, the Modern L3 token, DNS results, certificate pin, or data
+plane. `ModernL3TransportBackend` performs configuration/token/bootstrap work,
+and `ModernL3Connection` hands its DNS list and data plane to process assembly.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the complete ownership table.
+
+## Local proxy frontend modes
+
 By default, that frontend keeps the compatible SOCKS5 `NO_AUTH` behavior and
 stdin contains exactly the gateway username and password lines. Passing either
 `--socks-auth-optional-stdin` or `--socks-auth-stdin` changes stdin to exactly
@@ -230,6 +242,33 @@ framing and nonempty chunk trailers fail closed. WebSocket upgrades switch to
 duplex streaming only after the authenticated, rewritten handshake. Missing
 and incorrect HTTP credentials receive one fixed 407 response before method or
 target validation. Strict mode always rejects SOCKS5 UDP ASSOCIATE.
+
+## Engine lifecycle APIs
+
+Engine Event API v1 remains the one-way, bounded engine-to-supervisor NDJSON
+stream. It now finishes a normal or classified failure path with a structured
+generation-bound `stopped` reason, so the desktop does not infer terminal state
+from human diagnostics.
+
+Control API v2 is a separate opt-in control plane. With
+`--control-api-v2-stdin`, the engine reads the fixed two- or four-line
+credential prefix and then keeps that already inherited private stdin pipe for
+bounded control frames. Responses share bounded stdout NDJSON but use
+`apiVersion: 2` and request IDs, while Event v1 remains unchanged. The desktop
+uses the negotiated shutdown request first so the engine can close services
+and log out, then retains bounded signal and force-stop fallbacks.
+
+Control v2 opens no listener and its closed schema cannot represent a
+credential, token, URL, or destination. EOF after a complete frame closes only
+the optional control channel and never stops the tunnel; without the opt-in
+flag, the previous credential read-to-EOF behavior is unchanged. Current
+implemented capabilities are shutdown, request cancellation, and control
+close. Resource, WebVPN, CAPTCHA, MFA, SSO, certificate, and HID names exist
+only to return typed unsupported results; this is not feature support. See
+[`spec/ENGINE_CONTROL_API_V2.md`](spec/ENGINE_CONTROL_API_V2.md) for framing,
+bounds, negotiation, cancellation, and EOF semantics.
+
+## Reproducible maintenance
 
 `Cargo.lock` and `rust-toolchain.toml` are committed. CI therefore tests a
 reviewed compiler/dependency graph instead of silently adopting new packages.

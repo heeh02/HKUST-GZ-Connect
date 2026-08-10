@@ -39,6 +39,23 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 默认模式不会修改系统 DNS、系统代理或默认路由。即使连接异常或强制退出，也
 不会在系统中留下 EasyConnect 常见的 DNS/路由残留。
 
+## 1.2.1 核心结果
+
+- Rust 引擎现在通过 Event API v1 输出带原因与连接代次的结构化 `stopped`
+  事件；桌面端只接受当前引擎代次的终止结果，不再依赖解析英文日志判断状态。
+- 桌面端和引擎在已有的私有标准输入管道上协商有界 Control API v2，优先请求
+  引擎自行停止并退出登录；控制失败或超时后仍保留有界的信号与强制停止兜底。
+  Control v2 不开放新端口，也没有可携带任意密钥、令牌、网址或目标地址的字段。
+- 认证会话与 Modern L3 已拆开：认证对象只保存已认证 HTTPS 会话、退出端点和
+  不透明会话标识；L3 配置、隧道令牌、DNS、证书绑定与数据面归传输后端管理。
+- 校园浏览器支持单页应用（SPA）的登录完成确认：只在同一 HTTPS 来源的密码
+  表单稳定消失后询问保存，并继续排除修改/重置密码表单；保存仍需用户明确确认。
+- 离线门禁用两个完全独立的 Electron 进程验证精确域名、子域名规则与 PAC 在
+  整个应用重启后仍然生效；测试只使用临时应用数据，不读取用户浏览器资料。
+- 新增轻量性能基线：隐藏窗口不得枚举应用且计时器数量有界，20 标签页测试验证
+  单 Session、切换延迟和视图生命周期。阈值是防挂死/灾难回归门禁，不代表真实
+  校园网关延迟或吞吐承诺。
+
 > 如果觉得 HKUST(GZ) Connect 好用，欢迎在 GitHub 给项目一个 ⭐ Star；谢谢支持！
 
 ## 下载
@@ -76,11 +93,11 @@ Windows 未签名构建可能显示 SmartScreen 提示：点击“更多信息�
 隧道或直连；标记为“直连”的合作站点使用本机原有网络，重定向回校内域名后
 又会自动进入校园隧道，其他应用不受影响。
 
-在 HTTPS 登录页提交账号密码后，校园浏览器会询问是否保存。只有用户明确点击
-“保存”才会写入；凭据按网站来源隔离，并由 macOS Keychain 或 Windows DPAPI
-加密后存放在本机。地址栏旁的密码按钮可填入或删除当前网站的凭据。凭据不会
-进入日志或诊断包；除用户原本登录的目标网站外，不会发送给项目维护者或
-GitHub。
+在 HTTPS 登录页提交账号密码后，校园浏览器只会在后续导航成功，或同一来源的
+SPA 密码表单稳定消失后询问是否保存。只有用户明确点击“保存”才会写入；凭据按
+网站来源隔离，并由 macOS Keychain 或 Windows DPAPI 加密后存放在本机。地址栏
+旁的密码按钮可填入或删除当前网站的凭据。凭据不会进入日志或诊断包；除用户
+原本登录的目标网站外，不会发送给项目维护者或 GitHub。
 
 主 VPN 账号与加密密码采用同一份本机事务日志提交。即使保存过程中应用崩溃或
 电脑断电，下次启动也只会恢复成一组相互匹配的账号和密码；无法证明一致时会
@@ -224,7 +241,7 @@ Clash/SSH 配置。
 ```text
 Electron 桌面界面
     -> 系统安全存储（Keychain / DPAPI）
-    -> Rust 认证与会话模块
+    -> Rust 认证会话 + L3 传输后端
     -> EasyConnect 兼容传输层
     -> IPv4 数据包校验与分帧
     -> 用户态 TCP/UDP 网络栈
@@ -277,6 +294,8 @@ npm ci
 npm test
 npm run test:main-integration
 npm run test:renderer-layout
+npm run test:routing-restart
+npm run test:idle-performance
 npm run test:browser-performance
 bash scripts/build-engine.sh
 npm start
@@ -285,8 +304,10 @@ npm start
 进一步资料：
 
 - [架构与模块边界](independent/ARCHITECTURE.md)
+- [1.2.1 路线图与证据状态](ROADMAP.md)
 - [桌面端安全模型](desktop/SECURITY.md)
 - [维护策略](independent/MAINTENANCE.md)
+- [Engine Control API v2](independent/spec/ENGINE_CONTROL_API_V2.md)
 - [升级与持续可用方案](independent/UPGRADE_PLAYBOOK.md)
 - [面向学校部署的易用性与网络隔离方案](independent/SCHOOL_DEPLOYMENT.md)
 - [协议说明](independent/spec/PROTOCOL.md)
@@ -318,6 +339,31 @@ Version history:
 The default mode does not change operating-system DNS, the global proxy, or
 the default route. A failed connection or forced exit therefore does not
 leave EasyConnect-style DNS or routing residue behind.
+
+## 1.2.1 core results
+
+- The Rust engine now emits a structured Event API v1 `stopped` event with a
+  reason and connection generation. Desktop accepts a terminal result only
+  from the current generation instead of inferring state from English logs.
+- Desktop and engine negotiate bounded Control API v2 over the existing
+  inherited private stdin pipe. Graceful engine shutdown and logout are tried
+  first, with bounded signal and forced-stop fallbacks. Control v2 opens no new
+  port and has no arbitrary field capable of carrying credentials, tokens,
+  URLs, or destination addresses.
+- Authentication and Modern L3 are separated. The authenticated object retains
+  only the HTTPS session, logout endpoint, and opaque session identifier; L3
+  configuration, tunnel token, DNS, certificate binding, and data plane belong
+  to the transport backend.
+- Campus Browser now confirms same-document SPA login completion only after the
+  password form stays absent on the same HTTPS origin. Password-change/reset
+  forms remain excluded, and saving still requires explicit user confirmation.
+- An offline gate launches two completely separate Electron processes to prove
+  that exact-domain/subdomain rules and the PAC survive a full app restart. It
+  uses temporary application data and never reads the user's browser profile.
+- Lightweight performance baselines cover zero hidden-window application
+  enumeration, bounded timers, one Session across 20 tabs, switch latency, and
+  view lifecycle. Their broad thresholds catch hangs or catastrophic
+  regressions; they are not campus-gateway latency or throughput promises.
 
 ## Download
 
@@ -358,13 +404,14 @@ policy chooses Campus tunnel or Direct per site, and a redirect back to a
 campus domain automatically returns to the tunnel without changing other
 applications.
 
-After an HTTPS login form is submitted, Campus Browser asks whether to save
-the credential. Nothing is stored without that explicit choice. Credentials
-are isolated by exact website origin and encrypted locally through macOS
-Keychain or Windows DPAPI. The password button next to the address field can
-fill or remove the current site's credential. Passwords never enter logs or
-diagnostic bundles and, beyond the site the user is signing into, are not sent
-to the maintainer or GitHub.
+After an HTTPS login form is submitted, Campus Browser asks whether to save the
+credential only after a successful later navigation or stable disappearance of
+the password form in a same-origin SPA. Nothing is stored without that explicit
+choice. Credentials are isolated by exact website origin and encrypted locally
+through macOS Keychain or Windows DPAPI. The password button next to the address
+field can fill or remove the current site's credential. Passwords never enter
+logs or diagnostic bundles and, beyond the site the user is signing into, are
+not sent to the maintainer or GitHub.
 
 The main VPN account and encrypted password are committed under one local
 transaction journal. If the app or computer stops during a save, startup only
@@ -522,7 +569,7 @@ by Control Tower.
 ```text
 Electron desktop UI
     -> OS-protected credentials (Keychain / DPAPI)
-    -> Rust authentication and session modules
+    -> Rust authentication session + L3 transport backend
     -> EasyConnect-compatible transport
     -> bounded IPv4 validation and framing
     -> userspace TCP/UDP stack
@@ -578,6 +625,8 @@ npm ci
 npm test
 npm run test:main-integration
 npm run test:renderer-layout
+npm run test:routing-restart
+npm run test:idle-performance
 npm run test:browser-performance
 bash scripts/build-engine.sh
 npm start
@@ -586,8 +635,10 @@ npm start
 Further documentation:
 
 - [Architecture and module ownership](independent/ARCHITECTURE.md)
+- [1.2.1 roadmap and evidence status](ROADMAP.md)
 - [Desktop security model](desktop/SECURITY.md)
 - [Maintenance policy](independent/MAINTENANCE.md)
+- [Engine Control API v2](independent/spec/ENGINE_CONTROL_API_V2.md)
 - [Upgrade and continuity playbook](independent/UPGRADE_PLAYBOOK.md)
 - [School deployment and usability plan (Chinese)](independent/SCHOOL_DEPLOYMENT.md)
 - [Protocol specification](independent/spec/PROTOCOL.md)

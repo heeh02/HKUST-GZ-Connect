@@ -751,37 +751,39 @@ test('toolbar find commands drive findInPage on the active tab', async () => {
   const { browser, calls, scripts } = createFakeBrowser();
   await browser.open('portal.example.internal', 1080);
   const contents = browser.activeTab().view.webContents;
-  const hash = (command, value = '') =>
-    `about:blank#command=${command}&value=${encodeURIComponent(value)}`;
+  const command = (name, value = '') => ({ command: name, value });
 
-  browser.handleToolbarCommand(hash('find-open'));
+  browser.handleToolbarCommand(command('find-open'));
   assert.equal(browser.findOpen, true);
   assert.equal(toolbarState(scripts).findOpen, true);
   const bounds = calls.filter(([kind]) => kind === 'bounds').at(-1)[1];
   assert.equal(bounds.y, TOOLBAR_HEIGHT + FIND_BAR_HEIGHT,
     'the page must move below the open find bar');
 
-  browser.handleToolbarCommand(hash('find', '校园'));
+  browser.handleToolbarCommand(command('find', '校园'));
   assert.deepEqual(contents.findCalls.at(-1), ['校园', undefined]);
-  browser.handleToolbarCommand(hash('find-next'));
+  browser.handleToolbarCommand(command('find-next'));
   assert.deepEqual(contents.findCalls.at(-1), ['校园', { forward: true, findNext: true }]);
-  browser.handleToolbarCommand(hash('find-prev'));
+  browser.handleToolbarCommand(command('find-prev'));
   assert.deepEqual(contents.findCalls.at(-1), ['校园', { forward: false, findNext: true }]);
 
-  browser.handleToolbarCommand(hash('find', ''));
+  browser.handleToolbarCommand(command('find', ''));
   assert.deepEqual(contents.stopFindCalls.at(-1), 'clearSelection');
   const findCallsBefore = contents.findCalls.length;
-  browser.handleToolbarCommand(hash('find-next'));
+  browser.handleToolbarCommand(command('find-next'));
   assert.equal(contents.findCalls.length, findCallsBefore,
     'an empty query must not restart the search');
 
-  browser.handleToolbarCommand(hash('find-close'));
+  browser.handleToolbarCommand(command('find-close'));
   assert.equal(browser.findOpen, false);
   assert.equal(toolbarState(scripts).findOpen, false);
   assert.deepEqual(contents.stopFindCalls.at(-1), 'clearSelection');
   assert.equal(contents.focused, true, 'closing the find bar returns focus to the page');
   const closedBounds = calls.filter(([kind]) => kind === 'bounds').at(-1)[1];
   assert.equal(closedBounds.y, TOOLBAR_HEIGHT);
+
+  assert.equal(browser.handleToolbarCommand('about:blank#command=find-open'), false);
+  assert.equal(browser.findOpen, false, 'legacy URL hashes cannot issue toolbar commands');
 });
 
 test('downloads ask for a save location and surface failures', async () => {
@@ -881,6 +883,42 @@ test('site passwords are offered only after a successful later navigation', asyn
   assert.equal(tab.pendingCredential, null);
 });
 
+test('same-document SPA login uses the existing explicit credential prompt', async () => {
+  const prompts = [];
+  const saved = [];
+  const { browser } = createFakeBrowser({
+    credentialVault: {
+      get: async () => null,
+      save: async (...credential) => saved.push(credential),
+    },
+    dialog: {
+      showMessageBox: async (_window, options) => {
+        prompts.push(options);
+        return { response: 0 };
+      },
+    },
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const contents = browser.activeTab().view.webContents;
+  contents.emit('ipc-message', {}, 'campus-credential-candidate', {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'local-secret',
+  });
+  contents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+    transition: 'same-document',
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(prompts.length, 1);
+  assert.deepEqual(saved, [[
+    'https://sso.example.edu', 'student001', 'local-secret',
+  ]]);
+});
+
 test('a post-navigation login form is treated as failure and never saved', async () => {
   let promptCount = 0;
   let saveCount = 0;
@@ -957,7 +995,7 @@ test('renderer crash is isolated to one tab and reload retries its last URL', as
   assert.match(contents.getURL(), /^data:text\/html/);
   assert.equal(browser.tabs.length, 1);
 
-  browser.handleToolbarCommand('about:blank#command=reload');
+  browser.handleToolbarCommand({ command: 'reload', value: '' });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(contents.getURL(), originalUrl);
   assert.equal(tab.crashed, false);

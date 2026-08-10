@@ -13,4 +13,8 @@ test('website shelf shows a compact pinned subset until expanded', () => {
 test('route labels distinguish tunnel and direct shortcuts', () => {
   assert.equal(routeLabel({ route: 'campus' }), '校园隧道');
   assert.equal(routeLabel({ route: 'direct' }), '直连');
+  assert.equal(routeLabel({ route: 'campus' }, (key) => `translated:${key}`),
+    'translated:resources.routeCampus');
+  assert.equal(routeLabel({ route: 'direct' }, (key) => `translated:${key}`),
+    'translated:resources.routeDirect');
 });

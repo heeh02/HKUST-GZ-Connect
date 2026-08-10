@@ -226,6 +226,89 @@ pub fn read_engine_credentials<R: Read>(
     })
 }
 
+/// Read exactly the credential prefix used by Engine Control API v2.
+///
+/// Unlike [`read_engine_credentials`], this function never reads past the
+/// second or fourth LF. The caller can therefore retain the same inherited
+/// stdin stream for bounded control frames without buffering control bytes in
+/// a secret-bearing allocation. The old EOF-delimited contract remains the
+/// default and is intentionally not changed by this opt-in helper.
+pub fn read_engine_credentials_prefix<R: Read>(
+    mut stream: R,
+    proxy_authentication_mode: ProxyAuthenticationMode,
+) -> Result<EngineCredentials> {
+    let expected_lines = match proxy_authentication_mode {
+        ProxyAuthenticationMode::None => 2,
+        ProxyAuthenticationMode::Optional | ProxyAuthenticationMode::Required => 4,
+    };
+    let maximum_bytes = match proxy_authentication_mode {
+        ProxyAuthenticationMode::None => MAX_CREDENTIAL_BYTES,
+        ProxyAuthenticationMode::Optional | ProxyAuthenticationMode::Required => {
+            MAX_AUTH_INPUT_BYTES
+        }
+    };
+    let mut payload = Zeroizing::new(Vec::new());
+    let mut complete_lines = 0;
+    while complete_lines < expected_lines {
+        if payload.len() >= maximum_bytes {
+            return Err(Error("credential input exceeds the size limit".into()));
+        }
+        let mut byte = [0_u8; 1];
+        let count = stream.read(&mut byte)?;
+        if count == 0 {
+            return Err(Error(
+                "credential input ended before all lines arrived".into(),
+            ));
+        }
+        payload.push(byte[0]);
+        if byte[0] == b'\n' {
+            complete_lines += 1;
+        }
+    }
+    parse_engine_credential_payload(payload.as_slice(), proxy_authentication_mode)
+}
+
+fn parse_engine_credential_payload(
+    payload: &[u8],
+    proxy_authentication_mode: ProxyAuthenticationMode,
+) -> Result<EngineCredentials> {
+    let text =
+        std::str::from_utf8(payload).map_err(|_| Error("credential input must be UTF-8".into()))?;
+    let lines = text.lines().collect::<Vec<_>>();
+    let expected_lines = match proxy_authentication_mode {
+        ProxyAuthenticationMode::None => 2,
+        ProxyAuthenticationMode::Optional | ProxyAuthenticationMode::Required => 4,
+    };
+    if lines.len() != expected_lines {
+        return Err(Error(format!(
+            "credential input must contain exactly {expected_lines} lines"
+        )));
+    }
+    let gateway_encoded_bytes = lines[0]
+        .len()
+        .checked_add(lines[1].len())
+        .and_then(|length| length.checked_add(2))
+        .ok_or_else(|| Error("credential input exceeds the size limit".into()))?;
+    if gateway_encoded_bytes > MAX_CREDENTIAL_BYTES
+        || lines[0].is_empty()
+        || lines[1].is_empty()
+        || lines[0].contains('\0')
+        || lines[1].contains('\0')
+    {
+        return Err(Error("gateway credential input is empty or invalid".into()));
+    }
+    let proxy_authentication = match proxy_authentication_mode {
+        ProxyAuthenticationMode::None => ProxyAuthentication::None,
+        ProxyAuthenticationMode::Optional => ProxyAuthentication::optional(lines[2], lines[3])?,
+        ProxyAuthenticationMode::Required => ProxyAuthentication::required(lines[2], lines[3])?,
+    };
+    Ok(EngineCredentials {
+        gateway_username: Zeroizing::new(lines[0].to_owned()),
+        gateway_password: Zeroizing::new(lines[1].to_owned()),
+        proxy_authentication,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,6 +375,47 @@ mod tests {
             credentials
                 .proxy_authentication
                 .verify_rfc1929(b"proxy-user", b"proxy-pass")
+        );
+    }
+
+    #[test]
+    fn control_mode_reads_only_the_credential_prefix() {
+        let mut input =
+            "gateway-user\ngateway-pass\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n"
+                .as_bytes();
+        let credentials =
+            read_engine_credentials_prefix(&mut input, ProxyAuthenticationMode::None).unwrap();
+        assert_eq!(credentials.gateway_username.as_str(), "gateway-user");
+        assert_eq!(credentials.gateway_password.as_str(), "gateway-pass");
+        let mut remainder = String::new();
+        input.read_to_string(&mut remainder).unwrap();
+        assert_eq!(
+            remainder,
+            "{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n"
+        );
+
+        let mut strict = b"u\np\nproxy-user\nproxy-pass\ncontrol\n".as_slice();
+        let credentials =
+            read_engine_credentials_prefix(&mut strict, ProxyAuthenticationMode::Required).unwrap();
+        assert!(credentials.proxy_authentication.is_required());
+        let mut remainder = String::new();
+        strict.read_to_string(&mut remainder).unwrap();
+        assert_eq!(remainder, "control\n");
+    }
+
+    #[test]
+    fn control_mode_credentials_remain_bounded_and_complete() {
+        assert!(
+            read_engine_credentials_prefix(
+                b"gateway-user\n".as_slice(),
+                ProxyAuthenticationMode::None
+            )
+            .is_err()
+        );
+        let oversized = format!("{}\np\n", "u".repeat(MAX_CREDENTIAL_BYTES));
+        assert!(
+            read_engine_credentials_prefix(oversized.as_bytes(), ProxyAuthenticationMode::None)
+                .is_err()
         );
     }
 

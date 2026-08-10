@@ -10,7 +10,10 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | --- | --- | --- |
 | `engine/provider.rs` | Stable AuthProvider/ResourceProvider/TransportBackend traits, capability states, typed unsupported/unavailable errors | Vendor wire formats, UI state, credentials at rest |
 | `resource_catalogue.rs` | Bounded offline resource/group parser, opaque handles, redacted presentation schema and private launch-target resolution | Authenticated retrieval, authorization decisions, desktop rendering |
-| `engine/session.rs` | Password-auth and modern-L3 production adapters, configuration retrieval, token lifetime, logout | Packet forwarding or local proxy policy |
+| `engine/session.rs::AuthenticatedGatewaySession` | Authenticated HTTPS cookie jar, logout endpoint and opaque gateway session identifier | Parsed L3 configuration, Modern L3 token, DNS servers, certificate pin, data plane or proxy policy |
+| `engine/session.rs::{ModernL3TransportBackend, ModernL3Connection}` | Modern L3 configuration/token bootstrap, DNS handoff, certificate binding, data-plane assembly and cleanup on setup failure | Credentials at rest, desktop lifecycle or local proxy policy |
+| `engine/control.rs` | Bounded secret-free Control API v2 frames, negotiation, request IDs, typed actions and unsupported-capability responses | Public listeners, credential parsing, lifecycle events, arbitrary payloads or direct process termination |
+| `engine/event.rs` | Bounded Event API v1 lifecycle/health output and serialization of correlated Control v2 responses on the machine stream | Control request parsing or human diagnostics |
 | `modern.rs` | Active token, 64-byte channel-control contract, gateway endpoint resolution and socket setup | HTTP UI, DNS, or SOCKS |
 | `special_tls11.rs` | Isolated vendor TLS record/handshake compatibility | General-purpose TLS or authentication |
 | `engine/data_plane.rs` | Address lease and send/receive channel ownership | TCP/UDP socket semantics |
@@ -21,7 +24,7 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `engine/socks_auth.rs` | Bounded stdin proxy credentials, zeroizing constant-time RFC 1929/Basic verification | argv, events, logging, or gateway authentication |
 | `engine/socks.rs` | One-port protocol detection and dispatch; compatible, optional-auth, and strict SOCKS5 contracts plus the strict HTTP frontend | HTTP message rewriting or gateway protocol details |
 | `engine/socks/http_forward.rs` | Strict-only bounded ordinary HTTP/WS parsing, header rewriting, body framing, and streaming | DNS, destination authorization, credentials, or gateway protocol details |
-| `bin/ec-engine.rs` | Process assembly, signals, health shutdown | Protocol encoding |
+| `bin/ec-engine.rs` | Process assembly, signals, health shutdown, Control v2 action integration, logout and structured terminal state | Event/control encoding or desktop policy |
 | `desktop/lib/campus-browser.js` | Isolated browser session, proxy policy and safe navigation | Gateway authentication or packet formats |
 | `desktop/lib/tunnel-health.js` | When to probe the tunnel and how much evidence a restart requires | Probing itself, or engine lifecycle |
 
@@ -44,6 +47,37 @@ TCP control stream, and first-datagram endpoint learning on a shared loopback
 address would let another local user adopt the relay. Additional
 per-application or managed system frontends may be added behind the same
 destination policy. They must not modify system DNS or routes by default.
+
+## Authentication, transport and lifecycle boundaries
+
+`AuthenticatedGatewaySession` is deliberately authentication-only. It keeps
+the verified HTTPS session needed for authenticated requests and logout plus
+the opaque gateway session identifier returned by login. It does not retain a
+parsed L3 configuration, the Modern L3 transport token, DNS results, a tunnel
+certificate pin, or an `EasyConnectDataPlane`. `ModernL3TransportBackend`
+obtains those transport inputs, and `ModernL3Connection` hands the resulting
+DNS list and data plane to process assembly. A failed transport setup logs out
+the still-valid authenticated session instead of leaving ownership ambiguous.
+
+The local engine APIs also have separate directions:
+
+- **Engine Event API v1** is a one-way engine-to-supervisor bounded NDJSON
+  stream. It carries lifecycle and health facts. A terminal sequence emits
+  `state_changed: stopped` followed by `stopped` with a typed reason and the
+  engine generation, allowing the desktop to reject stale-process output.
+- **Engine Control API v2** is an opt-in, bidirectional control plane over the
+  already inherited private stdin/stdout pipes. Requests use a closed schema,
+  a 2048-byte frame limit, version negotiation and request IDs. It opens no
+  listener and cannot represent credentials, tokens, URLs or destinations.
+  Its currently advertised capabilities are shutdown, cancellation and
+  control-channel close. The process assembler applies accepted actions;
+  `engine/control.rs` itself never terminates a process.
+
+The complete wire and EOF contract is in
+[`spec/ENGINE_CONTROL_API_V2.md`](spec/ENGINE_CONTROL_API_V2.md). Recognizing a
+provider capability name in that closed schema is not production support:
+resource retrieval, WebVPN and MFA remain typed unsupported until their own
+providers and school-environment evidence exist.
 
 ## Compatibility laboratory
 

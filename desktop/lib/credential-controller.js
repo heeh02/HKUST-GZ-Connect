@@ -117,17 +117,26 @@ class CredentialController {
 
   async confirmPageState(tab, pageState) {
     const pending = tab?.pendingCredential;
-    if (!pending || !pending.navigationCommitted || !pending.navigationSuccessful || !pageState ||
-        typeof pageState !== 'object' || typeof pageState.hasLoginForm !== 'boolean') return false;
+    if (!pending || !pageState || typeof pageState !== 'object' ||
+        typeof pageState.hasLoginForm !== 'boolean') return false;
     let pageOrigin;
     try {
       pageOrigin = canonicalHttpsOrigin(pageState.origin);
     } catch {
       return false;
     }
+    const currentOrigin = this.originForTab(tab);
+    const sameDocument = pageState.transition === 'same-document';
+    if (pageState.transition != null && !sameDocument) return false;
     // A stale document can report state after a newer navigation. Ignore it;
     // the bounded candidate timer will clean up if no matching page arrives.
-    if (!pageOrigin || pageOrigin !== this.originForTab(tab) ||
+    if (!pageOrigin || pageOrigin !== currentOrigin) return false;
+    if (sameDocument) {
+      // SPA confirmation is valid only before any main-frame commit and only
+      // on the exact HTTPS origin that received the submitted password.
+      if (pending.navigationCommitted || pending.navigationSuccessful ||
+          pending.origin !== pageOrigin) return false;
+    } else if (!pending.navigationCommitted || !pending.navigationSuccessful ||
         pending.destinationOrigin !== pageOrigin) return false;
     if (pageState.hasLoginForm) {
       this.clear(tab);

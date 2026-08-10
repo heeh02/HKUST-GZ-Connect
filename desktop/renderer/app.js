@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Active UI language. Chinese until get-state reports the real system locale.
 let t = window.I18N.createT('zh');
+const { evaluateLoginProgress } = window.loginFlow;
+const { routeLabel, visibleResources } = window.resourceView;
 let st = {
   connected: false,
   connecting: false,
@@ -63,24 +65,6 @@ function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Ma
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
 
-function evaluateLoginProgress(pending, state = {}) {
-  if (!pending) return { pending: false, view: null, clearPassword: false, error: '' };
-  if (state.connected) return { pending: false, view: 'dash', clearPassword: true, error: '' };
-  if (!state.connecting && state.lastError) {
-    return { pending: false, view: 'login', clearPassword: false, error: String(state.lastError) };
-  }
-  return { pending: true, view: 'login', clearPassword: false, error: t('login.connecting') };
-}
-
-function visibleResources(resources, expanded, limit = 4) {
-  const items = Array.isArray(resources) ? resources : [];
-  return expanded ? items : items.slice(0, Math.max(0, limit));
-}
-
-function routeLabel(resource) {
-  return resource?.route === 'direct' ? t('resources.routeDirect') : t('resources.routeCampus');
-}
-
 function dnsModeLabel(mode) {
   if (mode === 'gateway') return t('stats.dnsGateway');
   if (mode === 'system_fallback') return t('stats.dnsFallback');
@@ -90,7 +74,7 @@ function dnsModeLabel(mode) {
 
 function updateLoginProgress(s) {
   if (!loginPending) return;
-  const next = evaluateLoginProgress(loginPending, s);
+  const next = evaluateLoginProgress(loginPending, s, t);
   $('lgBtn').disabled = next.pending;
   $('lgBtn').textContent = next.pending ? t('connect.connecting') : t('login.submit');
   $('lgErr').textContent = next.error;
@@ -149,7 +133,7 @@ function renderResources() {
     `<button class="resource-link" data-campus-id="${esc(resource.id)}" title="${esc(resource.url)}">`
     + `<span class="resource-name">${esc(resource.name)}</span>`
     + `<span class="resource-desc">${esc(resource.description || resource.url)}</span>`
-    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource))}</span></button>`).join('');
+    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource, t))}</span></button>`).join('');
   const toggle = $('toggleResources');
   const hasMore = campusResources.length > 4;
   toggle.hidden = !hasMore;
@@ -465,7 +449,7 @@ function renderResourceEditorList() {
     }
     return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
       + `<div class="resource-editor-summary"><span class="resource-editor-name">${esc(resource.name)}</span>`
-      + `<span class="resource-editor-route">${esc(routeLabel(resource))}</span></div>`
+      + `<span class="resource-editor-route">${esc(routeLabel(resource, t))}</span></div>`
       + `<div class="resource-editor-actions">${actions}</div>`
       + `</div>`;
   }).join('');

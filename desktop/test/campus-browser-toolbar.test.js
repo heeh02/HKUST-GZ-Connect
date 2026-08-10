@@ -22,4 +22,6 @@ test('browser toolbar uses a typed preload channel and never encodes commands in
   assert.match(js, /window\.campusToolbar\?\.command/);
   assert.match(js, /window\.campusToolbar\?\.onState/);
   assert.doesNotMatch(js, /window\.location\.hash|location\.hash\s*=/);
+  const browserSource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'campus-browser.js'), 'utf8');
+  assert.doesNotMatch(browserSource, /URLSearchParams|parsed\.hash|typeof input === 'string'/);
 });

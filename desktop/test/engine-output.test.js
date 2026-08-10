@@ -5,8 +5,11 @@ const test = require('node:test');
 const {
   classifyEngineCode,
   classifyEngineOutput,
+  classifyEngineStopReason,
   engineFailureKind,
   engineFailureKindFromCode,
+  engineFailureKindFromStopReason,
+  resolveEngineFailureKind,
 } = require('../lib/engine-output');
 
 test('native engine authentication failure is terminal and user-readable', () => {
@@ -50,4 +53,32 @@ test('address allocation rejection is transient and user-readable', () => {
   assert.equal(engineFailureKind(shortRead), 'gateway-transient');
   assert.equal(engineFailureKind('ec-engine: gateway authentication failed'), 'terminal');
   assert.equal(engineFailureKind('ec-engine: connection reset'), 'unknown');
+});
+
+test('structured stop reasons remain useful when a fatal event is unavailable', () => {
+  assert.match(classifyEngineStopReason('local_service_failed', 6180), /6180/);
+  assert.match(classifyEngineStopReason('network_unhealthy', 6180), /网关通道/);
+  assert.match(classifyEngineStopReason('event_output_failed', 6180), /状态通道/);
+  assert.equal(classifyEngineStopReason('user_requested', 6180), null);
+  assert.equal(classifyEngineStopReason('unknown_reason', 6180), null);
+  assert.equal(engineFailureKindFromStopReason('local_service_failed'), 'terminal');
+  assert.equal(engineFailureKindFromStopReason('logout_failed'), 'terminal');
+  assert.equal(engineFailureKindFromStopReason('network_unhealthy'), 'gateway-transient');
+  assert.equal(engineFailureKindFromStopReason('startup_failed'), 'unknown');
+});
+
+test('failure classification trusts code, then stop reason, before English diagnostics', () => {
+  assert.equal(resolveEngineFailureKind({
+    code: 'AUTH_FAILED',
+    stopReason: 'network_unhealthy',
+    diagnosticText: 'modern receive TLS: failed',
+  }), 'terminal');
+  assert.equal(resolveEngineFailureKind({
+    stopReason: 'network_unhealthy',
+    diagnosticText: 'gateway authentication failed',
+  }), 'gateway-transient');
+  assert.equal(resolveEngineFailureKind({
+    stopReason: 'startup_failed',
+    diagnosticText: 'gateway authentication failed',
+  }), 'terminal');
 });

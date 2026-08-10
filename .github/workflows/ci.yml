@@ -81,6 +81,10 @@ jobs:
         run: npm run test:renderer-layout
       - name: Run browser tab-switch and lifecycle soak gate
         run: npm run test:browser-performance
+      - name: Verify routing rules survive a real app restart
+        run: npm run test:routing-restart
+      - name: Record the bounded hidden-idle baseline
+        run: npm run test:idle-performance
 
   engine:
     timeout-minutes: 20

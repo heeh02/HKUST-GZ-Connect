@@ -3,6 +3,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+const {
+  STOP_CONTROL_GRACE_MS,
+  STOP_GRACE_MS,
+  STOP_FORCE_WAIT_MS,
+} = require('./stop-policy');
 
 const MAX_ENGINE_OWNER_RECORD_BYTES = 4096;
 
@@ -112,14 +117,18 @@ function safeCall(callback, payload) {
 function waitWithDeadline(promise, timeoutMs, setTimeoutFn, clearTimeoutFn) {
   return new Promise((resolve) => {
     let settled = false;
+    let timer = null;
     const finish = (result) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeoutFn(timer);
+      if (timer !== null) clearTimeoutFn(timer);
       resolve(result);
     };
-    const timer = setTimeoutFn(() => finish({ timedOut: true }), Math.max(0, timeoutMs));
-    promise.then((value) => finish({ timedOut: false, value }));
+    timer = setTimeoutFn(() => finish({ timedOut: true }), Math.max(0, timeoutMs));
+    Promise.resolve(promise).then(
+      (value) => finish({ timedOut: false, value }),
+      (error) => finish({ timedOut: false, rejected: true, error }),
+    );
   });
 }
 
@@ -201,6 +210,7 @@ class EngineSupervisor {
       exitCode: null,
       exitSignal: null,
       stopRequested: false,
+      stopPromise: null,
       closedFinalized: false,
       onError,
       onExit,
@@ -242,12 +252,76 @@ class EngineSupervisor {
     return { ok: true, child, generation, closed };
   }
 
-  async stop({ graceMs = 15_000, forceWaitMs = 2_000 } = {}) {
+  stop({
+    requestGracefulStop,
+    controlGraceMs = STOP_CONTROL_GRACE_MS,
+    graceMs = STOP_GRACE_MS,
+    forceWaitMs = STOP_FORCE_WAIT_MS,
+  } = {}) {
     const record = this.active;
-    if (!record) return { ok: true, phase: 'idle' };
+    if (!record) return Promise.resolve({ ok: true, phase: 'idle' });
+    if (record.stopPromise) return record.stopPromise;
 
-    if (!record.stopRequested) {
-      record.stopRequested = true;
+    // Install the shared promise before invoking either the control callback
+    // or child.kill(). A synchronous close/onClose re-entry therefore cannot
+    // start a second stop sequence for the same process record.
+    let resolveStop;
+    let rejectStop;
+    record.stopPromise = new Promise((resolve, reject) => {
+      resolveStop = resolve;
+      rejectStop = reject;
+    });
+    this.performStop(record, {
+      requestGracefulStop,
+      controlGraceMs,
+      graceMs,
+      forceWaitMs,
+    }).then(resolveStop, rejectStop);
+    return record.stopPromise;
+  }
+
+  async performStop(record, {
+    requestGracefulStop,
+    controlGraceMs,
+    graceMs,
+    forceWaitMs,
+  }) {
+    record.stopRequested = true;
+
+    if (typeof requestGracefulStop === 'function') {
+      let requested;
+      try {
+        requested = requestGracefulStop({
+          child: record.child,
+          generation: record.generation,
+        });
+      } catch {
+        requested = Promise.reject(new Error('control stop request was rejected'));
+      }
+
+      // The control budget covers both sending/acknowledging the request and
+      // the resulting process close. Rejection (including an explicit false)
+      // falls through immediately to the signal-based compatibility path.
+      const controlClose = Promise.resolve(requested).then((accepted) => {
+        if (accepted === false || (accepted && accepted.ok === false)) {
+          throw new Error('control stop request was rejected');
+        }
+        return record.closed;
+      });
+      const controlled = await waitWithDeadline(
+        controlClose,
+        controlGraceMs,
+        this.setTimeoutFn,
+        this.clearTimeoutFn,
+      );
+      if (!controlled.timedOut && !controlled.rejected) {
+        return { ok: true, phase: 'control', result: controlled.value };
+      }
+    }
+
+    // Record identity protects a replacement engine from delayed continuations
+    // belonging to the process that was asked to stop.
+    if (this.active === record && !record.closedFinalized) {
       try { record.child.kill(); } catch {}
     }
 

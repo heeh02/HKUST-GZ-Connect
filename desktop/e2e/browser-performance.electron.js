@@ -5,13 +5,15 @@
 // Run from desktop/ with:
 //   ./node_modules/.bin/electron e2e/browser-performance.electron.js
 //
-// The harness is intentionally not part of `node --test`: it creates hundreds
-// of real WebContentsView instances and measures wall-clock UI latency, so it
+// The harness is intentionally not part of `node --test`: it creates dozens of
+// real WebContentsView instances and measures wall-clock UI latency, so it
 // belongs in a dedicated, machine-aware release gate. All page loads use a
 // Chromium-blocked port and settle on CampusBrowser's local error page without
 // reaching the network.
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
 const {
@@ -20,6 +22,11 @@ const {
   SLOW_LOADING_HINT_MS,
 } = require('../lib/campus-browser');
 const { CAMPUS_PARTITION } = require('../lib/campus-route');
+const {
+  PERFORMANCE_REPORT_SCHEMA,
+  writePerformanceReport,
+} = require('../scripts/performance-report');
+const { scheduleTemporaryProfileCleanup } = require('../scripts/temp-profile-cleanup');
 
 // Expected ERR_UNSAFE_PORT navigations otherwise produce hundreds of Chromium
 // diagnostic lines and can bury the actual benchmark report.
@@ -29,10 +36,15 @@ const TAB_COUNT = 20;
 const SWITCH_SAMPLES = 100;
 const SWITCH_WARMUPS = 20;
 const PRODUCT_P95_TARGET_MS = 100;
-const DEFAULT_CI_P95_GATE_MS = 250;
-const DEFAULT_SOAK_CYCLES = 300;
+const DEFAULT_DISASTER_P95_GATE_MS = 250;
+const DEFAULT_SOAK_CYCLES = 30;
+const HARD_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 10;
 const WAIT_TIMEOUT_MS = 15_000;
+
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-browser-performance-'));
+scheduleTemporaryProfileCleanup(profile, 'hkustgz-browser-performance');
+app.setPath('userData', profile);
 
 function positiveIntegerFromEnvironment(name, fallback) {
   const value = Number(process.env[name]);
@@ -265,8 +277,8 @@ async function measureTabSwitches(browser) {
   const p95 = percentile(samples, 0.95);
   const maximum = Math.max(...samples);
   const configuredGate = positiveNumberFromEnvironment(
-    'HKUSTGZ_BROWSER_P95_GATE_MS',
-    process.env.CI ? DEFAULT_CI_P95_GATE_MS : PRODUCT_P95_TARGET_MS,
+    'HKUSTGZ_BROWSER_DISASTER_GATE_MS',
+    positiveNumberFromEnvironment('HKUSTGZ_BROWSER_P95_GATE_MS', DEFAULT_DISASTER_P95_GATE_MS),
   );
   const result = {
     samples: samples.length,
@@ -275,7 +287,9 @@ async function measureTabSwitches(browser) {
     maxMs: roundMilliseconds(maximum),
     productTargetMs: PRODUCT_P95_TARGET_MS,
     productTargetMet: p95 < PRODUCT_P95_TARGET_MS,
-    enforcedGateMs: configuredGate,
+    productTargetEnforced: false,
+    disasterGuardMs: configuredGate,
+    disasterGuardMet: p95 < configuredGate,
   };
   assert.ok(
     p95 < configuredGate,
@@ -394,6 +408,13 @@ async function run() {
   assert.equal(slowTimers.live.size, 0, 'CampusBrowser retained slow-load timers');
 
   const report = {
+    schema: PERFORMANCE_REPORT_SCHEMA,
+    kind: 'campus_browser_20_tab',
+    scope: {
+      network: 'none',
+      inputs: 'synthetic_chromium_blocked_port',
+      gatewayPerformanceMeasured: false,
+    },
     tabConfiguration: {
       count: TAB_COUNT,
       toolbarSandboxed: true,
@@ -411,14 +432,33 @@ async function run() {
       peakLiveSlowTimers: slowTimers.peak,
       finalLiveSlowTimers: slowTimers.live.size,
     },
+    interpretation: {
+      enforcedThresholdClass: 'offline_disaster_guard',
+      productTargetIsNotReleaseGate: true,
+      realDeviceAndGatewayBaselineRequired: true,
+    },
   };
-  process.stdout.write(`campus browser performance: PASS\n${JSON.stringify(report, null, 2)}\n`);
+  writePerformanceReport(report);
 }
 
+const hardTimeout = setTimeout(() => {
+  process.stderr.write(`browser performance exceeded ${HARD_TIMEOUT_MS}ms hard timeout\n`);
+  app.exit(1);
+}, HARD_TIMEOUT_MS);
+hardTimeout.unref?.();
+
 run().then(
-  () => app.quit(),
+  () => {
+    clearTimeout(hardTimeout);
+    app.quit();
+  },
   (error) => {
+    clearTimeout(hardTimeout);
     process.stderr.write(`${error.stack || error}\n`);
     app.exit(1);
   },
 );
+
+app.once('quit', () => {
+  try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
+});

@@ -64,9 +64,13 @@ offline provider exists for fixture/probe validation and reports catalogue
 parsing as supported while authorization decisions remain unavailable.
 
 `TransportBackend` connects a provider-owned session to a provider-owned data
-plane. The maintained session delegates its existing modern L3 setup to
-`ModernL3TransportBackend`; retry, logout, certificate binding, and packet
-behavior remain in their existing modules.
+plane. `ProductionPasswordAuthProvider` ends after password authentication and
+returns an auth-only `AuthenticatedGatewaySession` containing the cookie jar,
+logout endpoint, and opaque gateway session identifier. Only
+`ModernL3TransportBackend` fetches and parses the L3 configuration, acquires a
+Modern token, applies certificate binding and retry policy, and opens the data
+plane. Its typed `ModernL3Connection` carries both the data plane and gateway
+DNS results, so transport state is never written back into the auth session.
 
 Provider errors preserve ordinary engine errors, while capability failures stay
 machine-distinguishable inside the Rust boundary. `ec-engine` maps a typed

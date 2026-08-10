@@ -4,6 +4,7 @@
 //! it. Human diagnostics stay on stderr. Keeping the schema in this module
 //! prevents UI wording changes from becoming accidental protocol changes.
 
+use crate::engine::control::{ControlResponse, encode_control_response};
 use crate::{Error, Result};
 use serde::{Serialize, Serializer};
 use std::io::Write;
@@ -156,12 +157,25 @@ impl<W: Write> EngineEventEmitter<W> {
 
     pub fn emit(&mut self, event: &EngineEvent) -> Result<()> {
         let encoded = encode_bounded_json_line(event)?;
+        self.write_frame(&encoded, "engine event")
+    }
+
+    /// Write a v2 control response on the shared machine-output stream.
+    ///
+    /// Event API v1 remains unchanged: older consumers ignore these distinct
+    /// response shapes, while v2 supervisors correlate them by request ID.
+    pub fn emit_control(&mut self, response: &ControlResponse) -> Result<()> {
+        let encoded = encode_control_response(response)?;
+        self.write_frame(&encoded, "engine control response")
+    }
+
+    fn write_frame(&mut self, encoded: &[u8], kind: &str) -> Result<()> {
         self.writer
-            .write_all(&encoded)
-            .map_err(|error| Error(format!("cannot write engine event: {error}")))?;
+            .write_all(encoded)
+            .map_err(|error| Error(format!("cannot write {kind}: {error}")))?;
         self.writer
             .flush()
-            .map_err(|error| Error(format!("cannot flush engine event: {error}")))
+            .map_err(|error| Error(format!("cannot flush {kind}: {error}")))
     }
 
     #[cfg(test)]
@@ -270,6 +284,28 @@ mod tests {
             assert!(line.len() < MAX_ENGINE_EVENT_BYTES);
             serde_json::from_slice::<Value>(line).unwrap();
         }
+    }
+
+    #[test]
+    fn v2_control_responses_share_stdout_without_changing_v1_events() {
+        let mut emitter = EngineEventEmitter::new(Vec::new());
+        emitter.emit(&EngineEvent::hello()).unwrap();
+        emitter
+            .emit_control(&ControlResponse::Result {
+                api_version: 2,
+                request_id: 8,
+                status: crate::engine::control::ControlStatus::Accepted,
+            })
+            .unwrap();
+        let output = emitter.into_inner();
+        let values = output
+            .split(|byte| *byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(values[0]["apiVersion"], 1);
+        assert_eq!(values[1]["apiVersion"], 2);
+        assert_eq!(values[1]["requestId"], 8);
     }
 
     #[test]
