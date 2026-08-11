@@ -30,18 +30,18 @@ more conservative status until the discrepancy is reviewed.
 | SOCKS/PAC/Clash/SSH frontends | **Done** for documented TCP use | Default compatibility mode plus opt-in strict local authentication; no global network mutation | Live UDP service coverage remains incomplete |
 | Lifecycle and recovery | **Partial** | Event API v1 emits a generation-bound structured `stopped` reason; the desktop prefers private bounded Control v2 graceful shutdown/logout before bounded signal fallbacks | Sleep/resume, network switching and server-initiated termination need real-device canaries |
 | Desktop performance | **Partial** | Offline 20-tab switching/lifecycle soak and a hidden-idle telemetry contract exist | Stable product baselines on supported macOS/Windows hardware and a real campus page set |
-| Split-horizon campus DNS | **Done** for the current HKUST(GZ) profile | Gateway DNS and reviewed profile DNS are combined inside the userspace VPN; the production profile supplies `10.90.63.2`/`10.90.63.3` and disables public/system fallback | Repeat the HPC hostname canary after a gateway or school DNS change |
+| Split-horizon campus DNS | **Done** for the current HKUST(GZ) profile | Authenticated `rclist.csp`/`conf.csp` DNS is acquired automatically; the production profile is fallback-only and public/system fallback is disabled | Repeat the HPC hostname canary after a gateway or school DNS change |
 
 ### 1.2.2 split-horizon DNS evidence
 
-The active gateway may establish Modern L3 without returning DNS in
-`conf.csp`. Version 1.2.2 therefore treats gateway-advertised DNS and a bounded
-reviewed deployment-profile list as two VPN-side sources. It deduplicates them,
-queries all usable servers concurrently through `VirtualNetstack`, validates
-responses and caches only bounded A answers. The production profile disables
-system DNS fallback, so an internal NXDOMAIN from public DNS can no longer
-short-circuit the SOCKS request. No operating-system DNS setting or route is
-changed.
+The active gateway publishes split-horizon DNS in the authenticated
+`rclist.csp` resource policy even when the optional `conf.csp` fields are
+empty. Version 1.2.2 reads both protocol locations on every connection.
+Downloaded policy is authoritative; the bounded reviewed deployment profile
+is selected only when both locations are empty or unavailable. Queries travel
+through `VirtualNetstack`, responses are validated, and only bounded A answers
+are cached. Public/system fallback is disabled and no operating-system DNS
+setting or route is changed.
 
 ### 1.2.1 lifecycle and restart evidence
 

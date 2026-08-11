@@ -109,11 +109,12 @@ credential remains prohibited.
   handshake timeout. Cross-platform per-user ownership is unavailable for
   ordinary loopback TCP, so strict authentication protects authorization, not
   all same-host denial of service.
-- The current production profile disables system-DNS fallback. If `conf.csp`
-  omits DNS, the engine uses the reviewed campus DNS addresses from the bundled
-  profile and sends those queries only through the userspace VPN. Gateway and
-  profile servers are bounded, deduplicated, destination-policy checked, and
-  raced without changing the operating-system DNS configuration.
+- The current production profile disables system-DNS fallback. The engine
+  automatically reads authenticated DNS policy from `rclist.csp` and the
+  optional `conf.csp` fields. Only when neither provides usable DNS does it use
+  reviewed bundled profile addresses. The selected servers are bounded,
+  deduplicated, destination-policy checked, and raced through the userspace VPN
+  without changing the operating-system DNS configuration.
 - Password, CAPTCHA, SMS/token/TOTP, certificate, HID, SSO, resource catalogue,
   WebVPN, and L3 are separate provider capabilities. An unimplemented or
   unknown method must surface as unsupported and fail closed, never be

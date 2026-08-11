@@ -42,21 +42,24 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 
 ## 1.2.2 HPC 内部 DNS 修复
 
-1.2.1 及更早版本在网关未通过 `conf.csp` 下发 DNS 时，会按学校生产配置回退到
-操作系统 DNS。`hpc2login.hpc.hkust-gz.edu.cn` 等仅存在于校园内部 DNS 的域名
-因此会被公共 DNS 判定为不存在，SOCKS5 连接会在进入校园隧道前失败。
+1.2.1 及更早版本只检查了 `conf.csp` 的可选 L3 DNS 字段，遗漏了官方客户端
+首次连接时实际读取的认证资源列表 `rclist.csp`。因此即使学校已经下发内部 DNS，
+引擎仍会错误回退到操作系统 DNS；`hpc2login.hpc.hkust-gz.edu.cn` 等内部域名会
+被公共 DNS 判定为不存在，SOCKS5 连接在进入校园隧道前失败。
 
 1.2.2 将解析路径改为长期可维护的隧道内策略：
 
-- 网关以后重新下发 DNS 时，动态地址仍会自动采用；
-- 学校配置的 `10.90.63.2`、`10.90.63.3` 作为当前生产 profile 的冗余来源；
-- 动态与学校配置地址会去重并并发查询，首个有效结果进入有界 TTL 缓存；
+- 每次认证连接自动读取 `rclist.csp` 的 `Dns@dnsserver`，同时兼容
+  `conf.csp` 的可选 DNS 字段；
+- 学校下发值优先；只有服务器确实没有返回可用 DNS 时，才使用生产 profile 中
+  审核过的 `10.90.63.2`、`10.90.63.3`；
+- 同一来源内的地址会去重并并发查询，首个有效结果进入有界 TTL 缓存；
 - 生产 profile 关闭系统 DNS fallback，内部域名不会再交给公共 DNS；
 - 所有 DNS UDP 包只经过 Rust 用户态校园隧道，不修改系统 DNS、默认路由或
-  其他浏览器的网络环境；界面会区分网关 DNS、学校 DNS 或两者组合。
+  其他浏览器的网络环境；界面会区分自动下发 DNS 与学校 profile 兜底。
 
-DNS 地址属于可审核的学校部署配置，而不是散落在 SOCKS 代码中的硬编码。学校
-以后调整 DNS 时只需更新 profile 并发布维护版本，无需重写解析器。
+正常情况下 DNS 地址完全跟随学校下发，无需随客户端更新；profile 中的地址只是
+服务器临时遗漏策略时的灾备值，也集中在可审核配置中，而不是散落在 SOCKS 代码里。
 
 ## 1.2.1 核心结果
 
@@ -389,28 +392,29 @@ leave EasyConnect-style DNS or routing residue behind.
 
 ## 1.2.2 HPC split-horizon DNS fix
 
-In 1.2.1 and earlier, the school production profile fell back to operating-
-system DNS whenever the gateway omitted DNS from `conf.csp`. Names that exist
-only in campus DNS, including `hpc2login.hpc.hkust-gz.edu.cn`, could therefore
-receive a public NXDOMAIN result and fail before SOCKS5 opened the tunnel TCP
-connection.
+Versions 1.2.1 and earlier inspected only the optional L3 DNS fields in
+`conf.csp` and missed the authenticated `rclist.csp` resource policy consumed
+by the official client on its first connection. The engine could therefore
+fall back to public/system DNS even though the school had supplied internal
+DNS, causing campus-only names such as `hpc2login.hpc.hkust-gz.edu.cn` to fail.
 
 Version 1.2.2 replaces that behavior with a maintainable VPN-only policy:
 
-- gateway-advertised DNS is still adopted automatically if it appears later;
-- `10.90.63.2` and `10.90.63.3` are reviewed fallback sources in the current
-  school deployment profile;
-- gateway and profile addresses are deduplicated and queried concurrently,
-  with the first valid answer entering the bounded TTL cache;
+- every authenticated connection reads `Dns@dnsserver` from `rclist.csp` and
+  also accepts the optional `conf.csp` DNS fields;
+- downloaded policy is authoritative; the reviewed `10.90.63.2` and
+  `10.90.63.3` profile values are used only if no usable DNS was downloaded;
+- addresses within the selected source are deduplicated and queried
+  concurrently, with the first valid answer entering the bounded TTL cache;
 - system DNS fallback is disabled in the production profile, so internal names
   are no longer sent to public DNS;
 - every DNS UDP packet stays inside the Rust userspace campus tunnel. The app
   still does not change OS DNS, the default route, or other browsers, and the
-  UI distinguishes gateway DNS, campus-profile DNS, and their combined mode.
+  UI distinguishes downloaded gateway DNS from the campus-profile fallback.
 
-The DNS addresses live in the reviewed deployment profile rather than being
-scattered through SOCKS code. A future school DNS change therefore requires a
-profile maintenance update, not a resolver rewrite.
+In normal operation DNS follows authenticated school policy without a client
+update. The profile addresses are disaster-recovery values for a temporarily
+missing policy and remain in one reviewed configuration rather than SOCKS code.
 
 ## 1.2.1 core results
 

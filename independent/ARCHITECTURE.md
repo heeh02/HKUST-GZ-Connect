@@ -185,19 +185,21 @@ the value it settled on at startup.
 
 `engine/dns.rs` owns the bounded DNS client that sends UDP through
 `VirtualNetstack`; it does not modify operating-system DNS or routes. The
-runtime combines two reviewed sources:
+runtime selects one of two reviewed sources:
 
-1. addresses authenticated and advertised by the gateway in `conf.csp`;
-2. `proxy.vpn_dns_servers` from the deployment profile, used when a gateway
-   establishes L3 but omits split-horizon DNS metadata.
+1. addresses authenticated and advertised by the gateway in
+   `rclist.csp` (`Resource/Dns@dnsserver`) or the optional `conf.csp` L3 fields;
+2. `proxy.vpn_dns_servers` from the deployment profile, used only when neither
+   authenticated response provides usable DNS.
 
-The combined list is deduplicated, capped at eight servers, checked by the same
+The selected list is deduplicated, capped at eight servers, checked by the same
 tunnel destination policy as SOCKS TCP/UDP, and raced to the first valid A
 answer. The HKUST(GZ) production profile supplies `10.90.63.2` and
 `10.90.63.3` and sets `proxy.allow_system_dns_fallback` to `false`. This keeps
 HPC-only hostnames inside the VPN while still adopting new gateway-advertised
-DNS automatically. The Event API reports `gateway`, `vpn_profile`, or
-`gateway_profile` without exposing server addresses.
+DNS automatically. The Event API reports `gateway` or `vpn_profile` without
+exposing server addresses; the older `gateway_profile` value remains accepted
+for protocol compatibility but is no longer produced by source selection.
 
 The system resolver implementation remains available only for a separately
 reviewed deployment profile that explicitly enables it. It is not selected by

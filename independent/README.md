@@ -13,10 +13,11 @@ The current deliverable observes public gateway metadata, validates authorized
 official packages, implements authentication, and contains both the reviewed
 legacy TCP state machine and an isolated native implementation of the active
 modern TLS 1.1 transport. The modular runtime now includes bounded IPv4
-framing, a userspace TCP/UDP stack, gateway DNS when supplied, a
-bounded reviewed deployment-profile DNS source when the gateway omits it, and
-one loopback SOCKS5 TCP/UDP frontend. DNS from both sources travels only through
-the userspace VPN; the HKUST(GZ) production profile disables system fallback.
+framing, a userspace TCP/UDP stack, authenticated gateway DNS from
+`rclist.csp`/`conf.csp`, a bounded reviewed deployment-profile fallback when
+the gateway omits it, and one loopback SOCKS5 TCP/UDP frontend. DNS from either
+source travels only through the userspace VPN; the HKUST(GZ) production profile
+disables system fallback.
 The same port can optionally require local proxy credentials and
 accept authenticated HTTP CONNECT plus bounded ordinary HTTP/WebSocket
 forwarding for clients that cannot authenticate to a SOCKS5 proxy. An approved

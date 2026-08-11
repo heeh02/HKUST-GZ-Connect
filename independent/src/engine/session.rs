@@ -1,5 +1,5 @@
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
-use crate::config::parse_gateway_configuration;
+use crate::config::{parse_gateway_configuration, parse_resource_dns_servers};
 use crate::engine::data_plane::EasyConnectDataPlane;
 use crate::engine::provider::{
     AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
@@ -70,6 +70,7 @@ pub struct ModernL3TransportBackend {
     gateway_host: String,
     timeout: Duration,
     configuration_path: String,
+    resource_list_path: String,
     configured_certificate_pin: Option<[u8; 32]>,
 }
 
@@ -127,6 +128,12 @@ impl ModernL3TransportBackend {
                 .unwrap_or(DEFAULT_TIMEOUT_SECONDS),
         );
         let configuration_path = required_endpoint(config, "session_config")?.to_owned();
+        let resource_list_path = config["endpoints"]["resource_list"]
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("/por/rclist.csp")
+            .to_owned();
         let configured_certificate_pin = config["modern_tunnel"]["special_tls_leaf_sha256"]
             .as_str()
             .filter(|value| !value.is_empty())
@@ -137,6 +144,7 @@ impl ModernL3TransportBackend {
             gateway_host,
             timeout,
             configuration_path,
+            resource_list_path,
             configured_certificate_pin,
         })
     }
@@ -170,11 +178,28 @@ impl ModernL3TransportBackend {
         if !gateway_configuration.has_l3_configuration {
             return Err(ProviderError::unavailable(Capability::TransportL3));
         }
-        let dns_servers = gateway_configuration
+        let mut dns_servers = gateway_configuration
             .l3_dns
             .iter()
             .filter_map(|value| value.parse().ok())
-            .collect();
+            .collect::<Vec<Ipv4Addr>>();
+        // The official client reads policy DNS from rclist.csp during the
+        // first authenticated connection. This is independent of whether the
+        // optional conf.csp L3 DNS attributes are populated.
+        if let Ok((resource_list, _, _)) =
+            session
+                .http
+                .request(&self.resource_list_path, Method::GET, None)
+        {
+            let resource_list = Zeroizing::new(resource_list);
+            if let Ok(resource_dns) = parse_resource_dns_servers(&resource_list) {
+                for server in resource_dns {
+                    if !dns_servers.contains(&server) {
+                        dns_servers.push(server);
+                    }
+                }
+            }
+        }
         let acquisition =
             request_modern_token(&self.base_url, &session.modern_session, self.timeout)?;
         let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;

@@ -56,11 +56,11 @@ impl VpnDnsSelection {
 
 /// Combines authenticated gateway DNS with a reviewed deployment profile.
 ///
-/// Gateway-advertised addresses remain preferred in presentation and insertion
-/// order, while profile addresses keep split-horizon campus names resolvable on
-/// gateways that omit DNS from `conf.csp`. Queries to all selected servers still
-/// travel through `VirtualNetstack`; this function never introduces a system
-/// resolver or changes the host operating system's DNS configuration.
+/// Authenticated gateway policy is authoritative. Profile addresses are used
+/// only when the gateway supplies no DNS at all; they are never mixed into a
+/// successfully downloaded policy. Every query still travels through
+/// `VirtualNetstack`, so this function never introduces a system resolver or
+/// changes the host operating system's DNS configuration.
 pub fn select_vpn_dns_servers(
     gateway: &[Ipv4Addr],
     profile: &[Ipv4Addr],
@@ -75,27 +75,20 @@ pub fn select_vpn_dns_servers(
             validate_dns_servers(source)?;
         }
     }
-    let mut servers = Vec::with_capacity(MAX_VPN_DNS_SERVERS);
-    for server in gateway {
+    let selected = if gateway.is_empty() { profile } else { gateway };
+    let mut servers = Vec::with_capacity(selected.len());
+    for server in selected {
         if !servers.contains(server) {
             servers.push(*server);
-        }
-    }
-    let mut profile_added = false;
-    for server in profile {
-        if !servers.contains(server) && servers.len() < MAX_VPN_DNS_SERVERS {
-            servers.push(*server);
-            profile_added = true;
         }
     }
     if servers.is_empty() {
         return Ok(None);
     }
-    let source = match (gateway.is_empty(), profile_added) {
-        (false, false) => VpnDnsSource::Gateway,
-        (true, true) => VpnDnsSource::Profile,
-        (false, true) => VpnDnsSource::GatewayAndProfile,
-        (true, false) => unreachable!("non-empty profile did not add a DNS server"),
+    let source = if gateway.is_empty() {
+        VpnDnsSource::Profile
+    } else {
+        VpnDnsSource::Gateway
     };
     Ok(Some(VpnDnsSelection { servers, source }))
 }
@@ -528,18 +521,14 @@ mod tests {
     }
 
     #[test]
-    fn gateway_and_profile_dns_are_deduplicated_and_bounded() {
+    fn authenticated_gateway_dns_replaces_the_profile_fallback() {
         let gateway = [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 4)];
         let profile = [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3)];
         let selection = select_vpn_dns_servers(&gateway, &profile).unwrap().unwrap();
-        assert_eq!(selection.source(), VpnDnsSource::GatewayAndProfile);
+        assert_eq!(selection.source(), VpnDnsSource::Gateway);
         assert_eq!(
             selection.servers(),
-            [
-                Ipv4Addr::new(10, 90, 63, 2),
-                Ipv4Addr::new(10, 90, 63, 4),
-                Ipv4Addr::new(10, 90, 63, 3),
-            ]
+            [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 4),]
         );
 
         let too_many = (1..=9)

@@ -386,6 +386,43 @@ pub fn parse_gateway_configuration(data: &[u8]) -> Result<GatewayConfiguration> 
     })
 }
 
+/// Extracts policy DNS servers from the authenticated `rclist.csp` document.
+/// Some gateways leave the optional `conf.csp` L3 DNS attributes empty and
+/// publish DNS only as `Resource/Dns@dnsserver`.
+pub fn parse_resource_dns_servers(data: &[u8]) -> Result<Vec<Ipv4Addr>> {
+    const MAX_RESOURCE_DNS_SERVERS: usize = 8;
+
+    let document = parse_xml(data, "gateway resource list")?;
+    let root = document.root_element();
+    if root.tag_name().name() != "Resource" {
+        return Err(Error("resource list root must be Resource".into()));
+    }
+    let Some(dns) = direct_child(root, "Dns") else {
+        return Ok(Vec::new());
+    };
+    let Some(raw_servers) = dns.attribute("dnsserver") else {
+        return Ok(Vec::new());
+    };
+
+    let mut servers = Vec::new();
+    for raw in raw_servers.split(';') {
+        let raw = raw.trim();
+        if raw.is_empty() || raw == "0.0.0.0" {
+            continue;
+        }
+        let server = raw
+            .parse::<Ipv4Addr>()
+            .map_err(|_| Error("resource DNS server is not a valid IPv4 address".into()))?;
+        if !servers.contains(&server) {
+            if servers.len() == MAX_RESOURCE_DNS_SERVERS {
+                return Err(Error("resource list contains too many DNS servers".into()));
+            }
+            servers.push(server);
+        }
+    }
+    Ok(servers)
+}
+
 pub fn parse_tunnel_bootstrap(data: &[u8]) -> Result<Option<TunnelBootstrap>> {
     let document = parse_xml(data, "gateway configuration")?;
     let root = document.root_element();
@@ -524,6 +561,32 @@ mod tests {
         assert_eq!(bootstrap.session_identifier().unwrap().len(), 32);
         assert!(!format!("{bootstrap:?}").contains("0123456789abcdef"));
         assert!(!bootstrap.safe_summary().to_string().contains("192.0.2.20"));
+    }
+
+    #[test]
+    fn parses_dns_servers_from_the_authenticated_resource_list() {
+        let servers = parse_resource_dns_servers(RCLIST).unwrap();
+        assert_eq!(servers, [Ipv4Addr::new(192, 0, 2, 53)]);
+
+        let multiple =
+            br#"<Resource><Dns dnsserver="10.90.63.2;10.90.63.3;10.90.63.2;0.0.0.0"/></Resource>"#;
+        assert_eq!(
+            parse_resource_dns_servers(multiple).unwrap(),
+            [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3)]
+        );
+    }
+
+    #[test]
+    fn resource_dns_parser_is_bounded_and_fail_closed() {
+        assert!(parse_resource_dns_servers(b"<Conf/>").is_err());
+        assert!(
+            parse_resource_dns_servers(b"<Resource><Dns dnsserver='not-an-ip'/></Resource>")
+                .is_err()
+        );
+        assert!(
+            parse_resource_dns_servers(b"<Resource><Dns dnsserver='1.1.1.1;2.2.2.2;3.3.3.3;4.4.4.4;5.5.5.5;6.6.6.6;7.7.7.7;8.8.8.8;9.9.9.9'/></Resource>")
+                .is_err()
+        );
     }
 
     #[test]
