@@ -12,6 +12,7 @@ Cross-platform EasyConnect-compatible client for HKUST(GZ)
 ![Release](https://img.shields.io/github/v/release/heeh02/hkustgzconnect)
 ![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%7C_Intel-000?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-x86__64_AppImage-FCC624?logo=linux&logoColor=111)
 ![Engine](https://img.shields.io/badge/engine-Rust-CE412B?logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
@@ -83,6 +84,7 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 | macOS Apple Silicon | `hkustgzconnect-<版本>-mac-arm64.dmg` | M1/M2/M3/M4 等 |
 | macOS Intel | `hkustgzconnect-<版本>-mac-x64.dmg` | Intel Mac |
 | Windows | `hkustgzconnect-<版本>-win-x64.exe` | Windows 10/11 x64 |
+| Linux | `hkustgzconnect-<版本>-linux-x64.AppImage` | 主流 x86_64 桌面发行版 |
 
 ### 安装
 
@@ -96,10 +98,22 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 Windows 未签名构建可能显示 SmartScreen 提示：点击“更多信息”，然后选择
 “仍要运行”。
 
+Linux 下载 AppImage 后无需安装到系统目录：
+
+```bash
+chmod +x hkustgzconnect-<版本>-linux-x64.AppImage
+./hkustgzconnect-<版本>-linux-x64.AppImage
+```
+
+如果发行版没有启用 FUSE，可使用 `--appimage-extract-and-run` 启动。Linux 只有
+在系统提供 Secret Service/密钥环时才保存密码；否则应用会拒绝明文持久化，用户
+可在每次启动时输入密码。
+
 ## 最简单的使用方法（推荐）
 
 1. 安装并打开 HKUST(GZ) Connect。
-2. 输入学校 VPN 账号和密码。密码由 macOS Keychain 或 Windows DPAPI 加密保存。
+2. 输入学校 VPN 账号和密码。密码由 macOS Keychain、Windows DPAPI 或 Linux
+   Secret Service 加密保存；没有安全密钥环时不会明文保存。
 3. 点击“登录并连接”，然后点击“打开校园网站”。
 
 校园浏览器由应用自带，无需另装 Chrome。可在输入框粘贴任意校内网址；留空则
@@ -279,7 +293,7 @@ Electron 桌面界面
 - 浏览器断开时先进入 fail-closed，再释放本地代理端口；
 - 可选严格本地代理认证、WebRTC 非代理 UDP 禁用、证书例外按精确来源与指纹保存；
 - 不修改系统 DNS、全局代理或路由表；
-- macOS Apple Silicon/Intel 与 Windows x64 自动构建。
+- macOS Apple Silicon/Intel、Windows x64 与 Linux x86_64 AppImage 自动构建。
 
 ## 命令行使用（macOS）
 
@@ -412,6 +426,7 @@ Download the latest build from
 | macOS Apple Silicon | `hkustgzconnect-<version>-mac-arm64.dmg` | M1/M2/M3/M4 |
 | macOS Intel | `hkustgzconnect-<version>-mac-x64.dmg` | Intel Macs |
 | Windows | `hkustgzconnect-<version>-win-x64.exe` | Windows 10/11 x64 |
+| Linux | `hkustgzconnect-<version>-linux-x64.AppImage` | Mainstream x86_64 desktops |
 
 ### Installation
 
@@ -426,11 +441,24 @@ if macOS says the developer “cannot be verified” or the app “is damaged”
 Unsigned Windows builds may show a SmartScreen prompt: click **More info**,
 then **Run anyway**.
 
+The Linux AppImage runs without installation into a system directory:
+
+```bash
+chmod +x hkustgzconnect-<version>-linux-x64.AppImage
+./hkustgzconnect-<version>-linux-x64.AppImage
+```
+
+On distributions without FUSE, use `--appimage-extract-and-run`. Linux stores
+passwords only when a Secret Service/keyring backend is available; otherwise
+the app refuses plaintext persistence and the password can be entered each
+time it starts.
+
 ## Easiest setup (recommended)
 
 1. Install and open HKUST(GZ) Connect.
 2. Enter the campus VPN username and password. The password is protected by
-   macOS Keychain or Windows DPAPI.
+   macOS Keychain, Windows DPAPI, or Linux Secret Service; it is not persisted
+   as plaintext when no secure keyring is available.
 3. Click **Sign in and connect**, then click **Open Campus Website**.
 
 Campus Browser ships with the app; a separate Chrome installation is not
@@ -632,7 +660,8 @@ Key features:
 - optional strict local proxy authentication, non-proxied WebRTC UDP disabled,
   and certificate exceptions scoped to an exact origin and fingerprint;
 - no operating-system DNS, global proxy, or routing-table modification;
-- automated macOS Apple Silicon/Intel and Windows x64 builds.
+- automated macOS Apple Silicon/Intel, Windows x64, and Linux x86_64 AppImage
+  builds.
 
 ## macOS CLI
 

@@ -17,7 +17,7 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win --x64",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux AppImage --x64"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
@@ -93,7 +93,12 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Network"
     }

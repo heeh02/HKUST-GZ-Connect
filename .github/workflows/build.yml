@@ -18,6 +18,8 @@ jobs:
             platform: mac
           - os: windows-latest
             platform: win
+          - os: ubuntu-latest
+            platform: linux
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -114,6 +116,16 @@ jobs:
           Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
           Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
 
+      - name: Build independent engines (Linux x86_64)
+        if: matrix.platform == 'linux'
+        working-directory: independent
+        run: |
+          cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+          mkdir -p ../desktop/engine
+          cp target/release/ec-engine ../desktop/engine/ec-engine-linux-amd64
+          cp target/release/ec-proxy-command ../desktop/engine/ec-proxy-command-linux-amd64
+          cp config/hkustgz.json ../desktop/engine/hkustgz.json
+
       # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
       # makes electron-builder try (and fail) to read "" as a cert file.
       - name: Configure macOS signing
@@ -193,6 +205,21 @@ jobs:
         working-directory: desktop
         run: node build/verify-package.js release/win-unpacked/resources win32 x64
 
+      - name: Build (Linux AppImage x86_64)
+        if: matrix.platform == 'linux'
+        working-directory: desktop
+        run: |
+          npm run dist:linux
+          test -n "$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)" || {
+            echo "no Linux AppImage was produced"
+            exit 1
+          }
+
+      - name: Verify packaged Linux application
+        if: matrix.platform == 'linux'
+        working-directory: desktop
+        run: node build/verify-package.js release/linux-unpacked/resources linux x64
+
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -200,6 +227,7 @@ jobs:
           path: |
             desktop/release/*.dmg
             desktop/release/*.exe
+            desktop/release/*.AppImage
           if-no-files-found: error
 
   release:
@@ -217,9 +245,10 @@ jobs:
           pattern: hkustgzconnect-*
           path: artifacts
           merge-multiple: true
-      - name: Attach DMG and EXE assets to the tagged release
+      - name: Attach DMG, EXE, and AppImage assets to the tagged release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             artifacts/*.dmg
             artifacts/*.exe
+            artifacts/*.AppImage

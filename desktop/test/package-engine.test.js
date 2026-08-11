@@ -11,14 +11,35 @@ const {
   requiredEngineName,
   requiredProxyCommandName,
 } = require('../build/afterPack');
-const { assertCustomResourceManager, resolveResourcesDirectory } = require('../build/verify-package');
+const {
+  assertCustomResourceManager,
+  assertLinuxElfArchitecture,
+  resolveResourcesDirectory,
+} = require('../build/verify-package');
 
 test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredEngineName('darwin', 'arm64'), 'ec-engine-darwin-arm64');
   assert.equal(requiredEngineName('darwin', 3), 'ec-engine-darwin-arm64');
   assert.equal(requiredEngineName('win32', 'x64'), 'ec-engine-windows-amd64.exe');
+  assert.equal(requiredEngineName('linux', 'x64'), 'ec-engine-linux-amd64');
   assert.equal(requiredProxyCommandName('darwin', 'arm64'), 'ec-proxy-command-darwin-arm64');
   assert.equal(requiredProxyCommandName('win32', 'x64'), 'ec-proxy-command-windows-amd64.exe');
+  assert.equal(requiredProxyCommandName('linux', 'x64'), 'ec-proxy-command-linux-amd64');
+});
+
+test('package verification accepts x86_64 ELF executables and rejects another architecture', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-linux-elf-'));
+  const executable = path.join(directory, 'ec-engine-linux-amd64');
+  const header = Buffer.alloc(64);
+  header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1], 0);
+  header.writeUInt16LE(0x3e, 18);
+  fs.writeFileSync(executable, header);
+
+  assert.doesNotThrow(() => assertLinuxElfArchitecture(executable, 'amd64'));
+  assert.throws(
+    () => assertLinuxElfArchitecture(executable, 'arm64'),
+    /not a arm64 Linux ELF executable/,
+  );
 });
 
 test('packaging fails before signing when the SSH proxy helper is absent', () => {

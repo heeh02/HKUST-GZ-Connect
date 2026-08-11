@@ -31,6 +31,34 @@ function readMacSignature(appPath) {
   return classifyMacSignature(`${result.stdout || ''}\n${result.stderr || ''}`);
 }
 
+function assertLinuxElfArchitecture(executable, architectureName) {
+  const descriptor = fs.openSync(executable, 'r');
+  const header = Buffer.alloc(20);
+  let bytesRead;
+  try {
+    bytesRead = fs.readSync(descriptor, header, 0, header.length, 0);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  const isElf = header.length >= 20
+    && bytesRead === header.length
+    && header[0] === 0x7f
+    && header.subarray(1, 4).toString('ascii') === 'ELF'
+    && header[4] === 2;
+  const byteOrder = isElf ? header[5] : 0;
+  const machine = byteOrder === 1
+    ? header.readUInt16LE(18)
+    : byteOrder === 2
+      ? header.readUInt16BE(18)
+      : -1;
+  const expectedMachine = architectureName === 'arm64' ? 0xb7 : 0x3e;
+  if (!isElf || machine !== expectedMachine) {
+    throw new Error(
+      `packaged binary is not a ${architectureName} Linux ELF executable: ${executable}`,
+    );
+  }
+}
+
 function parseArguments(argv) {
   const positional = [];
   let requireAppleSignature = false;
@@ -161,6 +189,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
         );
       }
     }
+  } else if (platformName === 'linux') {
+    for (const executable of [engine, proxyCommand]) {
+      assertLinuxElfArchitecture(executable, architectureName);
+    }
   }
 
   const packagedManifest = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
@@ -182,6 +214,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 }
 
 module.exports = {
+  assertLinuxElfArchitecture,
   assertCustomResourceManager,
   parseArguments,
   readMacSignature,
