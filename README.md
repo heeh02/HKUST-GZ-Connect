@@ -41,6 +41,11 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 
 ## 1.2.1 核心结果
 
+> **版本定位：** 1.2.1 是建立在 1.2.0 用户功能之上的维护性与可维护性更新。
+> 多标签校园浏览器、域名分流、PAC、Clash/SSH、严格本地认证、密码库和自动
+> 重连均已由 1.2.0 提供。1.2.1 不宣称已经支持 EasyConnect 的资源目录、
+> WebVPN、MFA、证书或 USB Key；这些能力仍按路线图逐项实现和验证。
+
 - Rust 引擎现在通过 Event API v1 输出带原因与连接代次的结构化 `stopped`
   事件；桌面端只接受当前引擎代次的终止结果，不再依赖解析英文日志判断状态。
 - 桌面端和引擎在已有的私有标准输入管道上协商有界 Control API v2，优先请求
@@ -55,6 +60,16 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 - 新增轻量性能基线：隐藏窗口不得枚举应用且计时器数量有界，20 标签页测试验证
   单 Session、切换延迟和视图生命周期。阈值是防挂死/灾难回归门禁，不代表真实
   校园网关延迟或吞吐承诺。
+- 诊断日志同时受时间和空间约束：最多保留 3 天，当前文件和一个轮转文件各不
+  超过 8 MiB；过期窗口会自动清空，日志不会无限增长。
+
+### 版本策略
+
+- 后续 `1.x.x` 只维护当前已提供的连接、校园浏览器、域名分流、SOCKS/PAC、
+  Clash/SSH 和本地凭据能力，不再把未验证的 EasyConnect 功能塞入维护版本。
+- 全面适配 EasyConnect 可选能力的候选版本命名为 `2.0.0`。本次只保留
+  [现状与备选计划](ROADMAP.md)；只有学校实际启用资源目录、WebVPN、多线路、
+  MFA、SSO 或硬件认证中的某项时，才针对该能力启动实现和实机验证。
 
 > 如果觉得 HKUST(GZ) Connect 好用，欢迎在 GitHub 给项目一个 ⭐ Star；谢谢支持！
 
@@ -342,6 +357,14 @@ leave EasyConnect-style DNS or routing residue behind.
 
 ## 1.2.1 core results
 
+> **Release positioning:** 1.2.1 is a maintenance and maintainability update
+> built on the user-facing features delivered in 1.2.0. Multi-tab Campus
+> Browser, domain routing, PAC, Clash/SSH, strict local authentication, the
+> credential vault, and automatic reconnect already shipped in 1.2.0. Version
+> 1.2.1 does not claim support for EasyConnect resource catalogues, WebVPN,
+> MFA, certificate authentication, or USB keys; those remain roadmap items
+> that require separate implementation and validation.
+
 - The Rust engine now emits a structured Event API v1 `stopped` event with a
   reason and connection generation. Desktop accepts a terminal result only
   from the current generation instead of inferring state from English logs.
@@ -364,6 +387,20 @@ leave EasyConnect-style DNS or routing residue behind.
   enumeration, bounded timers, one Session across 20 tabs, switch latency, and
   view lifecycle. Their broad thresholds catch hangs or catastrophic
   regressions; they are not campus-gateway latency or throughput promises.
+- Diagnostic logs are bounded by both time and size: at most three days, with
+  one current and one rotated file capped at 8 MiB each. Expired windows are
+  cleared automatically, so logs cannot grow without bound.
+
+### Version policy
+
+- Future `1.x.x` releases maintain the existing connection, Campus Browser,
+  domain-routing, SOCKS/PAC, Clash/SSH, and local-credential features. They do
+  not fold unverified EasyConnect capabilities into maintenance releases.
+- The candidate for broad EasyConnect optional-capability support is named
+  `2.0.0`. This release keeps only the [current status and contingency
+  plan](ROADMAP.md). Implementation and live validation begin only if the
+  school actually enables a relevant resource catalogue, WebVPN, multiple
+  lines, MFA, SSO, or hardware-authentication feature.
 
 ## Download
 

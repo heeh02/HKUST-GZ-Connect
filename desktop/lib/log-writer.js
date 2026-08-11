@@ -14,6 +14,8 @@ const {
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_TAIL_BYTES = 256 * 1024;
 const DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024;
+const DEFAULT_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
+const MAX_RETENTION_MARKER_BYTES = 64;
 const MAX_TAIL_LINES = 10_000;
 
 function boundedInteger(value, fallback, minimum, maximum) {
@@ -44,11 +46,16 @@ class BufferedLogWriter {
     maxBytes = DEFAULT_MAX_BYTES,
     maxBufferBytes = DEFAULT_MAX_BUFFER_BYTES,
     flushIntervalMs = 200,
+    retentionMs = DEFAULT_RETENTION_MS,
+    now = Date.now,
+    setTimeoutFn = setTimeout,
+    clearTimeoutFn = clearTimeout,
     redact = redactDiagnosticText,
     onError = null,
   } = {}) {
     this.file = file;
     this.rotatedFile = `${file}.1`;
+    this.retentionFile = `${file}.retention`;
     this.maxBytes = boundedInteger(maxBytes, DEFAULT_MAX_BYTES, 1024, DEFAULT_MAX_BYTES);
     this.maxBufferBytes = boundedInteger(
       maxBufferBytes,
@@ -57,6 +64,15 @@ class BufferedLogWriter {
       DEFAULT_MAX_BUFFER_BYTES,
     );
     this.flushIntervalMs = boundedInteger(flushIntervalMs, 200, 10, 60_000);
+    this.retentionMs = boundedInteger(
+      retentionMs,
+      DEFAULT_RETENTION_MS,
+      1000,
+      30 * 24 * 60 * 60 * 1000,
+    );
+    this.now = typeof now === 'function' ? now : Date.now;
+    this.setTimeoutFn = typeof setTimeoutFn === 'function' ? setTimeoutFn : setTimeout;
+    this.clearTimeoutFn = typeof clearTimeoutFn === 'function' ? clearTimeoutFn : clearTimeout;
     this.redact = typeof redact === 'function' ? redact : redactDiagnosticText;
     this.onError = typeof onError === 'function' ? onError : null;
     this.buffer = '';
@@ -65,13 +81,16 @@ class BufferedLogWriter {
     this.closed = false;
     this.droppedBytes = 0;
     this.lastError = null;
+    this.retentionStartedAt = null;
+    this.retentionTimer = null;
+
+    // Enforce retention even when the engine remains quiet for the entire app
+    // session. All later log operations are serialized behind this check.
+    this.observeBackground(this.enqueue(() => this.enforceRetention()));
   }
 
-  flushInBackground() {
-    // Disk-full, permission, and unsafe-path failures are recoverable for the
-    // application. Keep them observable without allowing a timer-triggered
-    // Promise rejection to terminate Electron under strict rejection policy.
-    this.flush().catch((error) => {
+  observeBackground(operation) {
+    operation.catch((error) => {
       this.lastError = error;
       try {
         this.onError?.(error);
@@ -80,6 +99,107 @@ class BufferedLogWriter {
         // uncaught exception. The original error remains in lastError.
       }
     });
+  }
+
+  flushInBackground() {
+    // Disk-full, permission, and unsafe-path failures are recoverable for the
+    // application. Keep them observable without allowing a timer-triggered
+    // Promise rejection to terminate Electron under strict rejection policy.
+    this.observeBackground(this.flush());
+  }
+
+  currentTime() {
+    const value = Number(this.now());
+    return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : Date.now();
+  }
+
+  async readRetentionStart() {
+    let opened;
+    try {
+      opened = await openVerifiedRegular(this.retentionFile, fs.constants.O_RDONLY);
+      if (opened.stat.size < 1 || opened.stat.size > MAX_RETENTION_MARKER_BYTES) {
+        throw unsafeLogPath(this.retentionFile, 'invalid retention marker size');
+      }
+      const buffer = Buffer.alloc(opened.stat.size);
+      let total = 0;
+      while (total < buffer.length) {
+        const { bytesRead } = await opened.handle.read(
+          buffer,
+          total,
+          buffer.length - total,
+          total,
+        );
+        if (bytesRead <= 0) break;
+        total += bytesRead;
+      }
+      await recheckOpenPath(this.retentionFile, opened.handle, opened.stat);
+      const value = buffer.subarray(0, total).toString('ascii').trim();
+      if (!/^\d{1,16}$/.test(value)) {
+        throw unsafeLogPath(this.retentionFile, 'invalid retention marker');
+      }
+      const startedAt = Number(value);
+      if (!Number.isSafeInteger(startedAt) || startedAt < 0) {
+        throw unsafeLogPath(this.retentionFile, 'invalid retention timestamp');
+      }
+      return startedAt;
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    } finally {
+      await opened?.handle.close().catch(() => {});
+    }
+  }
+
+  async writeRetentionStart(startedAt) {
+    const marker = Buffer.from(`${startedAt}\n`, 'ascii');
+    await replaceWithPrivateFile(this.retentionFile, async (destination) => {
+      await writeAll(destination, marker);
+    });
+  }
+
+  async clearRetainedLogs() {
+    // Atomic replacement removes a hostile symbolic-link entry without ever
+    // following it to the unrelated target.
+    await replaceWithPrivateFile(this.file, async () => {});
+    await replaceWithPrivateFile(this.rotatedFile, async () => {});
+  }
+
+  scheduleRetention() {
+    if (this.retentionTimer) this.clearTimeoutFn(this.retentionTimer);
+    this.retentionTimer = null;
+    if (this.closed || this.retentionStartedAt === null) return;
+    const remaining = Math.min(
+      this.retentionMs,
+      Math.max(1, this.retentionStartedAt + this.retentionMs - this.currentTime()),
+    );
+    this.retentionTimer = this.setTimeoutFn(() => {
+      this.retentionTimer = null;
+      this.observeBackground(this.enqueue(() => this.enforceRetention()));
+    }, remaining);
+    this.retentionTimer?.unref?.();
+  }
+
+  async enforceRetention() {
+    const now = this.currentTime();
+    let startedAt = this.retentionStartedAt;
+    if (startedAt === null) {
+      startedAt = await this.readRetentionStart();
+    }
+
+    if (startedAt === null) {
+      // Existing installations have no marker. Start retention now without
+      // touching the current log: the existing no-follow append/rotation path
+      // must still reject a hostile log symlink instead of silently replacing
+      // it during construction.
+      await this.writeRetentionStart(now);
+      startedAt = now;
+    } else if (startedAt > now || now - startedAt >= this.retentionMs) {
+      await this.clearRetainedLogs();
+      await this.writeRetentionStart(now);
+      startedAt = now;
+    }
+    this.retentionStartedAt = startedAt;
+    this.scheduleRetention();
   }
 
   append(value) {
@@ -146,6 +266,7 @@ class BufferedLogWriter {
   }
 
   async appendChunk(chunk) {
+    await this.enforceRetention();
     await ensurePrivateDirectory(this.file);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await this.rotateFor(chunk.length);
@@ -184,13 +305,19 @@ class BufferedLogWriter {
     this.takeBuffer();
     this.droppedBytes = 0;
     return this.enqueue(async () => {
-      await replaceWithPrivateFile(this.file, async () => {});
+      const now = this.currentTime();
+      await this.clearRetainedLogs();
+      await this.writeRetentionStart(now);
+      this.retentionStartedAt = now;
+      this.scheduleRetention();
     });
   }
 
   async close() {
     if (this.closed) return this.operation;
     this.closed = true;
+    if (this.retentionTimer) this.clearTimeoutFn(this.retentionTimer);
+    this.retentionTimer = null;
     await this.flush();
     await this.operation;
   }
@@ -234,6 +361,7 @@ async function readLogTail(file, { maxBytes = DEFAULT_TAIL_BYTES, maxLines = 300
 module.exports = {
   BufferedLogWriter,
   DEFAULT_MAX_BYTES,
+  DEFAULT_RETENTION_MS,
   DEFAULT_TAIL_BYTES,
   readLogTail,
   redactDiagnosticText,

@@ -81,7 +81,9 @@ not enter engine stdout events, application logs, diagnostics, Git, CI
 artifacts, or release notes. Engine stdout carries bounded Event API v1 NDJSON
 and correlated bounded Control API v2 responses; neither schema contains a
 secret field. Human diagnostics go to redacted stderr/log files with bounded
-rotation. Control input frames begin only after the private stdin credential
+rotation, an 8 MiB cap on both the current and single rotated file, and a
+persistent three-day retention window that is enforced even across app
+restarts. Control input frames begin only after the private stdin credential
 prefix and likewise have no arbitrary secret payload; the fact that both use
 one inherited pipe does not make credentials part of Control v2.
 

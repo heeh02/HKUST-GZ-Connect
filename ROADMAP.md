@@ -87,7 +87,18 @@ OS, architecture, Electron version, power mode and whether the machine was on
 battery. These reports do not measure gateway latency, tunnel throughput, DNS
 latency or real campus-page rendering.
 
-## Provider and EasyConnect capability roadmap
+## Future 2.0.0 EasyConnect compatibility contingency plan
+
+This section is deliberately inactive in the 1.x maintenance line. It records
+what the code can and cannot do today so the school has a reviewed starting
+point if an optional EasyConnect feature is enabled later. It is not a 2.0.0
+release commitment, and none of the Partial entries below is advertised as a
+working user feature.
+
+The trigger for implementation is evidence that the school has enabled a
+specific capability on a controlled test profile. Work should then cover only
+that capability, compare it with the supported official client, and pass the
+promotion checklist below before its status changes to Done.
 
 | Order | Capability | Status | What exists now | Required next evidence/work |
 | ---: | --- | --- | --- | --- |
@@ -118,7 +129,7 @@ System integration, if the school later needs it, must be a signed, reversible,
 opt-in platform component with scoped routes/DNS and an auditable rollback. It
 must not weaken the isolated browser and explicit-proxy defaults.
 
-## Promotion checklist for every partial capability
+## 2.0.0 promotion checklist for every activated capability
 
 1. Obtain authorized official-client behavior from a school-controlled enabled
    profile; never use production student credentials as a fixture.

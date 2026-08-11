@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   BufferedLogWriter,
+  DEFAULT_RETENTION_MS,
   readLogTail,
   redactDiagnosticText,
 } = require('../lib/log-writer');
@@ -69,6 +70,114 @@ test('buffers writes, keeps owner-only permissions, and rotates at a fixed limit
     assert.equal(fs.statSync(file).mode & 0o777, 0o600);
     assert.equal(fs.statSync(`${file}.1`).mode & 0o777, 0o600);
   }
+});
+
+test('retention window removes every log older than three days even during continuous use', async (t) => {
+  assert.equal(DEFAULT_RETENTION_MS, 3 * 24 * 60 * 60 * 1000);
+  const file = temporaryLog(t);
+  let currentTime = Date.UTC(2026, 7, 1);
+  const writer = new BufferedLogWriter(file, {
+    flushIntervalMs: 60_000,
+    now: () => currentTime,
+  });
+
+  writer.append('first-day\n');
+  await writer.flush();
+  currentTime += DEFAULT_RETENTION_MS - 1;
+  writer.append('still-inside-window\n');
+  await writer.flush();
+  assert.match(fs.readFileSync(file, 'utf8'), /first-day/);
+
+  currentTime += 1;
+  writer.append('new-window\n');
+  await writer.flush();
+  await writer.close();
+
+  assert.equal(fs.readFileSync(file, 'utf8'), 'new-window\n');
+  assert.equal(fs.readFileSync(`${file}.1`, 'utf8'), '');
+});
+
+test('retention marker survives restart and expires an otherwise idle log', async (t) => {
+  const file = temporaryLog(t);
+  let currentTime = Date.UTC(2026, 7, 1);
+  const first = new BufferedLogWriter(file, {
+    flushIntervalMs: 60_000,
+    now: () => currentTime,
+  });
+  first.append('previous-session\n');
+  await first.close();
+
+  currentTime += DEFAULT_RETENTION_MS;
+  const restarted = new BufferedLogWriter(file, {
+    flushIntervalMs: 60_000,
+    now: () => currentTime,
+  });
+  await restarted.flush();
+  await restarted.close();
+
+  assert.equal(fs.readFileSync(file, 'utf8'), '');
+  assert.equal(fs.readFileSync(`${file}.1`, 'utf8'), '');
+});
+
+test('retention replaces linked log entries without touching their targets', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('creating symbolic links requires elevated privileges on some Windows hosts');
+    return;
+  }
+  const file = temporaryLog(t);
+  const entries = [file, `${file}.1`];
+  const snapshots = entries.map((entry, index) => {
+    const target = path.join(path.dirname(file), `retention-target-${index}`);
+    const content = `private-${index}\n`;
+    fs.writeFileSync(target, content, { mode: 0o640 });
+    fs.chmodSync(target, 0o640);
+    fs.symlinkSync(target, entry);
+    return { content, entry, mode: fs.statSync(target).mode & 0o777, target };
+  });
+
+  const currentTime = Date.UTC(2026, 7, 8);
+  fs.writeFileSync(
+    `${file}.retention`,
+    `${currentTime - DEFAULT_RETENTION_MS}\n`,
+    { mode: 0o600 },
+  );
+  const writer = new BufferedLogWriter(file, {
+    flushIntervalMs: 60_000,
+    now: () => currentTime,
+  });
+  await writer.flush();
+  await writer.close();
+
+  for (const snapshot of snapshots) {
+    assert.equal(fs.readFileSync(snapshot.target, 'utf8'), snapshot.content);
+    assert.equal(fs.statSync(snapshot.target).mode & 0o777, snapshot.mode);
+    assert.equal(fs.lstatSync(snapshot.entry).isSymbolicLink(), false);
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), '');
+  assert.equal(fs.readFileSync(`${file}.1`, 'utf8'), '');
+});
+
+test('unsafe retention marker fails closed without touching its target', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('creating symbolic links requires elevated privileges on some Windows hosts');
+    return;
+  }
+  const file = temporaryLog(t);
+  const target = path.join(path.dirname(file), 'retention-marker-target');
+  fs.writeFileSync(target, 'unrelated marker target\n', { mode: 0o640 });
+  fs.chmodSync(target, 0o640);
+  const mode = fs.statSync(target).mode & 0o777;
+  fs.symlinkSync(target, `${file}.retention`);
+
+  const writer = new BufferedLogWriter(file, { flushIntervalMs: 60_000 });
+  writer.append('must not be written\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  await writer.close();
+
+  assert.equal(fs.readFileSync(target, 'utf8'), 'unrelated marker target\n');
+  assert.equal(fs.statSync(target).mode & 0o777, mode);
+  assert.equal(fs.lstatSync(`${file}.retention`).isSymbolicLink(), true);
+  assert.equal(fs.existsSync(file), false);
 });
 
 test('tail reading is byte-bounded and returns only requested trailing lines', async (t) => {
