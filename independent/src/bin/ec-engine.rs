@@ -1,7 +1,7 @@
 use ec_compat::engine::control::{
     ControlAction, ControlExchange, ControlFrameReader, ControlSession, MAX_ACTIVE_REQUESTS,
 };
-use ec_compat::engine::dns::VpnDnsResolver;
+use ec_compat::engine::dns::{VpnDnsResolver, VpnDnsSource, select_vpn_dns_servers};
 use ec_compat::engine::event::{
     AddressFamily, DnsMode, EngineErrorCode, EngineEvent, EngineEventEmitter, EngineState,
     NetworkUnhealthyReason, StopReason,
@@ -19,7 +19,7 @@ use ec_compat::engine::socks_auth::{
 use ec_compat::watch::load_json;
 use ec_compat::{Error, Result};
 use std::io::Write;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -317,6 +317,37 @@ fn authentication_failure(error: ProviderError) -> EngineFailure {
     failure(code, StopReason::StartupFailed, Error::from(error))
 }
 
+fn configured_vpn_dns_servers(config: &serde_json::Value) -> Result<Vec<Ipv4Addr>> {
+    let Some(value) = config.pointer("/proxy/vpn_dns_servers") else {
+        return Ok(Vec::new());
+    };
+    let entries = value
+        .as_array()
+        .ok_or_else(|| Error("configured VPN DNS servers must be an array".into()))?;
+    let mut servers = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let server = entry
+            .as_str()
+            .and_then(|value| value.parse::<Ipv4Addr>().ok())
+            .ok_or_else(|| Error("configured VPN DNS server is not a valid IPv4 address".into()))?;
+        if !servers.contains(&server) {
+            servers.push(server);
+        }
+    }
+    // Validate the deployment profile before authentication so a malformed or
+    // unsafe packaged address cannot open a remote session first.
+    let _ = select_vpn_dns_servers(&[], &servers)?;
+    Ok(servers)
+}
+
+fn dns_mode_for_source(source: VpnDnsSource) -> DnsMode {
+    match source {
+        VpnDnsSource::Gateway => DnsMode::Gateway,
+        VpnDnsSource::Profile => DnsMode::VpnProfile,
+        VpnDnsSource::GatewayAndProfile => DnsMode::GatewayProfile,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let exit_code = engine_main().await;
@@ -385,6 +416,13 @@ async fn run_engine<W: Write>(
             Error("engine configuration could not be loaded or is invalid".into()),
         )
     })?;
+    let profile_dns_servers = configured_vpn_dns_servers(&config).map_err(|_| {
+        failure(
+            EngineErrorCode::ConfigurationInvalid,
+            StopReason::StartupFailed,
+            Error("engine VPN DNS configuration is invalid".into()),
+        )
+    })?;
 
     lifecycle
         .state(EngineState::Authenticating)
@@ -446,7 +484,7 @@ async fn run_engine<W: Write>(
                 error,
             )
         })?;
-    let dns_servers = transport.dns_servers().to_vec();
+    let gateway_dns_servers = transport.dns_servers().to_vec();
     let data_plane = transport.into_data_plane();
     let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());
     let netstack = match VirtualNetstack::start(data_plane, mtu) {
@@ -464,20 +502,35 @@ async fn run_engine<W: Write>(
     let allow_system_dns_fallback = config["proxy"]["allow_system_dns_fallback"]
         .as_bool()
         .unwrap_or(false);
-    let (resolver, dns_mode): (Arc<dyn NameResolver>, DnsMode) = if !dns_servers.is_empty() {
-        let resolver =
-            match VpnDnsResolver::new(Arc::clone(&netstack), dns_servers, Duration::from_secs(5)) {
-                Ok(resolver) => resolver,
-                Err(error) => {
-                    let _ = session.logout();
-                    return Err(failure(
-                        EngineErrorCode::DataPlaneSetupFailed,
-                        StopReason::StartupFailed,
-                        error,
-                    ));
-                }
-            };
-        (Arc::new(resolver), DnsMode::Gateway)
+    let vpn_dns = match select_vpn_dns_servers(&gateway_dns_servers, &profile_dns_servers) {
+        Ok(selection) => selection,
+        Err(error) => {
+            let _ = session.logout();
+            return Err(failure(
+                EngineErrorCode::DataPlaneSetupFailed,
+                StopReason::StartupFailed,
+                error,
+            ));
+        }
+    };
+    let (resolver, dns_mode): (Arc<dyn NameResolver>, DnsMode) = if let Some(selection) = vpn_dns {
+        let dns_mode = dns_mode_for_source(selection.source());
+        let resolver = match VpnDnsResolver::new(
+            Arc::clone(&netstack),
+            selection.into_servers(),
+            Duration::from_secs(5),
+        ) {
+            Ok(resolver) => resolver,
+            Err(error) => {
+                let _ = session.logout();
+                return Err(failure(
+                    EngineErrorCode::DataPlaneSetupFailed,
+                    StopReason::StartupFailed,
+                    error,
+                ));
+            }
+        };
+        (Arc::new(resolver), dns_mode)
     } else if allow_system_dns_fallback {
         (Arc::new(SystemDnsResolver), DnsMode::SystemFallback)
     } else {
@@ -759,6 +812,49 @@ mod tests {
         assert_eq!(
             parsed.proxy_authentication_mode,
             ProxyAuthenticationMode::None
+        );
+    }
+
+    #[test]
+    fn deployment_profile_dns_is_strict_bounded_and_source_typed() {
+        let config = serde_json::json!({
+            "proxy": {
+                "vpn_dns_servers": ["10.90.63.2", "10.90.63.3", "10.90.63.2"]
+            }
+        });
+        assert_eq!(
+            configured_vpn_dns_servers(&config).unwrap(),
+            [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3),]
+        );
+        assert_eq!(
+            dns_mode_for_source(VpnDnsSource::Profile),
+            DnsMode::VpnProfile
+        );
+        assert_eq!(
+            dns_mode_for_source(VpnDnsSource::GatewayAndProfile),
+            DnsMode::GatewayProfile
+        );
+
+        for invalid in [
+            serde_json::json!({"proxy": {"vpn_dns_servers": "10.90.63.2"}}),
+            serde_json::json!({"proxy": {"vpn_dns_servers": ["not-an-address"]}}),
+            serde_json::json!({"proxy": {"vpn_dns_servers": ["127.0.0.1"]}}),
+        ] {
+            assert!(configured_vpn_dns_servers(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn hkustgz_production_profile_keeps_split_dns_inside_the_vpn() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../../config/hkustgz.json")).unwrap();
+        assert_eq!(
+            config.pointer("/proxy/allow_system_dns_fallback"),
+            Some(&serde_json::Value::Bool(false))
+        );
+        assert_eq!(
+            configured_vpn_dns_servers(&config).unwrap(),
+            [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3),]
         );
     }
 

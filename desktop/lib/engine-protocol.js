@@ -14,7 +14,13 @@ const EVENT_TYPES = new Set([
   'stopped',
 ]);
 const STATES = new Set(['idle', 'connecting', 'authenticating', 'connected', 'stopping', 'stopped']);
-const DNS_MODES = new Set(['gateway', 'system_fallback', 'disabled']);
+const DNS_MODES = new Set([
+  'gateway',
+  'vpn_profile',
+  'gateway_profile',
+  'system_fallback',
+  'disabled',
+]);
 const SAFE_TOKEN = /^[A-Za-z0-9_.:-]{1,96}$/u;
 
 function safeToken(value) {

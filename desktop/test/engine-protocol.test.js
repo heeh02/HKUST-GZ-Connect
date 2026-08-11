@@ -20,6 +20,13 @@ test('normalizes only bounded API v1 machine events and drops extra data', () =>
   assert.equal(normalizeEngineEvent({ type: 'listener_ready', port: 80 }), null);
   assert.equal(normalizeEngineEvent({ type: 'fatal_error', code: 'bad code' }), null);
   assert.equal(normalizeEngineEvent({ type: 'unknown', token: 'secret' }), null);
+  assert.deepEqual(normalizeEngineEvent({ type: 'dns_mode', mode: 'vpn_profile' }), {
+    type: 'dns_mode', mode: 'vpn_profile',
+  });
+  assert.deepEqual(normalizeEngineEvent({ type: 'dns_mode', mode: 'gateway_profile' }), {
+    type: 'dns_mode', mode: 'gateway_profile',
+  });
+  assert.equal(normalizeEngineEvent({ type: 'dns_mode', mode: 'public_dns' }), null);
 });
 
 test('parses fragmented and coalesced NDJSON without interpreting diagnostic text', () => {

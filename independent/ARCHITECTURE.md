@@ -181,17 +181,24 @@ Tune with `tunnel.mtu` in the engine configuration, or `HKUSTGZ_TUNNEL_MTU` for 
 installed build whose bundle signature must not be disturbed. The engine prints
 the value it settled on at startup.
 
-## Known deviation: `proxy.allow_system_dns_fallback`
+## VPN DNS source selection
 
-`engine/dns.rs` must not own a public or system resolver, and the engine code
-defaults the flag to `false` (an unresolvable proxy domain fails closed). The
-shipped `config/hkustgz.json` sets it to `true`, so if the gateway ever stops
-advertising an L3 DNS server the frontend silently resolves proxy domains
-through the operating-system resolver instead. Campus hostnames then leave the
-tunnel as plaintext DNS questions.
+`engine/dns.rs` owns the bounded DNS client that sends UDP through
+`VirtualNetstack`; it does not modify operating-system DNS or routes. The
+runtime combines two reviewed sources:
 
-Before turning this off, confirm the gateway actually advertises L3 DNS: the
-engine prints `Proxy DNS mode: gateway` when it does and
-`Proxy DNS mode: system fallback` when the fallback is carrying real traffic.
-Only the first case makes the flag dead configuration that is safe to set to
-`false`.
+1. addresses authenticated and advertised by the gateway in `conf.csp`;
+2. `proxy.vpn_dns_servers` from the deployment profile, used when a gateway
+   establishes L3 but omits split-horizon DNS metadata.
+
+The combined list is deduplicated, capped at eight servers, checked by the same
+tunnel destination policy as SOCKS TCP/UDP, and raced to the first valid A
+answer. The HKUST(GZ) production profile supplies `10.90.63.2` and
+`10.90.63.3` and sets `proxy.allow_system_dns_fallback` to `false`. This keeps
+HPC-only hostnames inside the VPN while still adopting new gateway-advertised
+DNS automatically. The Event API reports `gateway`, `vpn_profile`, or
+`gateway_profile` without exposing server addresses.
+
+The system resolver implementation remains available only for a separately
+reviewed deployment profile that explicitly enables it. It is not selected by
+the HKUST(GZ) production configuration.

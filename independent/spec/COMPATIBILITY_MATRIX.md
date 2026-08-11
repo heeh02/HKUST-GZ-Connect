@@ -28,8 +28,8 @@ independent VPN engine.
 | UDP via SOCKS5 | current target returned no response | header/DNS/fragment/lifecycle fixtures | UDP ASSOCIATE relay after `NO_AUTH`; optional RFC 1929 and strict mode reject it to prevent cross-user relay theft; close remains healthy | reachable live UDP service pending |
 | Isolated Campus Browser | official resource/browser flow | URL/proxy policy fixtures | Electron session; all browser traffic uses tunnel | independent browser canary pending |
 | Domain-selective PAC | campus page loaded through PAC | exact/suffix/no-DNS fixtures | advanced integration endpoint | isolated Chrome pass |
-| VPN-side DNS | no DNS server in current profile | DNS codec fixtures | used when supplied | not applicable to current profile |
-| Explicit system DNS fallback | enabled by reviewed current profile | domain validation fixtures | modular Rust resolver | live domain CONNECT passed |
+| VPN-side DNS | no DNS server advertised by current gateway; school profile supplies two internal resolvers | DNS codec, source merge, policy, race and cache fixtures | gateway + reviewed profile sources through userspace UDP | HPC hostname canary required per release |
+| Explicit system DNS fallback | disabled by reviewed current profile | production profile contract test | implementation retained for other profiles but not selected | not applicable to HKUST(GZ) production |
 | Logout | live HTTP 200 | state test | Rust probe | live pass |
 | Reset/reconnect | live server reset | state test | bounded reset retry | reset path confirmed |
 | Timeout/data-plane recovery | process-level restart contract | bounded timeout tests pending | unhealthy engine exits | sleep/resume canary pending |

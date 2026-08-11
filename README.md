@@ -40,6 +40,24 @@ HKUST(GZ) Connect 是面向师生的校园网络客户端。只想访问校内�
 默认模式不会修改系统 DNS、系统代理或默认路由。即使连接异常或强制退出，也
 不会在系统中留下 EasyConnect 常见的 DNS/路由残留。
 
+## 1.2.2 HPC 内部 DNS 修复
+
+1.2.1 及更早版本在网关未通过 `conf.csp` 下发 DNS 时，会按学校生产配置回退到
+操作系统 DNS。`hpc2login.hpc.hkust-gz.edu.cn` 等仅存在于校园内部 DNS 的域名
+因此会被公共 DNS 判定为不存在，SOCKS5 连接会在进入校园隧道前失败。
+
+1.2.2 将解析路径改为长期可维护的隧道内策略：
+
+- 网关以后重新下发 DNS 时，动态地址仍会自动采用；
+- 学校配置的 `10.90.63.2`、`10.90.63.3` 作为当前生产 profile 的冗余来源；
+- 动态与学校配置地址会去重并并发查询，首个有效结果进入有界 TTL 缓存；
+- 生产 profile 关闭系统 DNS fallback，内部域名不会再交给公共 DNS；
+- 所有 DNS UDP 包只经过 Rust 用户态校园隧道，不修改系统 DNS、默认路由或
+  其他浏览器的网络环境；界面会区分网关 DNS、学校 DNS 或两者组合。
+
+DNS 地址属于可审核的学校部署配置，而不是散落在 SOCKS 代码中的硬编码。学校
+以后调整 DNS 时只需更新 profile 并发布维护版本，无需重写解析器。
+
 ## 1.2.1 核心结果
 
 > **版本定位：** 1.2.1 是建立在 1.2.0 用户功能之上的维护性与可维护性更新。
@@ -333,7 +351,7 @@ npm start
 进一步资料：
 
 - [架构与模块边界](independent/ARCHITECTURE.md)
-- [1.2.1 路线图与证据状态](ROADMAP.md)
+- [1.2.2 路线图与证据状态](ROADMAP.md)
 - [桌面端安全模型](desktop/SECURITY.md)
 - [维护策略](independent/MAINTENANCE.md)
 - [Engine Control API v2](independent/spec/ENGINE_CONTROL_API_V2.md)
@@ -368,6 +386,31 @@ Version history:
 The default mode does not change operating-system DNS, the global proxy, or
 the default route. A failed connection or forced exit therefore does not
 leave EasyConnect-style DNS or routing residue behind.
+
+## 1.2.2 HPC split-horizon DNS fix
+
+In 1.2.1 and earlier, the school production profile fell back to operating-
+system DNS whenever the gateway omitted DNS from `conf.csp`. Names that exist
+only in campus DNS, including `hpc2login.hpc.hkust-gz.edu.cn`, could therefore
+receive a public NXDOMAIN result and fail before SOCKS5 opened the tunnel TCP
+connection.
+
+Version 1.2.2 replaces that behavior with a maintainable VPN-only policy:
+
+- gateway-advertised DNS is still adopted automatically if it appears later;
+- `10.90.63.2` and `10.90.63.3` are reviewed fallback sources in the current
+  school deployment profile;
+- gateway and profile addresses are deduplicated and queried concurrently,
+  with the first valid answer entering the bounded TTL cache;
+- system DNS fallback is disabled in the production profile, so internal names
+  are no longer sent to public DNS;
+- every DNS UDP packet stays inside the Rust userspace campus tunnel. The app
+  still does not change OS DNS, the default route, or other browsers, and the
+  UI distinguishes gateway DNS, campus-profile DNS, and their combined mode.
+
+The DNS addresses live in the reviewed deployment profile rather than being
+scattered through SOCKS code. A future school DNS change therefore requires a
+profile maintenance update, not a resolver rewrite.
 
 ## 1.2.1 core results
 
@@ -701,7 +744,7 @@ npm start
 Further documentation:
 
 - [Architecture and module ownership](independent/ARCHITECTURE.md)
-- [1.2.1 roadmap and evidence status](ROADMAP.md)
+- [1.2.2 roadmap and evidence status](ROADMAP.md)
 - [Desktop security model](desktop/SECURITY.md)
 - [Maintenance policy](independent/MAINTENANCE.md)
 - [Engine Control API v2](independent/spec/ENGINE_CONTROL_API_V2.md)

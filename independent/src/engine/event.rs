@@ -52,6 +52,8 @@ impl Serialize for AddressFamily {
 #[serde(rename_all = "snake_case")]
 pub enum DnsMode {
     Gateway,
+    VpnProfile,
+    GatewayProfile,
     SystemFallback,
     Disabled,
 }
@@ -60,6 +62,8 @@ impl DnsMode {
     pub fn diagnostic_name(self) -> &'static str {
         match self {
             Self::Gateway => "gateway",
+            Self::VpnProfile => "VPN profile",
+            Self::GatewayProfile => "gateway + VPN profile",
             Self::SystemFallback => "system fallback",
             Self::Disabled => "disabled",
         }
@@ -228,6 +232,18 @@ mod tests {
                     mode: DnsMode::SystemFallback,
                 },
                 json!({"type": "dns_mode", "mode": "system_fallback"}),
+            ),
+            (
+                EngineEvent::DnsMode {
+                    mode: DnsMode::VpnProfile,
+                },
+                json!({"type": "dns_mode", "mode": "vpn_profile"}),
+            ),
+            (
+                EngineEvent::DnsMode {
+                    mode: DnsMode::GatewayProfile,
+                },
+                json!({"type": "dns_mode", "mode": "gateway_profile"}),
             ),
             (
                 EngineEvent::ListenerReady { port: 6180 },

@@ -14,7 +14,11 @@
   "hash_windows_installer": true,
   "max_artifact_bytes": 536870912,
   "proxy": {
-    "allow_system_dns_fallback": true
+    "allow_system_dns_fallback": false,
+    "vpn_dns_servers": [
+      "10.90.63.2",
+      "10.90.63.3"
+    ]
   },
   "target": "hkustgz-production",
   "timeout_seconds": 15,

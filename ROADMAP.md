@@ -1,4 +1,4 @@
-# HKUST(GZ) Connect 1.2.1 baseline and roadmap
+# HKUST(GZ) Connect 1.2.2 baseline and roadmap
 
 This roadmap is an implementation and evidence ledger, not a promise that an
 unobserved proprietary gateway revision will work forever. A trait, parser,
@@ -21,7 +21,7 @@ The compatibility matrix in `independent/spec/COMPATIBILITY_MATRIX.md` remains
 the detailed evidence record. If this roadmap and that matrix disagree, use the
 more conservative status until the discrepancy is reviewed.
 
-## Release 1.2.1 baseline
+## Release 1.2.2 baseline
 
 | Area | Status | Production result | Evidence still needed |
 | --- | --- | --- | --- |
@@ -30,6 +30,18 @@ more conservative status until the discrepancy is reviewed.
 | SOCKS/PAC/Clash/SSH frontends | **Done** for documented TCP use | Default compatibility mode plus opt-in strict local authentication; no global network mutation | Live UDP service coverage remains incomplete |
 | Lifecycle and recovery | **Partial** | Event API v1 emits a generation-bound structured `stopped` reason; the desktop prefers private bounded Control v2 graceful shutdown/logout before bounded signal fallbacks | Sleep/resume, network switching and server-initiated termination need real-device canaries |
 | Desktop performance | **Partial** | Offline 20-tab switching/lifecycle soak and a hidden-idle telemetry contract exist | Stable product baselines on supported macOS/Windows hardware and a real campus page set |
+| Split-horizon campus DNS | **Done** for the current HKUST(GZ) profile | Gateway DNS and reviewed profile DNS are combined inside the userspace VPN; the production profile supplies `10.90.63.2`/`10.90.63.3` and disables public/system fallback | Repeat the HPC hostname canary after a gateway or school DNS change |
+
+### 1.2.2 split-horizon DNS evidence
+
+The active gateway may establish Modern L3 without returning DNS in
+`conf.csp`. Version 1.2.2 therefore treats gateway-advertised DNS and a bounded
+reviewed deployment-profile list as two VPN-side sources. It deduplicates them,
+queries all usable servers concurrently through `VirtualNetstack`, validates
+responses and caches only bounded A answers. The production profile disables
+system DNS fallback, so an internal NXDOMAIN from public DNS can no longer
+short-circuit the SOCKS request. No operating-system DNS setting or route is
+changed.
 
 ### 1.2.1 lifecycle and restart evidence
 

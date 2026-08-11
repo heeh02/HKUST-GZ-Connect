@@ -67,6 +67,8 @@ function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
 
 function dnsModeLabel(mode) {
   if (mode === 'gateway') return t('stats.dnsGateway');
+  if (mode === 'vpn_profile') return t('stats.dnsVpnProfile');
+  if (mode === 'gateway_profile') return t('stats.dnsGatewayProfile');
   if (mode === 'system_fallback') return t('stats.dnsFallback');
   if (mode === 'disabled') return t('stats.dnsDisabled');
   return t('stats.dnsUnknown');

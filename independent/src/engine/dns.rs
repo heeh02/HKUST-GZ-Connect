@@ -25,6 +25,80 @@ const MAX_POINTER_JUMPS: usize = 16;
 const MIN_CACHE_TTL: Duration = Duration::from_secs(10);
 const MAX_CACHE_TTL: Duration = Duration::from_secs(300);
 const MAX_CACHE_ENTRIES: usize = 512;
+const MAX_VPN_DNS_SERVERS: usize = 8;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VpnDnsSource {
+    Gateway,
+    Profile,
+    GatewayAndProfile,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VpnDnsSelection {
+    servers: Vec<Ipv4Addr>,
+    source: VpnDnsSource,
+}
+
+impl VpnDnsSelection {
+    pub fn servers(&self) -> &[Ipv4Addr] {
+        &self.servers
+    }
+
+    pub fn source(&self) -> VpnDnsSource {
+        self.source
+    }
+
+    pub fn into_servers(self) -> Vec<Ipv4Addr> {
+        self.servers
+    }
+}
+
+/// Combines authenticated gateway DNS with a reviewed deployment profile.
+///
+/// Gateway-advertised addresses remain preferred in presentation and insertion
+/// order, while profile addresses keep split-horizon campus names resolvable on
+/// gateways that omit DNS from `conf.csp`. Queries to all selected servers still
+/// travel through `VirtualNetstack`; this function never introduces a system
+/// resolver or changes the host operating system's DNS configuration.
+pub fn select_vpn_dns_servers(
+    gateway: &[Ipv4Addr],
+    profile: &[Ipv4Addr],
+) -> Result<Option<VpnDnsSelection>> {
+    for source in [gateway, profile] {
+        if source.len() > MAX_VPN_DNS_SERVERS {
+            return Err(Error(
+                "VPN DNS configuration contains too many servers".into(),
+            ));
+        }
+        if !source.is_empty() {
+            validate_dns_servers(source)?;
+        }
+    }
+    let mut servers = Vec::with_capacity(MAX_VPN_DNS_SERVERS);
+    for server in gateway {
+        if !servers.contains(server) {
+            servers.push(*server);
+        }
+    }
+    let mut profile_added = false;
+    for server in profile {
+        if !servers.contains(server) && servers.len() < MAX_VPN_DNS_SERVERS {
+            servers.push(*server);
+            profile_added = true;
+        }
+    }
+    if servers.is_empty() {
+        return Ok(None);
+    }
+    let source = match (gateway.is_empty(), profile_added) {
+        (false, false) => VpnDnsSource::Gateway,
+        (true, true) => VpnDnsSource::Profile,
+        (false, true) => VpnDnsSource::GatewayAndProfile,
+        (true, false) => unreachable!("non-empty profile did not add a DNS server"),
+    };
+    Ok(Some(VpnDnsSelection { servers, source }))
+}
 
 #[derive(Default)]
 struct DnsCache {
@@ -443,6 +517,49 @@ mod tests {
             assert!(!error.to_string().contains(&prohibited.to_string()));
         }
         assert!(validate_dns_servers(&[]).is_err());
+    }
+
+    #[test]
+    fn profile_dns_fills_missing_gateway_dns_without_using_the_system_resolver() {
+        let profile = [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3)];
+        let selection = select_vpn_dns_servers(&[], &profile).unwrap().unwrap();
+        assert_eq!(selection.source(), VpnDnsSource::Profile);
+        assert_eq!(selection.servers(), profile);
+    }
+
+    #[test]
+    fn gateway_and_profile_dns_are_deduplicated_and_bounded() {
+        let gateway = [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 4)];
+        let profile = [Ipv4Addr::new(10, 90, 63, 2), Ipv4Addr::new(10, 90, 63, 3)];
+        let selection = select_vpn_dns_servers(&gateway, &profile).unwrap().unwrap();
+        assert_eq!(selection.source(), VpnDnsSource::GatewayAndProfile);
+        assert_eq!(
+            selection.servers(),
+            [
+                Ipv4Addr::new(10, 90, 63, 2),
+                Ipv4Addr::new(10, 90, 63, 4),
+                Ipv4Addr::new(10, 90, 63, 3),
+            ]
+        );
+
+        let too_many = (1..=9)
+            .map(|last| Ipv4Addr::new(10, 90, 63, last))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            select_vpn_dns_servers(&too_many, &[])
+                .unwrap_err()
+                .to_string(),
+            "VPN DNS configuration contains too many servers"
+        );
+
+        let full_gateway = (1..=8)
+            .map(|last| Ipv4Addr::new(10, 90, 63, last))
+            .collect::<Vec<_>>();
+        let selection = select_vpn_dns_servers(&full_gateway, &[Ipv4Addr::new(10, 90, 64, 1)])
+            .unwrap()
+            .unwrap();
+        assert_eq!(selection.source(), VpnDnsSource::Gateway);
+        assert_eq!(selection.servers(), full_gateway);
     }
 
     #[test]
