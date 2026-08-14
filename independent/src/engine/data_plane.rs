@@ -69,6 +69,11 @@ impl EasyConnectDataPlane {
                 .map_err(|error| Error(format!("modern send reply: {error}")))?,
             ModernCommand::Send,
         )?;
+        // The connection timeout protects setup, but the production send
+        // channel must tolerate transient backpressure while TCP retransmits.
+        // Keeping the setup write timeout would turn a temporary stall into a
+        // fatal data-plane failure.
+        send_stream.set_write_timeout(None)?;
 
         let mut receive_stream = connect_tls(
             peer,
