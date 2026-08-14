@@ -588,6 +588,11 @@ impl SpecialTls11Stream {
         Ok(())
     }
 
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> Result<()> {
+        self.stream.set_write_timeout(timeout)?;
+        Ok(())
+    }
+
     pub fn read_application_data(&mut self, maximum: usize) -> Result<Zeroizing<Vec<u8>>> {
         if maximum == 0 || maximum > 16 * 1024 {
             return Err(Error(
@@ -838,5 +843,28 @@ mod tests {
             b"tunneled-packet"
         );
         server.join().unwrap();
+    }
+
+    #[test]
+    fn authenticated_stream_can_clear_setup_write_timeout() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client_socket = TcpStream::connect(address).unwrap();
+        let (_server_socket, _) = listener.accept().unwrap();
+        client_socket
+            .set_write_timeout(Some(Duration::from_secs(7)))
+            .unwrap();
+
+        let client = SpecialTls11Stream {
+            stream: client_socket,
+            client_cipher: RecordCipher::new([23; 20], [29; 16]),
+            server_cipher: RecordCipher::new([17; 20], [19; 16]),
+        };
+        assert_eq!(
+            client.stream.write_timeout().unwrap(),
+            Some(Duration::from_secs(7))
+        );
+        client.set_write_timeout(None).unwrap();
+        assert_eq!(client.stream.write_timeout().unwrap(), None);
     }
 }
