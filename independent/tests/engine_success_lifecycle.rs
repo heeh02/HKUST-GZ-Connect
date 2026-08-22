@@ -3,7 +3,7 @@
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -11,8 +11,10 @@ use std::time::{Duration, Instant};
 const FIXTURE_MARKER: &str = "HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1";
 const FIXTURE_USERNAME: &str = "synthetic-lifecycle-user";
 const FIXTURE_PASSWORD: &str = "synthetic-lifecycle-password";
-const GENERATION: u64 = 901;
+const BASE_GENERATION: u64 = 901;
+const SOAK_ROUNDS: usize = 100;
 const TEST_DEADLINE: Duration = Duration::from_secs(8);
+const SOAK_DEADLINE: Duration = Duration::from_secs(120);
 
 struct TemporaryConfig(PathBuf);
 
@@ -21,7 +23,7 @@ impl TemporaryConfig {
         let path = std::env::temp_dir().join(format!(
             "hkustgz-engine-success-lifecycle-{}-{}.json",
             std::process::id(),
-            GENERATION,
+            BASE_GENERATION,
         ));
         let config = serde_json::json!({
             "proxy": {
@@ -103,30 +105,28 @@ fn wait_for_exit(child: &mut Child, deadline: Instant) -> std::process::ExitStat
     }
 }
 
-#[test]
-fn real_ec_engine_serves_and_stops_after_a_synthetic_transport_success() {
-    let config = TemporaryConfig::new();
-    let port = unused_loopback_port();
-    let engine_path = env!("CARGO_BIN_EXE_ec-engine");
-    let engine_binary = std::fs::read(engine_path).unwrap();
-    assert!(
-        engine_binary
-            .windows(FIXTURE_MARKER.len())
-            .any(|window| window == FIXTURE_MARKER.as_bytes()),
-        "feature-enabled ec-engine must retain the package-rejection marker"
-    );
+fn run_lifecycle_round(
+    engine_path: &str,
+    config_path: &Path,
+    port: u16,
+    generation: u64,
+    round: usize,
+    soak_deadline: Instant,
+) -> Duration {
+    let round_started = Instant::now();
+    let deadline = (round_started + TEST_DEADLINE).min(soak_deadline);
     let mut child = ChildGuard {
         child: Command::new(engine_path)
             .args([
                 "--config",
-                config.0.to_str().unwrap(),
+                config_path.to_str().unwrap(),
                 "--credentials-stdin",
                 "--control-api-v2-stdin",
                 "--test-lifecycle-transport",
                 "--socks-bind",
                 &format!("127.0.0.1:{port}"),
                 "--generation",
-                &GENERATION.to_string(),
+                &generation.to_string(),
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -157,7 +157,6 @@ fn real_ec_engine_serves_and_stops_after_a_synthetic_transport_success() {
     writeln!(stdin, r#"{{"type":"hello","requestId":1,"versions":[2]}}"#).unwrap();
     stdin.flush().unwrap();
 
-    let deadline = Instant::now() + TEST_DEADLINE;
     let mut observed = Vec::new();
     wait_for_event(&line_receiver, deadline, &mut observed, |event| {
         event["type"] == "listener_ready" && event["port"] == port
@@ -197,13 +196,29 @@ fn real_ec_engine_serves_and_stops_after_a_synthetic_transport_success() {
 
     assert!(
         status.success(),
-        "synthetic success lifecycle must exit cleanly"
+        "synthetic success lifecycle round {round} must exit cleanly"
     );
-    assert!(stop_started.elapsed() < Duration::from_secs(5));
-    assert_eq!(diagnostics.matches(FIXTURE_MARKER).count(), 1);
-    assert!(!diagnostics.contains(FIXTURE_USERNAME));
-    assert!(!diagnostics.contains(FIXTURE_PASSWORD));
-    assert!(!observed.iter().any(|event| event["type"] == "fatal_error"));
+    assert!(
+        stop_started.elapsed() < Duration::from_secs(5),
+        "synthetic success lifecycle round {round} exceeded the stop deadline"
+    );
+    assert_eq!(
+        diagnostics.matches(FIXTURE_MARKER).count(),
+        1,
+        "synthetic success lifecycle round {round} must emit one fixture marker"
+    );
+    assert!(
+        !diagnostics.contains(FIXTURE_USERNAME),
+        "synthetic success lifecycle round {round} leaked its username"
+    );
+    assert!(
+        !diagnostics.contains(FIXTURE_PASSWORD),
+        "synthetic success lifecycle round {round} leaked its password"
+    );
+    assert!(
+        !observed.iter().any(|event| event["type"] == "fatal_error"),
+        "synthetic success lifecycle round {round} emitted a fatal error"
+    );
 
     let states = observed
         .iter()
@@ -219,7 +234,8 @@ fn real_ec_engine_serves_and_stops_after_a_synthetic_transport_success() {
             "connected",
             "stopping",
             "stopped",
-        ]
+        ],
+        "synthetic success lifecycle round {round} changed its state sequence"
     );
     assert!(observed.iter().any(|event| {
         event["type"] == "control_result"
@@ -252,9 +268,61 @@ fn real_ec_engine_serves_and_stops_after_a_synthetic_transport_success() {
     );
     assert!(
         reconnect.is_err(),
-        "the listener must be gone after clean stop"
+        "the listener must be gone after clean stop in round {round}"
     );
-    let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port))
-        .expect("the stopped Engine must release its exact loopback listener port");
+    let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port)).unwrap_or_else(|error| {
+        panic!(
+            "the stopped Engine must release its exact loopback listener port in round \
+                 {round}: {error}"
+        )
+    });
     assert_eq!(rebound.local_addr().unwrap().port(), port);
+    drop(rebound);
+
+    round_started.elapsed()
+}
+
+#[test]
+fn real_ec_engine_post_transport_lifecycle_survives_100_rounds() {
+    let config = TemporaryConfig::new();
+    let port = unused_loopback_port();
+    let engine_path = env!("CARGO_BIN_EXE_ec-engine");
+    let engine_binary = std::fs::read(engine_path).unwrap();
+    assert!(
+        engine_binary
+            .windows(FIXTURE_MARKER.len())
+            .any(|window| window == FIXTURE_MARKER.as_bytes()),
+        "feature-enabled ec-engine must retain the package-rejection marker"
+    );
+
+    let soak_started = Instant::now();
+    let soak_deadline = soak_started + SOAK_DEADLINE;
+    let mut slowest_round = Duration::ZERO;
+    for round_index in 0..SOAK_ROUNDS {
+        let round = round_index + 1;
+        assert!(
+            Instant::now() < soak_deadline,
+            "ec-engine lifecycle soak exceeded its total deadline before round {round}"
+        );
+        let elapsed = run_lifecycle_round(
+            engine_path,
+            &config.0,
+            port,
+            BASE_GENERATION + u64::try_from(round_index).unwrap(),
+            round,
+            soak_deadline,
+        );
+        slowest_round = slowest_round.max(elapsed);
+    }
+
+    let elapsed = soak_started.elapsed();
+    assert!(
+        elapsed < SOAK_DEADLINE,
+        "ec-engine lifecycle soak exceeded its total deadline: {elapsed:?}"
+    );
+    eprintln!(
+        "ec-engine post-Transport soak: rounds={SOAK_ROUNDS} elapsed_ms={} slowest_round_ms={}",
+        elapsed.as_millis(),
+        slowest_round.as_millis(),
+    );
 }
