@@ -14,12 +14,44 @@ const LAST_EPHEMERAL_PORT: u16 = 65_535;
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+enum NetstackTransportShutdown {
+    DataPlane(DataPlaneShutdown),
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    LifecycleFixture(LifecycleFixtureShutdown),
+}
+
+impl NetstackTransportShutdown {
+    fn shutdown(&self) -> Result<()> {
+        match self {
+            Self::DataPlane(shutdown) => shutdown.shutdown(),
+            #[cfg(feature = "engine-lifecycle-fixture")]
+            Self::LifecycleFixture(shutdown) => shutdown.shutdown(),
+        }
+    }
+}
+
+#[cfg(feature = "engine-lifecycle-fixture")]
+struct LifecycleFixtureShutdown {
+    wake_receiver: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+}
+
+#[cfg(feature = "engine-lifecycle-fixture")]
+impl LifecycleFixtureShutdown {
+    fn shutdown(&self) -> Result<()> {
+        self.wake_receiver
+            .lock()
+            .map_err(|_| shutdown_error("lifecycle fixture shutdown state is unavailable"))?
+            .take();
+        Ok(())
+    }
+}
+
 pub struct VirtualNetstack {
     channel: Channel,
     assigned_address: Ipv4Addr,
     next_ephemeral_port: AtomicU16,
     healthy: Arc<AtomicBool>,
-    data_plane_shutdown: DataPlaneShutdown,
+    transport_shutdown: NetstackTransportShutdown,
     runner: Mutex<Option<tokio::task::JoinHandle<()>>>,
     bridges: Mutex<Option<[JoinHandle<()>; 2]>>,
     shutdown_requested: Arc<AtomicBool>,
@@ -35,6 +67,31 @@ impl VirtualNetstack {
     pub fn start(data_plane: EasyConnectDataPlane, mtu: usize) -> Result<Self> {
         let assigned_address = data_plane.assigned_address();
         let data_plane_shutdown = data_plane.shutdown_handle()?;
+        let (lease, mut sender, mut receiver) = data_plane.split();
+        Self::start_from_packet_io(
+            assigned_address,
+            NetstackTransportShutdown::DataPlane(data_plane_shutdown),
+            lease,
+            move |packet| sender.send_ipv4(packet),
+            move || receiver.receive_ipv4(),
+            mtu,
+        )
+    }
+
+    fn start_from_packet_io<L, S, R, P>(
+        assigned_address: Ipv4Addr,
+        transport_shutdown: NetstackTransportShutdown,
+        lease: L,
+        mut send_ipv4: S,
+        mut receive_ipv4: R,
+        mtu: usize,
+    ) -> Result<Self>
+    where
+        L: Send + 'static,
+        S: FnMut(&[u8]) -> Result<()> + Send + 'static,
+        R: FnMut() -> Result<P> + Send + 'static,
+        P: AsRef<[u8]> + Send + 'static,
+    {
         let config = ts_netstack_smoltcp::netcore::Config {
             command_channel_capacity: Some(256),
             mtu,
@@ -62,13 +119,12 @@ impl VirtualNetstack {
             .is_err()
         {
             runner.abort();
-            let _ = data_plane_shutdown.shutdown();
+            let _ = transport_shutdown.shutdown();
             return Err(Error(
                 "cannot assign the VPN address to the userspace stack".into(),
             ));
         }
 
-        let (lease, mut sender, mut receiver) = data_plane.split();
         let WakingPipe { mut rx, tx } = pipe;
         let healthy = Arc::new(AtomicBool::new(true));
         let shutdown_requested = Arc::new(AtomicBool::new(false));
@@ -77,8 +133,8 @@ impl VirtualNetstack {
         let receive_bridge = std::thread::spawn(move || {
             let _lease = lease;
             loop {
-                match receiver.receive_ipv4() {
-                    Ok(packet) => tx.send(&packet),
+                match receive_ipv4() {
+                    Ok(packet) => tx.send(packet.as_ref()),
                     Err(error) => {
                         // The gateway closed or reset the data plane. Record the
                         // underlying cause so tunnel drops are diagnosable from
@@ -96,7 +152,7 @@ impl VirtualNetstack {
         let send_shutdown = Arc::clone(&shutdown_requested);
         let send_bridge = std::thread::spawn(move || {
             while let Some(packet) = rx.recv() {
-                if let Err(error) = sender.send_ipv4(&packet) {
+                if let Err(error) = send_ipv4(&packet) {
                     if !send_shutdown.load(Ordering::Acquire) {
                         eprintln!("VPN data plane send failed: {error}");
                     }
@@ -115,13 +171,40 @@ impl VirtualNetstack {
             assigned_address,
             next_ephemeral_port: AtomicU16::new(FIRST_EPHEMERAL_PORT),
             healthy,
-            data_plane_shutdown,
+            transport_shutdown,
             runner: Mutex::new(Some(runner)),
             bridges: Mutex::new(Some([receive_bridge, send_bridge])),
             shutdown_requested,
             shutdown_started: AtomicBool::new(false),
             shutdown_complete: AtomicBool::new(false),
         })
+    }
+
+    /// Starts the real userspace netstack/bridge owner over a channel-backed,
+    /// non-routing packet transport. This constructor exists only in the
+    /// explicitly feature-gated ec-engine lifecycle regression; it performs no
+    /// Gateway or vendor protocol I/O and cannot forward packets off-host.
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    pub fn start_lifecycle_fixture(assigned_address: Ipv4Addr, mtu: usize) -> Result<Self> {
+        let (wake_receiver, receiver_wake) = std::sync::mpsc::channel::<()>();
+        Self::start_from_packet_io(
+            assigned_address,
+            NetstackTransportShutdown::LifecycleFixture(LifecycleFixtureShutdown {
+                wake_receiver: Mutex::new(Some(wake_receiver)),
+            }),
+            (),
+            |_packet| Ok(()),
+            move || -> Result<Vec<u8>> {
+                let _ = receiver_wake.recv();
+                Err(shutdown_error("lifecycle fixture packet receiver stopped"))
+            },
+            mtu,
+        )
+    }
+
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    pub fn lifecycle_fixture_shutdown_complete(&self) -> bool {
+        self.shutdown_complete.load(Ordering::Acquire)
     }
 
     pub fn assigned_address(&self) -> Ipv4Addr {
@@ -148,7 +231,7 @@ impl VirtualNetstack {
 
         self.shutdown_requested.store(true, Ordering::Release);
         self.healthy.store(false, Ordering::Release);
-        let socket_result = self.data_plane_shutdown.shutdown();
+        let socket_result = self.transport_shutdown.shutdown();
         let deadline = tokio::time::Instant::now() + timeout;
 
         let runner = self
@@ -245,7 +328,7 @@ impl Drop for VirtualNetstack {
     fn drop(&mut self) {
         self.shutdown_requested.store(true, Ordering::Release);
         self.healthy.store(false, Ordering::Release);
-        let _ = self.data_plane_shutdown.shutdown();
+        let _ = self.transport_shutdown.shutdown();
         if let Ok(mut runner) = self.runner.try_lock() {
             if let Some(runner) = runner.take() {
                 runner.abort();
@@ -376,7 +459,7 @@ mod tests {
             assigned_address: Ipv4Addr::new(10, 0, 0, 2),
             next_ephemeral_port: AtomicU16::new(FIRST_EPHEMERAL_PORT),
             healthy,
-            data_plane_shutdown,
+            transport_shutdown: NetstackTransportShutdown::DataPlane(data_plane_shutdown),
             runner: Mutex::new(Some(runner)),
             bridges: Mutex::new(Some([receive_bridge, send_bridge])),
             shutdown_requested: Arc::new(AtomicBool::new(false)),

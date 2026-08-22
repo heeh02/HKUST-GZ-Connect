@@ -21,7 +21,7 @@ use ec_compat::engine::session::{
 };
 use ec_compat::engine::socks::SocksServer;
 use ec_compat::engine::socks_auth::{
-    EngineCredentials, ProxyAuthenticationMode, read_engine_credentials,
+    EngineCredentials, ProxyAuthentication, ProxyAuthenticationMode, read_engine_credentials,
     read_engine_credentials_prefix,
 };
 use ec_compat::watch::load_json;
@@ -42,6 +42,14 @@ const CONTROL_PREAUTH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 const CONNECTION_OPERATION_CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 const TRANSPORT_BOOTSTRAP_TIMEOUT: Duration = Duration::from_millis(AUTH_TRANSACTION_TIMEOUT_MS);
 const NETSTACK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(feature = "engine-lifecycle-fixture")]
+const ENGINE_LIFECYCLE_FIXTURE_MARKER: &str = "HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1";
+#[cfg(feature = "engine-lifecycle-fixture")]
+const ENGINE_LIFECYCLE_FIXTURE_USERNAME: &str = "synthetic-lifecycle-user";
+#[cfg(feature = "engine-lifecycle-fixture")]
+const ENGINE_LIFECYCLE_FIXTURE_PASSWORD: &str = "synthetic-lifecycle-password";
+#[cfg(feature = "engine-lifecycle-fixture")]
+const ENGINE_LIFECYCLE_FIXTURE_ADDRESS: Ipv4Addr = Ipv4Addr::new(10, 254, 0, 2);
 
 struct EngineArguments {
     config: PathBuf,
@@ -49,6 +57,8 @@ struct EngineArguments {
     generation: u64,
     proxy_authentication_mode: ProxyAuthenticationMode,
     control_api_v2_stdin: bool,
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    lifecycle_fixture: bool,
 }
 
 struct EngineFailure {
@@ -206,6 +216,8 @@ fn validate_arguments(args: &[String]) -> Result<()> {
     let mut generation_seen = false;
     let mut socks_auth_seen = false;
     let mut control_api_seen = false;
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    let mut lifecycle_fixture_seen = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -234,6 +246,11 @@ fn validate_arguments(args: &[String]) -> Result<()> {
             }
             "--control-api-v2-stdin" if !control_api_seen => {
                 control_api_seen = true;
+                index += 1;
+            }
+            #[cfg(feature = "engine-lifecycle-fixture")]
+            "--test-lifecycle-transport" if !lifecycle_fixture_seen => {
+                lifecycle_fixture_seen = true;
                 index += 1;
             }
             _ => {
@@ -295,12 +312,24 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     let control_api_v2_stdin = args
         .iter()
         .any(|argument| argument == "--control-api-v2-stdin");
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    let lifecycle_fixture = args
+        .iter()
+        .any(|argument| argument == "--test-lifecycle-transport");
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    if lifecycle_fixture && (!control_api_v2_stdin || generation == 0) {
+        return Err(Error(
+            "lifecycle fixture requires Control v2 and a nonzero generation".into(),
+        ));
+    }
     Ok(EngineArguments {
         config,
         bind,
         generation,
         proxy_authentication_mode,
         control_api_v2_stdin,
+        #[cfg(feature = "engine-lifecycle-fixture")]
+        lifecycle_fixture,
     })
 }
 
@@ -440,9 +469,34 @@ fn failure_after_gateway_cleanup(
     }
 }
 
+enum GatewayCleanup {
+    Production(AuthenticatedGatewaySession),
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    LifecycleFixture,
+}
+
+impl GatewayCleanup {
+    fn logout(self, _netstack: &VirtualNetstack) -> Result<()> {
+        match self {
+            Self::Production(session) => session.logout(),
+            #[cfg(feature = "engine-lifecycle-fixture")]
+            Self::LifecycleFixture => {
+                if _netstack.lifecycle_fixture_shutdown_complete() {
+                    Ok(())
+                } else {
+                    Err(Error::classified(
+                        ErrorKind::Lifecycle,
+                        "lifecycle fixture cleanup ran before netstack shutdown completed",
+                    ))
+                }
+            }
+        }
+    }
+}
+
 async fn failure_after_runtime_cleanup(
     netstack: &VirtualNetstack,
-    session: AuthenticatedGatewaySession,
+    cleanup: GatewayCleanup,
     failure: EngineFailure,
 ) -> EngineFailure {
     if let Err(error) = netstack.shutdown(NETSTACK_SHUTDOWN_TIMEOUT).await {
@@ -450,7 +504,11 @@ async fn failure_after_runtime_cleanup(
         // one secondary slot, reserved for remote Gateway cleanup uncertainty.
         eprintln!("ec-engine: {error}");
     }
-    failure_after_gateway_cleanup(session, failure)
+    if cleanup.logout(netstack).is_err() {
+        failure.with_secondary_code(Some(EngineErrorCode::AuthCleanupUnconfirmed))
+    } else {
+        failure
+    }
 }
 
 fn configured_vpn_dns_servers(config: &serde_json::Value) -> Result<Vec<Ipv4Addr>> {
@@ -911,6 +969,66 @@ async fn run_engine<W: Write>(
         gateway_password,
         proxy_authentication,
     } = credentials;
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    if arguments.lifecycle_fixture {
+        if config["proxy"]["allow_system_dns_fallback"]
+            .as_bool()
+            .unwrap_or(false)
+            || !profile_dns_servers.is_empty()
+        {
+            return Err(failure(
+                EngineErrorCode::ConfigurationInvalid,
+                StopReason::StartupFailed,
+                Error::classified(
+                    ErrorKind::Configuration,
+                    "lifecycle fixture requires DNS to remain disabled",
+                ),
+            ));
+        }
+        if gateway_username.as_str() != ENGINE_LIFECYCLE_FIXTURE_USERNAME
+            || gateway_password.as_str() != ENGINE_LIFECYCLE_FIXTURE_PASSWORD
+        {
+            return Err(failure(
+                EngineErrorCode::CredentialsInvalid,
+                StopReason::StartupFailed,
+                Error::classified(
+                    ErrorKind::Credentials,
+                    "lifecycle fixture credentials are invalid",
+                ),
+            ));
+        }
+        lifecycle
+            .state(EngineState::PreparingTunnel)
+            .map_err(event_output_failure)?;
+        // This fixed marker is also a packaging tripwire. It contains no
+        // credential, endpoint, token, or vendor protocol material.
+        eprintln!("{ENGINE_LIFECYCLE_FIXTURE_MARKER}");
+        let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());
+        let netstack =
+            VirtualNetstack::start_lifecycle_fixture(ENGINE_LIFECYCLE_FIXTURE_ADDRESS, mtu)
+                .map(Arc::new)
+                .map_err(|error| {
+                    failure(
+                        EngineErrorCode::DataPlaneSetupFailed,
+                        StopReason::StartupFailed,
+                        error,
+                    )
+                })?;
+        return serve_prepared_netstack(
+            arguments,
+            lifecycle,
+            &config,
+            &profile_dns_servers,
+            &[],
+            proxy_authentication,
+            &mut control_receiver,
+            &mut pending_control_actions,
+            netstack,
+            GatewayCleanup::LifecycleFixture,
+            mtu,
+        )
+        .await;
+    }
     let Some(session) = authenticate_password_with_lifecycle(
         &config,
         gateway_username,
@@ -967,11 +1085,41 @@ async fn run_engine<W: Write>(
             return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
+    serve_prepared_netstack(
+        arguments,
+        lifecycle,
+        &config,
+        &profile_dns_servers,
+        &gateway_dns_servers,
+        proxy_authentication,
+        &mut control_receiver,
+        &mut pending_control_actions,
+        netstack,
+        GatewayCleanup::Production(session),
+        mtu,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn serve_prepared_netstack<W: Write>(
+    arguments: &EngineArguments,
+    lifecycle: &mut EngineLifecycle<W>,
+    config: &serde_json::Value,
+    profile_dns_servers: &[Ipv4Addr],
+    gateway_dns_servers: &[Ipv4Addr],
+    proxy_authentication: ProxyAuthentication,
+    control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    pending_control_actions: &mut PendingControlActions,
+    netstack: Arc<VirtualNetstack>,
+    cleanup: GatewayCleanup,
+    mtu: usize,
+) -> EngineResult<StopReason> {
     let health = Arc::clone(&netstack);
     let allow_system_dns_fallback = config["proxy"]["allow_system_dns_fallback"]
         .as_bool()
         .unwrap_or(false);
-    let vpn_dns = match select_vpn_dns_servers(&gateway_dns_servers, &profile_dns_servers) {
+    let vpn_dns = match select_vpn_dns_servers(gateway_dns_servers, profile_dns_servers) {
         Ok(selection) => selection,
         Err(error) => {
             let failure = failure(
@@ -979,7 +1127,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+            return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
         }
     };
     let (resolver, dns_mode): (Arc<dyn NameResolver>, DnsMode) = if let Some(selection) = vpn_dns {
@@ -996,7 +1144,7 @@ async fn run_engine<W: Write>(
                     StopReason::StartupFailed,
                     error,
                 );
-                return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+                return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
             }
         };
         (Arc::new(resolver), dns_mode)
@@ -1018,7 +1166,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+            return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
         }
     };
     let server = match server.bind().await {
@@ -1029,7 +1177,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+            return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
         }
     };
 
@@ -1045,7 +1193,7 @@ async fn run_engine<W: Write>(
     })();
     if let Err(error) = metadata_result {
         let failure = event_output_failure(error);
-        return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+        return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
     }
 
     // These preserve human-readable diagnostics and the old desktop fallback,
@@ -1078,7 +1226,7 @@ async fn run_engine<W: Write>(
     if let Err(error) = lifecycle.state(EngineState::Connected) {
         abort_and_drain_services(&mut services).await;
         let failure = event_output_failure(error);
-        return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
+        return Err(failure_after_runtime_cleanup(&netstack, cleanup, failure).await);
     }
 
     let shutdown = {
@@ -1102,7 +1250,7 @@ async fn run_engine<W: Write>(
                 signal.as_mut(),
                 service_exit.as_mut(),
                 unhealthy.as_mut(),
-                &mut control_receiver,
+                control_receiver,
             )
             .await
             {
@@ -1122,7 +1270,7 @@ async fn run_engine<W: Write>(
                         // Closing the inherited stdin control stream is not a
                         // request to stop the VPN. Signal/process supervision
                         // remains the legacy-compatible shutdown path.
-                        control_receiver = None;
+                        *control_receiver = None;
                         continue;
                     };
                     match input {
@@ -1133,7 +1281,7 @@ async fn run_engine<W: Write>(
                             if exchange.action.is_some_and(|action| {
                                 pending_control_actions.apply(action, tokio::time::Instant::now())
                             }) {
-                                control_receiver = None;
+                                *control_receiver = None;
                             }
                         }
                         ControlInput::V3(request) => {
@@ -1165,7 +1313,7 @@ async fn run_engine<W: Write>(
     };
     let stopping_error = lifecycle.begin_stopping().err();
     let netstack_shutdown = netstack.shutdown(NETSTACK_SHUTDOWN_TIMEOUT).await;
-    let logout = session.logout();
+    let logout = cleanup.logout(&netstack);
     if let Some(error) = unhealthy_event_error.or(stopping_error) {
         if let Err(netstack_error) = netstack_shutdown {
             eprintln!("ec-engine: {netstack_error}");
@@ -1454,6 +1602,30 @@ mod tests {
         arguments.push("--control-api-v2-stdin".into());
         assert!(parse_arguments(&arguments).unwrap().control_api_v2_stdin);
         arguments.push("--control-api-v2-stdin".into());
+        assert!(parse_arguments(&arguments).is_err());
+    }
+
+    #[cfg(not(feature = "engine-lifecycle-fixture"))]
+    #[test]
+    fn production_build_rejects_the_lifecycle_fixture_argument() {
+        let mut arguments = valid_arguments();
+        arguments.push("--test-lifecycle-transport".into());
+        assert!(parse_arguments(&arguments).is_err());
+    }
+
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    #[test]
+    fn lifecycle_fixture_requires_private_control_and_generation() {
+        let mut arguments = valid_arguments();
+        arguments.push("--test-lifecycle-transport".into());
+        assert!(parse_arguments(&arguments).is_err());
+        arguments.extend([
+            "--control-api-v2-stdin".into(),
+            "--generation".into(),
+            "9".into(),
+        ]);
+        assert!(parse_arguments(&arguments).unwrap().lifecycle_fixture);
+        arguments.push("--test-lifecycle-transport".into());
         assert!(parse_arguments(&arguments).is_err());
     }
 

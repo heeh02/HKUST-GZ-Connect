@@ -6,6 +6,13 @@ rust-version = "1.85"
 license = "GPL-3.0-only"
 publish = false
 
+[features]
+default = []
+# Builds one explicitly selected, non-vendor post-Transport lifecycle seam into
+# ec-engine for the subprocess regression only. Release/package builds must not
+# enable this feature.
+engine-lifecycle-fixture = []
+
 [lib]
 name = "ec_compat"
 path = "src/lib.rs"
