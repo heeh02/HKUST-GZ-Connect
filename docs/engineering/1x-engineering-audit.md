@@ -328,7 +328,7 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 - Desktop：524 total，523 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
 - Desktop graph：194 files / 244 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
-- Offline performance：SOCKS 18/18，最大p95 1.330 ms；netstack 27/27，最大p95 6.043 ms；均不是Gateway吞吐证据。
+- Offline performance：SOCKS 18/18，最大p95 1.293 ms；netstack 27/27，最大p95 6.020 ms；均不是Gateway吞吐证据。
 - 每批精确暂存及最终本地候选HEAD secret gate通过；未来remote merge/tag candidate
   仍须对其exact tree重新执行。
 
