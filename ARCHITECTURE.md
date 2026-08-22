@@ -289,6 +289,8 @@ Infrastructure/Protocol Error
 - 不提供 public DNS fallback；
 - Chromium `DIRECT`只承诺文本目标预检，不承诺解析后地址隔离；1.x风险边界见ADR-0002；
 - unknown/unsupported auth、route、protocol state fail-closed；
+- 第一方Rust crate的所有target必须由Cargo lint `forbid(unsafe_code)`；若未来确有不可替代
+  的平台需求，必须先以独立ADR收窄模块、证明边界并修改该全局门禁；
 - test CA、fake gateway、fixture 和厂商 artifact 不得进入发布包。
 
 ## 11. Platform isolation
@@ -346,8 +348,8 @@ Infrastructure/Protocol Error
 历史 P0/P1 修复必须进入 regression suite。Synthetic 测试只证明其覆盖的边界，不能替代
 真实 Gateway、Windows DACL、签名或学校资源 canary。
 
-`independent`的非默认`engine-lifecycle-fixture`只用于真实`ec-engine`进程的
-post-Transport生命周期回归。它使用无外部路由的packet transport，强制DNS disabled，
+`independent`的非默认`engine-lifecycle-fixture`只用于真实`ec-engine`进程的有界重复
+post-Transport生命周期soak。它使用无外部路由的packet transport，强制DNS disabled，
 并带固定package-rejection marker。所有发布构建必须显式`--no-default-features`；
 electron-builder的`afterPack`必须在签名前拒绝该marker，独立package verifier在打包后
 再次拒绝。这个测试接缝不构成真实Gateway认证、Modern L3、Gateway logout或校园流量证据。

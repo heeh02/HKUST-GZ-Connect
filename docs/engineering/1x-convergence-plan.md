@@ -12,7 +12,7 @@
 | C3 Full-attempt cancellation | Auth/Transport coordinator consumes control/EOF/signal/deadline；500 ms bounded drain；late result不能promotion | Remote cleanup在超时路径明确为unconfirmed，不宣称保证logout |
 | C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join | Cross-platform package/real Gateway canary and long soak |
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
-| C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine post-Transport netstack/listener/stop/join/port-release回归 | 真实Gateway lifecycle与长时间资源soak |
+| C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine 100轮post-Transport netstack/listener/stop/join/port-release soak | 真实Gateway lifecycle与30分钟persistent资源soak |
 | C7 Package exactness | Exact native manifest、strict mac verification、三平台 launch smoke workflow已实现 | GitHub原生runner尚未实际执行当前SHA |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
@@ -116,11 +116,14 @@ close Browser/request gate
 - `socks.rs`沿 listener/session/UDP owner拆分；
 - architecture gate增加 layer allowlist，不只看行数；
 - Windows DACL扩展到含 username/日志/策略的隐私文件；
+- 将pre-spawn设置/凭据/engine-missing失败与最终`close`归一为exactly-once、无路径无secret的
+  correlated terminal diagnostic；当前结构化Engine事件已有`intent:generation`，不得过度声明
+  为所有Desktop早期失败均已覆盖；
 - versioned RoutingPolicyIR + JS/PAC differential corpus；
 - test-only synthetic HTTPS Gateway作为未来真实MFA provider activation前置；不属于v1.2.3。
 
-已在v1.2.3收束树完成、不得重复列为新功能：log I/O恢复通知、真实Rust Engine的
-non-routing post-Transport生命周期回归，以及发布包fixture marker双重门禁。
+已在v1.2.3收束树完成、不得重复列为新功能：log I/O恢复通知、真实Rust Engine的100轮
+non-routing post-Transport生命周期soak，以及发布包fixture marker双重门禁。
 
 ## P3 — Evidence-triggered work
 

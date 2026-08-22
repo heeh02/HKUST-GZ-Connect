@@ -2,7 +2,7 @@
 
 日期：2026-08-23
 
-收束实现快照：`de91a42dd67eaee019a11edf00a9ace9ccee1066`。
+收束实现快照：`b48a6e7eca9fbee4655e9019297f798d51d5baba`。
 第2节保留的是审计开始时的历史基线；第7节记录整改后的当前结论，不能用旧计数覆盖新证据。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
@@ -292,7 +292,7 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 
 ## 7. Convergence disposition
 
-当前代码提交：`de91a42`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
+当前代码提交：`b48a6e7`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
 环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
@@ -303,7 +303,7 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 | A-04 serving/data-plane shutdown | Fixed locally | listener outer task drain；三socket shutdown；runner abort/await；bridge bounded join；随后logout |
 | A-05 multiple Desktop truth writers | Fixed | FSM phase是唯一connected/connecting来源；Main无独立布尔写入 |
 | A-06 shared error surface | Fixed | connection/settings/recovery与browser/log notice分域并统一纯投影 |
-| A-07 whole Main lifecycle E2E | Fixed locally | real Electron Main全链；feature-gated真实Rust `ec-engine`走non-routing post-Transport netstack/listener/stop/join/port release；不冒充Gateway/Modern L3证据 |
+| A-07 whole Main lifecycle E2E | Fixed locally | real Electron Main全链；feature-gated真实Rust `ec-engine`完成100轮non-routing post-Transport netstack/listener/stop/join/port release；不冒充Gateway/Modern L3证据 |
 | A-08 string retry | Fixed | Data Plane retry只使用stable `ErrorKind`；跨进程另有permanent/transient code，证书/MAC/协议错误不自动重试 |
 | A-09 implicit Engine phase | Fixed | allowlisted Engine lifecycle含`preparing_tunnel`，非法转换typed failure |
 | A-10 Password→MFA total budget | Deferred activation gate | 当前production仍password-only；真实provider前必须完成，不冒充v1.2.3功能 |
@@ -315,17 +315,22 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 | A-16 route evaluator drift | Partially fixed | deterministic 1,024-case JS/PAC differential；versioned IR与100k corpus保留2.0 |
 | A-17 underlay change observation | Deferred evidence-triggered | `.no_proxy()`已关闭HTTP环境递归；explicit underlay保留2.0 |
 | A-18 documentation drift | Fixed | ROADMAP/compatibility/architecture使用Implementation+Evidence双轴 |
-| A-19 remote governance | Open release blocker | 分支未push；无current-SHA required checks、三平台产物或学校canary |
+| A-19 remote governance | Open release blocker | 2026-08-23只读刷新：远端不存在`codex/v1.2.3-hardening`、open PR为空、`main` protection API为404；最近CI只证明旧`0ae0d33`，不证明当前SHA |
 
 ### Current local verification
 
 - Rust production feature set：261 passed，0 failed，2个显式release性能门默认ignored；
   lifecycle test feature：263 passed，0 failed，2 ignored；fmt和Clippy `-D warnings`通过。
+- 第一方Rust所有target由Cargo `forbid(unsafe_code)`；原MTU环境测试已改为纯输入函数，
+  不再通过进程级环境变量写入使用`unsafe`。
+- 真实Rust `ec-engine` non-routing post-Transport soak：100/100轮通过，总耗时12.7秒，
+  最慢单轮361 ms；每轮child wait、reader join、SOCKS greeting、stop和exact port重绑通过。
 - Desktop：524 total，523 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
 - Desktop graph：194 files / 244 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
 - Offline performance：SOCKS 18/18，最大p95 1.330 ms；netstack 27/27，最大p95 6.043 ms；均不是Gateway吞吐证据。
-- 每批精确暂存secret gate通过；候选发布仍须对最终exact HEAD tree再次执行。
+- 每批精确暂存及最终本地候选HEAD secret gate通过；未来remote merge/tag candidate
+  仍须对其exact tree重新执行。
 
 当前未发现仍成立的本地代码级P0/P1。Architecture Frozen和Release仍为NO：远端CI、
 current-SHA原生包、Windows-only门、真实HPC/Gateway、sleep/wake和网络切换证据尚未取得。

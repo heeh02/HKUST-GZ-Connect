@@ -5,8 +5,9 @@
 
 ## Context
 
-当前 Campus Browser、SOCKS5、HTTP CONNECT/HTTP/WS、PAC、Clash 和 SSH 已覆盖主要校园
-Web 与显式代理场景，同时不修改系统 DNS、默认路由或系统代理。
+当前Campus Browser、SOCKS5、HTTP CONNECT/HTTP/WS、PAC、Clash和SSH均已有production
+wiring与offline/synthetic回归，设计上不修改系统DNS、默认路由或系统代理。当前exact-SHA
+真实校园、Clash/SSH及系统状态before/after canary仍未完成，因此这里不声称现场覆盖率。
 
 TUN 可以覆盖不支持 proxy 的应用、任意 TCP/UDP 和透明访问，但会引入管理员权限、
 route/DNS ownership、IPv6、MTU、系统升级、crash rollback、与 Clash/其他 VPN 冲突及显著
@@ -52,3 +53,19 @@ Routing Engine 或 Exit。
 
 当前没有 privileged TUN component，因此卸载/强杀不会留下由本项目创建的系统 route
 或 DNS。未来重新决策时必须提供系统状态 before/after verifier 和自动 rollback。
+
+## Evidence
+
+当前实现与开放门以[`../engineering/1x-release-gate.md`](../engineering/1x-release-gate.md)
+记录的固定implementation snapshot为准：
+
+- `desktop/lib/domain-route-policy.js`、`campus-browser.js`和PAC相关测试证明显式分流与
+  Browser隔离的offline行为；
+- `independent/src/engine/socks.rs`及HTTP forwarder测试证明loopback proxy协议边界；
+- strict proxy、routing restart、20-tab和Main lifecycle Electron E2E证明本地组合路径；
+- 仓库与发布manifest不存在TUN、route injection或privileged网络helper；
+- password-only校园访问、Clash/SSH、sleep/wake、network switch以及系统DNS/route/proxy
+  before/after仍是未勾选真实canary，不能由以上测试替代。
+
+因此本ADR当前只证明“不引入TUN”是与已接入proxy-first架构一致的低风险决策，不证明
+所有校园使用场景已经获得真实设备覆盖。

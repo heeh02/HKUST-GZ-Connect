@@ -2,14 +2,14 @@
 
 状态：No-Go。勾选项只表示当前本地证据；未勾选项不得由“应该能工作”替代。
 
-本地实现证据基线：`de91a42dd67eaee019a11edf00a9ace9ccee1066`；文档提交不改变该实现树。
+本地实现证据基线：`b48a6e7eca9fbee4655e9019297f798d51d5baba`；文档提交不改变该实现树。
 本轮产品版本仍为v1.2.3：新增内容属于补丁级稳定性、诊断、回归和交付门禁，不是新的
 production Gateway能力。
 
 ## 1. Source and governance
 
 - [x] 当前本地审计 HEAD和分支已记录。
-- [x] 实现快照`de91a42`的exact tree secret gate通过。
+- [x] 实现快照`b48a6e7`的exact tree secret gate通过。
 - [ ] Review branch已push且远端 SHA与候选发布源码一致。
 - [ ] PR包含全部改动并完成review。
 - [ ] `main` required checks、latest commit、review和no-force-push已启用。
@@ -36,7 +36,8 @@ production Gateway能力。
 - [x] listener/outer serving scope在logout前关闭并drain。
 - [x] netstack/data-plane socket、runner和bridge thread有bounded shutdown/join。
 - [x] 100次deterministic supervisor start/invalidate/stop/close无lifecycle residue。
-- [ ] 100次真实Engine connect/stop/reconnect无PID、port、thread、timer增长。
+- [x] 100次feature-gated真实`ec-engine` non-routing post-Transport start/stop：每轮child wait、test reader join、exact listener拒连并可重绑、递增generation输入，总deadline 120秒。
+- [ ] 100次真实Gateway connect/stop/reconnect无PID、port、thread、timer增长。
 - [ ] sleep/wake、offline/online、Wi-Fi切换通过真实设备canary。
 
 ## 4. Errors and diagnostics
@@ -47,7 +48,7 @@ production Gateway能力。
 - [x] Data Plane retry只读稳定kind，不搜索英文字符串。
 - [x] Credential load区分missing/unavailable/corrupt/decrypt denied。
 - [x] Connection、Browser、settings、recovery和log outcome分域。
-- [x] terminal failure有stable code；本地生命周期诊断以`intent:generation`关联且不记录认证秘密。
+- [x] Engine接受的结构化事件及fatal/stopped终态有stable code与`intent:generation`诊断关联，且不记录认证秘密。
 - [x] Log writer后台及显式reset/flush/close失败只显示一次无路径、无secret的诊断通知。
 
 ## 5. Authentication and secret lifecycle
@@ -76,6 +77,8 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Gateway HTTP显式不继承environment proxy并有架构回归。
 - [x] DNS OPCODE、owner和bounded CNAME chain严格验证。
 - [x] PAC/JS policy deterministic differential corpus通过。
+- [ ] exact-SHA password-only登录、L3建立及至少一个校园HTTPS资源真实canary通过。
+- [ ] exact-SHA Clash认证SOCKS与SSH `ProxyCommand`真实canary通过。
 - [ ] 真实HPC normal query canary通过。
 - [ ] 受控DNS TC→TCP canary通过（环境可提供时）。
 - [ ] 系统DNS、route、global proxy before/after diff为0。
@@ -96,6 +99,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 
 - [x] Rust fmt通过。
 - [x] Rust Clippy `-D warnings`通过。
+- [x] 第一方Rust所有target以Cargo lint禁止`unsafe`代码。
 - [x] Rust tests：当前收束树全量通过；精确数量记录在最终验证快照。
 - [x] Desktop tests：524 total / 523 passed / 0 failed / 1 Windows-only skipped。
 - [x] npm audit high：0 vulnerabilities。
@@ -104,7 +108,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Main/MFA/popup/strict proxy/auth pipe E2E通过。
 - [x] Desktop Main→synthetic Engine的retry/stale/listener/renderer-crash/stop/port-release场景通过。
 - [x] feature-gated真实`ec-engine`子进程通过post-Transport netstack/listener/stop/join/port-release回归；不证明真实Gateway认证、Modern L3或校园转发。
-- [ ] Resource leak soak通过。
+- [ ] 30分钟persistent packaged Desktop/Browser RSS、FD/handle、task/thread净增长soak通过。
 - [ ] Windows runner真实DACL test通过。
 - [ ] 所有required CI jobs在候选SHA绿色。
 

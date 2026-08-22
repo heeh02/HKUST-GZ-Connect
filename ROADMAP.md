@@ -33,7 +33,7 @@ more conservative status until the discrepancy is reviewed.
 | Isolated Campus Browser | `I3` | `E2` synthetic Electron; current release campus-site canary pending | Multi-tab, direct/campus routing, local vault and fail-closed policy; repeat packaged cross-platform and campus-site canaries |
 | SOCKS/PAC/Clash/SSH frontends | `I3` | Current tree `E2`; Windows DACL/package jobs pending | New installs strict, legacy downgrade explicit, no global mutation; obtain exact-SHA Windows and package evidence |
 | Authentication correctness | `I3` for password; `I2` generic challenge framework | Current `E2`; real Gateway MFA `E0` | Typed outcomes, stale-cancel fix and Engine budgets exist; real provider remains unsupported |
-| Lifecycle and recovery | `I3` locally converged | `E2`; real sleep/network canary pending | Auth/Transport cancellation, deterministic data-plane drain and Main+Engine lifecycle E2E exist; packaged cross-platform/real-network evidence remains |
+| Lifecycle and recovery | `I3` locally converged | `E2`; real sleep/network canary pending | Auth/Transport cancellation, deterministic data-plane drain, Main E2E, and a 100-round real-Engine non-routing post-Transport soak exist; packaged cross-platform and real-network evidence remains missing |
 | Desktop performance | `I2/E2` measurement harness | Offline synthetic only | Establish supported-device and real campus-page baselines before enforcing product targets |
 | Split-horizon campus DNS | `I3` | Current `E2`; exact-release HPC/TC canary pending | Authenticated sources are preferred, reviewed profile fills absence, matching TC retries same resolver; public/system fallback disabled |
 

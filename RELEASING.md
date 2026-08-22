@@ -56,6 +56,9 @@ cargo test --locked --no-default-features \
   --features engine-lifecycle-fixture --test engine_success_lifecycle
 ```
 
+最后一项串行运行100轮真实`ec-engine`的non-routing post-Transport生命周期soak；它不连接
+Gateway、DNS或校园目标，也不能替代真实环境canary。
+
 production命令与`.github/workflows/build.yml`一致；test feature检查与普通
 `.github/workflows/ci.yml`一致。
 
@@ -168,6 +171,10 @@ cargo clippy --locked --all-targets --no-default-features \
 cargo test --locked --no-default-features \
   --features engine-lifecycle-fixture --test engine_success_lifecycle
 ```
+
+The final command serially runs 100 rounds of the real `ec-engine` with the
+non-routing post-Transport lifecycle fixture. It contacts no Gateway, DNS, or
+campus target and cannot replace a real-environment canary.
 
 The production commands match `.github/workflows/build.yml`; the test-feature
 checks match the ordinary `.github/workflows/ci.yml` gate.

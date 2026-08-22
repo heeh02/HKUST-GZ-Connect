@@ -93,8 +93,9 @@ that exceeds the runtime deadline is a typed `DATA_PLANE_SHUTDOWN_FAILED`
 terminal failure rather than a clean user stop.
 
 The non-default `engine-lifecycle-fixture` Cargo feature exercises this same
-post-Transport process assembly in a real `ec-engine` subprocess using a
-non-routing packet transport and disabled DNS. It carries a fixed packaging
+post-Transport process assembly through a bounded repeated soak of real
+`ec-engine` subprocesses using a non-routing packet transport and disabled DNS.
+It carries a fixed packaging
 tripwire: `afterPack` rejects it before signing and the standalone verifier
 checks it again after packaging. It is evidence for netstack/listener/control/
 shutdown/port ownership only; it is not evidence for Gateway authentication,
