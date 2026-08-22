@@ -25,12 +25,13 @@ class DesktopShell {
     rememberCloseAction,
     disposeLifecycle,
     cleanupQuit,
+    onControlRendererUnavailable,
     onWindowError,
   } = {}) {
     for (const dependency of [
       BrowserWindow, Tray, translate, getConnectionState, getCloseAction, connect, disconnect,
       openCampusBrowser, rememberCloseAction, disposeLifecycle, cleanupQuit,
-      onWindowError,
+      onControlRendererUnavailable, onWindowError,
     ]) {
       if (typeof dependency !== 'function') {
         throw new TypeError('desktop shell dependencies are incomplete');
@@ -60,6 +61,7 @@ class DesktopShell {
     this.rememberCloseAction = rememberCloseAction;
     this.disposeLifecycle = disposeLifecycle;
     this.cleanupQuit = cleanupQuit;
+    this.onControlRendererUnavailable = onControlRendererUnavailable;
     this.onWindowError = onWindowError;
     this.window = null;
     this.tray = null;
@@ -245,11 +247,24 @@ class DesktopShell {
       },
     });
     const contents = this.window.webContents;
+    let rendererLoaded = false;
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     contents.on('will-navigate', (event, url) => {
       if (url !== contents.getURL()) event.preventDefault();
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
+    contents.on('did-finish-load', () => { rendererLoaded = true; });
+    contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+      if (rendererLoaded && isMainFrame !== false && !isInPlace) {
+        this.onControlRendererUnavailable('navigation');
+      }
+    });
+    contents.on('render-process-gone', () => {
+      this.onControlRendererUnavailable('render-process-gone');
+    });
+    contents.on('destroyed', () => {
+      this.onControlRendererUnavailable('destroyed');
+    });
     this.window.loadFile(this.controlRendererFile);
     this.window.on('close', (event) => {
       this.handleWindowClose(event).catch(this.onWindowError);

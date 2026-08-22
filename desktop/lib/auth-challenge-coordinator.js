@@ -113,6 +113,17 @@ class AuthChallengeCoordinator {
     return this.#run((control) => control.cancel());
   }
 
+  cancelForLifecycle() {
+    if (!this.binding || !this.publicView) return false;
+    const { control } = this.binding;
+    // Clear the renderer-facing state before best-effort I/O. Lifecycle loss
+    // must not leave a ghost prompt, and it must be able to race an in-flight
+    // submit without waiting for that renderer-owned operation to settle.
+    this.detach();
+    Promise.resolve().then(() => control.cancel()).catch(() => {});
+    return true;
+  }
+
   #run(action) {
     if (!this.binding || !this.publicView) {
       return Promise.reject(new Error('no active authentication challenge'));

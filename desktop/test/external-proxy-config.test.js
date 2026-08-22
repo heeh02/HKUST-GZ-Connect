@@ -62,6 +62,64 @@ test('helper sidecar is owner-only, exactly three lines, and not rewritten when 
   assert.equal(fs.readFileSync(filePath, 'utf8').split('\n')[0], '127.0.0.1:6280');
 });
 
+test('Windows sidecar is ACL-protected before commit and reverified when unchanged', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-proxy-sidecar-win-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'proxy-helper-credential.txt');
+  const calls = [];
+  const windowsAcl = {
+    protect: (file) => { calls.push(['protect', file]); return true; },
+    verify: (file) => { calls.push(['verify', file]); return true; },
+  };
+  const first = ensureProxyCredentialSidecar({
+    filePath, port: 6180, credential, platform: 'win32', windowsAcl,
+  });
+  assert.equal(first.changed, true);
+  assert.match(path.basename(calls[0][1]), /^\.proxy-helper-credential\.txt\..+\.tmp$/u);
+  assert.deepEqual(calls[1], ['verify', filePath]);
+
+  calls.length = 0;
+  const second = ensureProxyCredentialSidecar({
+    filePath, port: 6180, credential, platform: 'win32', windowsAcl,
+  });
+  assert.equal(second.changed, false);
+  assert.deepEqual(calls, [['protect', filePath], ['verify', filePath]]);
+});
+
+test('Windows sidecar protection or verification failure removes untrusted plaintext', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-proxy-sidecar-fail-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'proxy-helper-credential.txt');
+
+  assert.throws(() => ensureProxyCredentialSidecar({
+    filePath,
+    port: 6180,
+    credential,
+    platform: 'win32',
+    windowsAcl: { protect: () => false, verify: () => true },
+  }), /could not write/u);
+  assert.equal(fs.existsSync(filePath), false);
+
+  assert.throws(() => ensureProxyCredentialSidecar({
+    filePath,
+    port: 6180,
+    credential,
+    platform: 'win32',
+    windowsAcl: { protect: () => true, verify: () => false },
+  }), /could not write/u);
+  assert.equal(fs.existsSync(filePath), false);
+
+  fs.writeFileSync(filePath, `127.0.0.1:6180\n${material.username}\n${material.password}`);
+  assert.throws(() => ensureProxyCredentialSidecar({
+    filePath,
+    port: 6180,
+    credential,
+    platform: 'win32',
+    windowsAcl: { protect: () => true, verify: () => false },
+  }), /verify/u);
+  assert.equal(fs.existsSync(filePath), false);
+});
+
 test('one SSH ProxyCommand contains only stable paths and targets the packaged helper', () => {
   assert.equal(helperExecutableName('darwin', 'arm64'), 'ec-proxy-command-darwin-arm64');
   assert.equal(helperExecutableName('win32', 'x64'), 'ec-proxy-command-windows-amd64.exe');

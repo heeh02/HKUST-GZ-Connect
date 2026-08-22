@@ -29,13 +29,18 @@ function protectedStorageAvailable(safeStorage, platform) {
   return platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text';
 }
 
-function atomicWritePrivateFile(file, contents, fileSystem = fs) {
+function atomicWritePrivateFile(file, contents, fileSystem = fs, {
+  protectTemporary = null,
+  verifyCommitted = null,
+  removeCommittedOnFailure = false,
+} = {}) {
   const directory = path.dirname(file);
   const temporary = path.join(
     directory,
     `.${path.basename(file)}.${process.pid}.${Date.now()}.${temporarySequence++}.tmp`,
   );
   let descriptor = null;
+  let committed = false;
   try {
     fileSystem.mkdirSync(directory, { recursive: true, mode: 0o700 });
     descriptor = fileSystem.openSync(temporary, 'wx', 0o600);
@@ -43,9 +48,16 @@ function atomicWritePrivateFile(file, contents, fileSystem = fs) {
     if (typeof fileSystem.fsyncSync === 'function') fileSystem.fsyncSync(descriptor);
     fileSystem.closeSync(descriptor);
     descriptor = null;
+    if (protectTemporary && protectTemporary(temporary) !== true) {
+      throw new Error('could not protect temporary private file');
+    }
     // Same-directory rename is the commit point. Until it succeeds the old
     // encrypted blob is untouched.
     fileSystem.renameSync(temporary, file);
+    committed = true;
+    if (verifyCommitted && verifyCommitted(file) !== true) {
+      throw new Error('could not verify committed private file');
+    }
     if (!fsyncDirectory(directory, fileSystem)) {
       throw new Error('could not durably commit encrypted credential');
     }
@@ -55,6 +67,9 @@ function atomicWritePrivateFile(file, contents, fileSystem = fs) {
       try { fileSystem.closeSync(descriptor); } catch {}
     }
     try { fileSystem.unlinkSync(temporary); } catch {}
+    if (committed && removeCommittedOnFailure) {
+      try { fileSystem.unlinkSync(file); } catch {}
+    }
     return false;
   }
 }

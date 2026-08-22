@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('./credential-store');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+const {
+  protectWindowsFileOwnerOnly,
+  verifyWindowsFileOwnerOnly,
+} = require('./windows-private-file');
 
 const LOOPBACK_HOST = '127.0.0.1';
 const MAX_PROXY_SIDECAR_BYTES = 1024;
@@ -60,6 +64,10 @@ function ensureProxyCredentialSidecar({
   credential,
   platform = process.platform,
   fileSystem,
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
 } = {}) {
   if (typeof filePath !== 'string' || !filePath) {
     throw new TypeError('proxy credential sidecar path is invalid');
@@ -67,13 +75,23 @@ function ensureProxyCredentialSidecar({
   const contents = sidecarContents(port, credential);
   try {
     if (existingSidecarMatches(filePath, contents, { platform, fileSystem })) {
+      if (platform === 'win32' &&
+          (!windowsAcl?.protect?.(filePath) || !windowsAcl?.verify?.(filePath))) {
+        try { (fileSystem || fs).unlinkSync(filePath); } catch {}
+        throw new Error('could not verify proxy helper credential ACL');
+      }
       return { ok: true, changed: false, filePath };
     }
-    if (!atomicWritePrivateFile(filePath, contents, fileSystem)) {
+    const writeOptions = platform === 'win32' ? {
+      protectTemporary: (temporary) => windowsAcl?.protect?.(temporary) === true,
+      verifyCommitted: (committed) => windowsAcl?.verify?.(committed) === true,
+      removeCommittedOnFailure: true,
+    } : {};
+    if (!atomicWritePrivateFile(filePath, contents, fileSystem, writeOptions)) {
       try { (fileSystem || fs).unlinkSync(filePath); } catch {}
       throw new Error('could not write proxy helper credential');
     }
-    if (!ensureOwnerOnly(filePath)) {
+    if (platform !== 'win32' && !ensureOwnerOnly(filePath)) {
       try { (fileSystem || fs).unlinkSync(filePath); } catch {}
       throw new Error('could not protect proxy helper credential');
     }

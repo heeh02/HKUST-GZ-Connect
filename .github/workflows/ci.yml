@@ -90,6 +90,26 @@ jobs:
       - name: Record the bounded hidden-idle baseline
         run: npm run test:idle-performance
 
+  windows-private-file:
+    timeout-minutes: 10
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install test dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+      - name: Verify current-user-only helper credential DACL
+        run: node --test test/windows-private-file.test.js test/external-proxy-config.test.js
+
   engine:
     timeout-minutes: 20
     runs-on: ubuntu-latest

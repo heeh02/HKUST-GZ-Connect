@@ -83,6 +83,7 @@ function fixture(overrides = {}) {
     rememberCloseAction: async (action) => { calls.push(['remember', action]); },
     disposeLifecycle: () => calls.push('dispose'),
     cleanupQuit: async () => calls.push('cleanup'),
+    onControlRendererUnavailable: (reason) => calls.push(['renderer-lost', reason]),
     onWindowError: (error) => calls.push(['error', error.message]),
     ...overrides,
   });
@@ -103,6 +104,18 @@ test('control window is sandboxed, navigation-closed, sendable and bounded-resiz
   assert.deepEqual(window.webContents.sent, [['status', { ok: true }]]);
   assert.equal(f.shell.resize(200), true);
   assert.ok(window.contentSize[1] >= 480);
+  window.webContents.emit('did-start-navigation', {}, window.webContents.url, false, true);
+  assert.equal(f.calls.some((entry) => entry[0] === 'renderer-lost'), false,
+    'initial navigation is not a lifecycle loss');
+  window.webContents.emit('did-finish-load');
+  window.webContents.emit('did-start-navigation', {}, window.webContents.url, false, true);
+  window.webContents.emit('render-process-gone');
+  window.webContents.emit('destroyed');
+  assert.deepEqual(f.calls.filter((entry) => entry[0] === 'renderer-lost'), [
+    ['renderer-lost', 'navigation'],
+    ['renderer-lost', 'render-process-gone'],
+    ['renderer-lost', 'destroyed'],
+  ]);
 });
 
 test('tray reflects connection state and delegates connect, browser and quit actions', async () => {

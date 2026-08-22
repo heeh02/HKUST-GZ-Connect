@@ -134,3 +134,27 @@ test('expiry cleanup remains fail-closed when the control client throws synchron
   assert.equal(coordinator.snapshot(), null);
   assert.equal(published.at(-1), null);
 });
+
+test('renderer lifecycle loss cancels through Main even while a submit is in flight', async () => {
+  let resolveResponse;
+  const published = [];
+  const control = new FakeControl();
+  control.respond = () => {
+    control.actions.push(['respond']);
+    return new Promise((resolve) => { resolveResponse = resolve; });
+  };
+  const coordinator = new AuthChallengeCoordinator({ publish: (view) => published.push(view) });
+  coordinator.bind(9, control);
+  control.handlers.onChallenge(internalChallenge());
+  const response = coordinator.respond({ response: 'synthetic-in-flight' });
+  assert.equal(coordinator.cancelForLifecycle(), true);
+  assert.equal(coordinator.cancelForLifecycle(), false, 'duplicate lifecycle signals are inert');
+  await new Promise((done) => setImmediate(done));
+  assert.deepEqual(control.actions, [['respond'], ['cancel']]);
+  assert.equal(coordinator.snapshot(), null);
+  assert.equal(published.at(-1), null);
+  resolveResponse({ type: 'auth_challenge' });
+  await response;
+  control.handlers.onChallenge?.(internalChallenge());
+  assert.equal(coordinator.snapshot(), null, 'late provider output cannot revive the renderer');
+});

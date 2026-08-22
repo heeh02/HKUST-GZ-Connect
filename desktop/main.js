@@ -1445,7 +1445,6 @@ function rememberCloseAction(action) {
     };
   });
 }
-
 desktopShell = new DesktopShell({
   app,
   BrowserWindow,
@@ -1474,6 +1473,7 @@ desktopShell = new DesktopShell({
     stableProxyCredential?.destroy();
     stableProxyCredential = null;
   },
+  onControlRendererUnavailable: () => authChallengeCoordinator.cancelForLifecycle(),
   onWindowError: (error) => {
     state.lastError = error.userMessage || error.message;
     emit();
