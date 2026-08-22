@@ -100,7 +100,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Desktop tests：524 total / 523 passed / 0 failed / 1 Windows-only skipped。
 - [x] npm audit high：0 vulnerabilities。
 - [x] Architecture/cycle gate通过。
-- [ ] 最终候选HEAD（含文档提交）的exact tree secret gate通过。
+- [x] 最终本地候选HEAD（含文档提交）的exact tree secret gate通过。
 - [x] Main/MFA/popup/strict proxy/auth pipe E2E通过。
 - [x] Desktop Main→synthetic Engine的retry/stale/listener/renderer-crash/stop/port-release场景通过。
 - [x] feature-gated真实`ec-engine`子进程通过post-Transport netstack/listener/stop/join/port-release回归；不证明真实Gateway认证、Modern L3或校园转发。
