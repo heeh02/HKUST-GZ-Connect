@@ -1,0 +1,188 @@
+'use strict';
+
+// Real Electron Main → synthetic child Engine lifecycle. The fixture is a
+// fixed dev-only path selected by a boolean guard; it opens only a loopback
+// readiness listener and performs no forwarding or external network I/O.
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
+const { app, BrowserWindow } = require('electron');
+
+const TEST_TIMEOUT_MS = 25_000;
+const WAIT_TIMEOUT_MS = 10_000;
+const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-main-engine-e2e-'));
+process.env.HKUSTGZ_USER_DATA_DIR = profile;
+process.env.HKUSTGZ_SYNTHETIC_ENGINE_E2E = '1';
+app.disableHardwareAcceleration();
+
+require('../main');
+
+async function waitFor(condition, description, timeoutMs = WAIT_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await condition();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out waiting for ${description}`);
+}
+
+async function controlWindow(excludedId = null) {
+  return waitFor(() => BrowserWindow.getAllWindows().find((candidate) => (
+    candidate.webContents.id !== excludedId &&
+    candidate.webContents.getURL().endsWith('/renderer/index.html') &&
+    !candidate.webContents.isLoading()
+  )), 'control window');
+}
+
+function invoke(window, expression) {
+  return window.webContents.executeJavaScript(`(async () => (${expression}))()`);
+}
+
+function attemptCount() {
+  try { return Number(fs.readFileSync(path.join(profile, 'synthetic-engine-attempt.txt'), 'utf8')); }
+  catch { return 0; }
+}
+
+function observations() {
+  try {
+    return fs.readFileSync(path.join(profile, 'synthetic-engine-observations.jsonl'), 'utf8')
+      .trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+function allocateLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close((error) => error ? reject(error) : resolve(address.port));
+    });
+  });
+}
+
+function loopbackConnects(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    let settled = false;
+    const finish = (connected) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(connected);
+    };
+    socket.setTimeout(500);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function run() {
+  await app.whenReady();
+  let control = await controlWindow();
+  const port = await allocateLoopbackPort();
+  const savedCredential = await invoke(control, `window.api.save({
+    username: 'synthetic-main-user',
+    password: 'synthetic-main-password',
+  })`);
+  assert.equal(savedCredential.ok, true);
+  const savedPolicy = await invoke(control, `window.api.save({
+    port: ${port},
+    strictProxyAuth: false,
+    autoConnect: false,
+    autoReconnect: true,
+    maxAttempts: 2,
+  })`);
+  assert.equal(savedPolicy.ok, true);
+
+  const started = await invoke(control, 'window.api.connect()');
+  assert.equal(started.ok, true);
+  const phases = new Set();
+  await waitFor(async () => {
+    const state = await invoke(control, 'window.api.getState()');
+    phases.add(state.phase);
+    return attemptCount() >= 2;
+  }, 'automatic retry', 12_000);
+  assert.ok(phases.has('retry-wait'), 'the first synthetic failure must enter retry-wait');
+
+  const beforeValidGeneration = Date.now() + 250;
+  while (Date.now() < beforeValidGeneration) {
+    const state = await invoke(control, 'window.api.getState()');
+    assert.equal(state.connected, false, 'a stale generation cannot mark Main connected');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  await waitFor(() => observations().some((entry) => (
+    entry.attempt === 2 && entry.type === 'listener_ready_sent'
+  )), 'listener readiness');
+  const listenerOnlyState = await invoke(control, 'window.api.getState()');
+  assert.equal(listenerOnlyState.connected, false,
+    'listener_ready is insufficient before state_changed connected');
+
+  await waitFor(() => observations().some((entry) => (
+    entry.attempt === 2 && entry.type === 'connected_candidate_sent'
+  )), 'connected candidate');
+
+  const connected = await waitFor(async () => {
+    const state = await invoke(control, 'window.api.getState()');
+    return state.connected ? state : null;
+  }, 'listener-ready connection');
+  assert.equal(connected.phase, 'connected');
+  assert.equal(connected.dnsMode, 'gateway');
+  assert.ok(connected.clientIp);
+  assert.equal(await loopbackConnects(port), true,
+    'listener_ready must correspond to a real owned loopback listener');
+
+  const oldContentsId = control.webContents.id;
+  control.webContents.forcefullyCrashRenderer();
+  control = await controlWindow(oldContentsId);
+  const recovered = await invoke(control, 'window.api.getState()');
+  assert.equal(recovered.connected, true, 'renderer recovery must not stop the healthy Engine');
+
+  const stopped = await invoke(control, 'window.api.disconnect()');
+  assert.equal(stopped.ok, true);
+  const disconnected = await waitFor(async () => {
+    const state = await invoke(control, 'window.api.getState()');
+    return !state.connected && !state.connecting ? state : null;
+  }, 'graceful disconnect');
+  assert.equal(disconnected.phase, 'idle');
+  await waitFor(async () => !await loopbackConnects(port), 'loopback listener release');
+
+  const events = observations();
+  const attempts = events.filter((entry) => entry.type === 'credentials_received');
+  assert.equal(attempts.length, 2);
+  assert.notEqual(attempts[0].generation, attempts[1].generation);
+  assert.ok(events.some((entry) => entry.type === 'stale_generation_sent'));
+  assert.ok(events.some((entry) => entry.type === 'listener_ready_sent'));
+  assert.ok(events.some((entry) => entry.type === 'shutdown_received'));
+  process.stdout.write('main synthetic Engine lifecycle: PASS\n');
+}
+
+const hardTimeout = setTimeout(() => {
+  process.stderr.write('main synthetic Engine lifecycle: hard timeout\n');
+  app.exit(1);
+}, TEST_TIMEOUT_MS);
+
+run().then(
+  () => {
+    clearTimeout(hardTimeout);
+    app.quit();
+  },
+  (error) => {
+    clearTimeout(hardTimeout);
+    process.stderr.write(`${error.stack || error}\n`);
+    app.exitCode = 1;
+    app.quit();
+  },
+);
+
+app.on('quit', () => {
+  delete process.env.HKUSTGZ_SYNTHETIC_ENGINE_E2E;
+  try { fs.rmSync(profile, { recursive: true, force: true }); } catch {}
+});

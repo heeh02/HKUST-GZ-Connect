@@ -13,6 +13,7 @@ const {
 } = require('../build/afterPack');
 const {
   assertCustomResourceManager,
+  assertExactNativeResources,
   assertLinuxElfArchitecture,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
@@ -65,6 +66,46 @@ test('package verifier rejects fake gateways, test PKI and private-key formats',
   assert.doesNotThrow(() => assertNoTestOnlyNativeResources(directory));
   fs.writeFileSync(path.join(directory, 'test-ca.pem'), 'not-a-real-certificate');
   assert.throws(() => assertNoTestOnlyNativeResources(directory), /unsafe native resource/u);
+});
+
+test('package verifier accepts only the exact target engine, helper and configuration', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-exact-native-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const expected = [
+    'ec-engine-darwin-arm64',
+    'ec-proxy-command-darwin-arm64',
+    'hkustgz.json',
+  ];
+  for (const name of expected) fs.writeFileSync(path.join(directory, name), 'fixture');
+
+  assert.deepEqual(assertExactNativeResources(directory, expected), [...expected].sort());
+
+  fs.writeFileSync(path.join(directory, 'ec-engine-darwin-amd64'), 'wrong architecture');
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /native resource set is not exact:.*unexpected=ec-engine-darwin-amd64/u,
+  );
+  fs.unlinkSync(path.join(directory, 'ec-engine-darwin-amd64'));
+  fs.unlinkSync(path.join(directory, 'hkustgz.json'));
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /native resource set is not exact:.*missing=hkustgz\.json/u,
+  );
+  fs.writeFileSync(path.join(directory, 'hkustgz.json'), '');
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /empty native resource entered the package: hkustgz\.json/u,
+  );
+
+  if (process.platform !== 'win32') {
+    const linkedDirectory = `${directory}-link`;
+    fs.symlinkSync(directory, linkedDirectory, 'dir');
+    t.after(() => fs.unlinkSync(linkedDirectory));
+    assert.throws(
+      () => assertExactNativeResources(linkedDirectory, expected),
+      /missing packaged engine directory/u,
+    );
+  }
 });
 
 test('package verification accepts x86_64 ELF executables and rejects another architecture', () => {

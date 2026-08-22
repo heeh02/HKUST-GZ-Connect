@@ -125,7 +125,9 @@ function assertNoTestOnlyPackageEntries(entries) {
 }
 
 function assertNoTestOnlyNativeResources(engineDirectory) {
-  if (!fs.existsSync(engineDirectory) || !fs.statSync(engineDirectory).isDirectory()) {
+  let directoryStat;
+  try { directoryStat = fs.lstatSync(engineDirectory); } catch {}
+  if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) {
     throw new Error(`missing packaged engine directory: ${engineDirectory}`);
   }
   const entries = fs.readdirSync(engineDirectory, { withFileTypes: true });
@@ -135,6 +137,46 @@ function assertNoTestOnlyNativeResources(engineDirectory) {
       throw new Error(`test-only or unsafe native resource entered the package: ${entry.name}`);
     }
   }
+}
+
+function assertExactNativeResources(engineDirectory, expectedNames) {
+  if (!Array.isArray(expectedNames) || expectedNames.length === 0 ||
+      expectedNames.some((name) => (
+        typeof name !== 'string' || !name || path.basename(name) !== name || /[\0\r\n]/u.test(name)
+      ))) {
+    throw new TypeError('expected native resource names are invalid');
+  }
+  let directoryStat;
+  try { directoryStat = fs.lstatSync(engineDirectory); } catch {}
+  if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) {
+    throw new Error(`missing packaged engine directory: ${engineDirectory}`);
+  }
+
+  const expected = [...new Set(expectedNames)].sort();
+  const actual = [];
+  for (const entry of fs.readdirSync(engineDirectory, { withFileTypes: true })) {
+    const normalized = `/${entry.name}`;
+    if (!entry.isFile() || entry.isSymbolicLink() || FORBIDDEN_TEST_RESOURCE.test(normalized)) {
+      throw new Error(`test-only or unsafe native resource entered the package: ${entry.name}`);
+    }
+    const resource = path.join(engineDirectory, entry.name);
+    if (fs.statSync(resource).size === 0) {
+      throw new Error(`empty native resource entered the package: ${entry.name}`);
+    }
+    actual.push(entry.name);
+  }
+  actual.sort();
+
+  const missing = expected.filter((name) => !actual.includes(name));
+  const unexpected = actual.filter((name) => !expected.includes(name));
+  if (missing.length || unexpected.length) {
+    const details = [
+      missing.length ? `missing=${missing.join(',')}` : '',
+      unexpected.length ? `unexpected=${unexpected.join(',')}` : '',
+    ].filter(Boolean).join(' ');
+    throw new Error(`packaged native resource set is not exact: ${details}`);
+  }
+  return actual;
 }
 
 function verifyPackage({ resourcesArgument, platform = process.platform, architecture = process.arch, requireAppleSignature = false }) {
@@ -249,7 +291,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const proxyCommandName = `ec-proxy-command-${platformName}-${architectureName}${extension}`;
   const engine = path.join(resources, 'engine', engineName);
   const proxyCommand = path.join(resources, 'engine', proxyCommandName);
-  assertNoTestOnlyNativeResources(path.join(resources, 'engine'));
+  assertExactNativeResources(path.join(resources, 'engine'), [
+    engineName,
+    proxyCommandName,
+    'hkustgz.json',
+  ]);
   for (const [label, executable] of [['engine', engine], ['SSH proxy helper', proxyCommand]]) {
     if (!fs.existsSync(executable) || !fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
       throw new Error(`missing packaged ${label}: ${executable}`);
@@ -298,6 +344,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 module.exports = {
   assertLinuxElfArchitecture,
   assertCustomResourceManager,
+  assertExactNativeResources,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   parseArguments,

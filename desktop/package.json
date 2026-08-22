@@ -17,6 +17,7 @@
     "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
     "test:main-integration": "electron e2e/main-integration.electron.js",
+    "test:main-engine-lifecycle": "electron e2e/main-engine-lifecycle.electron.js",
     "test:strict-proxy-auth": "electron e2e/strict-proxy-auth.electron.js",
     "start": "electron .",
     "dist": "electron-builder",

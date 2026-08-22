@@ -93,6 +93,31 @@ function lineCount(file) {
   return source.split('\n').length - (source.endsWith('\n') ? 1 : 0);
 }
 
+function dependencyLayerErrors(graph, root) {
+  const errors = [];
+  const relative = (file) => path.relative(root, file).replaceAll(path.sep, '/');
+  const browserShared = new Set(['lib/login-flow.js', 'lib/resource-view.js']);
+  for (const [source, dependencies] of graph) {
+    const sourcePath = relative(source);
+    const productionSource = sourcePath === 'main.js' || sourcePath === 'preload.js' ||
+      sourcePath === 'campus-preload.js' || sourcePath.startsWith('lib/') ||
+      sourcePath.startsWith('renderer/');
+    if (!productionSource) continue;
+    for (const dependency of dependencies) {
+      const dependencyPath = relative(dependency);
+      let allowed = true;
+      if (sourcePath === 'main.js' || sourcePath === 'preload.js' ||
+          sourcePath === 'campus-preload.js' || sourcePath.startsWith('lib/')) {
+        allowed = dependencyPath.startsWith('lib/');
+      } else if (sourcePath.startsWith('renderer/')) {
+        allowed = dependencyPath.startsWith('renderer/') || browserShared.has(dependencyPath);
+      }
+      if (!allowed) errors.push(`layer violation: ${sourcePath} -> ${dependencyPath}`);
+    }
+  }
+  return errors.sort();
+}
+
 function architectureSnapshot(root = path.resolve(__dirname, '..')) {
   const files = collectJavaScriptFiles(root);
   const graph = buildDependencyGraph(files);
@@ -100,6 +125,7 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
   const rendererFile = path.join(root, 'renderer', 'app.js');
   return {
     cycles: findCycles(graph),
+    layerErrors: dependencyLayerErrors(graph, root),
     edgeCount: [...graph.values()].reduce((total, dependencies) => total + dependencies.length, 0),
     fileCount: files.length,
     mainDirectDependencies: graph.get(mainFile)?.length || 0,
@@ -111,6 +137,7 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
 function architectureErrors(snapshot) {
   const errors = [];
   if (snapshot.cycles.length) errors.push(`CommonJS cycles: ${snapshot.cycles.length}`);
+  errors.push(...(snapshot.layerErrors || []));
   for (const key of ['mainDirectDependencies', 'mainLines', 'rendererLines']) {
     if (snapshot[key] > BASELINE[key]) {
       errors.push(`${key} grew from ${BASELINE[key]} to ${snapshot[key]}`);
@@ -146,6 +173,7 @@ module.exports = {
   architectureSnapshot,
   buildDependencyGraph,
   collectJavaScriptFiles,
+  dependencyLayerErrors,
   findCycles,
   relativeRequires,
 };

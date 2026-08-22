@@ -58,9 +58,33 @@ test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux Ap
 });
 
 test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', () => {
+  assert.match(ciWorkflow, /test:main-engine-lifecycle/u);
+  assert.match(workflow, /test:main-engine-lifecycle/u);
   assert.match(ciWorkflow, /test:campus-popup-mfa-safety/u);
   assert.match(ciWorkflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
   assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
+});
+
+test('release builds strictly verify macOS signatures and smoke-test unpacked apps', () => {
+  assert.match(workflow, /codesign --verify --deep --strict --verbose=2/u);
+  assert.doesNotMatch(workflow, /electron-builder --mac dmg --arm64 --x64/u);
+  assert.match(workflow, /stage_mac_engine arm64 aarch64-apple-darwin arm64/u);
+  assert.match(workflow, /stage_mac_engine x64 x86_64-apple-darwin amd64/u);
+  assert.match(
+    workflow,
+    /Smoke-test packaged macOS application[\s\S]*Contents\/MacOS\/hkustgzconnect/u,
+  );
+  assert.match(
+    workflow,
+    /Smoke-test packaged Windows application[\s\S]*release\\win-unpacked\\hkustgzconnect\.exe/u,
+  );
+  assert.match(
+    workflow,
+    /Smoke-test packaged Linux application[\s\S]*release\/linux-unpacked\/hkustgzconnect/u,
+  );
+  assert.match(workflow, /softwareupdate --install-rosetta --agree-to-license/u);
+  assert.match(workflow, /timeout --kill-after=2s 3s xvfb-run -a/u);
+  assert.match(workflow, /HKUSTGZ_USER_DATA_DIR/u);
 });

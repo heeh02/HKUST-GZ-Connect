@@ -81,6 +81,7 @@ jobs:
         working-directory: desktop
         run: |
           npm run test:main-integration
+          npm run test:main-engine-lifecycle
           ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
           npm run test:campus-mfa-safety
           npm run test:campus-popup-mfa-safety
@@ -99,16 +100,6 @@ jobs:
           cargo build --locked --release --bin ec-engine --target x86_64-apple-darwin
           cargo build --locked --release --bin ec-proxy-command --target aarch64-apple-darwin
           cargo build --locked --release --bin ec-proxy-command --target x86_64-apple-darwin
-          mkdir -p ../desktop/engine
-          cp target/aarch64-apple-darwin/release/ec-engine \
-            ../desktop/engine/ec-engine-darwin-arm64
-          cp target/x86_64-apple-darwin/release/ec-engine \
-            ../desktop/engine/ec-engine-darwin-amd64
-          cp target/aarch64-apple-darwin/release/ec-proxy-command \
-            ../desktop/engine/ec-proxy-command-darwin-arm64
-          cp target/x86_64-apple-darwin/release/ec-proxy-command \
-            ../desktop/engine/ec-proxy-command-darwin-amd64
-          cp config/hkustgz.json ../desktop/engine/hkustgz.json
 
       - name: Build independent engine (Windows)
         if: matrix.platform == 'win'
@@ -155,22 +146,45 @@ jobs:
 
       - name: Build (macOS DMG)
         if: matrix.platform == 'mac'
+        shell: bash
         working-directory: desktop
         run: |
           sudo mdutil -a -i off >/dev/null 2>&1 || true   # fewer hdiutil "busy" flakes
-          built=0
-          for i in 1 2 3; do
-            if npx electron-builder --mac dmg --arm64 --x64; then
-              built=1
-              break
+          stage_mac_engine() {
+            local build_arch="$1"
+            local cargo_target="$2"
+            local package_arch="$3"
+            mkdir -p engine
+            find engine -maxdepth 1 -type f \
+              \( -name 'ec-engine*' -o -name 'ec-proxy-command*' \) \
+              -delete
+            cp "../independent/target/${cargo_target}/release/ec-engine" \
+              "engine/ec-engine-darwin-${package_arch}"
+            cp "../independent/target/${cargo_target}/release/ec-proxy-command" \
+              "engine/ec-proxy-command-darwin-${package_arch}"
+            cp ../independent/config/hkustgz.json engine/hkustgz.json
+            echo "staged exact macOS ${build_arch} native resources"
+          }
+          build_mac_dmg() {
+            local build_arch="$1"
+            local built=0
+            for i in 1 2 3; do
+              if npx electron-builder --mac dmg "--${build_arch}"; then
+                built=1
+                break
+              fi
+              echo "macOS ${build_arch} DMG attempt $i failed, retrying"
+              sleep 8
+            done
+            if [ "$built" != "1" ]; then
+              echo "no macOS ${build_arch} DMG was produced"
+              return 1
             fi
-            echo "DMG attempt $i failed, retrying"
-            sleep 8
-          done
-          if [ "$built" != "1" ]; then
-            echo "no macOS DMG was produced"
-            exit 1
-          fi
+          }
+          stage_mac_engine arm64 aarch64-apple-darwin arm64
+          build_mac_dmg arm64
+          stage_mac_engine x64 x86_64-apple-darwin amd64
+          build_mac_dmg x64
           test -n "$(find release -maxdepth 1 -type f -name '*.dmg' -print -quit)" || {
             echo "no macOS DMG was produced"
             exit 1
@@ -188,6 +202,64 @@ jobs:
             release/mac-arm64/hkustgzconnect.app/Contents/Resources darwin arm64
           node build/verify-package.js \
             release/mac/hkustgzconnect.app/Contents/Resources darwin x64
+          codesign --verify --deep --strict --verbose=2 release/mac-arm64/hkustgzconnect.app
+          codesign --verify --deep --strict --verbose=2 release/mac/hkustgzconnect.app
+
+      - name: Smoke-test packaged macOS application
+        if: matrix.platform == 'mac'
+        shell: bash
+        working-directory: desktop
+        run: |
+          smoke_app() (
+            local app_path="$1"
+            local app_arch="$2"
+            local smoke_profile
+            local smoke_pid=''
+            smoke_profile="$(mktemp -d "${RUNNER_TEMP}/hkustgz-${app_arch}-smoke.XXXXXX")"
+            cleanup_smoke() {
+              if [ -n "$smoke_pid" ] && kill -0 "$smoke_pid" 2>/dev/null; then
+                kill "$smoke_pid" 2>/dev/null || true
+                for _ in 1 2 3 4 5 6 7 8 9 10; do
+                  if ! kill -0 "$smoke_pid" 2>/dev/null; then break; fi
+                  sleep 0.2
+                done
+                if kill -0 "$smoke_pid" 2>/dev/null; then
+                  kill -KILL "$smoke_pid" 2>/dev/null || true
+                fi
+                wait "$smoke_pid" 2>/dev/null || true
+              fi
+              case "$smoke_profile" in
+                "${RUNNER_TEMP}"/hkustgz-*-smoke.*) rm -rf -- "$smoke_profile" ;;
+                *) echo "refusing to remove unexpected smoke profile" >&2 ;;
+              esac
+            }
+            trap cleanup_smoke EXIT
+
+            local executable="${app_path}/Contents/MacOS/hkustgzconnect"
+            local -a command=("$executable")
+            if [ "$(uname -m)" = 'arm64' ] && [ "$app_arch" = 'x64' ]; then
+              if ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
+                sudo /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+              fi
+              /usr/bin/arch -x86_64 /usr/bin/true
+              command=(/usr/bin/arch -x86_64 "$executable")
+            elif [ "$(uname -m)" != 'arm64' ] && [ "$app_arch" = 'arm64' ]; then
+              echo "macOS arm64 launch smoke skipped on an x86_64 runner"
+              return 0
+            fi
+
+            HKUSTGZ_USER_DATA_DIR="$smoke_profile" "${command[@]}" \
+              >"$smoke_profile/stdout.log" 2>"$smoke_profile/stderr.log" &
+            smoke_pid=$!
+            sleep 3
+            if ! kill -0 "$smoke_pid" 2>/dev/null; then
+              wait "$smoke_pid" || true
+              echo "packaged macOS ${app_arch} application exited during launch smoke" >&2
+              return 1
+            fi
+          )
+          smoke_app release/mac-arm64/hkustgzconnect.app arm64
+          smoke_app release/mac/hkustgzconnect.app x64
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'
@@ -210,6 +282,32 @@ jobs:
         working-directory: desktop
         run: node build/verify-package.js release/win-unpacked/resources win32 x64
 
+      - name: Smoke-test packaged Windows application
+        if: matrix.platform == 'win'
+        shell: pwsh
+        working-directory: desktop
+        run: |
+          $smokeProfile = Join-Path $env:RUNNER_TEMP ("hkustgz-win-smoke-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $smokeProfile | Out-Null
+          $previousProfile = $env:HKUSTGZ_USER_DATA_DIR
+          $env:HKUSTGZ_USER_DATA_DIR = $smokeProfile
+          $process = $null
+          try {
+            $executable = (Resolve-Path 'release\win-unpacked\hkustgzconnect.exe').Path
+            $process = Start-Process -FilePath $executable -PassThru
+            Start-Sleep -Seconds 3
+            if ($process.HasExited) {
+              throw "packaged Windows application exited during launch smoke ($($process.ExitCode))"
+            }
+          } finally {
+            if ($process -and -not $process.HasExited) {
+              & taskkill.exe /PID $process.Id /T /F | Out-Null
+              try { $process.WaitForExit() } catch {}
+            }
+            $env:HKUSTGZ_USER_DATA_DIR = $previousProfile
+            Remove-Item -LiteralPath $smokeProfile -Recurse -Force
+          }
+
       - name: Build (Linux AppImage x86_64)
         if: matrix.platform == 'linux'
         working-directory: desktop
@@ -224,6 +322,31 @@ jobs:
         if: matrix.platform == 'linux'
         working-directory: desktop
         run: node build/verify-package.js release/linux-unpacked/resources linux x64
+
+      - name: Smoke-test packaged Linux application
+        if: matrix.platform == 'linux'
+        shell: bash
+        working-directory: desktop
+        run: |
+          smoke_profile="$(mktemp -d "${RUNNER_TEMP}/hkustgz-linux-smoke.XXXXXX")"
+          cleanup_smoke() {
+            case "$smoke_profile" in
+              "${RUNNER_TEMP}"/hkustgz-linux-smoke.*) rm -rf -- "$smoke_profile" ;;
+              *) echo "refusing to remove unexpected smoke profile" >&2 ;;
+            esac
+          }
+          trap cleanup_smoke EXIT
+          set +e
+          timeout --kill-after=2s 3s xvfb-run -a env \
+            HKUSTGZ_USER_DATA_DIR="$smoke_profile" \
+            release/linux-unpacked/hkustgzconnect \
+            >"$smoke_profile/stdout.log" 2>"$smoke_profile/stderr.log"
+          smoke_status=$?
+          set -e
+          if [ "$smoke_status" -ne 124 ]; then
+            echo "packaged Linux application exited during launch smoke (${smoke_status})" >&2
+            exit 1
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

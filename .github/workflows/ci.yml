@@ -75,6 +75,8 @@ jobs:
         run: npm ci
       - name: Exercise the real Electron main process
         run: npm run test:main-integration
+      - name: Exercise Main with a synthetic Engine lifecycle
+        run: npm run test:main-engine-lifecycle
       - name: Exercise campus-browser toolbar IPC
         run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
       - name: Exercise Campus Browser MFA credential boundaries
