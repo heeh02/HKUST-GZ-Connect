@@ -1475,7 +1475,7 @@ desktopShell = new DesktopShell({
   },
   onControlRendererUnavailable: () => authChallengeCoordinator.cancelForLifecycle(),
   onWindowError: (error) => {
-    state.lastError = error.userMessage || error.message;
+    state.settingsError = error.userMessage || error.message;
     emit();
   },
 });

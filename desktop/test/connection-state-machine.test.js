@@ -18,6 +18,10 @@ function start(machine, generation = 1) {
 }
 
 function markReady(machine, generation, order = 'listener-first') {
+  if (machine.snapshot().phase !== CONNECTION_PHASE.PREPARING_TUNNEL &&
+      machine.snapshot().phase !== CONNECTION_PHASE.CONNECTED) {
+    assert.equal(machine.markEnginePhase(generation, 'preparing_tunnel'), true);
+  }
   if (order === 'engine-first') {
     assert.equal(machine.recordEngineConnectedCandidate(generation), false);
     assert.equal(machine.recordListenerReady(generation), true);
@@ -102,6 +106,10 @@ test('engine phase order rejects regressions and stale generations', () => {
 test('connected promotion requires same-generation Engine and listener evidence', () => {
   const listenerFirst = new ConnectionStateMachine();
   start(listenerFirst, 21);
+  assert.equal(listenerFirst.recordListenerReady(21), false,
+    'readiness cannot be recorded before tunnel preparation');
+  assert.equal(listenerFirst.recordEngineConnectedCandidate(21), false);
+  assert.equal(listenerFirst.markEnginePhase(21, 'preparing_tunnel'), true);
   assert.equal(listenerFirst.recordListenerReady(21), false);
   assert.equal(listenerFirst.markConnected(21), false);
   assert.equal(listenerFirst.recordEngineConnectedCandidate(20), false);
@@ -112,6 +120,8 @@ test('connected promotion requires same-generation Engine and listener evidence'
   start(engineFirst, 22);
   assert.equal(engineFirst.recordEngineConnectedCandidate(22), false);
   assert.equal(engineFirst.markConnected(22), false);
+  assert.equal(engineFirst.markEnginePhase(22, 'preparing_tunnel'), true);
+  assert.equal(engineFirst.recordEngineConnectedCandidate(22), false);
   assert.equal(engineFirst.recordListenerReady(22), true);
   assert.equal(engineFirst.markConnected(22), true);
   engineFirst.invalidateEngineGeneration();
