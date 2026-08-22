@@ -17,7 +17,9 @@ framing, a userspace TCP/UDP stack, authenticated gateway DNS from
 `rclist.csp`/`conf.csp`, a bounded reviewed deployment-profile fallback when
 the gateway omits it, and one loopback SOCKS5 TCP/UDP frontend. DNS from either
 source travels only through the userspace VPN; the HKUST(GZ) production profile
-disables system fallback.
+disables system fallback. A validated truncated UDP answer retries the same
+campus resolver over length-prefixed DNS TCP through that same userspace stack;
+it never selects a public or operating-system resolver as fallback.
 The same port can optionally require local proxy credentials and
 accept authenticated HTTP CONNECT plus bounded ordinary HTTP/WebSocket
 forwarding for clients that cannot authenticate to a SOCKS5 proxy. An approved
@@ -190,7 +192,8 @@ as a general TLS implementation.
 standard input, keeps the authenticated HTTPS session and address lease alive,
 bridges EasyConnect IP packets into a userspace stack, resolves proxy domains
 through gateway-supplied VPN DNS when present, or through an explicitly
-enabled system resolver fallback, and exposes one loopback proxy frontend. It
+enabled system resolver fallback, and exposes one loopback proxy frontend. DNS
+uses UDP normally and same-server TCP only after a matching `TC=1` response. It
 does not bind a second HTTP or DNS proxy port. It exits when the data plane
 fails so its supervisor can reconnect the whole session. Local TCP connection
 attempts are bounded so a dead destination cannot hold a proxy task forever.

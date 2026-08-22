@@ -114,6 +114,14 @@ svpn_rand_code=<CAPTCHA response or empty>
    `/por/conf.csp?apiversion=1` and `/por/rclist.csp?apiversion=1`.
 10. Logout is `GET /por/logout.csp?apiversion=1`.
 
+VPN DNS remains independent of authentication protocol details. Queries use
+the authenticated gateway DNS list, or the reviewed deployment-profile list
+only when the gateway supplies none. A normal query uses UDP through
+`VirtualNetstack`; only a successful response with matching transaction ID and
+question plus `TC=1` opens length-prefixed TCP to that same resolver on port 53.
+UDP and TCP share one timeout. Failure never falls back to a public or system
+resolver in the HKUST(GZ) production profile.
+
 The observed password key was 2048 bits and the anti-MITM helper flag was off.
 Those are profile facts, not hard-coded requirements. Redirects and TLS
 downgrades fail closed in the probe.

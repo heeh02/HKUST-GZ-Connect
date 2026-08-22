@@ -11,9 +11,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
+#[path = "dns/tcp.rs"]
+mod tcp;
+
 const DNS_HEADER_LEN: usize = 12;
 const DNS_PORT: u16 = 53;
-const DNS_MAX_RESPONSE: usize = 4096;
+const DNS_MAX_UDP_RESPONSE: usize = 4096;
 const DNS_TYPE_A: u16 = 1;
 const DNS_CLASS_IN: u16 = 1;
 const MAX_POINTER_JUMPS: usize = 16;
@@ -291,10 +294,16 @@ fn validate_dns_servers(servers: &[Ipv4Addr]) -> Result<()> {
         // authority. Apply the same destination policy as SOCKS TCP/UDP so a
         // bad profile cannot make the client contact gateway-loopback,
         // link-local, multicast, or reserved addresses through raw UDP.
-        validate_tunnel_destination(SocketAddr::new(IpAddr::V4(*server), DNS_PORT))
-            .map_err(|_| Error("VPN DNS configuration contains a prohibited server".into()))?;
+        validated_dns_endpoint(*server)?;
     }
     Ok(())
+}
+
+fn validated_dns_endpoint(server: Ipv4Addr) -> Result<SocketAddr> {
+    let endpoint = SocketAddr::new(IpAddr::V4(server), DNS_PORT);
+    validate_tunnel_destination(endpoint)
+        .map_err(|_| Error("VPN DNS configuration contains a prohibited server".into()))?;
+    Ok(endpoint)
 }
 
 /// Runs every attempt concurrently and yields the first success.
@@ -335,20 +344,33 @@ impl VpnDnsResolver {
         server: Ipv4Addr,
         timeout: Duration,
     ) -> Result<(Ipv4Addr, u32)> {
+        tokio::time::timeout(
+            timeout,
+            Self::resolve_with_server_before_deadline(netstack, host, server),
+        )
+        .await
+        .map_err(|_| Error("VPN DNS query timed out".into()))?
+    }
+
+    async fn resolve_with_server_before_deadline(
+        netstack: &VirtualNetstack,
+        host: &str,
+        server: Ipv4Addr,
+    ) -> Result<(Ipv4Addr, u32)> {
+        let endpoint = validated_dns_endpoint(server)?;
         let mut id_bytes = [0_u8; 2];
         OsRng.fill_bytes(&mut id_bytes);
         let id = u16::from_be_bytes(id_bytes);
         let query = build_query(host, id)?;
         let socket = netstack.bind_udp().await?;
-        let endpoint = SocketAddr::new(IpAddr::V4(server), DNS_PORT);
         socket
             .send_to(endpoint, &query)
             .await
             .map_err(|_| Error("VPN DNS query send failed".into()))?;
-        let mut response = vec![0_u8; DNS_MAX_RESPONSE];
-        let receive = tokio::time::timeout(timeout, socket.recv_from(&mut response))
+        let mut response = vec![0_u8; DNS_MAX_UDP_RESPONSE];
+        let receive = socket
+            .recv_from(&mut response)
             .await
-            .map_err(|_| Error("VPN DNS query timed out".into()))?
             .map_err(|_| Error("VPN DNS response failed".into()))?;
         let (source, length) = receive;
         if source != endpoint {
@@ -357,7 +379,19 @@ impl VpnDnsResolver {
             ));
         }
         response.truncate(length);
-        parse_a_response(&response, id)
+        match parse_dns_response(&response, &query)? {
+            ParsedDnsResponse::Answer(answer) => Ok(answer),
+            ParsedDnsResponse::Truncated => {
+                let mut stream = netstack.connect_tcp(endpoint).await?;
+                let response = tcp::exchange(&mut stream, &query).await?;
+                match parse_dns_response(&response, &query)? {
+                    ParsedDnsResponse::Answer(answer) => Ok(answer),
+                    ParsedDnsResponse::Truncated => {
+                        Err(Error("VPN DNS TCP response is still truncated".into()))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -435,28 +469,51 @@ fn skip_name(data: &[u8], mut offset: usize) -> Result<usize> {
     }
 }
 
-fn parse_a_response(data: &[u8], expected_id: u16) -> Result<(Ipv4Addr, u32)> {
-    if data.len() < DNS_HEADER_LEN || read_u16(data, 0)? != expected_id {
+#[derive(Debug, Eq, PartialEq)]
+enum ParsedDnsResponse {
+    Answer((Ipv4Addr, u32)),
+    Truncated,
+}
+
+fn validate_response_question(data: &[u8], query: &[u8]) -> Result<usize> {
+    if read_u16(data, 4)? != 1 {
+        return Err(Error("DNS response question count is invalid".into()));
+    }
+    let question_end = skip_name(data, DNS_HEADER_LEN)?
+        .checked_add(4)
+        .ok_or_else(|| Error("DNS response question length overflow".into()))?;
+    let actual = data
+        .get(DNS_HEADER_LEN..question_end)
+        .ok_or_else(|| Error("DNS response question is truncated".into()))?;
+    let expected = query
+        .get(DNS_HEADER_LEN..)
+        .ok_or_else(|| Error("DNS query question is missing".into()))?;
+    if actual.len() != expected.len() || !actual.eq_ignore_ascii_case(expected) {
+        return Err(Error(
+            "DNS response question does not match the query".into(),
+        ));
+    }
+    Ok(question_end)
+}
+
+fn parse_dns_response(data: &[u8], query: &[u8]) -> Result<ParsedDnsResponse> {
+    if data.len() < DNS_HEADER_LEN
+        || query.len() < DNS_HEADER_LEN
+        || read_u16(data, 0)? != read_u16(query, 0)?
+    {
         return Err(Error("DNS response header is invalid".into()));
     }
     let flags = read_u16(data, 2)?;
-    if flags & 0x8000 == 0 || flags & 0x0200 != 0 || flags & 0x000f != 0 {
+    if flags & 0x8000 == 0 || flags & 0x000f != 0 {
         return Err(Error("DNS response status is not successful".into()));
     }
-    let question_count = usize::from(read_u16(data, 4)?);
-    let answer_count = usize::from(read_u16(data, 6)?);
-    if question_count == 0 || answer_count == 0 {
-        return Err(Error("DNS response contains no answer".into()));
+    let mut offset = validate_response_question(data, query)?;
+    if flags & 0x0200 != 0 {
+        return Ok(ParsedDnsResponse::Truncated);
     }
-    let mut offset = DNS_HEADER_LEN;
-    for _ in 0..question_count {
-        offset = skip_name(data, offset)?;
-        offset = offset
-            .checked_add(4)
-            .ok_or_else(|| Error("DNS question length overflow".into()))?;
-        if offset > data.len() {
-            return Err(Error("DNS question is truncated".into()));
-        }
+    let answer_count = usize::from(read_u16(data, 6)?);
+    if answer_count == 0 {
+        return Err(Error("DNS response contains no answer".into()));
     }
     for _ in 0..answer_count {
         offset = skip_name(data, offset)?;
@@ -472,7 +529,7 @@ fn parse_a_response(data: &[u8], expected_id: u16) -> Result<(Ipv4Addr, u32)> {
             .get(offset..offset + data_length)
             .ok_or_else(|| Error("DNS answer data is truncated".into()))?;
         if record_type == DNS_TYPE_A && class == DNS_CLASS_IN && data_length == 4 {
-            return Ok((
+            return Ok(ParsedDnsResponse::Answer((
                 Ipv4Addr::new(
                     record_data[0],
                     record_data[1],
@@ -480,7 +537,7 @@ fn parse_a_response(data: &[u8], expected_id: u16) -> Result<(Ipv4Addr, u32)> {
                     record_data[3],
                 ),
                 ttl_seconds,
-            ));
+            )));
         }
         offset += data_length;
     }
@@ -510,6 +567,10 @@ mod tests {
             assert!(!error.to_string().contains(&prohibited.to_string()));
         }
         assert!(validate_dns_servers(&[]).is_err());
+        assert_eq!(
+            validated_dns_endpoint(Ipv4Addr::new(10, 20, 30, 53)).unwrap(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 20, 30, 53)), DNS_PORT)
+        );
     }
 
     #[test]
@@ -561,15 +622,33 @@ mod tests {
 
     #[test]
     fn parses_compressed_a_answer() {
-        let mut response = build_query("host.example", 0x1234).unwrap();
+        let query = build_query("host.example", 0x1234).unwrap();
+        let mut response = query.clone();
         response[2..4].copy_from_slice(&0x8180_u16.to_be_bytes());
         response[6..8].copy_from_slice(&1_u16.to_be_bytes());
         response.extend_from_slice(&[0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4, 10, 20, 30, 40]);
         assert_eq!(
-            parse_a_response(&response, 0x1234).unwrap(),
-            (Ipv4Addr::new(10, 20, 30, 40), 30)
+            parse_dns_response(&response, &query).unwrap(),
+            ParsedDnsResponse::Answer((Ipv4Addr::new(10, 20, 30, 40), 30))
         );
-        assert!(parse_a_response(&response, 7).is_err());
+        assert!(parse_dns_response(&response, &build_query("host.example", 7).unwrap()).is_err());
+    }
+
+    #[test]
+    fn truncated_udp_requires_matching_transaction_and_question() {
+        let query = build_query("host.example", 0x1234).unwrap();
+        let mut truncated = query.clone();
+        truncated[2..4].copy_from_slice(&0x8380_u16.to_be_bytes());
+        assert_eq!(
+            parse_dns_response(&truncated, &query).unwrap(),
+            ParsedDnsResponse::Truncated
+        );
+
+        let mut wrong_question = truncated.clone();
+        wrong_question[DNS_HEADER_LEN + 1] = b'x';
+        assert!(parse_dns_response(&wrong_question, &query).is_err());
+        let wrong_id = build_query("host.example", 0x4321).unwrap();
+        assert!(parse_dns_response(&truncated, &wrong_id).is_err());
     }
 
     #[test]
