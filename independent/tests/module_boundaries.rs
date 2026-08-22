@@ -105,6 +105,8 @@ fn auth_transaction_contract_contains_no_vendor_endpoint_or_fixed_otp_shape() {
             "generic transaction hard-codes {forbidden}"
         );
     }
+    assert!(transaction.contains("authgatewayrequestbudget"));
+    assert!(transaction.contains("authenticationlimitexceeded"));
 }
 
 #[test]

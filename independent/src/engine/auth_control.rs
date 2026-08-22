@@ -91,6 +91,7 @@ pub enum AuthControlErrorCode {
     UnsupportedChallenge,
     ResendUnavailable,
     ChallengeExpired,
+    LimitExceeded,
     ProviderFailure,
     TransactionClosed,
 }
@@ -178,6 +179,33 @@ impl<T: AuthTransaction> AuthControlSession<T> {
             api_version: INTERACTIVE_AUTH_CONTROL_API_VERSION,
             challenge,
         })
+    }
+
+    pub fn remaining_lifetime(&self) -> Result<std::time::Duration> {
+        self.owner
+            .as_ref()
+            .ok_or_else(transaction_closed)?
+            .remaining_lifetime()
+    }
+
+    pub async fn wait_for_deadline(&self) -> Result<()> {
+        tokio::time::sleep(self.remaining_lifetime()?).await;
+        Ok(())
+    }
+
+    /// Called by the Engine-owned deadline timer even when the renderer sends
+    /// no command. Expiry is terminal before provider cleanup is attempted.
+    pub fn expire_if_due(&mut self) -> Result<bool> {
+        let result = self
+            .owner
+            .as_mut()
+            .ok_or_else(transaction_closed)?
+            .expire_if_due();
+        let terminal = self.owner.as_ref().is_some_and(|owner| !owner.is_active());
+        if terminal {
+            self.owner.take();
+        }
+        result
     }
 
     pub fn handle(&mut self, request: AuthControlRequest) -> AuthControlExchange<T::Session> {
@@ -294,7 +322,9 @@ impl<T: AuthTransaction> AuthControlSession<T> {
         let code = auth_control_error_code(error.kind());
         if matches!(
             error.kind(),
-            ErrorKind::AuthenticationExpired | ErrorKind::Lifecycle
+            ErrorKind::AuthenticationExpired
+                | ErrorKind::AuthenticationLimitExceeded
+                | ErrorKind::Lifecycle
         ) {
             if let Some(owner) = self.owner.take() {
                 let _ = owner.abort();
@@ -408,6 +438,7 @@ fn auth_control_error_code(kind: ErrorKind) -> AuthControlErrorCode {
         ErrorKind::UnsupportedCapability => AuthControlErrorCode::UnsupportedChallenge,
         ErrorKind::ResendUnavailable => AuthControlErrorCode::ResendUnavailable,
         ErrorKind::AuthenticationExpired => AuthControlErrorCode::ChallengeExpired,
+        ErrorKind::AuthenticationLimitExceeded => AuthControlErrorCode::LimitExceeded,
         ErrorKind::Lifecycle => AuthControlErrorCode::TransactionClosed,
         _ => AuthControlErrorCode::ProviderFailure,
     }
@@ -447,10 +478,12 @@ fn transaction_closed() -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::auth_transaction::{ChallengeKind, TransactionId};
+    use crate::engine::auth_transaction::{
+        AuthBudgetPolicy, AuthGatewayRequestBudget, ChallengeKind, TransactionId,
+    };
     use std::io::Cursor;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
     struct SyntheticTransaction {
         view: ChallengeView,
@@ -466,7 +499,9 @@ mod tests {
         fn respond(
             &mut self,
             response: SecretBytes,
+            gateway_requests: &mut AuthGatewayRequestBudget<'_>,
         ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+            gateway_requests.reserve_request()?;
             if response.as_bytes() == b"accepted" {
                 Ok(AuthProgress::Authenticated("session"))
             } else {
@@ -474,7 +509,11 @@ mod tests {
             }
         }
 
-        fn resend(&mut self) -> Result<ChallengeView> {
+        fn resend(
+            &mut self,
+            gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+        ) -> Result<ChallengeView> {
+            gateway_requests.reserve_request()?;
             Err(Error::classified(ErrorKind::ResendUnavailable, "fixture"))
         }
 
@@ -506,11 +545,17 @@ mod tests {
         fn respond(
             &mut self,
             _response: SecretBytes,
+            gateway_requests: &mut AuthGatewayRequestBudget<'_>,
         ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+            gateway_requests.reserve_request()?;
             Ok(AuthProgress::ChallengeRequired(self.view.clone()))
         }
 
-        fn resend(&mut self) -> Result<ChallengeView> {
+        fn resend(
+            &mut self,
+            gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+        ) -> Result<ChallengeView> {
+            gateway_requests.reserve_request()?;
             let id = TransactionId::from_bytes([4; 16]);
             self.view = ChallengeView::new(
                 &id,
@@ -729,6 +774,113 @@ mod tests {
                 }
             ));
         }
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn engine_deadline_poll_terminates_an_idle_transaction_exactly_once() {
+        for fail_cancel in [false, true] {
+            let id = TransactionId::from_bytes([4; 16]);
+            let view = ChallengeView::new(&id, 1, ChallengeKind::Otp).unwrap();
+            let cancel_calls = Arc::new(AtomicUsize::new(0));
+            let monotonic = Arc::new(AtomicU64::new(100));
+            let clock = Arc::clone(&monotonic);
+            let owner = AuthTransactionOwner::new_with_clocks_and_policy(
+                9,
+                ObservedCancelTransaction {
+                    view,
+                    cancel_calls: Arc::clone(&cancel_calls),
+                    fail_cancel,
+                },
+                || 1_000,
+                move || clock.load(Ordering::SeqCst),
+                AuthBudgetPolicy::new(5, 2, 2, 1, 4).unwrap(),
+            )
+            .unwrap();
+            let mut session = AuthControlSession::new(owner);
+            assert_eq!(
+                session.remaining_lifetime().unwrap(),
+                std::time::Duration::from_millis(5)
+            );
+            assert!(!session.expire_if_due().unwrap());
+            monotonic.store(105, Ordering::SeqCst);
+            let expired = session.expire_if_due();
+            if fail_cancel {
+                assert!(expired.is_err());
+            } else {
+                assert!(expired.unwrap());
+            }
+            assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                session.initial_event().unwrap_err().kind(),
+                ErrorKind::Lifecycle
+            );
+        }
+    }
+
+    #[test]
+    fn budget_exhaustion_is_a_stable_terminal_control_error() {
+        let id = TransactionId::from_bytes([4; 16]);
+        let view = ChallengeView::new(&id, 1, ChallengeKind::Otp).unwrap();
+        let cancel_calls = Arc::new(AtomicUsize::new(0));
+        let owner = AuthTransactionOwner::new_with_clocks_and_policy(
+            9,
+            ObservedCancelTransaction {
+                view,
+                cancel_calls: Arc::clone(&cancel_calls),
+                fail_cancel: false,
+            },
+            || 1_000,
+            || 100,
+            AuthBudgetPolicy::new(1_000, 3, 1, 1, 4).unwrap(),
+        )
+        .unwrap();
+        let mut session = AuthControlSession::new(owner);
+        let first = session.handle(request(1, 9, 1, r#"{"name":"respond","response":"wrong"}"#));
+        assert!(matches!(
+            first.response,
+            AuthControlResponse::Challenge { .. }
+        ));
+        let exhausted =
+            session.handle(request(2, 9, 1, r#"{"name":"respond","response":"wrong"}"#));
+        assert!(matches!(
+            exhausted.response,
+            AuthControlResponse::Error {
+                code: AuthControlErrorCode::LimitExceeded,
+                ..
+            }
+        ));
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            session.initial_event().unwrap_err().kind(),
+            ErrorKind::Lifecycle
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_deadline_timer_expires_without_a_renderer_command() {
+        let id = TransactionId::from_bytes([4; 16]);
+        let view = ChallengeView::new(&id, 1, ChallengeKind::Otp).unwrap();
+        let cancel_calls = Arc::new(AtomicUsize::new(0));
+        let started = std::time::Instant::now();
+        let owner = AuthTransactionOwner::new_with_clocks_and_policy(
+            9,
+            ObservedCancelTransaction {
+                view,
+                cancel_calls: Arc::clone(&cancel_calls),
+                fail_cancel: false,
+            },
+            || 1_000,
+            move || started.elapsed().as_millis() as u64,
+            AuthBudgetPolicy::new(20, 2, 2, 1, 4).unwrap(),
+        )
+        .unwrap();
+        let mut session = AuthControlSession::new(owner);
+        session.wait_for_deadline().await.unwrap();
+        while !session.remaining_lifetime().unwrap().is_zero() {
+            tokio::task::yield_now().await;
+        }
+        assert!(session.expire_if_due().unwrap());
         assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
     }
 }

@@ -16,6 +16,7 @@ const ERROR_CODES = new Set([
   'unsupported_challenge',
   'resend_unavailable',
   'challenge_expired',
+  'limit_exceeded',
   'provider_failure',
   'transaction_closed',
 ]);
@@ -200,7 +201,7 @@ class EngineAuthControlClient {
       } else if (message.type === 'auth_error') {
         if ((pending.cancelRequest && message.code === 'provider_failure') ||
             message.code === 'transaction_closed' ||
-            message.code === 'challenge_expired') {
+            message.code === 'challenge_expired' || message.code === 'limit_exceeded') {
           this.#clearChallenge(message.code);
         }
         const error = new Error(`engine auth control request failed: ${message.code}`);

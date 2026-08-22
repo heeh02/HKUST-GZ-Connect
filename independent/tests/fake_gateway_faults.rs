@@ -3,8 +3,8 @@ use ec_compat::engine::auth_control::{
     AuthControlSession, decode_auth_control_request,
 };
 use ec_compat::engine::auth_transaction::{
-    AuthProgress, AuthTransaction, AuthTransactionOwner, ChallengeKind, ChallengeView,
-    DeliveryChannel, SecretBytes, TransactionId,
+    AuthGatewayRequestBudget, AuthProgress, AuthTransaction, AuthTransactionOwner, ChallengeKind,
+    ChallengeView, DeliveryChannel, SecretBytes, TransactionId,
 };
 use ec_compat::{Error, ErrorKind, Result};
 use std::fmt::{Debug, Formatter};
@@ -106,7 +106,9 @@ impl AuthTransaction for FakeGatewayTransaction {
     fn respond(
         &mut self,
         response: SecretBytes,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
     ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+        gateway_requests.reserve_request()?;
         if matches!(self.fault, SyntheticFault::TerminalNetworkLoss) {
             return Err(Error::classified(
                 ErrorKind::Lifecycle,
@@ -126,7 +128,11 @@ impl AuthTransaction for FakeGatewayTransaction {
         Ok(AuthProgress::ChallengeRequired(self.view.clone()))
     }
 
-    fn resend(&mut self) -> Result<ChallengeView> {
+    fn resend(
+        &mut self,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<ChallengeView> {
+        gateway_requests.reserve_request()?;
         Err(Error::classified(
             ErrorKind::ResendUnavailable,
             "synthetic resend unavailable",

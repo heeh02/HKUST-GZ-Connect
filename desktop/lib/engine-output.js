@@ -45,6 +45,7 @@ function classifyEngineCode(code, socksPort, t = createT('zh'), secondaryCode = 
     case 'AUTH_INDETERMINATE': message = t('engine.authIndeterminate'); break;
     case 'AUTH_PROTOCOL_INVALID': message = t('engine.authProtocolInvalid'); break;
     case 'AUTH_EXPIRED': message = t('engine.authExpired'); break;
+    case 'AUTH_LIMIT_EXCEEDED': message = t('engine.authLimitExceeded'); break;
     case 'UNSUPPORTED_AUTHENTICATION': message = t('engine.authUnsupported'); break;
     case 'CREDENTIALS_INVALID': message = t('error.needCredentials'); break;
     case 'INVALID_ARGUMENTS':
@@ -69,6 +70,7 @@ function engineFailureKindFromCode(code) {
     'AUTH_INDETERMINATE',
     'AUTH_PROTOCOL_INVALID',
     'AUTH_EXPIRED',
+    'AUTH_LIMIT_EXCEEDED',
     'UNSUPPORTED_AUTHENTICATION',
     'CREDENTIALS_INVALID',
     'INVALID_ARGUMENTS',

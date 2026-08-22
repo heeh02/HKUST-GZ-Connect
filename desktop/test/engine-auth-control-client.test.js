@@ -129,6 +129,17 @@ test('provider cleanup failure after cancel closes the terminal challenge', asyn
   await assert.rejects(client.respond(Buffer.from('late')), /no active/);
 });
 
+test('Engine budget exhaustion clears the challenge and rejects later secrets', async () => {
+  const writable = new FakeWritable();
+  const client = new EngineAuthControlClient({ writable, generation: 9 });
+  client.feed(challengeEvent());
+  const response = client.respond(Buffer.from('synthetic-limit'));
+  client.feed('{"type":"auth_error","apiVersion":3,"requestId":1,"code":"limit_exceeded"}\n');
+  await assert.rejects(response, (error) => error.code === 'limit_exceeded');
+  assert.equal(client.challenge, null);
+  await assert.rejects(client.resend(), /no active/);
+});
+
 test('malformed and oversized frames are discarded without unbounded buffering', () => {
   const parser = new EngineAuthControlParser({ maxFrameBytes: 128, maxBufferBytes: 160 });
   assert.deepEqual(parser.feed('not-json\n'), []);

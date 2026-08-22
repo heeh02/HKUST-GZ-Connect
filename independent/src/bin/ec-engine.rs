@@ -2,6 +2,7 @@ use ec_compat::engine::auth_control::{
     AuthControlErrorCode, AuthControlRequest, auth_error_response,
 };
 use ec_compat::engine::auth_lifecycle::BlockingAuthentication;
+use ec_compat::engine::auth_transaction::AUTH_TRANSACTION_TIMEOUT_MS;
 use ec_compat::engine::control::{
     ControlAction, ControlExchange, ControlSession, MAX_ACTIVE_REQUESTS,
 };
@@ -354,6 +355,7 @@ fn authentication_error_code(error: &ProviderError) -> EngineErrorCode {
                 EngineErrorCode::AuthProtocolInvalid
             }
             ErrorKind::AuthenticationExpired => EngineErrorCode::AuthExpired,
+            ErrorKind::AuthenticationLimitExceeded => EngineErrorCode::AuthLimitExceeded,
             ErrorKind::UnsupportedCapability => EngineErrorCode::UnsupportedAuthentication,
             _ => EngineErrorCode::AuthIndeterminate,
         },
@@ -432,6 +434,7 @@ fn dns_mode_for_source(source: VpnDnsSource) -> DnsMode {
 
 enum AuthenticationCancellationCause {
     UserRequested,
+    DeadlineExpired,
     SignalFailed(Error),
     ControlOutputFailed(Error),
 }
@@ -454,6 +457,8 @@ async fn authenticate_password_with_lifecycle<W: Write>(
     });
     let signal = shutdown_signal();
     tokio::pin!(signal);
+    let authentication_deadline =
+        tokio::time::Instant::now() + Duration::from_millis(AUTH_TRANSACTION_TIMEOUT_MS);
     let mut pending_control_actions = PendingControlActions::default();
     let cancellation_cause = loop {
         let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
@@ -475,6 +480,9 @@ async fn authenticate_password_with_lifecycle<W: Write>(
                     Ok(()) => AuthenticationCancellationCause::UserRequested,
                     Err(error) => AuthenticationCancellationCause::SignalFailed(error),
                 };
+            }
+            _ = tokio::time::sleep_until(authentication_deadline) => {
+                break AuthenticationCancellationCause::DeadlineExpired;
             }
             _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
                 break AuthenticationCancellationCause::UserRequested;
@@ -518,11 +526,26 @@ async fn authenticate_password_with_lifecycle<W: Write>(
     // checks cancellation between requests. Awaiting it here prevents an
     // authenticated session from escaping after its generation was stopped.
     let completion = authentication.wait().await;
-    if let Ok(Ok(session)) = completion {
-        let _ = session.logout();
-    }
+    let cleanup_unconfirmed = match completion {
+        Ok(Ok(session)) => session.logout().is_err(),
+        Ok(Err(ProviderError::Failed(error))) => error.cleanup_unconfirmed(),
+        Ok(Err(_)) => false,
+        Err(_) => true,
+    };
     match cancellation_cause {
         AuthenticationCancellationCause::UserRequested => Ok(None),
+        AuthenticationCancellationCause::DeadlineExpired => {
+            let primary = Error::classified(
+                ErrorKind::AuthenticationExpired,
+                "authentication transaction reached its total deadline",
+            );
+            let primary = if cleanup_unconfirmed {
+                primary.with_cleanup_unconfirmed()
+            } else {
+                primary
+            };
+            Err(authentication_failure(ProviderError::Failed(primary)))
+        }
         AuthenticationCancellationCause::SignalFailed(error) => Err(failure(
             EngineErrorCode::ShutdownSignalFailed,
             StopReason::ShutdownFailed,
@@ -1322,6 +1345,10 @@ mod tests {
             (
                 ErrorKind::AuthenticationExpired,
                 EngineErrorCode::AuthExpired,
+            ),
+            (
+                ErrorKind::AuthenticationLimitExceeded,
+                EngineErrorCode::AuthLimitExceeded,
             ),
         ] {
             assert_eq!(

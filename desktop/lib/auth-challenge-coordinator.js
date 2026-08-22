@@ -9,6 +9,7 @@ const PUBLIC_ERROR_CODES = new Set([
   'unsupported_challenge',
   'resend_unavailable',
   'challenge_expired',
+  'limit_exceeded',
   'provider_failure',
   'transaction_closed',
 ]);

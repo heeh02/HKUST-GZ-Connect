@@ -24,6 +24,7 @@ test('structured engine error codes are stable, readable and classify retry safe
   assert.match(classifyEngineCode('AUTH_INDETERMINATE', 1080), /结果无法确认/);
   assert.doesNotMatch(classifyEngineCode('AUTH_INDETERMINATE', 1080), /密码错误/);
   assert.match(classifyEngineCode('AUTH_PROTOCOL_INVALID', 1080), /响应.*不兼容/);
+  assert.match(classifyEngineCode('AUTH_LIMIT_EXCEEDED', 1080), /安全上限/);
   assert.match(
     classifyEngineCode('AUTH_INDETERMINATE', 1080, undefined, 'AUTH_CLEANUP_UNCONFIRMED'),
     /清理未能确认/,
@@ -34,6 +35,7 @@ test('structured engine error codes are stable, readable and classify retry safe
   assert.equal(engineFailureKindFromCode('AUTH_REJECTED'), 'terminal');
   assert.equal(engineFailureKindFromCode('AUTH_INDETERMINATE'), 'terminal');
   assert.equal(engineFailureKindFromCode('AUTH_PROTOCOL_INVALID'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_LIMIT_EXCEEDED'), 'terminal');
   assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
   assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
 });

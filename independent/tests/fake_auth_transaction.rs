@@ -1,6 +1,7 @@
 use ec_compat::engine::auth_transaction::{
-    AuthCommandContext, AuthProgress, AuthTransaction, AuthTransactionOwner, ChallengeKind,
-    ChallengeView, DeliveryChannel, SecretBytes, TransactionId,
+    AuthBudgetPolicy, AuthCommandContext, AuthGatewayRequestBudget, AuthProgress, AuthTransaction,
+    AuthTransactionOwner, ChallengeKind, ChallengeView, DeliveryChannel, SecretBytes,
+    TransactionId,
 };
 use ec_compat::engine::provider::{
     AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, ProviderResult,
@@ -120,7 +121,9 @@ impl AuthTransaction for FakeTransaction {
     fn respond(
         &mut self,
         response: SecretBytes,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
     ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+        gateway_requests.reserve_request()?;
         if self.now_ms >= self.expires_at_ms {
             return Err(Error::classified(
                 ErrorKind::AuthenticationExpired,
@@ -134,7 +137,11 @@ impl AuthTransaction for FakeTransaction {
         Ok(AuthProgress::ChallengeRequired(self.view()))
     }
 
-    fn resend(&mut self) -> Result<ChallengeView> {
+    fn resend(
+        &mut self,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<ChallengeView> {
+        gateway_requests.reserve_request()?;
         if self.now_ms < self.resend_after_ms {
             return Err(Error::classified(
                 ErrorKind::Authentication,
@@ -312,4 +319,183 @@ fn expiry_fails_closed_and_cancel_drops_the_pending_secret_state() {
     let cancel_view = owner.public_challenge().clone();
     owner.cancel(context(&cancel_view, 12)).unwrap();
     assert!(dropped.load(Ordering::SeqCst));
+}
+
+struct BudgetTransaction {
+    id: TransactionId,
+    epoch: u32,
+    network_calls: Arc<AtomicU64>,
+    resend_calls: Arc<AtomicU64>,
+    cancels: Arc<AtomicU64>,
+}
+
+impl BudgetTransaction {
+    fn new(
+        network_calls: Arc<AtomicU64>,
+        resend_calls: Arc<AtomicU64>,
+        cancels: Arc<AtomicU64>,
+    ) -> Self {
+        Self {
+            id: TransactionId::from_bytes([5; 16]),
+            epoch: 1,
+            network_calls,
+            resend_calls,
+            cancels,
+        }
+    }
+
+    fn view(&self) -> ChallengeView {
+        ChallengeView::new(&self.id, self.epoch, ChallengeKind::Otp)
+            .unwrap()
+            .with_resend(true, None)
+    }
+}
+
+impl AuthTransaction for BudgetTransaction {
+    type Session = ();
+
+    fn public_challenge(&self) -> ChallengeView {
+        self.view()
+    }
+
+    fn respond(
+        &mut self,
+        _response: SecretBytes,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+        gateway_requests.reserve_request()?;
+        self.network_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(AuthProgress::ChallengeRequired(self.view()))
+    }
+
+    fn resend(
+        &mut self,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<ChallengeView> {
+        gateway_requests.reserve_request()?;
+        self.network_calls.fetch_add(1, Ordering::SeqCst);
+        self.resend_calls.fetch_add(1, Ordering::SeqCst);
+        self.epoch += 1;
+        Ok(self.view())
+    }
+
+    fn cancel(self) -> Result<()> {
+        self.cancels.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+fn budget_owner(
+    policy: AuthBudgetPolicy,
+    monotonic_ms: Arc<AtomicU64>,
+    network_calls: Arc<AtomicU64>,
+    resend_calls: Arc<AtomicU64>,
+    cancels: Arc<AtomicU64>,
+) -> AuthTransactionOwner<BudgetTransaction> {
+    let clock = Arc::clone(&monotonic_ms);
+    AuthTransactionOwner::new_with_clocks_and_policy(
+        42,
+        BudgetTransaction::new(network_calls, resend_calls, cancels),
+        || 1_000,
+        move || clock.load(Ordering::SeqCst),
+        policy,
+    )
+    .unwrap()
+}
+
+#[test]
+fn submit_and_gateway_request_budgets_fail_before_additional_network_work() {
+    let monotonic = Arc::new(AtomicU64::new(10));
+    let network_calls = Arc::new(AtomicU64::new(0));
+    let cancels = Arc::new(AtomicU64::new(0));
+    let mut submit_owner = budget_owner(
+        AuthBudgetPolicy::new(1_000, 5, 2, 2, 10).unwrap(),
+        Arc::clone(&monotonic),
+        Arc::clone(&network_calls),
+        Arc::new(AtomicU64::new(0)),
+        Arc::clone(&cancels),
+    );
+    for request_id in 1..=2 {
+        let view = submit_owner.public_challenge().clone();
+        submit_owner
+            .respond(
+                context(&view, request_id),
+                SecretBytes::new(b"wrong").unwrap(),
+            )
+            .unwrap();
+    }
+    let view = submit_owner.public_challenge().clone();
+    assert_eq!(
+        submit_owner
+            .respond(context(&view, 3), SecretBytes::new(b"wrong").unwrap())
+            .unwrap_err()
+            .kind(),
+        ErrorKind::AuthenticationLimitExceeded
+    );
+    assert_eq!(network_calls.load(Ordering::SeqCst), 2);
+    submit_owner.abort().unwrap();
+    assert_eq!(cancels.load(Ordering::SeqCst), 1);
+
+    let gateway_calls = Arc::new(AtomicU64::new(0));
+    let gateway_cancels = Arc::new(AtomicU64::new(0));
+    let mut gateway_owner = budget_owner(
+        AuthBudgetPolicy::new(1_000, 5, 4, 2, 2).unwrap(),
+        monotonic,
+        Arc::clone(&gateway_calls),
+        Arc::new(AtomicU64::new(0)),
+        Arc::clone(&gateway_cancels),
+    );
+    for request_id in 10..=11 {
+        let view = gateway_owner.public_challenge().clone();
+        gateway_owner
+            .respond(
+                context(&view, request_id),
+                SecretBytes::new(b"wrong").unwrap(),
+            )
+            .unwrap();
+    }
+    let view = gateway_owner.public_challenge().clone();
+    assert_eq!(
+        gateway_owner
+            .respond(context(&view, 12), SecretBytes::new(b"wrong").unwrap())
+            .unwrap_err()
+            .kind(),
+        ErrorKind::AuthenticationLimitExceeded
+    );
+    assert_eq!(gateway_calls.load(Ordering::SeqCst), 2);
+    gateway_owner.abort().unwrap();
+    assert_eq!(gateway_cancels.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn resend_step_budget_and_monotonic_deadline_are_engine_authoritative() {
+    let monotonic = Arc::new(AtomicU64::new(100));
+    let resend_calls = Arc::new(AtomicU64::new(0));
+    let cancels = Arc::new(AtomicU64::new(0));
+    let mut owner = budget_owner(
+        AuthBudgetPolicy::new(50, 2, 3, 3, 10).unwrap(),
+        Arc::clone(&monotonic),
+        Arc::new(AtomicU64::new(0)),
+        Arc::clone(&resend_calls),
+        Arc::clone(&cancels),
+    );
+    assert_eq!(
+        owner.remaining_lifetime().unwrap(),
+        std::time::Duration::from_millis(50)
+    );
+    let first = owner.public_challenge().clone();
+    let second = owner.resend(context(&first, 20)).unwrap();
+    assert_eq!(second.challenge_epoch(), 2);
+    assert_eq!(resend_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        owner.resend(context(&second, 21)).unwrap_err().kind(),
+        ErrorKind::AuthenticationLimitExceeded
+    );
+    assert_eq!(resend_calls.load(Ordering::SeqCst), 1);
+
+    monotonic.store(150, Ordering::SeqCst);
+    assert!(owner.remaining_lifetime().unwrap().is_zero());
+    assert!(owner.expire_if_due().unwrap());
+    assert!(!owner.is_active());
+    assert_eq!(cancels.load(Ordering::SeqCst), 1);
 }

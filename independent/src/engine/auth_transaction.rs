@@ -12,12 +12,158 @@ use serde::Serialize;
 use std::collections::{BTreeSet, VecDeque};
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use zeroize::Zeroizing;
 
 pub const MAX_AUTH_RESPONSE_BYTES: usize = 4096;
 pub const MAX_MASKED_DESTINATION_BYTES: usize = 128;
 pub const MAX_TRACKED_AUTH_REQUEST_IDS: usize = 64;
+pub const AUTH_TRANSACTION_TIMEOUT_MS: u64 = 4 * 60 * 1_000;
+pub const MAX_AUTH_CHALLENGE_STEPS: u32 = 10;
+pub const MAX_AUTH_SUBMITS: u32 = 6;
+pub const MAX_AUTH_RESENDS: u32 = 4;
+pub const MAX_AUTH_GATEWAY_REQUESTS: u32 = 32;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuthBudgetPolicy {
+    total_timeout_ms: u64,
+    max_challenge_steps: u32,
+    max_submits: u32,
+    max_resends: u32,
+    max_gateway_requests: u32,
+}
+
+impl AuthBudgetPolicy {
+    pub const PRODUCTION: Self = Self {
+        total_timeout_ms: AUTH_TRANSACTION_TIMEOUT_MS,
+        max_challenge_steps: MAX_AUTH_CHALLENGE_STEPS,
+        max_submits: MAX_AUTH_SUBMITS,
+        max_resends: MAX_AUTH_RESENDS,
+        max_gateway_requests: MAX_AUTH_GATEWAY_REQUESTS,
+    };
+
+    pub fn new(
+        total_timeout_ms: u64,
+        max_challenge_steps: u32,
+        max_submits: u32,
+        max_resends: u32,
+        max_gateway_requests: u32,
+    ) -> Result<Self> {
+        if total_timeout_ms == 0
+            || max_challenge_steps == 0
+            || max_submits == 0
+            || max_resends == 0
+            || max_gateway_requests == 0
+            || total_timeout_ms > AUTH_TRANSACTION_TIMEOUT_MS
+            || max_challenge_steps > MAX_AUTH_CHALLENGE_STEPS
+            || max_submits > MAX_AUTH_SUBMITS
+            || max_resends > MAX_AUTH_RESENDS
+            || max_gateway_requests > MAX_AUTH_GATEWAY_REQUESTS
+        {
+            return Err(transaction_error("authentication budget is invalid"));
+        }
+        Ok(Self {
+            total_timeout_ms,
+            max_challenge_steps,
+            max_submits,
+            max_resends,
+            max_gateway_requests,
+        })
+    }
+}
+
+struct AuthBudget {
+    policy: AuthBudgetPolicy,
+    deadline_monotonic_ms: u64,
+    challenge_steps: u32,
+    submits: u32,
+    resends: u32,
+    gateway_requests: u32,
+}
+
+impl AuthBudget {
+    fn new(started_monotonic_ms: u64, policy: AuthBudgetPolicy) -> Self {
+        Self {
+            policy,
+            deadline_monotonic_ms: started_monotonic_ms.saturating_add(policy.total_timeout_ms),
+            challenge_steps: 1,
+            submits: 0,
+            resends: 0,
+            gateway_requests: 0,
+        }
+    }
+
+    fn ensure_active(&self, now_monotonic_ms: u64) -> Result<()> {
+        if now_monotonic_ms >= self.deadline_monotonic_ms {
+            return Err(Error::classified(
+                ErrorKind::AuthenticationExpired,
+                "authentication transaction has expired",
+            ));
+        }
+        Ok(())
+    }
+
+    fn reserve_submit(&mut self, now_monotonic_ms: u64) -> Result<()> {
+        self.ensure_active(now_monotonic_ms)?;
+        if self.submits >= self.policy.max_submits {
+            return Err(authentication_limit("authentication submit limit reached"));
+        }
+        self.submits += 1;
+        Ok(())
+    }
+
+    fn reserve_resend(&mut self, now_monotonic_ms: u64) -> Result<()> {
+        self.ensure_active(now_monotonic_ms)?;
+        if self.resends >= self.policy.max_resends {
+            return Err(authentication_limit("authentication resend limit reached"));
+        }
+        if self.challenge_steps >= self.policy.max_challenge_steps {
+            return Err(authentication_limit("authentication step limit reached"));
+        }
+        self.resends += 1;
+        Ok(())
+    }
+
+    fn reserve_gateway_request(&mut self, now_monotonic_ms: u64) -> Result<()> {
+        self.ensure_active(now_monotonic_ms)?;
+        if self.gateway_requests >= self.policy.max_gateway_requests {
+            return Err(authentication_limit(
+                "authentication gateway request limit reached",
+            ));
+        }
+        self.gateway_requests += 1;
+        Ok(())
+    }
+
+    fn accept_challenge_step(&mut self, is_new_step: bool) -> Result<()> {
+        if !is_new_step {
+            return Ok(());
+        }
+        if self.challenge_steps >= self.policy.max_challenge_steps {
+            return Err(authentication_limit("authentication step limit reached"));
+        }
+        self.challenge_steps += 1;
+        Ok(())
+    }
+
+    fn remaining_ms(&self, now_monotonic_ms: u64) -> u64 {
+        self.deadline_monotonic_ms.saturating_sub(now_monotonic_ms)
+    }
+}
+
+pub struct AuthGatewayRequestBudget<'a> {
+    budget: &'a mut AuthBudget,
+    now_monotonic_ms: &'a (dyn Fn() -> u64 + Send + Sync),
+}
+
+impl AuthGatewayRequestBudget<'_> {
+    /// Must be called immediately before each continuation HTTP request.
+    pub fn reserve_request(&mut self) -> Result<()> {
+        self.budget
+            .reserve_gateway_request((self.now_monotonic_ms)())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -213,8 +359,12 @@ pub trait AuthTransaction: Send {
     fn respond(
         &mut self,
         response: SecretBytes,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
     ) -> Result<AuthProgress<Self::Session, ChallengeView>>;
-    fn resend(&mut self) -> Result<ChallengeView>;
+    fn resend(
+        &mut self,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<ChallengeView>;
     fn cancel(self) -> Result<()>;
 }
 
@@ -225,6 +375,8 @@ pub struct AuthTransactionOwner<T: AuthTransaction> {
     recent_request_ids: BTreeSet<u64>,
     request_order: VecDeque<u64>,
     now_unix_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
+    now_monotonic_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
+    budget: AuthBudget,
 }
 
 impl<T: AuthTransaction> Drop for AuthTransactionOwner<T> {
@@ -237,12 +389,38 @@ impl<T: AuthTransaction> Drop for AuthTransactionOwner<T> {
 
 impl<T: AuthTransaction> AuthTransactionOwner<T> {
     pub fn new(generation: u64, transaction: T) -> Result<Self> {
-        Self::new_with_clock(generation, transaction, system_unix_ms)
+        Self::new_with_clocks_and_policy(
+            generation,
+            transaction,
+            system_unix_ms,
+            system_monotonic_ms,
+            AuthBudgetPolicy::PRODUCTION,
+        )
     }
 
     pub fn new_with_clock<F>(generation: u64, transaction: T, now_unix_ms: F) -> Result<Self>
     where
         F: Fn() -> u64 + Send + Sync + 'static,
+    {
+        Self::new_with_clocks_and_policy(
+            generation,
+            transaction,
+            now_unix_ms,
+            system_monotonic_ms,
+            AuthBudgetPolicy::PRODUCTION,
+        )
+    }
+
+    pub fn new_with_clocks_and_policy<FW, FM>(
+        generation: u64,
+        transaction: T,
+        now_unix_ms: FW,
+        now_monotonic_ms: FM,
+        policy: AuthBudgetPolicy,
+    ) -> Result<Self>
+    where
+        FW: Fn() -> u64 + Send + Sync + 'static,
+        FM: Fn() -> u64 + Send + Sync + 'static,
     {
         if generation == 0 {
             return Err(transaction_error("auth generation must be nonzero"));
@@ -251,6 +429,8 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
         if current_view.challenge_epoch() == 0 {
             return Err(transaction_error("challenge epoch must be nonzero"));
         }
+        let now_monotonic_ms: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(now_monotonic_ms);
+        let budget = AuthBudget::new(now_monotonic_ms(), policy);
         let owner = Self {
             generation,
             transaction: Some(transaction),
@@ -258,6 +438,8 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
             recent_request_ids: BTreeSet::new(),
             request_order: VecDeque::new(),
             now_unix_ms: Arc::new(now_unix_ms),
+            now_monotonic_ms,
+            budget,
         };
         owner.ensure_not_expired()?;
         Ok(owner)
@@ -284,17 +466,30 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
             ));
         }
         self.remember_request(context.request_id)?;
+        self.budget.reserve_submit((self.now_monotonic_ms)())?;
+        let previous_epoch = self.current_view.challenge_epoch();
+        let mut gateway_requests = AuthGatewayRequestBudget {
+            budget: &mut self.budget,
+            now_monotonic_ms: self.now_monotonic_ms.as_ref(),
+        };
         let progress = self
             .transaction
             .as_mut()
             .ok_or_else(|| transaction_error("auth transaction is no longer active"))?
-            .respond(response)?;
+            .respond(response, &mut gateway_requests)?;
         match progress {
             AuthProgress::Authenticated(session) => {
                 self.transaction.take();
                 Ok(AuthProgress::Authenticated(session))
             }
             AuthProgress::ChallengeRequired(view) => {
+                if let Err(error) = self
+                    .budget
+                    .accept_challenge_step(view.challenge_epoch() > previous_epoch)
+                {
+                    self.cancel_invalid_transition();
+                    return Err(error);
+                }
                 self.accept_updated_view(view.clone(), false)?;
                 Ok(AuthProgress::ChallengeRequired(view))
             }
@@ -326,11 +521,20 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
             ));
         }
         self.remember_request(context.request_id)?;
+        self.budget.reserve_resend((self.now_monotonic_ms)())?;
+        let mut gateway_requests = AuthGatewayRequestBudget {
+            budget: &mut self.budget,
+            now_monotonic_ms: self.now_monotonic_ms.as_ref(),
+        };
         let view = self
             .transaction
             .as_mut()
             .ok_or_else(|| transaction_error("auth transaction is no longer active"))?
-            .resend()?;
+            .resend(&mut gateway_requests)?;
+        if let Err(error) = self.budget.accept_challenge_step(true) {
+            self.cancel_invalid_transition();
+            return Err(error);
+        }
         self.accept_updated_view(view.clone(), true)?;
         Ok(view)
     }
@@ -353,6 +557,34 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
                 Error::classified(ErrorKind::Lifecycle, "auth transaction is no longer active")
             })?
             .cancel()
+    }
+
+    pub fn remaining_lifetime(&self) -> Result<Duration> {
+        if self.transaction.is_none() {
+            return Err(Error::classified(
+                ErrorKind::Lifecycle,
+                "auth transaction is no longer active",
+            ));
+        }
+        let total = self.budget.remaining_ms((self.now_monotonic_ms)());
+        let challenge = self
+            .current_view
+            .expires_at_unix_ms()
+            .map(|expires_at| expires_at.saturating_sub((self.now_unix_ms)()))
+            .unwrap_or(u64::MAX);
+        Ok(Duration::from_millis(total.min(challenge)))
+    }
+
+    pub fn expire_if_due(&mut self) -> Result<bool> {
+        if !self.remaining_lifetime()?.is_zero() {
+            return Ok(false);
+        }
+        let cleanup = self
+            .transaction
+            .take()
+            .ok_or_else(|| transaction_error("auth transaction is no longer active"))?
+            .cancel();
+        cleanup.map(|_| true)
     }
 
     fn validate_context(
@@ -389,6 +621,7 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
     }
 
     fn ensure_not_expired(&self) -> Result<()> {
+        self.budget.ensure_active((self.now_monotonic_ms)())?;
         if self
             .current_view
             .expires_at_unix_ms()
@@ -478,11 +711,24 @@ fn transaction_error(message: impl Into<String>) -> Error {
     Error::classified(ErrorKind::Authentication, message)
 }
 
+fn authentication_limit(message: impl Into<String>) -> Error {
+    Error::classified(ErrorKind::AuthenticationLimitExceeded, message)
+}
+
 fn system_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
         .unwrap_or(u64::MAX)
+}
+
+fn system_monotonic_ms() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }
 
 #[cfg(test)]
@@ -519,6 +765,32 @@ mod tests {
     }
 
     #[test]
+    fn authentication_budget_policy_can_only_tighten_production_ceilings() {
+        assert_eq!(
+            AuthBudgetPolicy::new(
+                AUTH_TRANSACTION_TIMEOUT_MS,
+                MAX_AUTH_CHALLENGE_STEPS,
+                MAX_AUTH_SUBMITS,
+                MAX_AUTH_RESENDS,
+                MAX_AUTH_GATEWAY_REQUESTS,
+            )
+            .unwrap(),
+            AuthBudgetPolicy::PRODUCTION
+        );
+        assert!(AuthBudgetPolicy::new(0, 1, 1, 1, 1).is_err());
+        assert!(
+            AuthBudgetPolicy::new(
+                AUTH_TRANSACTION_TIMEOUT_MS + 1,
+                MAX_AUTH_CHALLENGE_STEPS,
+                MAX_AUTH_SUBMITS,
+                MAX_AUTH_RESENDS,
+                MAX_AUTH_GATEWAY_REQUESTS,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn unknown_challenge_is_not_respondable_by_construction() {
         struct UnknownTransaction {
             view: ChallengeView,
@@ -531,10 +803,14 @@ mod tests {
             fn respond(
                 &mut self,
                 _response: SecretBytes,
+                _gateway_requests: &mut AuthGatewayRequestBudget<'_>,
             ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
                 panic!("owner must reject unknown challenge before provider call")
             }
-            fn resend(&mut self) -> Result<ChallengeView> {
+            fn resend(
+                &mut self,
+                _gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+            ) -> Result<ChallengeView> {
                 panic!("owner must reject unknown challenge before provider call")
             }
             fn cancel(self) -> Result<()> {
@@ -575,10 +851,16 @@ mod tests {
             fn respond(
                 &mut self,
                 _response: SecretBytes,
+                gateway_requests: &mut AuthGatewayRequestBudget<'_>,
             ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+                gateway_requests.reserve_request()?;
                 Ok(AuthProgress::ChallengeRequired(self.view.clone()))
             }
-            fn resend(&mut self) -> Result<ChallengeView> {
+            fn resend(
+                &mut self,
+                gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+            ) -> Result<ChallengeView> {
+                gateway_requests.reserve_request()?;
                 Ok(self.view.clone())
             }
             fn cancel(self) -> Result<()> {

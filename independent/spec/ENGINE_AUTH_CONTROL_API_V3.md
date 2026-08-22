@@ -107,15 +107,37 @@ independently rejects a command before the provider call while the public
 }
 ```
 
-Cancel consumes the transaction and invokes provider cleanup. Engine-internal
-abort performs the same cleanup on expiry, control failure, shutdown, or
-restart.
+Cancel validates generation, transaction ID, epoch and request ID before it
+consumes provider state. Stale or duplicate cancel therefore leaves the valid
+transaction active. Once a valid cancel starts, success and cleanup failure are
+both terminal; provider state is never restored for another response. Engine-
+internal abort performs the same exactly-once cleanup on expiry, control
+failure, shutdown, or restart.
 
 `expiresAtUnixMs`, when present, is enforced again by the Engine owner before
 respond/resend reaches the provider. Cancel remains available after expiry so
 cleanup cannot be blocked by the same deadline. A provider must still enforce
 its own server-side expiry; the local check is defense in depth, not a source
 of Gateway truth.
+
+## Engine-owned resource budget
+
+The production policy is a client safety ceiling, not a Gateway protocol fact:
+
+- total monotonic transaction lifetime: 4 minutes;
+- challenge steps: 10;
+- response submissions: 6;
+- resends: 4;
+- continuation Gateway requests: 32;
+- one owner and one current challenge per transaction;
+- response and replay bounds remain 4096 bytes and 64 request IDs.
+
+Custom policies may only tighten these ceilings. Submit/resend counters are
+reserved before calling the provider. Each provider must reserve a request from
+the Engine-issued `AuthGatewayRequestBudget` immediately before continuation
+network I/O. Exhaustion is terminal and invokes cleanup. The Engine deadline
+timer calls `expire_if_due` even if the Desktop sends no command, so Renderer
+countdowns are display-only rather than the security authority.
 
 ## Responses
 
@@ -133,6 +155,7 @@ duplicate_request
 unsupported_challenge
 resend_unavailable
 challenge_expired
+limit_exceeded
 provider_failure
 transaction_closed
 ```

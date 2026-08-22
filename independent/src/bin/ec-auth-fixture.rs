@@ -7,8 +7,8 @@ use ec_compat::engine::auth_control::{
     AuthControlAction, AuthControlErrorCode, AuthControlSession, auth_error_response,
 };
 use ec_compat::engine::auth_transaction::{
-    AuthProgress, AuthTransaction, AuthTransactionOwner, ChallengeKind, ChallengeView,
-    DeliveryChannel, SecretBytes, TransactionId,
+    AuthGatewayRequestBudget, AuthProgress, AuthTransaction, AuthTransactionOwner, ChallengeKind,
+    ChallengeView, DeliveryChannel, SecretBytes, TransactionId,
 };
 use ec_compat::engine::control::{ControlAction, ControlResponse, ControlSession};
 use ec_compat::engine::control_mux::{InheritedControlFrameReader, InheritedControlRequest};
@@ -50,7 +50,9 @@ impl AuthTransaction for SyntheticTransaction {
     fn respond(
         &mut self,
         response: SecretBytes,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
     ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+        gateway_requests.reserve_request()?;
         if response.as_bytes() == b"synthetic-accepted" {
             return Ok(AuthProgress::Authenticated(()));
         }
@@ -60,7 +62,11 @@ impl AuthTransaction for SyntheticTransaction {
         ))
     }
 
-    fn resend(&mut self) -> Result<ChallengeView> {
+    fn resend(
+        &mut self,
+        gateway_requests: &mut AuthGatewayRequestBudget<'_>,
+    ) -> Result<ChallengeView> {
+        gateway_requests.reserve_request()?;
         self.update(self.view.challenge_epoch().saturating_add(1))
     }
 
