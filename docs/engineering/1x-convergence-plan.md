@@ -12,7 +12,7 @@
 | C3 Full-attempt cancellation | Auth/Transport coordinator consumes control/EOF/signal/deadline；500 ms bounded drain；late result不能promotion | Remote cleanup在超时路径明确为unconfirmed，不宣称保证logout |
 | C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join | Cross-platform package/real Gateway canary and long soak |
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
-| C6 Lifecycle regression | Real Electron Main+synthetic Engine/listener/retry/crash/stop E2E implemented | Rust full successful synthetic Transport subprocess仍待建立 |
+| C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine post-Transport netstack/listener/stop/join/port-release回归 | 真实Gateway lifecycle与长时间资源soak |
 | C7 Package exactness | Exact native manifest、strict mac verification、三平台 launch smoke workflow已实现 | GitHub原生runner尚未实际执行当前SHA |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
@@ -89,15 +89,17 @@ close Browser/request gate
 - connection/browser/settings/recovery outcome分域；
 - `Unclassified`跨域数量建立只降不升 ratchet。
 
-### C6. Whole-process lifecycle regression
+### C6. Whole-process and post-Transport lifecycle regression
 
-建立不会进入发布包的 synthetic success Engine/transport/frontend：
+建立不会进入发布包的分层synthetic证据：
 
-- Main→Engine hello→authenticating→preparing→listener→connected；
-- explicit stop、unexpected close、terminal error、retry、stale generation；
-- active TCP/HTTP/WS/UDP/DNS stop；
-- renderer crash与窗口恢复；
-- 每个 failure只有一组 stopping/fatal/stopped。
+- Desktop层覆盖Main→synthetic Engine hello→authenticating→preparing→listener→connected，
+  以及unexpected close、terminal error、retry、stale generation、renderer crash和窗口恢复；
+- Rust层用feature-gated真实`ec-engine`覆盖non-routing post-Transport netstack、真实loopback
+  listener/SOCKS greeting、explicit stop、bounded join和端口释放；
+- TCP/HTTP/WS/UDP/DNS的协议与停止行为由各自module/integration tests承担，不能把它们全部
+  归因于该Rust subprocess fixture；
+- 每个被覆盖的failure只允许一组stopping/fatal/stopped。
 
 ### C7. Package exactness
 
@@ -113,10 +115,12 @@ close Browser/request gate
 - `ec-engine.rs`沿 attempt coordinator/serving scope拆分；
 - `socks.rs`沿 listener/session/UDP owner拆分；
 - architecture gate增加 layer allowlist，不只看行数；
-- log I/O通知成功恢复后的自动清除；
 - Windows DACL扩展到含 username/日志/策略的隐私文件；
 - versioned RoutingPolicyIR + JS/PAC differential corpus；
-- real synthetic HTTPS Gateway与完整Rust Transport success subprocess作为1.3前置。
+- test-only synthetic HTTPS Gateway作为未来真实MFA provider activation前置；不属于v1.2.3。
+
+已在v1.2.3收束树完成、不得重复列为新功能：log I/O恢复通知、真实Rust Engine的
+non-routing post-Transport生命周期回归，以及发布包fixture marker双重门禁。
 
 ## P3 — Evidence-triggered work
 

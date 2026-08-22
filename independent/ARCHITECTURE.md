@@ -92,6 +92,15 @@ early-return backstop; it is not evidence of a successful normal join. A join
 that exceeds the runtime deadline is a typed `DATA_PLANE_SHUTDOWN_FAILED`
 terminal failure rather than a clean user stop.
 
+The non-default `engine-lifecycle-fixture` Cargo feature exercises this same
+post-Transport process assembly in a real `ec-engine` subprocess using a
+non-routing packet transport and disabled DNS. It carries a fixed packaging
+tripwire: `afterPack` rejects it before signing and the standalone verifier
+checks it again after packaging. It is evidence for netstack/listener/control/
+shutdown/port ownership only; it is not evidence for Gateway authentication,
+Modern L3, vendor wire, Gateway logout, or campus traffic. Production and
+release builds explicitly use `--no-default-features`.
+
 The local engine APIs also have separate directions:
 
 - **Engine Event API v1** is a one-way engine-to-supervisor bounded NDJSON

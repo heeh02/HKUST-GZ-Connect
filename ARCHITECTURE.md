@@ -346,6 +346,12 @@ Infrastructure/Protocol Error
 历史 P0/P1 修复必须进入 regression suite。Synthetic 测试只证明其覆盖的边界，不能替代
 真实 Gateway、Windows DACL、签名或学校资源 canary。
 
+`independent`的非默认`engine-lifecycle-fixture`只用于真实`ec-engine`进程的
+post-Transport生命周期回归。它使用无外部路由的packet transport，强制DNS disabled，
+并带固定package-rejection marker。所有发布构建必须显式`--no-default-features`；
+electron-builder的`afterPack`必须在签名前拒绝该marker，独立package verifier在打包后
+再次拒绝。这个测试接缝不构成真实Gateway认证、Modern L3、Gateway logout或校园流量证据。
+
 ## 14. Documentation and ADR
 
 必须写 ADR 的事项：

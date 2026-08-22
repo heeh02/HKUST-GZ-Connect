@@ -1,4 +1,4 @@
-# 1.3 MFA Architecture
+# Future Gateway MFA Architecture
 
 状态：Design contract；production Gateway 仍为 password-only。
 
@@ -208,7 +208,7 @@ Password vault 不能把 one-time-code 或模糊单 secret 字段当普通网站
 | Desktop Electron | dialog/window、keyboard/accessibility、same-window/SPA/popup/cross-origin |
 | Real canary | 每个实际启用方法独立测试，不用一个方法替另一个方法背书 |
 
-## 11. Incremental route to 1.3
+## 11. Incremental route to a production provider
 
 1. 收束 1.x Connection FSM 和 Transport cancellation；
 2. 建立 test-only synthetic HTTPS Gateway；
@@ -216,5 +216,5 @@ Password vault 不能把 one-time-code 或模糊单 secret 字段当普通网站
 4. 完成独立最小权限 MFA window 或证明现有 control Renderer 权限可接受；
 5. 获得第一种真实学校方法的脱敏证据；
 6. 只实现该 provider；
-7. parity/canary 后发布 1.3；
+7. parity/canary 后才把它作为真实用户功能，并按实际兼容影响选择minor版本；
 8. 后续方法逐个重复 activation gate。

@@ -2,12 +2,14 @@
 
 状态：No-Go。勾选项只表示当前本地证据；未勾选项不得由“应该能工作”替代。
 
-本地实现证据基线：`27ac43243856e2c77ab9c2f462f33d4f2fb76e1f`；文档提交不改变该实现树。
+本地实现证据基线：`de91a42dd67eaee019a11edf00a9ace9ccee1066`；文档提交不改变该实现树。
+本轮产品版本仍为v1.2.3：新增内容属于补丁级稳定性、诊断、回归和交付门禁，不是新的
+production Gateway能力。
 
 ## 1. Source and governance
 
 - [x] 当前本地审计 HEAD和分支已记录。
-- [x] 本地 exact HEAD tree secret gate通过。
+- [x] 实现快照`de91a42`的exact tree secret gate通过。
 - [ ] Review branch已push且远端 SHA与候选发布源码一致。
 - [ ] PR包含全部改动并完成review。
 - [ ] `main` required checks、latest commit、review和no-force-push已启用。
@@ -45,7 +47,7 @@
 - [x] Data Plane retry只读稳定kind，不搜索英文字符串。
 - [x] Credential load区分missing/unavailable/corrupt/decrypt denied。
 - [x] Connection、Browser、settings、recovery和log outcome分域。
-- [ ] 每个terminal failure均有stable code和correlation context。
+- [x] terminal failure有stable code；本地生命周期诊断以`intent:generation`关联且不记录认证秘密。
 - [x] Log writer后台及显式reset/flush/close失败只显示一次无路径、无secret的诊断通知。
 
 ## 5. Authentication and secret lifecycle
@@ -95,13 +97,13 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Rust fmt通过。
 - [x] Rust Clippy `-D warnings`通过。
 - [x] Rust tests：当前收束树全量通过；精确数量记录在最终验证快照。
-- [x] Desktop tests：519 total / 518 passed / 0 failed / 1 Windows-only skipped。
+- [x] Desktop tests：524 total / 523 passed / 0 failed / 1 Windows-only skipped。
 - [x] npm audit high：0 vulnerabilities。
 - [x] Architecture/cycle gate通过。
-- [x] Exact tree secret gate通过。
+- [ ] 最终候选HEAD（含文档提交）的exact tree secret gate通过。
 - [x] Main/MFA/popup/strict proxy/auth pipe E2E通过。
 - [x] Desktop Main→synthetic Engine的retry/stale/listener/renderer-crash/stop/port-release场景通过。
-- [ ] Rust完整synthetic successful Transport subprocess suite通过（当前为P2集成覆盖，不阻断password-only代码收束）。
+- [x] feature-gated真实`ec-engine`子进程通过post-Transport netstack/listener/stop/join/port-release回归；不证明真实Gateway认证、Modern L3或校园转发。
 - [ ] Resource leak soak通过。
 - [ ] Windows runner真实DACL test通过。
 - [ ] 所有required CI jobs在候选SHA绿色。
@@ -110,6 +112,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 
 - [x] package verifier拒绝test/e2e/fake gateway/test PKI/private key pattern。
 - [x] Native `engine/`目录使用exact platform manifest。
+- [x] 所有官方production/package构建显式关闭test feature；`afterPack`在签名前拒绝fixture marker，独立verifier在打包后再次拒绝。
 - [ ] macOS arm64 clean package verifier和launch smoke。
 - [ ] macOS x64 clean package verifier和launch smoke。
 - [ ] Windows x64 NSIS/unpacked verifier和launch smoke。
@@ -122,7 +125,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 
 - [x] 根项目架构宪法存在。
 - [x] 1.x audit、convergence plan和release gate存在。
-- [x] 1.3 MFA architecture明确generic与production差异。
+- [x] Future Gateway MFA architecture明确generic与production差异；它不改变v1.2.3能力声明。
 - [x] 2.0 vision、capability matrix、TUN ADR和ControlledDirectExit风险ADR存在。
 - [x] `independent/ARCHITECTURE.md`与DNS TCP和shutdown当前行为一致。
 - [x] ROADMAP/compatibility matrix统一Implementation+Evidence状态。

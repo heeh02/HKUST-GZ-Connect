@@ -1,6 +1,6 @@
 # ADR-0001: TUN mode
 
-- Status: Deferred / Not Required for 1.x and 1.3
+- Status: Deferred / Not Required for current 1.x or a future MFA minor release
 - Date: 2026-08-23
 
 ## Context
@@ -14,7 +14,8 @@ route/DNS ownership、IPv6、MTU、系统升级、crash rollback、与 Clash/其
 
 ## Decision
 
-1.x 和 1.3 不实现、不默认启用 TUN。2.0 只保留一个可选 Ingress 位置，不将 TUN 当作
+当前1.x和未来单独的MFA minor release都不实现、不默认启用TUN。2.0只保留一个可选
+Ingress位置，不将TUN当作
 Routing Engine 或 Exit。
 
 只有同时满足以下条件才重新打开 ADR：

@@ -2,7 +2,7 @@
 
 日期：2026-08-23
 
-收束实现快照：`27ac43243856e2c77ab9c2f462f33d4f2fb76e1f`。
+收束实现快照：`de91a42dd67eaee019a11edf00a9ace9ccee1066`。
 第2节保留的是审计开始时的历史基线；第7节记录整改后的当前结论，不能用旧计数覆盖新证据。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
@@ -18,16 +18,15 @@
 stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格本地 proxy、三天
 日志期限和大量 fault tests 均真实存在。
 
-但尚不能宣布 Architecture Frozen：
+本地代码级P0/P1已经收束：Gateway HTTP不继承环境代理，Auth/Transport可取消，serving
+资源按有界顺序退出，Desktop只有一个连接事实源，Main全链E2E与真实Rust Engine的
+post-Transport子进程回归均已建立。后者是feature-gated、无外部路由的测试接缝，不证明
+真实Gateway认证、Modern L3或校园转发。
 
-- Gateway HTTP 在基线中隐式继承环境代理；
-- Auth 之后的 Transport bootstrap 仍会同步阻塞 control/signal；
-- listener/client/netstack/data-plane 到 logout 的确定关闭顺序尚未证明；
-- Desktop 连接事实分散在 FSM、Supervisor、ProtocolSession 和手写 UI 布尔值；
-- 关键 Main→synthetic Engine→listener→stop/retry 全链 E2E 缺失；
-- 当前分支没有远端 required checks、三平台同 SHA 产物或学校真实 canary。
-
-因此当前判断：代码可继续在 review branch 收束；合并和发布 No-Go。
+尚不能宣布 Architecture Frozen 的原因现已收窄为外部证据：当前分支没有远端required
+checks、当前SHA三平台原生产物、Windows-only门或学校真实canary。因此仍是合并与发布
+No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本轮没有新增真实认证
+方式或用户功能。
 
 ## 2. Baseline evidence
 
@@ -181,7 +180,7 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 - **Root cause**：预算从 ChallengeOwner 创建，而不是从首次 Gateway auth请求创建。
 - **Recommended fix**：AuthAttemptBudget从 primary request开始，并以 budgeted Gateway HTTP能力
   移交 provider/transaction。
-- **Priority**：1.3 provider前。
+- **Priority**：真实MFA provider激活前。
 
 ### A-11 — Credential availability is not typed
 
@@ -282,7 +281,8 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 - Rust旧路径仍有 `Unclassified` error；禁止新跨域错误，旧代码按触达下降，不做全仓机械替换。
 - Windows普通隐私文件仍主要依赖用户 profile ACL；明文 proxy sidecar已采用严格 DACL，其他
   文件后续按隐私级别扩展。
-- Synthetic HTTPS Gateway尚未建立，是 1.3真实 provider前置，不是当前 password-only P0。
+- Synthetic HTTPS Gateway尚未建立，是未来真实MFA provider前置，不是当前password-only
+  v1.2.3的P0。
 
 ## 6. Audit disposition
 
@@ -292,7 +292,7 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 
 ## 7. Convergence disposition
 
-当前代码父提交：`27ac432`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
+当前代码提交：`de91a42`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
 环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
@@ -303,13 +303,13 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 | A-04 serving/data-plane shutdown | Fixed locally | listener outer task drain；三socket shutdown；runner abort/await；bridge bounded join；随后logout |
 | A-05 multiple Desktop truth writers | Fixed | FSM phase是唯一connected/connecting来源；Main无独立布尔写入 |
 | A-06 shared error surface | Fixed | connection/settings/recovery与browser/log notice分域并统一纯投影 |
-| A-07 whole Main lifecycle E2E | Fixed | real Electron Main + dev-only synthetic child + real loopback listener + retry/stale/crash/stop/port release |
+| A-07 whole Main lifecycle E2E | Fixed locally | real Electron Main全链；feature-gated真实Rust `ec-engine`走non-routing post-Transport netstack/listener/stop/join/port release；不冒充Gateway/Modern L3证据 |
 | A-08 string retry | Fixed | Data Plane retry只使用stable `ErrorKind`；跨进程另有permanent/transient code，证书/MAC/协议错误不自动重试 |
 | A-09 implicit Engine phase | Fixed | allowlisted Engine lifecycle含`preparing_tunnel`，非法转换typed failure |
 | A-10 Password→MFA total budget | Deferred activation gate | 当前production仍password-only；真实provider前必须完成，不冒充v1.2.3功能 |
 | A-11 credential availability | Fixed | missing/unavailable/corrupt/decrypt_failed typed结果和行动文案 |
 | A-12 control renderer recovery | Fixed | visible/hidden renderer crash destroy/recreate；旧sender失效 |
-| A-13 package native exactness | Fixed locally | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；原生runner尚待远端 |
+| A-13 package native exactness | Fixed locally | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；官方构建显式no-default-features，afterPack/verifier双重marker拒绝；原生runner尚待远端 |
 | A-14 DNS owner/CNAME validation | Fixed | QR/OPCODE/question/owner/bounded CNAME/TTL/TC同resolver验证 |
 | A-15 Chromium DIRECT rebinding | Accepted 1.x limitation | ADR-0002；2.0 ControlledDirectExit；未声称resolved-address隔离 |
 | A-16 route evaluator drift | Partially fixed | deterministic 1,024-case JS/PAC differential；versioned IR与100k corpus保留2.0 |
@@ -319,12 +319,13 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 
 ### Current local verification
 
-- Rust：259 passed，0 failed，2个显式release性能门默认ignored；fmt和Clippy `-D warnings`通过。
-- Desktop：519 total，518 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
-- Desktop graph：194 files / 243 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
+- Rust production feature set：261 passed，0 failed，2个显式release性能门默认ignored；
+  lifecycle test feature：263 passed，0 failed，2 ignored；fmt和Clippy `-D warnings`通过。
+- Desktop：524 total，523 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
+- Desktop graph：194 files / 244 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
-- Offline performance：SOCKS 18/18，最大p95 2.210 ms；netstack 27/27，最大p95 5.370 ms；均不是Gateway吞吐证据。
-- 每批精确暂存secret gate通过；最终文档提交仍需再次扫描完整index。
+- Offline performance：SOCKS 18/18，最大p95 1.330 ms；netstack 27/27，最大p95 6.043 ms；均不是Gateway吞吐证据。
+- 每批精确暂存secret gate通过；候选发布仍须对最终exact HEAD tree再次执行。
 
 当前未发现仍成立的本地代码级P0/P1。Architecture Frozen和Release仍为NO：远端CI、
 current-SHA原生包、Windows-only门、真实HPC/Gateway、sleep/wake和网络切换证据尚未取得。
