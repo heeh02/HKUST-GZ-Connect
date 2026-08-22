@@ -130,17 +130,21 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint all targets
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
       - name: Run engine tests
-        run: cargo test --locked
+        run: cargo test --locked --no-default-features
+      - name: Lint the feature-gated Engine lifecycle fixture
+        run: cargo clippy --locked --all-targets --no-default-features --features engine-lifecycle-fixture -- -D warnings
+      - name: Exercise the successful Engine subprocess lifecycle
+        run: cargo test --locked --no-default-features --features engine-lifecycle-fixture --test engine_success_lifecycle
       - name: Exercise the synthetic Engine/Desktop auth pipe
         run: node ../desktop/e2e/auth-control-fixture.js
       - name: Run offline performance disaster guards
         run: |
-          cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+          cargo test --locked --release --no-default-features --lib offline_socks5_frontend_matrix -- \
             --ignored --nocapture --test-threads=1
-          cargo test --locked --release --test poll_latency_probe \
+          cargo test --locked --release --no-default-features --test poll_latency_probe \
             offline_netstack_poll_latency_matrix -- \
             --ignored --nocapture --test-threads=1
       - name: Build shipped native binaries
-        run: cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+        run: cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command

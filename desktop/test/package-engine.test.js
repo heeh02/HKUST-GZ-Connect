@@ -12,9 +12,11 @@ const {
   requiredProxyCommandName,
 } = require('../build/afterPack');
 const {
+  TEST_ONLY_ENGINE_MARKER,
   assertCustomResourceManager,
   assertExactNativeResources,
   assertLinuxElfArchitecture,
+  assertNoTestOnlyEngineMarker,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   resolveResourcesDirectory,
@@ -66,6 +68,27 @@ test('package verifier rejects fake gateways, test PKI and private-key formats',
   assert.doesNotThrow(() => assertNoTestOnlyNativeResources(directory));
   fs.writeFileSync(path.join(directory, 'test-ca.pem'), 'not-a-real-certificate');
   assert.throws(() => assertNoTestOnlyNativeResources(directory), /unsafe native resource/u);
+});
+
+test('package verifier rejects the feature-gated lifecycle Engine marker across read chunks', (t) => {
+  assert.equal(TEST_ONLY_ENGINE_MARKER, 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1');
+  const verifierSource = fs.readFileSync(path.join(__dirname, '..', 'build', 'verify-package.js'), 'utf8');
+  assert.match(verifierSource, /assertNoTestOnlyEngineMarker\(engine\)/u);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-test-engine-marker-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const clean = path.join(directory, 'clean-engine');
+  const marked = path.join(directory, 'marked-engine');
+  const boundaryMarked = path.join(directory, 'boundary-marked-engine');
+  fs.writeFileSync(clean, `production:${TEST_ONLY_ENGINE_MARKER.slice(0, -1)}`);
+  fs.writeFileSync(marked, `prefix${TEST_ONLY_ENGINE_MARKER}suffix`);
+  fs.writeFileSync(boundaryMarked, Buffer.concat([
+    Buffer.alloc((64 * 1024) - 7, 0x78),
+    Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii'),
+  ]));
+
+  assert.doesNotThrow(() => assertNoTestOnlyEngineMarker(clean));
+  assert.throws(() => assertNoTestOnlyEngineMarker(marked), /test-only lifecycle Engine/u);
+  assert.throws(() => assertNoTestOnlyEngineMarker(boundaryMarked), /test-only lifecycle Engine/u);
 });
 
 test('package verifier accepts only the exact target engine, helper and configuration', (t) => {
@@ -136,6 +159,19 @@ test('packaging fails before signing when the native engine is absent', () => {
   assert.throws(
     () => assertEnginePresent(directory, 'darwin', 'arm64'),
     /missing packaged engine:.*ec-engine-darwin-arm64/,
+  );
+});
+
+test('packaging fails before signing when the native engine contains the lifecycle fixture', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-feature-engine-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(directory, 'ec-engine-darwin-arm64'),
+    `native-prefix:${TEST_ONLY_ENGINE_MARKER}:native-suffix`,
+  );
+  assert.throws(
+    () => assertEnginePresent(directory, 'darwin', 'arm64'),
+    /test-only lifecycle Engine entered the package/u,
   );
 });
 

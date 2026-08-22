@@ -62,17 +62,17 @@ jobs:
         working-directory: independent
         run: |
           cargo fmt --all -- --check
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked
+          cargo clippy --locked --all-targets --no-default-features -- -D warnings
+          cargo test --locked --no-default-features
           node ../desktop/e2e/auth-control-fixture.js
 
       - name: Run release performance disaster guards
         if: matrix.platform == 'mac'
         working-directory: independent
         run: |
-          cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+          cargo test --locked --release --no-default-features --lib offline_socks5_frontend_matrix -- \
             --ignored --nocapture --test-threads=1
-          cargo test --locked --release --test poll_latency_probe \
+          cargo test --locked --release --no-default-features --test poll_latency_probe \
             offline_netstack_poll_latency_matrix -- \
             --ignored --nocapture --test-threads=1
 
@@ -96,17 +96,17 @@ jobs:
         working-directory: independent
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          cargo build --locked --release --bin ec-engine --target aarch64-apple-darwin
-          cargo build --locked --release --bin ec-engine --target x86_64-apple-darwin
-          cargo build --locked --release --bin ec-proxy-command --target aarch64-apple-darwin
-          cargo build --locked --release --bin ec-proxy-command --target x86_64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-engine --target aarch64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-engine --target x86_64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-proxy-command --target aarch64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-proxy-command --target x86_64-apple-darwin
 
       - name: Build independent engine (Windows)
         if: matrix.platform == 'win'
         shell: pwsh
         working-directory: independent
         run: |
-          cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
           New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
           Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
           Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
@@ -116,7 +116,7 @@ jobs:
         if: matrix.platform == 'linux'
         working-directory: independent
         run: |
-          cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
           mkdir -p ../desktop/engine
           cp target/release/ec-engine ../desktop/engine/ec-engine-linux-amd64
           cp target/release/ec-proxy-command ../desktop/engine/ec-proxy-command-linux-amd64

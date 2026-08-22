@@ -9,6 +9,7 @@ const desktopRoot = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json'), 'utf8'));
 const workflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'build.yml'), 'utf8');
 const ciWorkflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+const localEngineBuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'build-engine.sh'), 'utf8');
 
 test('cross-platform desktop checks explicitly run under Bash', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
@@ -65,6 +66,27 @@ test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', (
   assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
   assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
+  assert.match(
+    ciWorkflow,
+    /cargo clippy --locked --all-targets --no-default-features --features engine-lifecycle-fixture -- -D warnings/u,
+  );
+  assert.match(
+    ciWorkflow,
+    /cargo test --locked --no-default-features --features engine-lifecycle-fixture --test engine_success_lifecycle/u,
+  );
+});
+
+test('every shipped Engine build excludes test-only Cargo features', () => {
+  const releaseBuilds = workflow.match(/cargo build[^\n]+/gu) || [];
+  const ordinaryCiBuilds = ciWorkflow.match(/cargo build[^\n]+/gu) || [];
+  assert.ok(releaseBuilds.length >= 6);
+  assert.ok(ordinaryCiBuilds.length >= 1);
+  for (const command of [...releaseBuilds, ...ordinaryCiBuilds]) {
+    assert.match(command, /--no-default-features/u);
+    assert.doesNotMatch(command, /--features\s+engine-lifecycle-fixture/u);
+  }
+  assert.match(localEngineBuild, /cargo build --locked --release --no-default-features/u);
+  assert.doesNotMatch(workflow, /--features\s+engine-lifecycle-fixture/u);
 });
 
 test('release builds strictly verify macOS signatures and smoke-test unpacked apps', () => {

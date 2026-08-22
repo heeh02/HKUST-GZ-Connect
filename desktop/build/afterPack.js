@@ -12,6 +12,7 @@ const {
   selectLocalAppleIdentity,
   shouldDelegateSigning,
 } = require('./macos-signing');
+const { assertNoTestOnlyEngineMarker } = require('./verify-package');
 
 function architectureName(arch) {
   return arch === 'arm64' || arch === 3 ? 'arm64' : 'amd64';
@@ -35,6 +36,10 @@ function assertEnginePresent(resourcesDir, platform, arch) {
   if (!fs.existsSync(enginePath) || !fs.statSync(enginePath).isFile() || fs.statSync(enginePath).size === 0) {
     throw new Error(`missing packaged engine: ${enginePath}`);
   }
+  // Run the release tripwire inside electron-builder's hook as well as the
+  // standalone verifier. This makes every supported packaging entry point
+  // fail before signing when a test-feature Engine was staged accidentally.
+  assertNoTestOnlyEngineMarker(enginePath);
   return enginePath;
 }
 

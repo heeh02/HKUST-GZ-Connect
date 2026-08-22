@@ -7,6 +7,9 @@ const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
 
 const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[-_]?gateway|test[-_]?ca|pki)(?:\/|[-_.])|(?:^|\/)private[-_]?key(?:$|[-_.\/])|\.(?:pem|key|p12|pfx)$/iu;
+const TEST_ONLY_ENGINE_MARKER = 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1';
+const TEST_ONLY_ENGINE_MARKER_BYTES = Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii');
+const MARKER_SCAN_CHUNK_BYTES = 64 * 1024;
 
 function resolveResourcesDirectory(input) {
   const resolved = path.resolve(input);
@@ -58,6 +61,28 @@ function assertLinuxElfArchitecture(executable, architectureName) {
     throw new Error(
       `packaged binary is not a ${architectureName} Linux ELF executable: ${executable}`,
     );
+  }
+}
+
+function assertNoTestOnlyEngineMarker(executable) {
+  const descriptor = fs.openSync(executable, 'r');
+  let overlap = Buffer.alloc(0);
+  try {
+    while (true) {
+      const chunk = Buffer.alloc(MARKER_SCAN_CHUNK_BYTES);
+      const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      const searchable = overlap.length
+        ? Buffer.concat([overlap, chunk.subarray(0, bytesRead)])
+        : chunk.subarray(0, bytesRead);
+      if (searchable.indexOf(TEST_ONLY_ENGINE_MARKER_BYTES) !== -1) {
+        throw new Error(`test-only lifecycle Engine entered the package: ${executable}`);
+      }
+      const overlapBytes = Math.min(TEST_ONLY_ENGINE_MARKER_BYTES.length - 1, searchable.length);
+      overlap = Buffer.from(searchable.subarray(searchable.length - overlapBytes));
+    }
+  } finally {
+    fs.closeSync(descriptor);
   }
 }
 
@@ -301,6 +326,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
       throw new Error(`missing packaged ${label}: ${executable}`);
     }
   }
+  assertNoTestOnlyEngineMarker(engine);
 
   if (platformName === 'windows') {
     for (const executable of [engine, proxyCommand]) {
@@ -342,9 +368,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 }
 
 module.exports = {
+  TEST_ONLY_ENGINE_MARKER,
   assertLinuxElfArchitecture,
   assertCustomResourceManager,
   assertExactNativeResources,
+  assertNoTestOnlyEngineMarker,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   parseArguments,
