@@ -347,6 +347,50 @@ fn private_pipe_eof_during_authentication_cancels_the_generation() {
 }
 
 #[test]
+fn gateway_timeout_is_indeterminate_and_never_reported_as_rejected() {
+    let (config, server) = slow_gateway_config("timeout");
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--credentials-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "112",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"synthetic-user\nsynthetic-password\n")
+        .unwrap();
+    let output = wait_bounded(child);
+    let _ = server.join();
+    let _ = std::fs::remove_file(config);
+
+    assert!(!output.status.success());
+    let machine_events = events(&output.stdout);
+    assert!(
+        machine_events.iter().any(|event| {
+            event["type"] == "fatal_error" && event["code"] == "AUTH_INDETERMINATE"
+        })
+    );
+    assert!(!machine_events.iter().any(|event| {
+        event["type"] == "fatal_error"
+            && matches!(
+                event["code"].as_str(),
+                Some("AUTH_REJECTED" | "AUTH_FAILED")
+            )
+    }));
+}
+
+#[test]
 fn strict_proxy_credentials_are_bounded_stdin_only_and_never_echoed() {
     let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")

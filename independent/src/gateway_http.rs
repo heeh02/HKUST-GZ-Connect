@@ -26,6 +26,14 @@ fn gateway_error(message: impl Into<String>) -> Error {
     Error::classified(ErrorKind::GatewayHttp, message)
 }
 
+fn gateway_indeterminate(message: impl Into<String>) -> Error {
+    Error::classified(ErrorKind::GatewayHttpIndeterminate, message)
+}
+
+fn gateway_protocol_error(message: impl Into<String>) -> Error {
+    Error::classified(ErrorKind::GatewayProtocolInvalid, message)
+}
+
 pub fn endpoint_url(base_url: &str, path: &str) -> Result<String> {
     let base = Url::parse(base_url).map_err(|_| configuration_error("invalid base_url"))?;
     let candidate = Url::parse(path);
@@ -141,18 +149,20 @@ impl GatewaySession {
         }
         let mut response = request
             .send()
-            .map_err(|_| gateway_error("gateway request failed"))?;
+            .map_err(|_| gateway_indeterminate("gateway request outcome is indeterminate"))?;
         if response.status().is_redirection()
             || response.status().is_client_error()
             || response.status().is_server_error()
         {
-            return Err(gateway_error(format!(
+            return Err(gateway_protocol_error(format!(
                 "gateway returned HTTP {}",
                 response.status().as_u16()
             )));
         }
         if response.url().scheme() != "https" {
-            return Err(gateway_error("gateway attempted a non-HTTPS response"));
+            return Err(gateway_protocol_error(
+                "gateway attempted a non-HTTPS response",
+            ));
         }
         {
             let mut stats = self
@@ -188,9 +198,11 @@ impl GatewaySession {
             .by_ref()
             .take((MAX_XML_BYTES + 1) as u64)
             .read_to_end(&mut body)
-            .map_err(|error| gateway_error(format!("gateway response read failed: {error}")))?;
+            .map_err(|_| gateway_indeterminate("gateway response read outcome is indeterminate"))?;
         if body.len() > MAX_XML_BYTES {
-            return Err(gateway_error("gateway response exceeds the size limit"));
+            return Err(gateway_protocol_error(
+                "gateway response exceeds the size limit",
+            ));
         }
         Ok((body, headers, status))
     }

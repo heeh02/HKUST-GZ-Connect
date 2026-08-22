@@ -964,9 +964,9 @@ async function connectOnce(isRetry, intent) {
         state.lastError = t('error.tunnelRecovering');
         emit();
       },
-      onFatalError: (code) => {
+      onFatalError: (code, secondaryCode) => {
         structuredFatalCode = code;
-        state.lastError = classifyEngineCode(code, s.port, t);
+        state.lastError = classifyEngineCode(code, s.port, t, secondaryCode);
         emit();
       },
       onProtocolTimeout: () => {
@@ -987,8 +987,8 @@ async function connectOnce(isRetry, intent) {
   let proxyCredentialLines = proxyCredential
     ? proxyCredential.stdinSuffix(engineGeneration)
     : '';
-  // The private pipe transitions from the fixed credential prefix to bounded
-  // Control v2/v3 frames. Keep it open; EOF closes control, not the tunnel.
+  // Keep the credential/control pipe open: EOF cancels active authentication;
+  // after connection it closes only the Control v2/v3 stream.
   child.stdin.write(`${s.username}\n${pw}\n${proxyCredentialLines}`);
   pw = '';
   proxyCredentialLines = '';

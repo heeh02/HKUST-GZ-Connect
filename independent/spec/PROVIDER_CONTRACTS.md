@@ -76,9 +76,14 @@ Provider errors preserve ordinary engine errors, while capability failures stay
 machine-distinguishable inside the Rust boundary. `ec-engine` maps a typed
 unsupported authentication method to the stable
 `UNSUPPORTED_AUTHENTICATION` code without serializing the method, challenge, or
-server response; ordinary authentication failures remain `AUTH_FAILED`.
-Secondary-authentication responses are best-effort logged out under the bounded
-shutdown deadline before that error is returned.
+server response. A verified structured password rejection maps to
+`AUTH_REJECTED`; request/response outcomes that cannot be confirmed map to
+`AUTH_INDETERMINATE`; invalid structured responses map to
+`AUTH_PROTOCOL_INVALID`. `AUTH_FAILED` is retained only for compatibility with
+older Engine builds. Secondary-authentication responses are logged out under a
+bounded deadline before the primary error is returned. If that cleanup cannot
+be confirmed, the primary code remains intact and the event adds the secondary
+`AUTH_CLEANUP_UNCONFIRMED` code.
 
 ## Adding a provider
 

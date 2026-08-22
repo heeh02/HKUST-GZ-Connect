@@ -142,7 +142,7 @@ class EngineConnectionRuntime {
         this.handlers.onNetworkUnhealthy(event.reason);
         break;
       case 'fatal_error':
-        this.handlers.onFatalError(event.code);
+        this.handlers.onFatalError(event.code, event.secondaryCode);
         break;
       case 'stopped':
         this.handlers.onStopped(event.reason);

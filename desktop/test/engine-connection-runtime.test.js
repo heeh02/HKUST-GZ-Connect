@@ -92,7 +92,7 @@ test('runtime binds one generation, negotiates before readiness, and dispatches 
     ['onClientIpAssigned', 4],
     ['onDnsMode', 'gateway'],
     ['onNetworkUnhealthy', 'data_plane_disconnected'],
-    ['onFatalError', 'AUTH_FAILED'],
+    ['onFatalError', 'AUTH_FAILED', null],
     ['onStopped', 'startup_failed'],
   ]);
   assert.equal(f.control.chunks.length, 1, 'v2/v3 control sees the same stdout chunk');

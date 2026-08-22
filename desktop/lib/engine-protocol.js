@@ -64,7 +64,10 @@ function normalizeEngineEvent(value) {
     }
     case 'fatal_error': {
       const code = safeToken(value.code);
-      return code ? { type: 'fatal_error', code } : null;
+      const secondaryCode = value.secondaryCode == null ? null : safeToken(value.secondaryCode);
+      if (!code || (value.secondaryCode != null &&
+          secondaryCode !== 'AUTH_CLEANUP_UNCONFIRMED')) return null;
+      return { type: 'fatal_error', code, secondaryCode };
     }
     case 'stopped': {
       const reason = safeToken(value.reason);

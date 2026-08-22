@@ -84,6 +84,11 @@ pub enum EngineErrorCode {
     ConfigurationInvalid,
     CredentialsInvalid,
     AuthFailed,
+    AuthRejected,
+    AuthIndeterminate,
+    AuthProtocolInvalid,
+    AuthCleanupUnconfirmed,
+    AuthExpired,
     UnsupportedAuthentication,
     DataPlaneSetupFailed,
     LocalListenerFailed,
@@ -131,6 +136,8 @@ pub enum EngineEvent {
     },
     FatalError {
         code: EngineErrorCode,
+        #[serde(rename = "secondaryCode", skip_serializing_if = "Option::is_none")]
+        secondary_code: Option<EngineErrorCode>,
     },
     Stopped {
         reason: StopReason,
@@ -269,14 +276,27 @@ mod tests {
             (
                 EngineEvent::FatalError {
                     code: EngineErrorCode::AuthFailed,
+                    secondary_code: None,
                 },
                 json!({"type": "fatal_error", "code": "AUTH_FAILED"}),
             ),
             (
                 EngineEvent::FatalError {
                     code: EngineErrorCode::UnsupportedAuthentication,
+                    secondary_code: None,
                 },
                 json!({"type": "fatal_error", "code": "UNSUPPORTED_AUTHENTICATION"}),
+            ),
+            (
+                EngineEvent::FatalError {
+                    code: EngineErrorCode::AuthIndeterminate,
+                    secondary_code: Some(EngineErrorCode::AuthCleanupUnconfirmed),
+                },
+                json!({
+                    "type": "fatal_error",
+                    "code": "AUTH_INDETERMINATE",
+                    "secondaryCode": "AUTH_CLEANUP_UNCONFIRMED",
+                }),
             ),
             (
                 EngineEvent::Stopped {
@@ -382,6 +402,7 @@ mod tests {
             },
             EngineEvent::FatalError {
                 code: EngineErrorCode::AuthFailed,
+                secondary_code: Some(EngineErrorCode::AuthCleanupUnconfirmed),
             },
         ];
         let encoded = serde_json::to_string(&events).unwrap();

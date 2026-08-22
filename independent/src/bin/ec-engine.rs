@@ -42,6 +42,7 @@ struct EngineArguments {
 
 struct EngineFailure {
     code: EngineErrorCode,
+    secondary_code: Option<EngineErrorCode>,
     stop_reason: StopReason,
     error: Error,
 }
@@ -83,9 +84,15 @@ impl EngineFailure {
     fn new(code: EngineErrorCode, stop_reason: StopReason, error: Error) -> Self {
         Self {
             code,
+            secondary_code: None,
             stop_reason,
             error,
         }
+    }
+
+    fn with_secondary_code(mut self, secondary_code: Option<EngineErrorCode>) -> Self {
+        self.secondary_code = secondary_code;
+        self
     }
 }
 
@@ -338,19 +345,57 @@ fn authentication_error_code(error: &ProviderError) -> EngineErrorCode {
         ProviderError::Failed(error) if error.kind() == ErrorKind::Credentials => {
             EngineErrorCode::CredentialsInvalid
         }
-        _ => EngineErrorCode::AuthFailed,
+        ProviderError::Failed(error) => match error.kind() {
+            ErrorKind::AuthenticationRejected => EngineErrorCode::AuthRejected,
+            ErrorKind::AuthenticationIndeterminate
+            | ErrorKind::GatewayHttp
+            | ErrorKind::GatewayHttpIndeterminate => EngineErrorCode::AuthIndeterminate,
+            ErrorKind::AuthenticationProtocolInvalid | ErrorKind::GatewayProtocolInvalid => {
+                EngineErrorCode::AuthProtocolInvalid
+            }
+            ErrorKind::AuthenticationExpired => EngineErrorCode::AuthExpired,
+            ErrorKind::UnsupportedCapability => EngineErrorCode::UnsupportedAuthentication,
+            _ => EngineErrorCode::AuthIndeterminate,
+        },
+        _ => EngineErrorCode::AuthIndeterminate,
     }
 }
 
 fn authentication_failure(error: ProviderError) -> EngineFailure {
     let code = authentication_error_code(&error);
+    let cleanup_unconfirmed = matches!(
+        &error,
+        ProviderError::Failed(error) if error.cleanup_unconfirmed()
+    );
     failure(code, StopReason::StartupFailed, Error::from(error))
+        .with_secondary_code(cleanup_unconfirmed.then_some(EngineErrorCode::AuthCleanupUnconfirmed))
 }
 
 fn data_plane_setup_error_code(error: &Error) -> EngineErrorCode {
     match error.kind() {
         ErrorKind::Configuration => EngineErrorCode::ConfigurationInvalid,
         _ => EngineErrorCode::DataPlaneSetupFailed,
+    }
+}
+
+fn failure_preserving_cleanup(
+    code: EngineErrorCode,
+    stop_reason: StopReason,
+    error: Error,
+) -> EngineFailure {
+    let cleanup_unconfirmed = error.cleanup_unconfirmed();
+    failure(code, stop_reason, error)
+        .with_secondary_code(cleanup_unconfirmed.then_some(EngineErrorCode::AuthCleanupUnconfirmed))
+}
+
+fn failure_after_gateway_cleanup(
+    session: AuthenticatedGatewaySession,
+    failure: EngineFailure,
+) -> EngineFailure {
+    if session.logout().is_err() {
+        failure.with_secondary_code(Some(EngineErrorCode::AuthCleanupUnconfirmed))
+    } else {
+        failure
     }
 }
 
@@ -532,7 +577,10 @@ async fn engine_main() -> i32 {
             if let Err(error) = lifecycle.begin_stopping() {
                 eprintln!("ec-engine: {error}");
             }
-            if let Err(error) = lifecycle.emit(EngineEvent::FatalError { code: failure.code }) {
+            if let Err(error) = lifecycle.emit(EngineEvent::FatalError {
+                code: failure.code,
+                secondary_code: failure.secondary_code,
+            }) {
                 eprintln!("ec-engine: {error}");
             }
             if let Err(error) = lifecycle.finish(failure.stop_reason) {
@@ -617,18 +665,18 @@ async fn run_engine<W: Write>(
     let transport_backend = match ModernL3TransportBackend::new(&config) {
         Ok(backend) => backend,
         Err(error) => {
-            let _ = session.logout();
-            return Err(failure(
+            let failure = failure(
                 data_plane_setup_error_code(&error),
                 StopReason::StartupFailed,
                 error,
-            ));
+            );
+            return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
     let (session, transport) = transport_backend
         .connect_or_logout(session)
         .map_err(|error| {
-            failure(
+            failure_preserving_cleanup(
                 data_plane_setup_error_code(&error),
                 StopReason::StartupFailed,
                 error,
@@ -640,12 +688,12 @@ async fn run_engine<W: Write>(
     let netstack = match VirtualNetstack::start(data_plane, mtu) {
         Ok(netstack) => Arc::new(netstack),
         Err(error) => {
-            let _ = session.logout();
-            return Err(failure(
+            let failure = failure(
                 EngineErrorCode::DataPlaneSetupFailed,
                 StopReason::StartupFailed,
                 error,
-            ));
+            );
+            return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
     let health = Arc::clone(&netstack);
@@ -655,12 +703,12 @@ async fn run_engine<W: Write>(
     let vpn_dns = match select_vpn_dns_servers(&gateway_dns_servers, &profile_dns_servers) {
         Ok(selection) => selection,
         Err(error) => {
-            let _ = session.logout();
-            return Err(failure(
+            let failure = failure(
                 EngineErrorCode::DataPlaneSetupFailed,
                 StopReason::StartupFailed,
                 error,
-            ));
+            );
+            return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
     let (resolver, dns_mode): (Arc<dyn NameResolver>, DnsMode) = if let Some(selection) = vpn_dns {
@@ -672,12 +720,12 @@ async fn run_engine<W: Write>(
         ) {
             Ok(resolver) => resolver,
             Err(error) => {
-                let _ = session.logout();
-                return Err(failure(
+                let failure = failure(
                     EngineErrorCode::DataPlaneSetupFailed,
                     StopReason::StartupFailed,
                     error,
-                ));
+                );
+                return Err(failure_after_gateway_cleanup(session, failure));
             }
         };
         (Arc::new(resolver), dns_mode)
@@ -694,23 +742,23 @@ async fn run_engine<W: Write>(
     ) {
         Ok(server) => server,
         Err(error) => {
-            let _ = session.logout();
-            return Err(failure(
+            let failure = failure(
                 EngineErrorCode::LocalListenerFailed,
                 StopReason::StartupFailed,
                 error,
-            ));
+            );
+            return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
     let server = match server.bind().await {
         Ok(server) => server,
         Err(error) => {
-            let _ = session.logout();
-            return Err(failure(
+            let failure = failure(
                 EngineErrorCode::LocalListenerFailed,
                 StopReason::StartupFailed,
                 error,
-            ));
+            );
+            return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
 
@@ -725,8 +773,8 @@ async fn run_engine<W: Write>(
         Ok(())
     })();
     if let Err(error) = metadata_result {
-        let _ = session.logout();
-        return Err(event_output_failure(error));
+        let failure = event_output_failure(error);
+        return Err(failure_after_gateway_cleanup(session, failure));
     }
 
     // These preserve human-readable diagnostics and the old desktop fallback,
@@ -758,8 +806,8 @@ async fn run_engine<W: Write>(
     });
     if let Err(error) = lifecycle.state(EngineState::Connected) {
         services.abort_all();
-        let _ = session.logout();
-        return Err(event_output_failure(error));
+        let failure = event_output_failure(error);
+        return Err(failure_after_gateway_cleanup(session, failure));
     }
 
     let shutdown = {
@@ -1252,12 +1300,38 @@ mod tests {
         );
         assert_eq!(
             authentication_error_code(&ProviderError::unsupported(Capability::TransportWebVpn)),
-            EngineErrorCode::AuthFailed
+            EngineErrorCode::AuthIndeterminate
         );
         assert_eq!(
             authentication_error_code(&ProviderError::Failed(Error("redacted failure".into()))),
-            EngineErrorCode::AuthFailed
+            EngineErrorCode::AuthIndeterminate
         );
+        for (kind, code) in [
+            (
+                ErrorKind::AuthenticationRejected,
+                EngineErrorCode::AuthRejected,
+            ),
+            (
+                ErrorKind::AuthenticationIndeterminate,
+                EngineErrorCode::AuthIndeterminate,
+            ),
+            (
+                ErrorKind::AuthenticationProtocolInvalid,
+                EngineErrorCode::AuthProtocolInvalid,
+            ),
+            (
+                ErrorKind::AuthenticationExpired,
+                EngineErrorCode::AuthExpired,
+            ),
+        ] {
+            assert_eq!(
+                authentication_error_code(&ProviderError::Failed(Error::classified(
+                    kind,
+                    "redacted authentication failure",
+                ))),
+                code
+            );
+        }
         assert_eq!(
             authentication_error_code(&ProviderError::Failed(Error::classified(
                 ErrorKind::Configuration,
@@ -1278,6 +1352,19 @@ mod tests {
                 "redacted transient failure",
             )),
             EngineErrorCode::DataPlaneSetupFailed
+        );
+
+        let failure = authentication_failure(ProviderError::Failed(
+            Error::classified(
+                ErrorKind::AuthenticationIndeterminate,
+                "redacted primary failure",
+            )
+            .with_cleanup_unconfirmed(),
+        ));
+        assert_eq!(failure.code, EngineErrorCode::AuthIndeterminate);
+        assert_eq!(
+            failure.secondary_code,
+            Some(EngineErrorCode::AuthCleanupUnconfirmed)
         );
     }
 }

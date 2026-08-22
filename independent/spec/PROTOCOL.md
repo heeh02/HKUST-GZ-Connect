@@ -105,6 +105,11 @@ svpn_rand_code=<CAPTCHA response or empty>
    state instead of being treated as tunnel-ready. Until a reviewed provider
    implements that state, production performs a bounded best-effort logout and
    returns the stable `UNSUPPORTED_AUTHENTICATION` machine code.
+   A valid `PasswordRequired` transition is the only current response mapped
+   to `AUTH_REJECTED`. HTTP timeout/reset/partial-read outcomes map to
+   `AUTH_INDETERMINATE`; malformed or unknown structured results map to
+   `AUTH_PROTOCOL_INVALID`. Cleanup failure is reported as secondary
+   `AUTH_CLEANUP_UNCONFIRMED` and never overwrites the primary outcome.
 9. After authentication, the observed profile returned XML from
    `/por/conf.csp?apiversion=1` and `/por/rclist.csp?apiversion=1`.
 10. Logout is `GET /por/logout.csp?apiversion=1`.

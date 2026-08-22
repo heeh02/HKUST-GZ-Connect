@@ -24,6 +24,9 @@ pub enum ErrorKind {
     Credentials,
     Configuration,
     Authentication,
+    AuthenticationRejected,
+    AuthenticationIndeterminate,
+    AuthenticationProtocolInvalid,
     AuthenticationExpired,
     AuthenticationStaleContext,
     DuplicateRequest,
@@ -31,6 +34,8 @@ pub enum ErrorKind {
     UnsupportedCapability,
     CapabilityUnavailable,
     GatewayHttp,
+    GatewayHttpIndeterminate,
+    GatewayProtocolInvalid,
     Transport,
     DataPlane,
     DataPlaneTransient,
@@ -48,6 +53,9 @@ impl ErrorKind {
             Self::Credentials => "credentials",
             Self::Configuration => "configuration",
             Self::Authentication => "authentication",
+            Self::AuthenticationRejected => "authentication_rejected",
+            Self::AuthenticationIndeterminate => "authentication_indeterminate",
+            Self::AuthenticationProtocolInvalid => "authentication_protocol_invalid",
             Self::AuthenticationExpired => "authentication_expired",
             Self::AuthenticationStaleContext => "authentication_stale_context",
             Self::DuplicateRequest => "duplicate_request",
@@ -55,6 +63,8 @@ impl ErrorKind {
             Self::UnsupportedCapability => "unsupported_capability",
             Self::CapabilityUnavailable => "capability_unavailable",
             Self::GatewayHttp => "gateway_http",
+            Self::GatewayHttpIndeterminate => "gateway_http_indeterminate",
+            Self::GatewayProtocolInvalid => "gateway_protocol_invalid",
             Self::Transport => "transport",
             Self::DataPlane => "data_plane",
             Self::DataPlaneTransient => "data_plane_transient",
@@ -75,6 +85,7 @@ impl ErrorKind {
 pub struct Error {
     message: String,
     kind: ErrorKind,
+    cleanup_unconfirmed: bool,
 }
 
 impl Error {
@@ -82,6 +93,7 @@ impl Error {
         Self {
             message,
             kind: ErrorKind::Unclassified,
+            cleanup_unconfirmed: false,
         }
     }
 
@@ -89,6 +101,7 @@ impl Error {
         Self {
             message: message.into(),
             kind,
+            cleanup_unconfirmed: false,
         }
     }
 
@@ -98,6 +111,15 @@ impl Error {
 
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    pub const fn cleanup_unconfirmed(&self) -> bool {
+        self.cleanup_unconfirmed
+    }
+
+    pub fn with_cleanup_unconfirmed(mut self) -> Self {
+        self.cleanup_unconfirmed = true;
+        self
     }
 
     pub fn with_kind_if_unclassified(mut self, kind: ErrorKind) -> Self {
@@ -152,6 +174,14 @@ mod tests {
         assert_eq!(typed.kind().code(), "authentication");
         assert!(!typed.kind().is_retryable());
         assert!(ErrorKind::DataPlaneTransient.is_retryable());
+
+        let cleanup = Error::classified(
+            ErrorKind::AuthenticationIndeterminate,
+            "authentication result is indeterminate",
+        )
+        .with_cleanup_unconfirmed();
+        assert_eq!(cleanup.kind(), ErrorKind::AuthenticationIndeterminate);
+        assert!(cleanup.cleanup_unconfirmed());
     }
 
     #[test]

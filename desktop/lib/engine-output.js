@@ -37,26 +37,38 @@ function engineFailureKind(text) {
   return 'unknown';
 }
 
-function classifyEngineCode(code, socksPort, t = createT('zh')) {
+function classifyEngineCode(code, socksPort, t = createT('zh'), secondaryCode = null) {
+  let message;
   switch (code) {
-    case 'AUTH_FAILED': return t('engine.authFailed');
-    case 'UNSUPPORTED_AUTHENTICATION': return t('engine.authUnsupported');
-    case 'CREDENTIALS_INVALID': return t('error.needCredentials');
+    case 'AUTH_FAILED': message = t('engine.authFailed'); break;
+    case 'AUTH_REJECTED': message = t('engine.authRejected'); break;
+    case 'AUTH_INDETERMINATE': message = t('engine.authIndeterminate'); break;
+    case 'AUTH_PROTOCOL_INVALID': message = t('engine.authProtocolInvalid'); break;
+    case 'AUTH_EXPIRED': message = t('engine.authExpired'); break;
+    case 'UNSUPPORTED_AUTHENTICATION': message = t('engine.authUnsupported'); break;
+    case 'CREDENTIALS_INVALID': message = t('error.needCredentials'); break;
     case 'INVALID_ARGUMENTS':
-    case 'CONFIGURATION_INVALID': return t('engine.configurationInvalid');
-    case 'LOCAL_LISTENER_FAILED': return t('engine.portBusy', { port: socksPort });
+    case 'CONFIGURATION_INVALID': message = t('engine.configurationInvalid'); break;
+    case 'LOCAL_LISTENER_FAILED': message = t('engine.portBusy', { port: socksPort }); break;
     case 'DATA_PLANE_SETUP_FAILED':
-    case 'NETWORK_DISCONNECTED': return t('engine.channelClosed');
+    case 'NETWORK_DISCONNECTED': message = t('engine.channelClosed'); break;
     case 'LOGOUT_FAILED':
-    case 'SHUTDOWN_SIGNAL_FAILED': return t('error.engineStuck');
-    case 'EVENT_OUTPUT_FAILED': return t('engine.eventOutputFailed');
-    default: return t('error.connectFailed');
+    case 'SHUTDOWN_SIGNAL_FAILED': message = t('error.engineStuck'); break;
+    case 'EVENT_OUTPUT_FAILED': message = t('engine.eventOutputFailed'); break;
+    default: message = t('error.connectFailed');
   }
+  return secondaryCode === 'AUTH_CLEANUP_UNCONFIRMED'
+    ? `${message} — ${t('engine.authCleanupUnconfirmed')}`
+    : message;
 }
 
 function engineFailureKindFromCode(code) {
   if ([
     'AUTH_FAILED',
+    'AUTH_REJECTED',
+    'AUTH_INDETERMINATE',
+    'AUTH_PROTOCOL_INVALID',
+    'AUTH_EXPIRED',
     'UNSUPPORTED_AUTHENTICATION',
     'CREDENTIALS_INVALID',
     'INVALID_ARGUMENTS',

@@ -20,9 +20,20 @@ test('native engine authentication failure is terminal and user-readable', () =>
 
 test('structured engine error codes are stable, readable and classify retry safety', () => {
   assert.match(classifyEngineCode('AUTH_FAILED', 1080), /账号或密码错误/);
+  assert.match(classifyEngineCode('AUTH_REJECTED', 1080), /账号或密码未被网关接受/);
+  assert.match(classifyEngineCode('AUTH_INDETERMINATE', 1080), /结果无法确认/);
+  assert.doesNotMatch(classifyEngineCode('AUTH_INDETERMINATE', 1080), /密码错误/);
+  assert.match(classifyEngineCode('AUTH_PROTOCOL_INVALID', 1080), /响应.*不兼容/);
+  assert.match(
+    classifyEngineCode('AUTH_INDETERMINATE', 1080, undefined, 'AUTH_CLEANUP_UNCONFIRMED'),
+    /清理未能确认/,
+  );
   assert.match(classifyEngineCode('LOCAL_LISTENER_FAILED', 6180), /6180/);
   assert.match(classifyEngineCode('CONFIGURATION_INVALID', 1080), /配置无效/);
   assert.equal(engineFailureKindFromCode('AUTH_FAILED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_REJECTED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_INDETERMINATE'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_PROTOCOL_INVALID'), 'terminal');
   assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
   assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
 });

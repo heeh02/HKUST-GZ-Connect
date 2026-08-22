@@ -79,6 +79,11 @@ const dictionaries = {
     'error.startupTitle': 'HKUST(GZ) Connect 启动失败',
 
     'engine.authFailed': '登录失败：账号或密码错误，已停止自动重试',
+    'engine.authRejected': '登录未通过：账号或密码未被网关接受，已停止自动重试',
+    'engine.authIndeterminate': '登录结果无法确认，已安全停止自动重试；请稍后手动重试',
+    'engine.authProtocolInvalid': '校园网关的认证响应与当前版本不兼容，已安全停止',
+    'engine.authCleanupUnconfirmed': '远端会话清理未能确认，请稍后再手动连接',
+    'engine.authExpired': '登录验证已过期，请重新连接',
     'engine.authUnsupported': '网关鉴权方式不受支持（可能已改为 SSO/MFA）',
     'engine.portBusy': '端口 {port} 被占用，请在控制塔更换端口',
     'engine.channelClosed': '校园网关通道暂时关闭，正在清理会话并自动重试…',
@@ -211,6 +216,11 @@ const dictionaries = {
     'error.startupTitle': 'HKUST(GZ) Connect failed to start',
 
     'engine.authFailed': 'Login failed: wrong account or password; automatic retries stopped',
+    'engine.authRejected': 'Login was rejected: the gateway did not accept the account or password; automatic retries stopped',
+    'engine.authIndeterminate': 'The login result could not be confirmed. Automatic retries stopped safely; retry manually later.',
+    'engine.authProtocolInvalid': 'The gateway authentication response is incompatible with this version and was stopped safely',
+    'engine.authCleanupUnconfirmed': 'Remote session cleanup could not be confirmed; wait before connecting manually again',
+    'engine.authExpired': 'Login verification expired; reconnect to start again',
     'engine.authUnsupported': 'Gateway authentication method is not supported (it may have moved to SSO/MFA)',
     'engine.portBusy': 'Port {port} is in use; choose another port in Control Tower',
     'engine.channelClosed': 'The campus gateway channel is temporarily closed; cleaning up the session and retrying…',

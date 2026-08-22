@@ -171,7 +171,11 @@ impl ModernL3TransportBackend {
             Ok(connection) => Ok((session, connection)),
             Err(error) => {
                 let error = Error::from(error);
-                let _ = session.logout();
+                let error = if session.logout().is_err() {
+                    error.with_cleanup_unconfirmed()
+                } else {
+                    error
+                };
                 Err(error)
             }
         }
@@ -339,14 +343,18 @@ impl AuthenticatedGatewaySession {
             GatewaySession::new(base_url.to_owned(), user_agent.to_owned(), timeout_seconds)?;
 
         let discovery_path = required_endpoint(config, "discovery")?;
-        let _ = http.request(discovery_path, Method::GET, None)?;
+        let _ = http
+            .request(discovery_path, Method::GET, None)
+            .map_err(classify_auth_gateway_error)?;
         cancel_partial_authentication_if_requested(&http, &logout_path, cancellation)?;
         let password_config_path = required_endpoint(config, "password_config")?;
-        let (password_config, _, _) = http.request(password_config_path, Method::GET, None)?;
+        let (password_config, _, _) = http
+            .request(password_config_path, Method::GET, None)
+            .map_err(classify_auth_gateway_error)?;
         cancel_partial_authentication_if_requested(&http, &logout_path, cancellation)?;
         let password_config = Zeroizing::new(password_config);
         let document = parse_xml(&password_config, "engine password configuration")
-            .map_err(|error| ProviderError::failed_with_kind(ErrorKind::Authentication, error))?;
+            .map_err(|_| authentication_protocol_error("password configuration is invalid"))?;
         let root = document.root_element();
         let modulus = Zeroizing::new(first_descendant_text(root, "RSA_ENCRYPT_KEY"));
         let csrf = Zeroizing::new(first_descendant_text(root, "CSRF_RAND_CODE"));
@@ -354,16 +362,15 @@ impl AuthenticatedGatewaySession {
         let mid_attack = safe_int(&first_descendant_text(root, "MID_ATK_CHECK"), 0);
         if modulus.is_empty() || csrf.is_empty() || mid_attack != 0 {
             return Err(Error::classified(
-                ErrorKind::Authentication,
+                ErrorKind::AuthenticationProtocolInvalid,
                 "gateway password configuration is unsupported",
             )
             .into());
         }
         let password_material = Zeroizing::new(format!("{password}_{}", csrf.as_str()));
         let encrypted_password = Zeroizing::new(
-            rsa_encrypt_hex(password_material.as_bytes(), &modulus, exponent as u64).map_err(
-                |error| ProviderError::failed_with_kind(ErrorKind::Authentication, error),
-            )?,
+            rsa_encrypt_hex(password_material.as_bytes(), &modulus, exponent as u64)
+                .map_err(|_| authentication_protocol_error("gateway password key is invalid"))?,
         );
         let mut form = [
             ("mitm_result".into(), String::new()),
@@ -391,10 +398,11 @@ impl AuthenticatedGatewaySession {
                 // even when reading/status validation failed locally. Always
                 // close that possible partial session before another desktop
                 // attempt competes with it.
-                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                return Err(ProviderError::failed_with_kind(
-                    ErrorKind::Authentication,
-                    error,
+                let primary = classify_auth_gateway_error(error);
+                return Err(authentication_failure_after_cleanup(
+                    &http,
+                    &logout_path,
+                    primary,
                 ));
             }
         };
@@ -406,8 +414,15 @@ impl AuthenticatedGatewaySession {
                 // A syntactically changed response can still represent a
                 // successful server-side login. Parsing failure is therefore a
                 // cleanup boundary, not proof that no session exists.
-                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                return Err(error.into());
+                let primary = Error::classified(
+                    ErrorKind::AuthenticationProtocolInvalid,
+                    format!("gateway authentication response is invalid: {error}"),
+                );
+                return Err(authentication_failure_after_cleanup(
+                    &http,
+                    &logout_path,
+                    primary,
+                ));
             }
         };
         if login_summary.state != AuthState::Authenticated {
@@ -417,23 +432,23 @@ impl AuthenticatedGatewaySession {
                     // server-side cookie/TwfID session. The provider cannot
                     // continue that challenge yet, but it must not strand the
                     // partial session and make the next attempt compete with it.
-                    let _ =
-                        http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+                    return Err(unsupported_authentication_after_cleanup(
+                        &http,
+                        &logout_path,
+                        decision.capability,
+                    ));
                 }
                 return Err(ProviderError::unsupported(decision.capability));
             }
             // Password-required/failed/unknown states can also carry a cookie.
             // Logout is idempotent and is safer than leaving a session that
             // makes the next connection attempt race itself.
-            let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-            return Err(Error::classified(
-                ErrorKind::Authentication,
-                format!(
-                    "gateway authentication failed (error_code={}, state={:?})",
-                    login_summary.error_code, login_summary.state
-                ),
-            )
-            .into());
+            let primary = password_auth_failure(login_summary.state);
+            return Err(authentication_failure_after_cleanup(
+                &http,
+                &logout_path,
+                primary,
+            ));
         }
         let session_identifier = match AuthenticatedSessionId::from_login_xml(&login) {
             Ok(session) => session,
@@ -441,10 +456,14 @@ impl AuthenticatedGatewaySession {
                 // A successful password login must still yield a usable opaque
                 // gateway session handle. Clean it up if that auth artifact is
                 // malformed, before any transport backend is involved.
-                let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                return Err(ProviderError::failed_with_kind(
-                    ErrorKind::Authentication,
-                    error,
+                let primary = Error::classified(
+                    ErrorKind::AuthenticationProtocolInvalid,
+                    format!("authenticated gateway session is invalid: {error}"),
+                );
+                return Err(authentication_failure_after_cleanup(
+                    &http,
+                    &logout_path,
+                    primary,
                 ));
             }
         };
@@ -454,8 +473,10 @@ impl AuthenticatedGatewaySession {
             session_identifier,
         };
         if cancellation.is_some_and(AuthenticationCancellation::is_cancelled) {
-            let _ = session.logout();
-            return Err(authentication_cancelled_error());
+            return match session.logout() {
+                Ok(()) => Err(authentication_cancelled_error()),
+                Err(_) => Err(authentication_cancelled_error_with_cleanup()),
+            };
         }
         Ok(session)
     }
@@ -490,8 +511,10 @@ fn cancel_partial_authentication_if_requested(
     if cancellation.is_none_or(|cancellation| !cancellation.is_cancelled()) {
         return Ok(());
     }
-    let _ = http.request_with_timeout(logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-    Err(authentication_cancelled_error())
+    match http.request_with_timeout(logout_path, Method::GET, None, LOGOUT_TIMEOUT) {
+        Ok(_) => Err(authentication_cancelled_error()),
+        Err(_) => Err(authentication_cancelled_error_with_cleanup()),
+    }
 }
 
 fn authentication_cancelled_error() -> ProviderError {
@@ -499,6 +522,93 @@ fn authentication_cancelled_error() -> ProviderError {
         ErrorKind::Lifecycle,
         Error::classified(ErrorKind::Lifecycle, "authentication was cancelled"),
     )
+}
+
+fn authentication_cancelled_error_with_cleanup() -> ProviderError {
+    ProviderError::Failed(
+        Error::classified(ErrorKind::Lifecycle, "authentication was cancelled")
+            .with_cleanup_unconfirmed(),
+    )
+}
+
+fn authentication_protocol_error(message: &'static str) -> ProviderError {
+    ProviderError::Failed(Error::classified(
+        ErrorKind::AuthenticationProtocolInvalid,
+        message,
+    ))
+}
+
+fn classify_auth_gateway_error(error: Error) -> Error {
+    match error.kind() {
+        ErrorKind::Configuration => error,
+        ErrorKind::GatewayProtocolInvalid => Error::classified(
+            ErrorKind::AuthenticationProtocolInvalid,
+            "gateway authentication response violates the expected protocol",
+        ),
+        ErrorKind::GatewayHttpIndeterminate | ErrorKind::GatewayHttp => Error::classified(
+            ErrorKind::AuthenticationIndeterminate,
+            "gateway authentication result is indeterminate",
+        ),
+        _ => Error::classified(
+            ErrorKind::AuthenticationIndeterminate,
+            "gateway authentication result is indeterminate",
+        ),
+    }
+}
+
+fn authentication_failure_after_cleanup(
+    http: &GatewaySession,
+    logout_path: &str,
+    primary: Error,
+) -> ProviderError {
+    let cleanup_confirmed = http
+        .request_with_timeout(logout_path, Method::GET, None, LOGOUT_TIMEOUT)
+        .is_ok();
+    ProviderError::Failed(with_cleanup_status(primary, cleanup_confirmed))
+}
+
+fn unsupported_authentication_after_cleanup(
+    http: &GatewaySession,
+    logout_path: &str,
+    capability: Capability,
+) -> ProviderError {
+    if http
+        .request_with_timeout(logout_path, Method::GET, None, LOGOUT_TIMEOUT)
+        .is_ok()
+    {
+        return ProviderError::unsupported(capability);
+    }
+    ProviderError::Failed(
+        Error::classified(
+            ErrorKind::UnsupportedCapability,
+            "gateway authentication method is unsupported",
+        )
+        .with_cleanup_unconfirmed(),
+    )
+}
+
+fn with_cleanup_status(primary: Error, cleanup_confirmed: bool) -> Error {
+    if cleanup_confirmed {
+        primary
+    } else {
+        primary.with_cleanup_unconfirmed()
+    }
+}
+
+fn password_auth_failure(state: AuthState) -> Error {
+    match state {
+        // This is the only currently verified structured response that
+        // explicitly asks the client to repeat password authentication.
+        AuthState::PasswordRequired => Error::classified(
+            ErrorKind::AuthenticationRejected,
+            "gateway explicitly rejected password authentication",
+        ),
+        AuthState::Failed => Error::classified(
+            ErrorKind::AuthenticationProtocolInvalid,
+            "gateway returned an unrecognized authentication result",
+        ),
+        _ => unreachable!("secondary states are handled before password failure classification"),
+    }
 }
 
 fn unsupported_auth_decision(state: AuthState) -> Option<UnsupportedAuthDecision> {
@@ -602,6 +712,54 @@ mod tests {
             data_plane_setup_error_kind(&certificate),
             ErrorKind::DataPlane
         );
+    }
+
+    #[test]
+    fn authentication_transport_outcomes_never_claim_a_wrong_password() {
+        for failure in [
+            Error::classified(ErrorKind::GatewayHttpIndeterminate, "synthetic timeout"),
+            Error::classified(ErrorKind::GatewayHttpIndeterminate, "synthetic reset"),
+            Error::classified(
+                ErrorKind::GatewayHttpIndeterminate,
+                "synthetic partial body",
+            ),
+        ] {
+            let classified = classify_auth_gateway_error(failure);
+            assert_eq!(classified.kind(), ErrorKind::AuthenticationIndeterminate);
+            assert!(!classified.to_string().contains("password"));
+        }
+        let malformed = classify_auth_gateway_error(Error::classified(
+            ErrorKind::GatewayProtocolInvalid,
+            "synthetic malformed response",
+        ));
+        assert_eq!(malformed.kind(), ErrorKind::AuthenticationProtocolInvalid);
+    }
+
+    #[test]
+    fn only_the_verified_password_required_state_is_an_explicit_rejection() {
+        assert_eq!(
+            password_auth_failure(AuthState::PasswordRequired).kind(),
+            ErrorKind::AuthenticationRejected
+        );
+        assert_eq!(
+            password_auth_failure(AuthState::Failed).kind(),
+            ErrorKind::AuthenticationProtocolInvalid
+        );
+    }
+
+    #[test]
+    fn cleanup_status_is_secondary_and_never_overwrites_the_primary_error() {
+        for cleanup_confirmed in [true, false] {
+            let outcome = with_cleanup_status(
+                Error::classified(
+                    ErrorKind::AuthenticationIndeterminate,
+                    "primary authentication outcome",
+                ),
+                cleanup_confirmed,
+            );
+            assert_eq!(outcome.kind(), ErrorKind::AuthenticationIndeterminate);
+            assert_eq!(outcome.cleanup_unconfirmed(), !cleanup_confirmed);
+        }
     }
 
     #[test]
