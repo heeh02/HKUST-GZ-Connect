@@ -22,6 +22,7 @@ function fixture(overrides = {}) {
   let clearedTimer = null;
   const handlers = Object.fromEntries([
     'onConnecting',
+    'onStopping',
     'onConnectionCandidate',
     'onListenerReady',
     'onListenerMismatch',
@@ -75,11 +76,13 @@ test('runtime binds one generation, negotiates before readiness, and dispatches 
   f.stdout.emit('data', lines(
     { type: 'hello', apiVersion: 1, capabilities: ['password', 'l3'] },
     { type: 'state_changed', state: 'authenticating', generation: 7 },
+    { type: 'state_changed', state: 'preparing_tunnel', generation: 7 },
     { type: 'state_changed', state: 'connected', generation: 7 },
     { type: 'listener_ready', port: 6180 },
     { type: 'client_ip_assigned', family: 4 },
     { type: 'dns_mode', mode: 'gateway' },
     { type: 'network_unhealthy', reason: 'data_plane_disconnected' },
+    { type: 'state_changed', state: 'stopping', generation: 7 },
     { type: 'fatal_error', code: 'AUTH_FAILED' },
     { type: 'stopped', reason: 'startup_failed', generation: 7 },
   ));
@@ -87,11 +90,13 @@ test('runtime binds one generation, negotiates before readiness, and dispatches 
   assert.equal(f.runtime.stoppedReason, 'startup_failed');
   assert.deepEqual(f.calls, [
     ['onConnecting', 'authenticating'],
+    ['onConnecting', 'preparing_tunnel'],
     ['onConnectionCandidate'],
     ['onListenerReady'],
     ['onClientIpAssigned', 4],
     ['onDnsMode', 'gateway'],
     ['onNetworkUnhealthy', 'data_plane_disconnected'],
+    ['onStopping'],
     ['onFatalError', 'AUTH_FAILED', null],
     ['onStopped', 'startup_failed'],
   ]);
@@ -127,6 +132,33 @@ test('hello timeout is generation-aware and dispose removes the stream listener'
   stale.runtime.start(stale.stdout);
   stale.timerCallback();
   assert.deepEqual(stale.calls, []);
+});
+
+test('exit drain rejects buffered readiness but preserves terminal outcome until close', () => {
+  const f = fixture();
+  f.runtime.start(f.stdout);
+  f.stdout.emit('data', lines(
+    { type: 'hello', apiVersion: 1, capabilities: [] },
+    { type: 'state_changed', state: 'authenticating', generation: 7 },
+  ));
+  assert.deepEqual(f.calls, [['onConnecting', 'authenticating']]);
+  assert.equal(f.runtime.beginExitDrain(), true);
+  assert.equal(f.runtime.beginExitDrain(), false);
+  f.stdout.emit('data', lines(
+    { type: 'listener_ready', port: 6180 },
+    { type: 'state_changed', state: 'connected', generation: 7 },
+    { type: 'fatal_error', code: 'NETWORK_DISCONNECTED' },
+    { type: 'stopped', reason: 'network_unhealthy', generation: 7 },
+  ));
+  assert.deepEqual(f.calls, [
+    ['onConnecting', 'authenticating'],
+    ['onFatalError', 'NETWORK_DISCONNECTED', null],
+    ['onStopped', 'network_unhealthy'],
+  ]);
+  assert.equal(f.runtime.stoppedReason, 'network_unhealthy');
+  assert.equal(f.stdout.listenerCount('data'), 1, 'terminal drain remains attached through close');
+  assert.equal(f.runtime.dispose(), true);
+  assert.equal(f.stdout.listenerCount('data'), 0);
 });
 
 test('constructor rejects unbound generations, ports, controls and handlers', () => {

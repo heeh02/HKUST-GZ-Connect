@@ -33,6 +33,11 @@ class FakeWindow extends EventEmitter {
   show() { this.visible = true; }
   hide() { this.visible = false; }
   focus() { this.focused = true; }
+  destroy() {
+    this.destroyed = true;
+    this.webContents.emit('destroyed');
+    this.emit('closed');
+  }
   loadFile(file) { this.loadedFile = file; }
   getContentSize() { return this.contentSize; }
   setContentSize(width, height) { this.contentSize = [width, height]; }
@@ -113,9 +118,36 @@ test('control window is sandboxed, navigation-closed, sendable and bounded-resiz
   window.webContents.emit('destroyed');
   assert.deepEqual(f.calls.filter((entry) => entry[0] === 'renderer-lost'), [
     ['renderer-lost', 'navigation'],
-    ['renderer-lost', 'render-process-gone'],
-    ['renderer-lost', 'destroyed'],
   ]);
+});
+
+test('a crashed visible control renderer is destroyed and recreated once', () => {
+  const f = fixture();
+  const first = f.shell.createWindow();
+  first.webContents.emit('render-process-gone');
+  const second = f.shell.window;
+
+  assert.notEqual(second, first);
+  assert.equal(first.isDestroyed(), true);
+  assert.equal(second.loadedFile, '/fixture/app/renderer/index.html');
+  assert.deepEqual(f.calls.filter((entry) => entry[0] === 'renderer-lost'), [
+    ['renderer-lost', 'render-process-gone'],
+  ]);
+  // Late events from the old renderer cannot invalidate the replacement.
+  first.webContents.emit('destroyed');
+  assert.equal(f.shell.window, second);
+  assert.equal(f.calls.filter((entry) => entry[0] === 'renderer-lost').length, 1);
+});
+
+test('a crashed hidden renderer is recreated on the next show request', () => {
+  const f = fixture();
+  const first = f.shell.createWindow();
+  first.visible = false;
+  first.webContents.emit('render-process-gone');
+  assert.equal(f.shell.window, null);
+  assert.equal(f.shell.showWindow(), true);
+  assert.notEqual(f.shell.window, first);
+  assert.equal(f.shell.window.visible, true);
 });
 
 test('tray reflects connection state and delegates connect, browser and quit actions', async () => {

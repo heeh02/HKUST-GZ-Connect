@@ -132,6 +132,18 @@ function waitWithDeadline(promise, timeoutMs, setTimeoutFn, clearTimeoutFn) {
   });
 }
 
+function completedStop(phase, result) {
+  return {
+    ok: true,
+    phase,
+    result,
+    // A nonzero process exit after an acknowledged stop means the listener is
+    // gone, but the Engine could not prove remote/session cleanup. Callers may
+    // allow a manual disconnect while refusing an automatic immediate retry.
+    cleanExit: result?.code === 0 && !result?.spawnError,
+  };
+}
+
 class EngineSupervisor {
   constructor({
     spawnProcess,
@@ -259,7 +271,7 @@ class EngineSupervisor {
     forceWaitMs = STOP_FORCE_WAIT_MS,
   } = {}) {
     const record = this.active;
-    if (!record) return Promise.resolve({ ok: true, phase: 'idle' });
+    if (!record) return Promise.resolve({ ok: true, phase: 'idle', cleanExit: true });
     if (record.stopPromise) return record.stopPromise;
 
     // Install the shared promise before invoking either the control callback
@@ -315,7 +327,7 @@ class EngineSupervisor {
         this.clearTimeoutFn,
       );
       if (!controlled.timedOut && !controlled.rejected) {
-        return { ok: true, phase: 'control', result: controlled.value };
+        return completedStop('control', controlled.value);
       }
     }
 
@@ -331,7 +343,7 @@ class EngineSupervisor {
       this.setTimeoutFn,
       this.clearTimeoutFn,
     );
-    if (!graceful.timedOut) return { ok: true, phase: 'grace', result: graceful.value };
+    if (!graceful.timedOut) return completedStop('grace', graceful.value);
 
     // A close from an earlier child must not force-kill a later one. `record`
     // identity is stronger than checking a pid that the OS may already reuse.
@@ -344,8 +356,8 @@ class EngineSupervisor {
       this.setTimeoutFn,
       this.clearTimeoutFn,
     );
-    if (!forced.timedOut) return { ok: true, phase: 'force', result: forced.value };
-    return { ok: false, phase: 'failed' };
+    if (!forced.timedOut) return completedStop('force', forced.value);
+    return { ok: false, phase: 'failed', cleanExit: false };
   }
 }
 

@@ -64,6 +64,7 @@ class DesktopShell {
     this.onControlRendererUnavailable = onControlRendererUnavailable;
     this.onWindowError = onWindowError;
     this.window = null;
+    this.windowInvalid = false;
     this.tray = null;
     this.isQuitting = false;
     this.quitAllowed = false;
@@ -88,6 +89,11 @@ class DesktopShell {
 
   showWindow() {
     if (!this.app.isReady()) return false;
+    if (this.windowInvalid && this.window && !this.window.isDestroyed()) {
+      const invalid = this.window;
+      this.window = null;
+      try { invalid.destroy(); } catch {}
+    }
     if (!this.window || this.window.isDestroyed()) this.createWindow();
     if (this.window.isMinimized()) this.window.restore();
     this.window.show();
@@ -229,7 +235,7 @@ class DesktopShell {
   }
 
   createWindow() {
-    this.window = new this.BrowserWindow({
+    const window = new this.BrowserWindow({
       ...CONTROL_WINDOW,
       resizable: true,
       fullscreenable: false,
@@ -246,31 +252,51 @@ class DesktopShell {
         sandbox: true,
       },
     });
-    const contents = this.window.webContents;
+    this.window = window;
+    this.windowInvalid = false;
+    const contents = window.webContents;
     let rendererLoaded = false;
+    let rendererUnavailable = false;
+    const reportRendererUnavailable = (reason) => {
+      if (rendererUnavailable) return false;
+      rendererUnavailable = true;
+      this.onControlRendererUnavailable(reason);
+      return true;
+    };
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     contents.on('will-navigate', (event, url) => {
       if (url !== contents.getURL()) event.preventDefault();
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
-    contents.on('did-finish-load', () => { rendererLoaded = true; });
+    contents.on('did-finish-load', () => {
+      rendererLoaded = true;
+      rendererUnavailable = false;
+    });
     contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
       if (rendererLoaded && isMainFrame !== false && !isInPlace) {
-        this.onControlRendererUnavailable('navigation');
+        reportRendererUnavailable('navigation');
       }
     });
     contents.on('render-process-gone', () => {
-      this.onControlRendererUnavailable('render-process-gone');
+      reportRendererUnavailable('render-process-gone');
+      if (this.window !== window || this.isQuitting) return;
+      const wasVisible = window.isVisible();
+      this.windowInvalid = true;
+      this.window = null;
+      try { window.destroy(); } catch {}
+      if (wasVisible && this.app.isReady()) this.createWindow();
     });
     contents.on('destroyed', () => {
-      this.onControlRendererUnavailable('destroyed');
+      reportRendererUnavailable('destroyed');
     });
-    this.window.loadFile(this.controlRendererFile);
-    this.window.on('close', (event) => {
+    window.loadFile(this.controlRendererFile);
+    window.on('close', (event) => {
       this.handleWindowClose(event).catch(this.onWindowError);
     });
-    this.window.on('closed', () => { this.window = null; });
-    return this.window;
+    window.on('closed', () => {
+      if (this.window === window) this.window = null;
+    });
+    return window;
   }
 
   installApplicationMenu() {

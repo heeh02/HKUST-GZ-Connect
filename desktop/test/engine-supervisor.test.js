@@ -105,6 +105,7 @@ test('graceful stop owns the child until its close event', async () => {
   const stopped = await supervisor.stop({ graceMs: 100, forceWaitMs: 100 });
   assert.equal(stopped.ok, true);
   assert.equal(stopped.phase, 'grace');
+  assert.equal(stopped.cleanExit, true);
   assert.deepEqual(child.killCalls, ['SIGTERM']);
   assert.equal(supervisor.hasActive, false);
 });
@@ -134,6 +135,7 @@ test('stop escalates once to SIGKILL and still finalizes only on close', async (
   const result = await stopping;
   assert.equal(result.ok, true);
   assert.equal(result.phase, 'force');
+  assert.equal(result.cleanExit, false);
   assert.equal(supervisor.hasActive, false);
 });
 
@@ -157,6 +159,7 @@ test('Control v2 stop waits for close without sending a signal', async () => {
   const result = await stopping;
   assert.equal(result.ok, true);
   assert.equal(result.phase, 'control');
+  assert.equal(result.cleanExit, true);
   assert.equal(requestContext.child, child);
   assert.equal(requestContext.generation, started.generation);
   assert.deepEqual(child.killCalls, []);
@@ -240,6 +243,26 @@ test('a timed-out Control v2 stop escalates through SIGTERM and SIGKILL', async 
   const result = await stopping;
   assert.equal(result.ok, true);
   assert.equal(result.phase, 'force');
+  assert.equal(result.cleanExit, false);
+});
+
+test('a nonzero controlled exit releases ownership but reports unconfirmed cleanup', async () => {
+  const child = fakeChild();
+  const supervisor = new EngineSupervisor({ spawnProcess: () => child });
+  supervisor.start({ command: '/app/ec-engine' });
+  const stopping = supervisor.stop({
+    requestGracefulStop: () => {
+      queueMicrotask(() => child.emit('close', 1, null));
+      return { ok: true };
+    },
+    controlGraceMs: 100,
+    graceMs: 100,
+    forceWaitMs: 100,
+  });
+  const result = await stopping;
+  assert.equal(result.ok, true, 'the local listener/process was released');
+  assert.equal(result.cleanExit, false, 'remote/session cleanup was not proven');
+  assert.equal(result.result.code, 1);
 });
 
 test('a stale Control v2 deadline never signals a replacement child', async () => {

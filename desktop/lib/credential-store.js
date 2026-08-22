@@ -96,17 +96,57 @@ function savePassword(file, password, safeStorage, platform, fileSystem = fs) {
   return atomicWritePrivateFile(file, encrypted, fileSystem);
 }
 
-function loadPassword(file, safeStorage, platform) {
+function loadPasswordResult(file, safeStorage, platform) {
   try {
-    if (!protectedStorageAvailable(safeStorage, platform)) return '';
-    const { data } = readPrivateFileBounded(file, {
+    if (!protectedStorageAvailable(safeStorage, platform)) {
+      return Object.freeze({ status: 'unavailable', password: '' });
+    }
+  } catch {
+    return Object.freeze({ status: 'unavailable', password: '' });
+  }
+  let data;
+  try {
+    ({ data } = readPrivateFileBounded(file, {
       maxBytes: MAX_ENCRYPTED_PASSWORD_BYTES,
       platform,
-    });
-    return safeStorage.decryptString(data);
-  } catch {
-    return '';
+    }));
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return Object.freeze({ status: 'missing', password: '' });
+    }
+    if (error?.privateFileInvalid === true) {
+      return Object.freeze({ status: 'corrupt', password: '' });
+    }
+    return Object.freeze({ status: 'unavailable', password: '' });
   }
+  try {
+    const password = safeStorage.decryptString(data);
+    if (typeof password !== 'string' || !password.length) {
+      return Object.freeze({ status: 'corrupt', password: '' });
+    }
+    return Object.freeze({ status: 'decrypted', password });
+  } catch {
+    // Electron does not expose whether decrypt failed because the OS key store
+    // was denied/unavailable or because the ciphertext is damaged. Preserve a
+    // distinct actionable result instead of misreporting "no password".
+    return Object.freeze({ status: 'decrypt_failed', password: '' });
+  } finally {
+    data.fill(0);
+  }
+}
+
+function loadPassword(file, safeStorage, platform) {
+  const result = loadPasswordResult(file, safeStorage, platform);
+  return result.status === 'decrypted' ? result.password : '';
+}
+
+function credentialLoadErrorKey(status) {
+  return {
+    corrupt: 'error.credentialStoreCorrupt',
+    decrypt_failed: 'error.credentialDecryptFailed',
+    unavailable: 'error.credentialStoreUnavailable',
+    recovery_blocked: 'error.credentialStoreUnavailable',
+  }[status] || 'error.credentialStoreUnavailable';
 }
 
 function snapshotPasswordFile(file, fileSystem = fs) {
@@ -162,8 +202,10 @@ module.exports = {
   MAX_ENCRYPTED_PASSWORD_BYTES,
   atomicWritePrivateFile,
   clearPasswordSnapshot,
+  credentialLoadErrorKey,
   hasStoredPassword,
   loadPassword,
+  loadPasswordResult,
   protectedStorageAvailable,
   restorePasswordSnapshot,
   savePassword,

@@ -14,12 +14,12 @@ const {
 
 test('native engine authentication failure is terminal and user-readable', () => {
   const message = classifyEngineOutput('ec-engine: gateway authentication failed', 1080);
-  assert.match(message, /账号或密码错误/);
+  assert.match(message, /无法确认是否为密码问题/);
   assert.match(message, /停止自动重试/);
 });
 
 test('structured engine error codes are stable, readable and classify retry safety', () => {
-  assert.match(classifyEngineCode('AUTH_FAILED', 1080), /账号或密码错误/);
+  assert.match(classifyEngineCode('AUTH_FAILED', 1080), /无法确认是否为密码问题/);
   assert.match(classifyEngineCode('AUTH_REJECTED', 1080), /账号或密码未被网关接受/);
   assert.match(classifyEngineCode('AUTH_INDETERMINATE', 1080), /结果无法确认/);
   assert.doesNotMatch(classifyEngineCode('AUTH_INDETERMINATE', 1080), /密码错误/);
@@ -38,6 +38,8 @@ test('structured engine error codes are stable, readable and classify retry safe
   assert.equal(engineFailureKindFromCode('AUTH_LIMIT_EXCEEDED'), 'terminal');
   assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
   assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
+  assert.match(classifyEngineCode('DATA_PLANE_SHUTDOWN_FAILED', 1080), /停止自动重连/);
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SHUTDOWN_FAILED'), 'terminal');
 });
 
 test('unsupported MFA is distinct from a wrong password and never retried', () => {

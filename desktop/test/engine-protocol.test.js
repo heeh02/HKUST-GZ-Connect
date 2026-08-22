@@ -39,6 +39,9 @@ test('normalizes only bounded API v1 machine events and drops extra data', () =>
     type: 'dns_mode', mode: 'gateway_profile',
   });
   assert.equal(normalizeEngineEvent({ type: 'dns_mode', mode: 'public_dns' }), null);
+  assert.deepEqual(normalizeEngineEvent({
+    type: 'state_changed', state: 'preparing_tunnel', generation: 9,
+  }), { type: 'state_changed', state: 'preparing_tunnel', generation: 9 });
 });
 
 test('parses fragmented and coalesced NDJSON without interpreting diagnostic text', () => {

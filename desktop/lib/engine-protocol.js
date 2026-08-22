@@ -13,7 +13,15 @@ const EVENT_TYPES = new Set([
   'fatal_error',
   'stopped',
 ]);
-const STATES = new Set(['idle', 'connecting', 'authenticating', 'connected', 'stopping', 'stopped']);
+const STATES = new Set([
+  'idle',
+  'connecting',
+  'authenticating',
+  'preparing_tunnel',
+  'connected',
+  'stopping',
+  'stopped',
+]);
 const DNS_MODES = new Set([
   'gateway',
   'vpn_profile',

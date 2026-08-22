@@ -7,8 +7,10 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   clearPasswordSnapshot,
+  credentialLoadErrorKey,
   hasStoredPassword,
   loadPassword,
+  loadPasswordResult,
   restorePasswordSnapshot,
   savePassword,
   snapshotPasswordFile,
@@ -64,6 +66,42 @@ test('oversized and symbolic credential blobs are rejected before decryption', (
   assert.equal(loadPassword(oversized, safeStorage, 'darwin'), '');
   assert.equal(loadPassword(link, safeStorage, 'darwin'), '');
   assert.equal(decryptions, 0);
+  assert.equal(loadPasswordResult(oversized, safeStorage, 'darwin').status, 'corrupt');
+  assert.equal(loadPasswordResult(link, safeStorage, 'darwin').status, 'corrupt');
+});
+
+test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-result-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const missing = path.join(directory, 'missing.bin');
+  const file = path.join(directory, 'credential.bin');
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    decryptString: (data) => data.toString('utf8').replace('encrypted:', ''),
+  };
+
+  assert.deepEqual(loadPasswordResult(missing, safeStorage, 'darwin'), {
+    status: 'missing', password: '',
+  });
+  assert.deepEqual(loadPasswordResult(missing, {
+    isEncryptionAvailable: () => false,
+  }, 'darwin'), { status: 'unavailable', password: '' });
+
+  fs.writeFileSync(file, Buffer.from('encrypted:secret'), { mode: 0o644 });
+  assert.deepEqual(loadPasswordResult(file, safeStorage, 'darwin'), {
+    status: 'corrupt', password: '',
+  });
+  fs.chmodSync(file, 0o600);
+  assert.deepEqual(loadPasswordResult(file, safeStorage, 'darwin'), {
+    status: 'decrypted', password: 'secret',
+  });
+  assert.deepEqual(loadPasswordResult(file, {
+    isEncryptionAvailable: () => true,
+    decryptString: () => { throw new Error('fixture denied'); },
+  }, 'darwin'), { status: 'decrypt_failed', password: '' });
+  assert.equal(credentialLoadErrorKey('corrupt'), 'error.credentialStoreCorrupt');
+  assert.equal(credentialLoadErrorKey('decrypt_failed'), 'error.credentialDecryptFailed');
+  assert.equal(credentialLoadErrorKey('unavailable'), 'error.credentialStoreUnavailable');
 });
 
 test('main VPN credential replacement is atomic and preserves the old blob on failure', (t) => {

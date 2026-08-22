@@ -39,6 +39,7 @@ class EngineConnectionRuntime {
     this.isCurrent = isCurrent;
     this.handlers = {
       onConnecting: handlers.onConnecting || NOOP,
+      onStopping: handlers.onStopping || NOOP,
       onConnectionCandidate: handlers.onConnectionCandidate || NOOP,
       onListenerReady: handlers.onListenerReady || NOOP,
       onListenerMismatch: handlers.onListenerMismatch || NOOP,
@@ -63,6 +64,7 @@ class EngineConnectionRuntime {
     this.helloTimer = null;
     this.started = false;
     this.disposed = false;
+    this.exitDraining = false;
   }
 
   get stoppedReason() { return this.protocol.stoppedReason; }
@@ -99,6 +101,14 @@ class EngineConnectionRuntime {
     for (const event of this.events.feed(data)) this.#apply(event);
   }
 
+  beginExitDrain() {
+    if (this.disposed || this.exitDraining) return false;
+    this.exitDraining = true;
+    if (this.helloTimer) this.clearTimeoutFn(this.helloTimer);
+    this.helloTimer = null;
+    return true;
+  }
+
   dispose() {
     if (this.disposed) return false;
     this.disposed = true;
@@ -116,16 +126,24 @@ class EngineConnectionRuntime {
 
   #apply(event) {
     if (!this.protocol.accept(event)) return;
+    // Node may emit child `exit` before the stdout pipe reaches `close`.
+    // Continue parsing only the terminal outcome in that interval; buffered
+    // readiness/state metadata must never reopen Browser or connection state
+    // after the process has already released its listener.
+    if (this.exitDraining && event.type !== 'fatal_error' && event.type !== 'stopped') return;
     switch (event.type) {
       case 'hello':
         if (this.helloTimer) this.clearTimeoutFn(this.helloTimer);
         this.helloTimer = null;
         break;
       case 'state_changed':
-        if (event.state === 'connecting' || event.state === 'authenticating') {
+        if (event.state === 'connecting' || event.state === 'authenticating' ||
+            event.state === 'preparing_tunnel') {
           this.handlers.onConnecting(event.state);
         } else if (event.state === 'connected') {
           this.handlers.onConnectionCandidate();
+        } else if (event.state === 'stopping') {
+          this.handlers.onStopping();
         }
         break;
       case 'listener_ready':
