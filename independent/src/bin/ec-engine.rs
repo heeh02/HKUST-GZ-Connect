@@ -534,6 +534,24 @@ fn configured_vpn_dns_servers(config: &serde_json::Value) -> Result<Vec<Ipv4Addr
     Ok(servers)
 }
 
+#[cfg(feature = "engine-lifecycle-fixture")]
+fn validate_lifecycle_fixture_dns_isolation(
+    config: &serde_json::Value,
+    profile_dns_servers: &[Ipv4Addr],
+) -> Result<()> {
+    if config["proxy"]["allow_system_dns_fallback"]
+        .as_bool()
+        .unwrap_or(false)
+        || !profile_dns_servers.is_empty()
+    {
+        return Err(Error::classified(
+            ErrorKind::Configuration,
+            "lifecycle fixture requires DNS to remain disabled",
+        ));
+    }
+    Ok(())
+}
+
 fn dns_mode_for_source(source: VpnDnsSource) -> DnsMode {
     match source {
         VpnDnsSource::Gateway => DnsMode::Gateway,
@@ -971,18 +989,12 @@ async fn run_engine<W: Write>(
     } = credentials;
     #[cfg(feature = "engine-lifecycle-fixture")]
     if arguments.lifecycle_fixture {
-        if config["proxy"]["allow_system_dns_fallback"]
-            .as_bool()
-            .unwrap_or(false)
-            || !profile_dns_servers.is_empty()
+        if let Err(error) = validate_lifecycle_fixture_dns_isolation(&config, &profile_dns_servers)
         {
             return Err(failure(
                 EngineErrorCode::ConfigurationInvalid,
                 StopReason::StartupFailed,
-                Error::classified(
-                    ErrorKind::Configuration,
-                    "lifecycle fixture requires DNS to remain disabled",
-                ),
+                error,
             ));
         }
         if gateway_username.as_str() != ENGINE_LIFECYCLE_FIXTURE_USERNAME
@@ -1627,6 +1639,30 @@ mod tests {
         assert!(parse_arguments(&arguments).unwrap().lifecycle_fixture);
         arguments.push("--test-lifecycle-transport".into());
         assert!(parse_arguments(&arguments).is_err());
+    }
+
+    #[cfg(feature = "engine-lifecycle-fixture")]
+    #[test]
+    fn lifecycle_fixture_rejects_every_dns_exit() {
+        let isolated = serde_json::json!({
+            "proxy": {
+                "allow_system_dns_fallback": false,
+                "vpn_dns_servers": []
+            }
+        });
+        assert!(validate_lifecycle_fixture_dns_isolation(&isolated, &[]).is_ok());
+
+        let system_fallback = serde_json::json!({
+            "proxy": {
+                "allow_system_dns_fallback": true,
+                "vpn_dns_servers": []
+            }
+        });
+        assert!(validate_lifecycle_fixture_dns_isolation(&system_fallback, &[]).is_err());
+        assert!(
+            validate_lifecycle_fixture_dns_isolation(&isolated, &[Ipv4Addr::new(10, 90, 63, 2)],)
+                .is_err()
+        );
     }
 
     #[test]
