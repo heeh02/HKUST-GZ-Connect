@@ -13,6 +13,7 @@ const TEST_TIMEOUT_MS = 15_000;
 const WAIT_TIMEOUT_MS = 3_000;
 const SYNTHETIC_LOGIN = 'https://sso.example.invalid/login';
 const SYNTHETIC_CHALLENGE = 'https://sso.example.invalid/challenge';
+const SYNTHETIC_AMBIGUOUS = 'https://sso.example.invalid/ambiguous-secret';
 
 const loginPage = `<!doctype html>
   <title>Campus sign in</title>
@@ -31,6 +32,13 @@ const challengePage = `<!doctype html>
   </form>
   <form id="unlabelled" onsubmit="event.preventDefault()">
     <input id="unlabelled-password-shape" type="password" name="password">
+    <button>Continue</button>
+  </form>`;
+
+const ambiguousSecretPage = `<!doctype html>
+  <title>Continue</title>
+  <form id="ambiguous" onsubmit="event.preventDefault()">
+    <input id="ambiguous-secret" type="password" inputmode="numeric">
     <button>Continue</button>
   </form>`;
 
@@ -53,7 +61,9 @@ function waitFor(condition, description) {
 
 async function installSyntheticHttps(campusSession) {
   const handler = (request, callback) => {
-    const source = request.url === SYNTHETIC_LOGIN ? loginPage : challengePage;
+    const source = request.url === SYNTHETIC_LOGIN
+      ? loginPage
+      : request.url === SYNTHETIC_AMBIGUOUS ? ambiguousSecretPage : challengePage;
     callback({ mimeType: 'text/html', charset: 'utf-8', data: Buffer.from(source) });
   };
   await campusSession.protocol.interceptBufferProtocol('https', handler);
@@ -116,6 +126,25 @@ async function run() {
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(messages.some(({ channel }) => channel === 'campus-credential-candidate'), false,
     'submitting a challenge must not create a password-vault candidate');
+
+  messages = [];
+  await browser.loadURL(SYNTHETIC_AMBIGUOUS);
+  browser.webContents.send('campus-credential-fill', {
+    origin: 'https://sso.example.invalid',
+    username: 'synthetic-user',
+    password: 'synthetic-campus-password',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(await browser.webContents.executeJavaScript(
+    "document.getElementById('ambiguous-secret').value",
+  ), '', 'an ambiguous single secret must not receive the campus password');
+  await browser.webContents.executeJavaScript(`
+    document.getElementById('ambiguous-secret').value = 'synthetic-ambiguous-secret';
+    document.getElementById('ambiguous').requestSubmit();
+  `);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(messages.some(({ channel }) => channel === 'campus-credential-candidate'), false,
+    'an ambiguous single secret must not enter the password vault flow');
 
   messages = [];
   await browser.loadURL(SYNTHETIC_LOGIN);

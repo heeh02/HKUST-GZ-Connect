@@ -54,11 +54,21 @@ function isChallengeInput(input) {
     !USERNAME_FIELD_HINT.test(hint) && GENERIC_CODE_FIELD_HINT.test(hint);
 }
 
+function autocompleteTokens(input) {
+  return String(input?.autocomplete || '').toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function hasUsernameEvidence(input) {
+  if (!visibleInput(input) || isChallengeInput(input)) return false;
+  const type = String(input.type || 'text').toLowerCase();
+  return autocompleteTokens(input).includes('username') || type === 'email' ||
+    USERNAME_FIELD_HINT.test(challengeInputHint(input));
+}
+
 function loginUsernameInput(form, passwordInput) {
   return [...form.querySelectorAll('input')].find((input) => {
-    if (!visibleInput(input) || input === passwordInput || isChallengeInput(input)) return false;
-    const type = String(input.type || 'text').toLowerCase();
-    return input.autocomplete === 'username' || type === 'email' || ['text', 'tel'].includes(type);
+    if (input === passwordInput) return false;
+    return hasUsernameEvidence(input);
   }) || null;
 }
 
@@ -132,6 +142,11 @@ function loginPasswordInput(form, {
       isAuthenticationChallengeForm(form, pageDocument)) return null;
   const passwordInput = visiblePasswordInputs(form)[0] || null;
   if (!passwordInput) return null;
+  // A single secret-shaped field is ambiguous without independent login
+  // evidence. This check intentionally precedes every value read so an OTP or
+  // future secondary secret cannot enter capture, autofill, logs or telemetry.
+  if (!loginUsernameInput(form, passwordInput) &&
+      !autocompleteTokens(passwordInput).includes('current-password')) return null;
   if (requireValue && (!passwordInput.value ||
       String(passwordInput.value).length > MAX_PASSWORD_LENGTH)) return null;
   return passwordInput;

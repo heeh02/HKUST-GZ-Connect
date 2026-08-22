@@ -66,6 +66,48 @@ test('login credential candidate is exact-origin HTTPS data', () => {
   assert.equal(credentialFromForm(login, { protocol: 'http:', origin: 'http://sso.example.edu' }), null);
 });
 
+test('traditional and explicit password-only login evidence remains compatible', () => {
+  const traditional = form([
+    input({ name: 'account', value: 'student001' }),
+    input({ name: 'password', type: 'password', value: 'secret' }),
+  ]);
+  assert.deepEqual(credentialFromForm(traditional, HTTPS_LOCATION), {
+    origin: HTTPS_LOCATION.origin,
+    username: 'student001',
+    password: 'secret',
+  });
+
+  const passwordOnly = form([
+    input({ type: 'password', autocomplete: 'current-password', value: 'secret' }),
+  ]);
+  assert.deepEqual(credentialFromForm(passwordOnly, HTTPS_LOCATION), {
+    origin: HTTPS_LOCATION.origin,
+    username: '',
+    password: 'secret',
+  });
+});
+
+test('ambiguous single-secret fields are rejected before their values are read', () => {
+  for (const ambiguous of [
+    input({ type: 'password' }),
+    input({ type: 'password', inputMode: 'numeric' }),
+  ]) {
+    Object.defineProperty(ambiguous, 'value', {
+      configurable: true,
+      get() { throw new Error('ambiguous secret values must never be read'); },
+    });
+    const ambiguousForm = form([ambiguous]);
+    assert.equal(loginPasswordInput(ambiguousForm), null);
+    assert.equal(credentialFromForm(ambiguousForm, HTTPS_LOCATION), null);
+  }
+
+  const unlabeledTextIsNotUsernameEvidence = form([
+    input({ value: 'not-explicitly-a-username' }),
+    input({ type: 'password', value: 'ambiguous-secret' }),
+  ]);
+  assert.equal(credentialFromForm(unlabeledTextIsNotUsernameEvidence, HTTPS_LOCATION), null);
+});
+
 test('password change and reset forms never become login candidates', () => {
   const change = form([
     input({ type: 'password', autocomplete: 'current-password', value: 'old-secret' }),
