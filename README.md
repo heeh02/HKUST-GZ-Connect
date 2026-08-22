@@ -17,6 +17,13 @@ Cross-platform EasyConnect-compatible client for HKUST(GZ)
 
 </div>
 
+<p align="center">
+  <a href="docs/images/app-overview.png">
+    <img src="docs/images/app-overview.png" alt="HKUST(GZ) Connect application overview" width="100%" />
+  </a><br />
+  <sub>点击图片查看完整界面 / Click the image to view the full-size interface</sub>
+</p>
+
 ---
 
 # 中文
