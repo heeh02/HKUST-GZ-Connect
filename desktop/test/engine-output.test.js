@@ -36,6 +36,8 @@ test('structured engine error codes are stable, readable and classify retry safe
   assert.equal(engineFailureKindFromCode('AUTH_INDETERMINATE'), 'terminal');
   assert.equal(engineFailureKindFromCode('AUTH_PROTOCOL_INVALID'), 'terminal');
   assert.equal(engineFailureKindFromCode('AUTH_LIMIT_EXCEEDED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SETUP_TRANSIENT'), 'gateway-transient');
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SETUP_FAILED'), 'terminal');
   assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
   assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
   assert.match(classifyEngineCode('DATA_PLANE_SHUTDOWN_FAILED', 1080), /停止自动重连/);

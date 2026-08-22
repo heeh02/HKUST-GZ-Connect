@@ -51,6 +51,7 @@ function classifyEngineCode(code, socksPort, t = createT('zh'), secondaryCode = 
     case 'INVALID_ARGUMENTS':
     case 'CONFIGURATION_INVALID': message = t('engine.configurationInvalid'); break;
     case 'LOCAL_LISTENER_FAILED': message = t('engine.portBusy', { port: socksPort }); break;
+    case 'DATA_PLANE_SETUP_TRANSIENT':
     case 'DATA_PLANE_SETUP_FAILED':
     case 'NETWORK_DISCONNECTED': message = t('engine.channelClosed'); break;
     case 'DATA_PLANE_SHUTDOWN_FAILED': message = t('engine.dataPlaneShutdownFailed'); break;
@@ -77,11 +78,12 @@ function engineFailureKindFromCode(code) {
     'INVALID_ARGUMENTS',
     'CONFIGURATION_INVALID',
     'LOCAL_LISTENER_FAILED',
+    'DATA_PLANE_SETUP_FAILED',
     'DATA_PLANE_SHUTDOWN_FAILED',
     'EVENT_OUTPUT_FAILED',
   ]
     .includes(code)) return 'terminal';
-  if (['DATA_PLANE_SETUP_FAILED', 'NETWORK_DISCONNECTED'].includes(code)) {
+  if (['DATA_PLANE_SETUP_TRANSIENT', 'NETWORK_DISCONNECTED'].includes(code)) {
     return 'gateway-transient';
   }
   return 'unknown';

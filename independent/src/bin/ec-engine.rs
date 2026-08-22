@@ -414,6 +414,7 @@ fn authentication_failure(error: ProviderError) -> EngineFailure {
 fn data_plane_setup_error_code(error: &Error) -> EngineErrorCode {
     match error.kind() {
         ErrorKind::Configuration => EngineErrorCode::ConfigurationInvalid,
+        ErrorKind::DataPlaneTransient => EngineErrorCode::DataPlaneSetupTransient,
         _ => EngineErrorCode::DataPlaneSetupFailed,
     }
 }
@@ -1938,6 +1939,13 @@ mod tests {
             data_plane_setup_error_code(&Error::classified(
                 ErrorKind::DataPlaneTransient,
                 "redacted transient failure",
+            )),
+            EngineErrorCode::DataPlaneSetupTransient
+        );
+        assert_eq!(
+            data_plane_setup_error_code(&Error::classified(
+                ErrorKind::DataPlane,
+                "redacted permanent failure",
             )),
             EngineErrorCode::DataPlaneSetupFailed
         );

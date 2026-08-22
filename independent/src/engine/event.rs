@@ -92,6 +92,7 @@ pub enum EngineErrorCode {
     AuthExpired,
     AuthLimitExceeded,
     UnsupportedAuthentication,
+    DataPlaneSetupTransient,
     DataPlaneSetupFailed,
     DataPlaneShutdownFailed,
     LocalListenerFailed,
