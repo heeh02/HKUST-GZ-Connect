@@ -6,6 +6,9 @@ rust-version = "1.85"
 license = "GPL-3.0-only"
 publish = false
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [features]
 default = []
 # Builds one explicitly selected, non-vendor post-Transport lifecycle seam into
