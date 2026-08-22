@@ -13,7 +13,7 @@ test('engine exit closes the browser request boundary before stdio close cleanup
   assert.ok(boundaryStart >= 0 && connectStart > boundaryStart);
   const boundary = source.slice(boundaryStart, connectStart);
   assert.match(boundary, /engineSupervisor\.isCurrent\(generation\)/);
-  assert.match(boundary, /connectionState\.markEngineStopping\(generation\)/);
+  assert.match(boundary, /connectionState\.markEngineStopping\(generation, \{ uptimeMs \}\)/);
   assert.match(boundary, /clearActiveProxyCredential\(generation\)/);
   assert.match(boundary, /suspendOpenBrowserPolicy\(\)/);
 
@@ -27,14 +27,18 @@ test('fatal, stopping, and exit boundaries revoke in-flight serving promotion', 
   const exitStart = source.indexOf('function handleEngineExitBoundary(', revokeStart);
   assert.ok(revokeStart >= 0 && exitStart > revokeStart);
   const revoke = source.slice(revokeStart, exitStart);
-  assert.match(revoke, /connectionState\.markEngineStopping\(generation\)/);
+  assert.match(revoke, /connectionState\.markEngineStopping\(generation, \{ uptimeMs \}\)/);
   assert.match(revoke, /suspendOpenBrowserPolicy\(\)/);
   assert.match(revoke, /clearConnectionPresentation\(\)/);
 
   const handlers = source.slice(source.indexOf('handlers: {', exitStart));
   assert.match(handlers, /onStopping:.*revokeEngineServing\(engineGeneration\)/);
+  assert.match(handlers, /onListenerMismatch:[\s\S]*?revokeEngineServing\(engineGeneration\)[\s\S]*?engineSupervisor\.stop/);
   assert.match(handlers, /onFatalError:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
   assert.match(handlers, /onProtocolTimeout:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
+  const close = source.slice(source.indexOf('function handleEngineClose('), revokeStart);
+  assert.match(close, /closeSnapshot\.wasConnectedBeforeStop/);
+  assert.match(close, /closeSnapshot\.connectedUptimeBeforeStop/);
 });
 
 test('an unclean stop releases the local process but blocks automatic reconnect', () => {

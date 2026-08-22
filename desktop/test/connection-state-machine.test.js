@@ -42,6 +42,7 @@ test('starts disconnected with an immutable diagnostic snapshot', () => {
     engineConnectedCandidate: false,
     listenerReady: false,
     wasConnectedBeforeStop: false,
+    connectedUptimeBeforeStop: 0,
   });
   assert.equal(Object.isFrozen(snapshot), true);
 });
@@ -162,6 +163,7 @@ test('explicit stop invalidates generation before asynchronous process close', (
     engineConnectedCandidate: false,
     listenerReady: false,
     wasConnectedBeforeStop: false,
+    connectedUptimeBeforeStop: 0,
   });
   assert.deepEqual(machine.engineClosed({
     generation: 11,
@@ -249,13 +251,14 @@ test('process exit revokes serving promotion while preserving close retry contex
   const machine = new ConnectionStateMachine();
   start(machine, 23);
   assert.equal(markReady(machine, 23), true);
-  assert.equal(machine.markEngineStopping(22), false);
-  assert.equal(machine.markEngineStopping(23), true);
+  assert.equal(machine.markEngineStopping(22, { uptimeMs: 500 }), false);
+  assert.equal(machine.markEngineStopping(23, { uptimeMs: STABLE_SESSION_MS + 1 }), true);
   assert.equal(machine.presentation().connected, false);
   assert.equal(machine.snapshot().phase, CONNECTION_PHASE.STOPPING);
   assert.equal(machine.snapshot().engineConnectedCandidate, false);
   assert.equal(machine.snapshot().listenerReady, false);
   assert.equal(machine.snapshot().wasConnectedBeforeStop, true);
+  assert.equal(machine.snapshot().connectedUptimeBeforeStop, STABLE_SESSION_MS + 1);
   assert.equal(machine.recordListenerReady(23), false);
   assert.equal(machine.recordEngineConnectedCandidate(23), false);
   assert.equal(machine.markConnected(23), false);
@@ -263,7 +266,7 @@ test('process exit revokes serving promotion while preserving close retry contex
     generation: 23,
     autoReconnect: true,
     maxAttempts: 3,
-    uptimeMs: 1000,
+    uptimeMs: 0,
   }), { action: 'retry', attempt: 1, delayMs: 2000 });
 });
 

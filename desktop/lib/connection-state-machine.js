@@ -60,6 +60,7 @@ class ConnectionStateMachine {
   #engineConnectedCandidate;
   #listenerReady;
   #wasConnectedBeforeStop;
+  #connectedUptimeBeforeStop;
 
   constructor() {
     this.#intent = 0;
@@ -71,6 +72,7 @@ class ConnectionStateMachine {
     this.#engineConnectedCandidate = false;
     this.#listenerReady = false;
     this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
   }
 
   snapshot() {
@@ -85,6 +87,7 @@ class ConnectionStateMachine {
       engineConnectedCandidate: this.#engineConnectedCandidate,
       listenerReady: this.#listenerReady,
       wasConnectedBeforeStop: this.#wasConnectedBeforeStop,
+      connectedUptimeBeforeStop: this.#connectedUptimeBeforeStop,
     });
   }
 
@@ -172,6 +175,7 @@ class ConnectionStateMachine {
     this.#engineConnectedCandidate = false;
     this.#listenerReady = false;
     this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
     return true;
   }
 
@@ -181,6 +185,7 @@ class ConnectionStateMachine {
     this.#engineConnectedCandidate = false;
     this.#listenerReady = false;
     this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
     return previous;
   }
 
@@ -238,9 +243,17 @@ class ConnectionStateMachine {
     return true;
   }
 
-  markEngineStopping(generation) {
+  markEngineStopping(generation, { uptimeMs = 0 } = {}) {
     if (!this.isCurrentGeneration(generation)) return false;
-    this.#wasConnectedBeforeStop ||= this.#phase === CONNECTION_PHASE.CONNECTED;
+    if (this.#phase === CONNECTION_PHASE.CONNECTED) {
+      this.#wasConnectedBeforeStop = true;
+      if (Number.isFinite(uptimeMs) && uptimeMs >= 0) {
+        this.#connectedUptimeBeforeStop = Math.max(
+          this.#connectedUptimeBeforeStop,
+          Math.trunc(uptimeMs),
+        );
+      }
+    }
     this.#engineConnectedCandidate = false;
     this.#listenerReady = false;
     this.#phase = CONNECTION_PHASE.STOPPING;
@@ -281,8 +294,8 @@ class ConnectionStateMachine {
     if (!supervisorGenerationCurrent || !this.isCurrentGeneration(generation)) {
       return Object.freeze({ action: 'ignored' });
     }
-    const wasConnected = this.#phase === CONNECTION_PHASE.CONNECTED ||
-      this.#wasConnectedBeforeStop;
+    const wasConnected = this.#phase === CONNECTION_PHASE.CONNECTED || this.#wasConnectedBeforeStop;
+    uptimeMs = Math.max(uptimeMs, this.#connectedUptimeBeforeStop);
     this.invalidateEngineGeneration();
     this.#phase = CONNECTION_PHASE.IDLE;
 

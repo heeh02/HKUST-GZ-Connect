@@ -177,6 +177,7 @@ let state = {
   pacUrl: '',
 };
 function statusSnapshot() { return projectConnectionStatus(state, connectionState.presentation(), connectedAt); }
+function reportLogFailure() { if (!state.diagnosticNotice) { state.diagnosticNotice = t('error.logUnavailable'); emit(); } }
 const authChallengeCoordinator = new AuthChallengeCoordinator({
   publish: (challenge) => {
     desktopShell?.send('auth-challenge', challenge);
@@ -185,7 +186,7 @@ const authChallengeCoordinator = new AuthChallengeCoordinator({
 const engineControlRegistry = new EngineControlRegistry({ authChallenges: authChallengeCoordinator });
 const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
 const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
-const logWriter = new BufferedLogWriter(LOG, { onError: () => { if (!state.diagnosticNotice) { state.diagnosticNotice = t('error.logUnavailable'); emit(); } } });
+const logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure });
 const externalProxyCredentialStore = new ExternalProxyCredentialStore({
   filePath: PROXY_CREDENTIAL,
   safeStorage,
@@ -582,8 +583,8 @@ function handleEngineClose({ code, generation }, diagnosticTail,
     emit();
   });
 
-  const wasConnected = connectionState.isConnected();
-  const uptime = connectedAt ? (Date.now() - connectedAt) : 0;
+  const closeSnapshot = connectionState.snapshot(); const wasConnected = closeSnapshot.phase === 'connected' || closeSnapshot.wasConnectedBeforeStop;
+  const uptime = Math.max(connectedAt ? Date.now() - connectedAt : 0, closeSnapshot.connectedUptimeBeforeStop);
   clearConnectionPresentation();
   const failureKind = resolveEngineFailureKind({
     code: structuredFatalCode,
@@ -648,10 +649,10 @@ function handleEngineClose({ code, generation }, diagnosticTail,
   }
   emit();
 }
-
 function revokeEngineServing(generation) {
+  const uptimeMs = connectedAt ? Date.now() - connectedAt : 0;
   if (!engineSupervisor.isCurrent(generation) ||
-      !connectionState.markEngineStopping(generation)) return false;
+      !connectionState.markEngineStopping(generation, { uptimeMs })) return false;
   // Its epoch and request gate synchronously defeat an awaiting activation.
   suspendOpenBrowserPolicy().catch((error) => {
     state.browserNotice = t('error.browserRoutingAfterSave', { message: error.message });
@@ -700,7 +701,7 @@ async function connectOnce(isRetry, intent) {
     // automatic retry used to erase the failure that triggered that retry.
     if (!isRetry) await logWriter.reset();
     logWriter.append(`\n--- connection attempt ${connectionState.snapshot().attemptNumber} ---\n`);
-  } catch {}
+  } catch { reportLogFailure(); }
   if (!connectionState.canAttempt(intent)) {
     emit();
     return { ok: false, stale: true };
@@ -945,9 +946,9 @@ async function connectOnce(isRetry, intent) {
         markConnected();
       },
       onListenerMismatch: () => {
-        structuredFatalCode = 'LOCAL_LISTENER_FAILED';
-        state.lastError = classifyEngineCode(structuredFatalCode, s.port, t);
-        emit();
+        revokeEngineServing(engineGeneration); structuredFatalCode = 'LOCAL_LISTENER_FAILED';
+        state.lastError = classifyEngineCode(structuredFatalCode, s.port, t); emit();
+        engineSupervisor.stop({ graceMs: 1000, forceWaitMs: STOP_FORCE_WAIT_MS }).catch(() => {});
       },
       onClientIpAssigned: () => {
         connectionState.markEnginePhase(engineGeneration, 'preparing_tunnel');
@@ -1306,7 +1307,6 @@ function controlStateSnapshot() {
       update: updateInfo,
       campusResources: safeCampusResources({ customResources: [] }),
       authChallenge: authChallengeCoordinator.snapshot(),
-      lastError: error.message,
     };
   }
   const passwordPresent = hasStoredCredential();
@@ -1413,11 +1413,11 @@ registerCoreControlIpc({
     }
   },
   getLogs: async () => {
-    await logWriter.flush().catch(() => {});
+    await logWriter.flush().catch(reportLogFailure);
     return readLogTail(LOG);
   },
   openLog: async () => {
-    await logWriter.flush().catch(() => {});
+    await logWriter.flush().catch(reportLogFailure);
     await shell.openPath(LOG).catch(() => {});
   },
   copyText: (text) => {
@@ -1468,7 +1468,7 @@ desktopShell = new DesktopShell({
     networkStatusMonitor.dispose();
   },
   cleanupQuit: async () => {
-    await logWriter.close().catch(() => {});
+    await logWriter.close().catch(reportLogFailure);
     removeExternalProxySidecar();
     stableProxyCredential?.destroy();
     stableProxyCredential = null;
