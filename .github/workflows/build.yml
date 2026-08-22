@@ -50,7 +50,7 @@ jobs:
         run: |
           npm test
           npm run check:architecture
-          npm run check:secrets
+          npm run check:secrets -- --tree "$GITHUB_SHA"
           npm audit --audit-level=high
           while IFS= read -r source_file; do
             node --check "$source_file"

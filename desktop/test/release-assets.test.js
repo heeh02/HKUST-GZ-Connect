@@ -8,6 +8,7 @@ const test = require('node:test');
 const desktopRoot = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json'), 'utf8'));
 const workflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'build.yml'), 'utf8');
+const ciWorkflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 
 test('cross-platform desktop checks explicitly run under Bash', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
@@ -54,4 +55,12 @@ test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux Ap
   );
   assert.match(workflow, /no macOS DMG was produced/, 'a failed DMG build must fail the cloud job');
   assert.match(workflow, /no Linux AppImage was produced/, 'a failed AppImage build must fail the cloud job');
+});
+
+test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', () => {
+  assert.match(ciWorkflow, /test:campus-popup-mfa-safety/u);
+  assert.match(ciWorkflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
+  assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
+  assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
+  assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
 });

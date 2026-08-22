@@ -6,6 +6,8 @@ const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
 
+const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[-_]?gateway|test[-_]?ca|pki)(?:\/|[-_.])|(?:^|\/)private[-_]?key(?:$|[-_.\/])|\.(?:pem|key|p12|pfx)$/iu;
+
 function resolveResourcesDirectory(input) {
   const resolved = path.resolve(input);
   return resolved.endsWith('.app') ? path.join(resolved, 'Contents', 'Resources') : resolved;
@@ -113,6 +115,28 @@ function assertCustomResourceManager({
   }
 }
 
+function assertNoTestOnlyPackageEntries(entries) {
+  for (const rawEntry of entries) {
+    const entry = String(rawEntry).replaceAll('\\', '/');
+    if (FORBIDDEN_TEST_RESOURCE.test(entry)) {
+      throw new Error(`test-only or private-key resource entered the package: ${entry}`);
+    }
+  }
+}
+
+function assertNoTestOnlyNativeResources(engineDirectory) {
+  if (!fs.existsSync(engineDirectory) || !fs.statSync(engineDirectory).isDirectory()) {
+    throw new Error(`missing packaged engine directory: ${engineDirectory}`);
+  }
+  const entries = fs.readdirSync(engineDirectory, { withFileTypes: true });
+  for (const entry of entries) {
+    const normalized = `/${entry.name}`;
+    if (!entry.isFile() || entry.isSymbolicLink() || FORBIDDEN_TEST_RESOURCE.test(normalized)) {
+      throw new Error(`test-only or unsafe native resource entered the package: ${entry.name}`);
+    }
+  }
+}
+
 function verifyPackage({ resourcesArgument, platform = process.platform, architecture = process.arch, requireAppleSignature = false }) {
   if (!resourcesArgument) {
     throw new Error('usage: node build/verify-package.js <app-or-resources-dir> [platform] [arch] [--require-apple-signature]');
@@ -141,6 +165,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/engine-connection-runtime.js',
     '/lib/engine-control-suite.js',
     '/lib/desktop-shell.js',
+    '/lib/windows-private-file.js',
     '/lib/campus-browser-manager.js',
     '/lib/connection-telemetry-coordinator.js',
     '/lib/engine-protocol-session.js',
@@ -171,11 +196,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
   }
-  for (const entry of entries) {
-    if (entry.startsWith('/e2e/') || entry.startsWith('/test/')) {
-      throw new Error(`synthetic test fixture entered the packaged application: ${entry}`);
-    }
-  }
+  assertNoTestOnlyPackageEntries(entries);
 
   const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
@@ -228,6 +249,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const proxyCommandName = `ec-proxy-command-${platformName}-${architectureName}${extension}`;
   const engine = path.join(resources, 'engine', engineName);
   const proxyCommand = path.join(resources, 'engine', proxyCommandName);
+  assertNoTestOnlyNativeResources(path.join(resources, 'engine'));
   for (const [label, executable] of [['engine', engine], ['SSH proxy helper', proxyCommand]]) {
     if (!fs.existsSync(executable) || !fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
       throw new Error(`missing packaged ${label}: ${executable}`);
@@ -276,6 +298,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 module.exports = {
   assertLinuxElfArchitecture,
   assertCustomResourceManager,
+  assertNoTestOnlyNativeResources,
+  assertNoTestOnlyPackageEntries,
   parseArguments,
   readMacSignature,
   resolveMacAppPath,

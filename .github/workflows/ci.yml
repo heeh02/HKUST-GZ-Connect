@@ -42,7 +42,7 @@ jobs:
       - name: Enforce desktop architecture growth boundaries
         run: npm run check:architecture
       - name: Reject committed secret patterns
-        run: npm run check:secrets
+        run: npm run check:secrets -- --tree "$GITHUB_SHA"
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Check syntax of every entry point
@@ -79,6 +79,8 @@ jobs:
         run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
       - name: Exercise Campus Browser MFA credential boundaries
         run: npm run test:campus-mfa-safety
+      - name: Exercise popup and cross-origin MFA credential boundaries
+        run: npm run test:campus-popup-mfa-safety
       - name: Exercise Chromium strict proxy authentication
         run: npm run test:strict-proxy-auth
       - name: Measure the resource manager at compact window sizes

@@ -14,6 +14,8 @@ const {
 const {
   assertCustomResourceManager,
   assertLinuxElfArchitecture,
+  assertNoTestOnlyNativeResources,
+  assertNoTestOnlyPackageEntries,
   resolveResourcesDirectory,
 } = require('../build/verify-package');
 
@@ -38,6 +40,31 @@ test('Electron synthetic MFA fixtures are excluded from application files', () =
   const packageDocument = require('../package.json');
   assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('e2e/')), false);
   assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('test/')), false);
+});
+
+test('package verifier rejects fake gateways, test PKI and private-key formats', (t) => {
+  for (const entry of [
+    '/fixtures/gateway.json',
+    '/synthetic/auth.js',
+    '/assets/test-ca.pem',
+    '/assets/private-key.bin',
+    '/lib/fake_gateway.js',
+  ]) {
+    assert.throws(
+      () => assertNoTestOnlyPackageEntries(['/main.js', entry]),
+      /test-only or private-key/u,
+    );
+  }
+  assert.doesNotThrow(() => assertNoTestOnlyPackageEntries([
+    '/main.js', '/lib/auth-challenge-coordinator.js', '/assets/campus-resources.json',
+  ]));
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-native-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'ec-engine-darwin-arm64'), 'binary');
+  assert.doesNotThrow(() => assertNoTestOnlyNativeResources(directory));
+  fs.writeFileSync(path.join(directory, 'test-ca.pem'), 'not-a-real-certificate');
+  assert.throws(() => assertNoTestOnlyNativeResources(directory), /unsafe native resource/u);
 });
 
 test('package verification accepts x86_64 ELF executables and rejects another architecture', () => {
