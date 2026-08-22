@@ -63,6 +63,15 @@ function applySettingsPatch(previous, payload) {
       next[key] = source[key];
     }
   }
+  if (source.proxyAuthMigrationAcknowledged != null) {
+    if (source.proxyAuthMigrationAcknowledged !== true) {
+      throw new Error('proxyAuthMigrationAcknowledged 必须为 true');
+    }
+    next.proxyAuthMigrationPending = false;
+  }
+  // Moving either direction through the dedicated switch is an explicit
+  // security decision, so it also resolves an inherited version-2 migration.
+  if (typeof source.strictProxyAuth === 'boolean') next.proxyAuthMigrationPending = false;
 
   return {
     settings: normalizeSettings(next),

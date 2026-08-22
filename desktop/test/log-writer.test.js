@@ -50,6 +50,34 @@ test('redacts common authentication material before it reaches disk', () => {
   assert.match(result, /\[REDACTED\]/);
 });
 
+test('redacts generic MFA and continuation fields without depending on a protocol endpoint', () => {
+  const secrets = [
+    'otp=654321',
+    'TOTP: 918273',
+    'one_time_code="alpha-code"',
+    'verification-code: verify-me',
+    'passcode=pass-me',
+    'TwfID: partial-session',
+    'CSRF_RAND_CODE=csrf-material',
+    '{"otp":"json-otp","TwfID":"json-session"}',
+    'https://id.example/challenge?otp=url-otp&verification_code=url-code&csrf_token=url-csrf',
+    'requestId=42 challengeEpoch=3',
+  ];
+  const result = redactDiagnosticText(secrets.join('\n'));
+  for (const secret of [
+    '654321', '918273', 'alpha-code', 'verify-me', 'pass-me',
+    'partial-session', 'csrf-material', 'json-otp', 'json-session',
+    'url-otp', 'url-code', 'url-csrf',
+  ]) {
+    assert.doesNotMatch(result, new RegExp(secret));
+  }
+  assert.match(result, /otp=\[REDACTED\]/i);
+  assert.match(result, /TwfID: \[REDACTED\]/i);
+  assert.match(result, /requestId=42/);
+  assert.equal(redactDiagnosticText('requestId=42 challengeEpoch=3'),
+    'requestId=42 challengeEpoch=3');
+});
+
 test('buffers writes, keeps owner-only permissions, and rotates at a fixed limit', async (t) => {
   const file = temporaryLog(t);
   const writer = new BufferedLogWriter(file, {

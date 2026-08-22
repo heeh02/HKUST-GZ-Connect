@@ -32,7 +32,7 @@ function fixture(overrides = {}) {
   const controller = new CredentialController({
     vault,
     dialog,
-    originForTab: () => currentOrigin,
+    originForTab: (tab) => tab?.origin || currentOrigin,
     windowForPrompt: () => window,
     t: (key, vars) => vars?.host ? `${key}:${vars.host}` : key,
     onError: (message) => errors.push(message),
@@ -85,6 +85,7 @@ test('staging accepts only the exact current HTTPS origin and bounded values', (
     navigationCommitted: false,
     navigationSuccessful: false,
     destinationOrigin: '',
+    challengeObserved: false,
   });
   assert.equal(timers.length, 1);
   assert.equal(timers[0].delay, CREDENTIAL_CANDIDATE_TTL_MS);
@@ -96,7 +97,7 @@ test('a candidate is offered only after a successful matching page state', async
   const tab = {};
   state.controller.stage(tab, candidate());
   assert.equal(await state.controller.confirmPageState(tab, {
-    origin: 'https://sso.example.edu', hasLoginForm: false,
+    origin: 'https://sso.example.edu', hasLoginForm: false, hasChallengeForm: false,
   }), false, 'submission alone must never prompt');
   assert.equal(state.prompts.length, 0);
 
@@ -105,7 +106,7 @@ test('a candidate is offered only after a successful matching page state', async
   assert.equal(state.controller.markNavigation(tab, 'https://portal.example.edu/home', 302), true);
   state.setCurrentOrigin('https://portal.example.edu');
   assert.equal(await state.controller.confirmPageState(tab, {
-    origin: 'https://portal.example.edu', hasLoginForm: false,
+    origin: 'https://portal.example.edu', hasLoginForm: false, hasChallengeForm: false,
   }), true);
   assert.equal(state.prompts.length, 1);
   assert.deepEqual(state.saved, [[
@@ -122,6 +123,7 @@ test('a stable SPA transition can offer an exact-origin candidate without naviga
   assert.equal(await state.controller.confirmPageState(tab, {
     origin: 'https://sso.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
     transition: 'same-document',
   }), true);
   assert.equal(state.prompts.length, 1, 'SPA success still requires an explicit user prompt');
@@ -131,6 +133,127 @@ test('a stable SPA transition can offer an exact-origin candidate without naviga
   assert.equal(tab.pendingCredential, null);
 });
 
+test('a challenge page cannot confirm login and retains the candidate only for its bounded TTL', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate());
+  state.controller.markNavigation(tab, 'https://sso.example.edu/mfa', 302);
+
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+    hasChallengeForm: true,
+  }), false);
+  assert.equal(state.prompts.length, 0);
+  assert.ok(tab.pendingCredential, 'MFA progress is not a failed password submission');
+
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+    hasChallengeForm: false,
+  }), true, 'an explicit later post-challenge page can offer the original password');
+  assert.equal(state.prompts.length, 1);
+  assert.equal(tab.pendingCredential, null);
+});
+
+test('a committed challenge may finish inside the same SPA document only after being observed', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate());
+  state.controller.markNavigation(tab, 'https://mfa.example.edu/challenge', 302);
+  state.setCurrentOrigin('https://mfa.example.edu');
+
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://mfa.example.edu',
+    hasLoginForm: false,
+    hasChallengeForm: false,
+    transition: 'same-document',
+  }), false, 'an unobserved DOM change is not challenge completion evidence');
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://mfa.example.edu',
+    hasLoginForm: false,
+    hasChallengeForm: true,
+  }), false);
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://mfa.example.edu',
+    hasLoginForm: false,
+    hasChallengeForm: false,
+    transition: 'same-document',
+  }), true);
+  assert.equal(state.prompts.length, 1);
+  assert.deepEqual(state.saved, [[
+    'https://sso.example.edu', 'student001', 'local-secret',
+  ]]);
+});
+
+test('a popup challenge blocks the opener and never receives a password copy', async () => {
+  const state = fixture();
+  const owner = { origin: 'https://sso.example.edu' };
+  const popup = { origin: 'https://mfa.example.edu' };
+  state.controller.stage(owner, candidate());
+  state.controller.markNavigation(owner, 'https://sso.example.edu/waiting', 200);
+
+  const reservation = state.controller.reservePopup(owner);
+  assert.equal(await state.controller.confirmPageState(owner, {
+    origin: owner.origin, hasLoginForm: false, hasChallengeForm: false,
+  }), false, 'a deferred popup blocks the opener before the new tab exists');
+  assert.equal(state.controller.linkPopup(reservation, popup), true);
+  assert.equal(popup.pendingCredential, undefined, 'the password is owned only by the opener');
+
+  state.controller.markNavigation(popup, 'https://mfa.example.edu/challenge', 200);
+  assert.equal(await state.controller.confirmPageState(popup, {
+    origin: popup.origin, hasLoginForm: false, hasChallengeForm: true,
+  }), false);
+  assert.equal(await state.controller.confirmPageState(owner, {
+    origin: owner.origin, hasLoginForm: false, hasChallengeForm: false,
+  }), false, 'the waiting opener cannot conclude success during popup MFA');
+  assert.equal(await state.controller.confirmPageState(popup, {
+    origin: popup.origin, hasLoginForm: false, hasChallengeForm: false,
+  }), true, 'the observed challenge tab may provide post-challenge evidence');
+  assert.equal(state.prompts.length, 1);
+  assert.deepEqual(state.saved, [[
+    'https://sso.example.edu', 'student001', 'local-secret',
+  ]]);
+});
+
+test('closing a challenge popup requires a fresh opener navigation before saving', async () => {
+  const state = fixture();
+  const owner = { origin: 'https://sso.example.edu' };
+  const popup = { origin: 'https://mfa.example.edu' };
+  state.controller.stage(owner, candidate());
+  state.controller.markNavigation(owner, 'https://sso.example.edu/waiting', 200);
+  const reservation = state.controller.reservePopup(owner);
+  state.controller.linkPopup(reservation, popup);
+  state.controller.markNavigation(popup, 'https://mfa.example.edu/challenge', 200);
+  await state.controller.confirmPageState(popup, {
+    origin: popup.origin, hasLoginForm: false, hasChallengeForm: true,
+  });
+  state.controller.closeTab(popup);
+
+  assert.equal(await state.controller.confirmPageState(owner, {
+    origin: owner.origin, hasLoginForm: false, hasChallengeForm: false,
+  }), false, 'the pre-challenge waiting document is stale');
+  assert.equal(state.prompts.length, 0);
+  state.controller.markNavigation(owner, 'https://sso.example.edu/home', 200);
+  assert.equal(await state.controller.confirmPageState(owner, {
+    origin: owner.origin, hasLoginForm: false, hasChallengeForm: false,
+  }), true);
+  assert.equal(state.prompts.length, 1);
+});
+
+test('missing challenge classification is never accepted as post-login evidence', async () => {
+  const state = fixture();
+  const tab = {};
+  state.controller.stage(tab, candidate());
+  state.controller.markNavigation(tab, 'https://sso.example.edu/home', 200);
+  assert.equal(await state.controller.confirmPageState(tab, {
+    origin: 'https://sso.example.edu',
+    hasLoginForm: false,
+  }), false);
+  assert.equal(state.prompts.length, 0);
+  assert.ok(tab.pendingCredential);
+});
+
 test('SPA evidence cannot cross origins or override a main-frame navigation', async () => {
   const state = fixture();
   const tab = {};
@@ -138,6 +261,7 @@ test('SPA evidence cannot cross origins or override a main-frame navigation', as
   assert.equal(await state.controller.confirmPageState(tab, {
     origin: 'https://other.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
     transition: 'same-document',
   }), false);
   assert.equal(state.prompts.length, 0);
@@ -147,6 +271,7 @@ test('SPA evidence cannot cross origins or override a main-frame navigation', as
   assert.equal(await state.controller.confirmPageState(tab, {
     origin: 'https://sso.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
     transition: 'same-document',
   }), false, 'a committed document must use navigation evidence instead');
   assert.equal(state.prompts.length, 0);
@@ -160,6 +285,7 @@ test('a failed same-document login clears its staged password', async () => {
   assert.equal(await state.controller.confirmPageState(tab, {
     origin: 'https://sso.example.edu',
     hasLoginForm: true,
+    hasChallengeForm: false,
     transition: 'same-document',
   }), false);
   assert.equal(retained.password, '');
@@ -191,7 +317,7 @@ test('a completed page that still has a login form clears the candidate', async 
   const retained = tab.pendingCredential;
   state.controller.markNavigation(tab, 'https://sso.example.edu/login?error=1', 200);
   assert.equal(await state.controller.confirmPageState(tab, {
-    origin: 'https://sso.example.edu', hasLoginForm: true,
+    origin: 'https://sso.example.edu', hasLoginForm: true, hasChallengeForm: false,
   }), false);
   assert.equal(retained.password, '');
   assert.equal(tab.pendingCredential, null);
@@ -218,7 +344,7 @@ test('stale page state cannot confirm a candidate and remains bounded by its tim
   state.controller.markNavigation(tab, 'https://portal.example.edu/home', 200);
   state.setCurrentOrigin('https://newer.example.edu');
   assert.equal(await state.controller.confirmPageState(tab, {
-    origin: 'https://portal.example.edu', hasLoginForm: false,
+    origin: 'https://portal.example.edu', hasLoginForm: false, hasChallengeForm: false,
   }), false);
   assert.ok(tab.pendingCredential, 'a stale prior document must not consume a newer flow');
   state.timers[0].callback();
@@ -264,7 +390,6 @@ test('CampusBrowser delegates candidate state and keeps all lifecycle clear call
     'const handleLoadFailure',
     '\n  handleRendererCrash(tab, details = {})',
     '\n  async setTabRoute',
-    '\n  closeTab(id)',
     "this.window.on('closed'",
   ]) {
     const start = source.indexOf(fragment);
@@ -272,4 +397,9 @@ test('CampusBrowser delegates candidate state and keeps all lifecycle clear call
     assert.match(source.slice(start, start + 1800), /clearCredentialCandidate\(tab\)/,
       `${fragment} must clear any staged credential`);
   }
+  const closeStart = source.indexOf('\n  closeTab(id)');
+  assert.notEqual(closeStart, -1);
+  assert.match(source.slice(closeStart, closeStart + 900),
+    /credentialController\.closeTab\(tab\)/,
+    'closing a popup must unlink it without copying or prematurely consuming the owner secret');
 });

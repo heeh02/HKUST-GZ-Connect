@@ -162,6 +162,7 @@ class EngineControlClient {
   }
 
   feed(value) {
+    if (this.closed) return;
     for (const response of this.parser.feed(value)) {
       const pending = this.pending.get(response.requestId);
       if (!pending) continue;

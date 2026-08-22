@@ -6,10 +6,11 @@ use crate::engine::provider::{
     CapabilityModel, NoAuthChallenge, ProviderError, ProviderResult, TransportBackend,
     TransportCapabilities, require_supported,
 };
-use crate::modern::{ModernSessionId, parse_sha256_pin, request_modern_token};
-use crate::probe::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
+use crate::gateway_auth::AuthenticatedSessionId;
+use crate::gateway_http::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
+use crate::modern::{parse_sha256_pin, request_modern_token};
 use crate::xml::{first_descendant_text, parse_xml};
-use crate::{Error, Result};
+use crate::{Error, ErrorKind, Result};
 use reqwest::Method;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -42,7 +43,7 @@ struct UnsupportedAuthDecision {
 pub struct AuthenticatedGatewaySession {
     http: GatewaySession,
     logout_path: String,
-    modern_session: ModernSessionId,
+    session_identifier: AuthenticatedSessionId,
 }
 
 /// Backward-compatible Rust name for existing engine consumers. New code
@@ -100,6 +101,7 @@ impl AuthProvider for ProductionPasswordAuthProvider<'_> {
             AuthRequest::Password { username, password } => {
                 AuthenticatedGatewaySession::authenticate_password(self.config, username, password)
                     .map(AuthOutcome::Authenticated)
+                    .map_err(|error| error.with_failure_kind(ErrorKind::Authentication))
             }
             AuthRequest::ChallengeResponse { method, .. } => {
                 let capability = method.capability();
@@ -113,14 +115,20 @@ impl AuthProvider for ProductionPasswordAuthProvider<'_> {
 impl ModernL3TransportBackend {
     pub fn new(config: &Value) -> Result<Self> {
         let base_url = required_text(config, "base_url")?;
-        let parsed_url =
-            Url::parse(base_url).map_err(|_| Error("engine base URL is invalid".into()))?;
+        let parsed_url = Url::parse(base_url).map_err(|_| {
+            Error::classified(ErrorKind::Configuration, "engine base URL is invalid")
+        })?;
         if parsed_url.scheme() != "https" {
-            return Err(Error("engine base URL must use HTTPS".into()));
+            return Err(Error::classified(
+                ErrorKind::Configuration,
+                "engine base URL must use HTTPS",
+            ));
         }
         let gateway_host = parsed_url
             .host_str()
-            .ok_or_else(|| Error("engine gateway host is missing".into()))?
+            .ok_or_else(|| {
+                Error::classified(ErrorKind::Configuration, "engine gateway host is missing")
+            })?
             .to_owned();
         let timeout = Duration::from_secs(
             config["timeout_seconds"]
@@ -137,7 +145,10 @@ impl ModernL3TransportBackend {
         let configured_certificate_pin = config["modern_tunnel"]["special_tls_leaf_sha256"]
             .as_str()
             .filter(|value| !value.is_empty())
-            .map(parse_sha256_pin)
+            .map(|value| {
+                parse_sha256_pin(value)
+                    .map_err(|error| error.with_kind_if_unclassified(ErrorKind::Configuration))
+            })
             .transpose()?;
         Ok(Self {
             base_url: base_url.to_owned(),
@@ -201,7 +212,7 @@ impl ModernL3TransportBackend {
             }
         }
         let acquisition =
-            request_modern_token(&self.base_url, &session.modern_session, self.timeout)?;
+            request_modern_token(&self.base_url, &session.session_identifier, self.timeout)?;
         let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
         let mut attempt = 1;
         loop {
@@ -228,7 +239,10 @@ impl ModernL3TransportBackend {
                     std::thread::sleep(DATA_PLANE_RETRY_STEP * attempt as u32);
                     attempt += 1;
                 }
-                Err(error) => return Err(error.into()),
+                Err(error) => {
+                    let kind = data_plane_setup_error_kind(&error);
+                    return Err(ProviderError::failed_with_kind(kind, error));
+                }
             }
         }
     }
@@ -244,6 +258,7 @@ impl TransportBackend for ModernL3TransportBackend {
 
     fn connect(&self, session: &Self::Session) -> ProviderResult<Self::DataPlane> {
         self.establish_modern_l3(session)
+            .map_err(|error| error.with_failure_kind(ErrorKind::Transport))
     }
 }
 
@@ -275,14 +290,19 @@ impl AuthenticatedGatewaySession {
         password: &str,
     ) -> ProviderResult<Self> {
         let base_url = required_text(config, "base_url")?;
-        let parsed_url =
-            Url::parse(base_url).map_err(|_| Error("engine base URL is invalid".into()))?;
+        let parsed_url = Url::parse(base_url).map_err(|_| {
+            Error::classified(ErrorKind::Configuration, "engine base URL is invalid")
+        })?;
         if parsed_url.scheme() != "https" {
-            return Err(Error("engine base URL must use HTTPS".into()).into());
+            return Err(Error::classified(
+                ErrorKind::Configuration,
+                "engine base URL must use HTTPS",
+            )
+            .into());
         }
-        parsed_url
-            .host_str()
-            .ok_or_else(|| Error("engine gateway host is missing".into()))?;
+        parsed_url.host_str().ok_or_else(|| {
+            Error::classified(ErrorKind::Configuration, "engine gateway host is missing")
+        })?;
         let timeout_seconds = config["timeout_seconds"]
             .as_u64()
             .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
@@ -298,21 +318,26 @@ impl AuthenticatedGatewaySession {
         let password_config_path = required_endpoint(config, "password_config")?;
         let (password_config, _, _) = http.request(password_config_path, Method::GET, None)?;
         let password_config = Zeroizing::new(password_config);
-        let document = parse_xml(&password_config, "engine password configuration")?;
+        let document = parse_xml(&password_config, "engine password configuration")
+            .map_err(|error| ProviderError::failed_with_kind(ErrorKind::Authentication, error))?;
         let root = document.root_element();
         let modulus = Zeroizing::new(first_descendant_text(root, "RSA_ENCRYPT_KEY"));
         let csrf = Zeroizing::new(first_descendant_text(root, "CSRF_RAND_CODE"));
         let exponent = safe_int(&first_descendant_text(root, "RSA_ENCRYPT_EXP"), 65_537);
         let mid_attack = safe_int(&first_descendant_text(root, "MID_ATK_CHECK"), 0);
         if modulus.is_empty() || csrf.is_empty() || mid_attack != 0 {
-            return Err(Error("gateway password configuration is unsupported".into()).into());
+            return Err(Error::classified(
+                ErrorKind::Authentication,
+                "gateway password configuration is unsupported",
+            )
+            .into());
         }
         let password_material = Zeroizing::new(format!("{password}_{}", csrf.as_str()));
-        let encrypted_password = Zeroizing::new(rsa_encrypt_hex(
-            password_material.as_bytes(),
-            &modulus,
-            exponent as u64,
-        )?);
+        let encrypted_password = Zeroizing::new(
+            rsa_encrypt_hex(password_material.as_bytes(), &modulus, exponent as u64).map_err(
+                |error| ProviderError::failed_with_kind(ErrorKind::Authentication, error),
+            )?,
+        );
         let mut form = [
             ("mitm_result".into(), String::new()),
             ("svpn_req_randcode".into(), csrf.as_str().to_owned()),
@@ -339,7 +364,10 @@ impl AuthenticatedGatewaySession {
                 // close that possible partial session before another desktop
                 // attempt competes with it.
                 let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                return Err(error.into());
+                return Err(ProviderError::failed_with_kind(
+                    ErrorKind::Authentication,
+                    error,
+                ));
             }
         };
         let login = Zeroizing::new(login);
@@ -369,26 +397,32 @@ impl AuthenticatedGatewaySession {
             // Logout is idempotent and is safer than leaving a session that
             // makes the next connection attempt race itself.
             let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-            return Err(Error(format!(
-                "gateway authentication failed (error_code={}, state={:?})",
-                login_summary.error_code, login_summary.state
-            ))
+            return Err(Error::classified(
+                ErrorKind::Authentication,
+                format!(
+                    "gateway authentication failed (error_code={}, state={:?})",
+                    login_summary.error_code, login_summary.state
+                ),
+            )
             .into());
         }
-        let modern_session = match ModernSessionId::from_login_xml(&login) {
+        let session_identifier = match AuthenticatedSessionId::from_login_xml(&login) {
             Ok(session) => session,
             Err(error) => {
                 // A successful password login must still yield a usable opaque
                 // gateway session handle. Clean it up if that auth artifact is
                 // malformed, before any transport backend is involved.
                 let _ = http.request_with_timeout(&logout_path, Method::GET, None, LOGOUT_TIMEOUT);
-                return Err(error.into());
+                return Err(ProviderError::failed_with_kind(
+                    ErrorKind::Authentication,
+                    error,
+                ));
             }
         };
         Ok(Self {
             http,
             logout_path,
-            modern_session,
+            session_identifier,
         })
     }
 
@@ -396,7 +430,12 @@ impl AuthenticatedGatewaySession {
         self.http
             .request_with_timeout(&self.logout_path, Method::GET, None, LOGOUT_TIMEOUT)
             .map(|_| ())
-            .map_err(|error| Error(format!("gateway logout failed: {error}")))
+            .map_err(|error| {
+                Error::classified(
+                    ErrorKind::Lifecycle,
+                    format!("gateway logout failed: {error}"),
+                )
+            })
     }
 }
 
@@ -422,12 +461,21 @@ fn address_settle_delay(deadline: Instant, now: Instant) -> Duration {
 }
 
 fn retryable_data_plane_setup_error(error: &Error) -> bool {
+    data_plane_setup_error_kind(error).is_retryable()
+}
+
+fn data_plane_setup_error_kind(error: &Error) -> ErrorKind {
     let message = error.to_string();
-    message.contains("failed to fill whole buffer")
+    if message.contains("failed to fill whole buffer")
         || message.contains("modern address reply rejected the request (status=3)")
         || message.contains("Connection reset by peer")
         || message.contains("connection reset by peer")
         || message.contains("unexpected end of file")
+    {
+        ErrorKind::DataPlaneTransient
+    } else {
+        ErrorKind::DataPlane
+    }
 }
 
 fn required_text<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
@@ -435,7 +483,12 @@ fn required_text<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
         .as_str()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| Error(format!("engine configuration is missing {name}")))
+        .ok_or_else(|| {
+            Error::classified(
+                ErrorKind::Configuration,
+                format!("engine configuration is missing {name}"),
+            )
+        })
 }
 
 fn required_endpoint<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
@@ -443,7 +496,12 @@ fn required_endpoint<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
         .as_str()
         .map(str::trim)
         .filter(|value| value.starts_with('/'))
-        .ok_or_else(|| Error(format!("engine endpoint is missing {name}")))
+        .ok_or_else(|| {
+            Error::classified(
+                ErrorKind::Configuration,
+                format!("engine endpoint is missing {name}"),
+            )
+        })
 }
 
 #[cfg(test)]
@@ -465,18 +523,23 @@ mod tests {
 
     #[test]
     fn only_transient_data_plane_failures_are_retried() {
-        assert!(retryable_data_plane_setup_error(&Error(
-            "modern send reply: failed to fill whole buffer".into()
-        )));
-        assert!(retryable_data_plane_setup_error(&Error(
-            "modern address reply rejected the request (status=3)".into()
-        )));
-        assert!(!retryable_data_plane_setup_error(&Error(
-            "special TLS certificate does not match verified HTTPS leaf".into()
-        )));
-        assert!(!retryable_data_plane_setup_error(&Error(
-            "modern channel reply has an unexpected status".into()
-        )));
+        let send = Error("modern send reply: failed to fill whole buffer".into());
+        let address = Error("modern address reply rejected the request (status=3)".into());
+        let certificate =
+            Error("special TLS certificate does not match verified HTTPS leaf".into());
+        let channel = Error("modern channel reply has an unexpected status".into());
+        assert!(retryable_data_plane_setup_error(&send));
+        assert!(retryable_data_plane_setup_error(&address));
+        assert!(!retryable_data_plane_setup_error(&certificate));
+        assert!(!retryable_data_plane_setup_error(&channel));
+        assert_eq!(
+            data_plane_setup_error_kind(&send),
+            ErrorKind::DataPlaneTransient
+        );
+        assert_eq!(
+            data_plane_setup_error_kind(&certificate),
+            ErrorKind::DataPlane
+        );
     }
 
     #[test]
@@ -524,7 +587,7 @@ mod tests {
                 username: "synthetic-user",
                 password: "synthetic-password",
             }) {
-                Err(error) => Error::from(error).to_string(),
+                Err(error) => Error::from(error),
                 Ok(_) => panic!("an empty config cannot authenticate"),
             };
         let wrapper_error = AuthenticatedEngineSession::authenticate(
@@ -533,9 +596,13 @@ mod tests {
             "synthetic-password",
         )
         .err()
-        .expect("an empty config cannot authenticate")
-        .to_string();
-        assert_eq!(provider_error, wrapper_error);
-        assert_eq!(wrapper_error, "engine configuration is missing base_url");
+        .expect("an empty config cannot authenticate");
+        assert_eq!(provider_error.kind(), ErrorKind::Configuration);
+        assert_eq!(wrapper_error.kind(), ErrorKind::Configuration);
+        assert_eq!(provider_error.to_string(), wrapper_error.to_string());
+        assert_eq!(
+            wrapper_error.to_string(),
+            "engine configuration is missing base_url"
+        );
     }
 }

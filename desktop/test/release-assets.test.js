@@ -9,6 +9,16 @@ const desktopRoot = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json'), 'utf8'));
 const workflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'build.yml'), 'utf8');
 
+test('cross-platform desktop checks explicitly run under Bash', () => {
+  const start = workflow.indexOf('- name: Test desktop shell');
+  const end = workflow.indexOf('- name: Test independent Rust engine', start);
+  assert.ok(start >= 0 && end > start);
+  const step = workflow.slice(start, end);
+  assert.match(step, /shell:\s*bash/,
+    'Windows otherwise parses process substitution and shell loops as PowerShell');
+  assert.match(step, /done < <\(/, 'the step still contains Bash-only process substitution');
+});
+
 test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux AppImages', () => {
   assert.deepEqual(
     manifest.build.mac.target,

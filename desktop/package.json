@@ -6,8 +6,13 @@
   "author": "heeh02",
   "license": "GPL-3.0-only",
   "scripts": {
+    "check:architecture": "node scripts/check-architecture.js",
+    "check:secrets": "node scripts/check-sensitive-patterns.js",
     "test": "node --test",
     "test:browser-performance": "electron e2e/browser-performance.electron.js",
+    "test:auth-control-e2e": "node e2e/auth-control-fixture.js",
+    "test:campus-mfa-safety": "electron e2e/campus-mfa-safety.electron.js",
+    "test:campus-popup-mfa-safety": "electron e2e/campus-popup-mfa-safety.electron.js",
     "test:idle-performance": "electron scripts/idle-performance-baseline.js",
     "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",

@@ -1,3 +1,4 @@
+pub use crate::gateway_http::endpoint_url;
 use crate::xml::{MAX_XML_BYTES, child_text, direct_child, parse_xml};
 use crate::{Error, Result};
 use reqwest::blocking::{Client, Response};
@@ -420,24 +421,6 @@ fn fetch_artifact_digest(
         digest.update(&buffer[..read]);
     }
     Ok((hex::encode(digest.finalize()), byte_count, headers, status))
-}
-
-pub fn endpoint_url(base_url: &str, path: &str) -> Result<String> {
-    let base = Url::parse(base_url).map_err(|_| Error("invalid base_url".into()))?;
-    let candidate = Url::parse(path);
-    if candidate.is_ok() || path.starts_with("//") {
-        return Err(Error("endpoint paths must be relative to base_url".into()));
-    }
-    let result = base
-        .join(path.trim_start_matches('/'))
-        .map_err(|_| Error("invalid endpoint".into()))?;
-    if result.scheme() != base.scheme()
-        || result.host_str() != base.host_str()
-        || result.port_or_known_default() != base.port_or_known_default()
-    {
-        return Err(Error("endpoint resolved outside base_url origin".into()));
-    }
-    Ok(result.to_string())
 }
 
 fn string(config: &Value, key: &str) -> String {

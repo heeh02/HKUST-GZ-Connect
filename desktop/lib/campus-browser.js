@@ -557,7 +557,13 @@ class CampusBrowser {
   attachPageEvents(tab) {
     const contents = tab.view.webContents;
     contents.setWindowOpenHandler(({ url }) => {
-      if (safePopupUrl(url)) setImmediate(() => this.createTab(url));
+      if (safePopupUrl(url)) {
+        const credentialReservation = this.credentialController.reservePopup(tab);
+        setImmediate(() => {
+          const popup = this.createTab(url, routeForUrl(url), { credentialReservation });
+          if (!popup) this.credentialController.releasePopup(credentialReservation);
+        });
+      }
       return { action: 'deny' };
     });
     const rejectNonWebNavigation = (event, url) => {
@@ -752,7 +758,7 @@ class CampusBrowser {
     }
   }
 
-  createTab(rawUrl = DEFAULT_CAMPUS_HOME, route = routeForUrl(rawUrl)) {
+  createTab(rawUrl = DEFAULT_CAMPUS_HOME, route = routeForUrl(rawUrl), options = {}) {
     if (!this.window || this.window.isDestroyed()) return null;
     if (!this.tabManager.canAdd()) {
       if (this.onError) this.onError(this.t('tab.limit', { count: MAX_TABS }));
@@ -795,6 +801,7 @@ class CampusBrowser {
       routeSource: resolution.source,
       matchedRule: resolution.matchedRule,
     };
+    this.credentialController.linkPopup(options.credentialReservation, tab);
     this.tabManager.add(tab);
     // A newly attached view is hidden until switchTab has applied the current
     // window bounds and made exactly one tab visible. This avoids a one-frame
@@ -869,7 +876,7 @@ class CampusBrowser {
     this.certificateController.cancelAll();
     const { tab, replacement, empty } = removal;
     this.clearSlowTimer(tab);
-    this.clearCredentialCandidate(tab);
+    this.credentialController.closeTab(tab);
     this.window.contentView.removeChildView(tab.view);
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
 

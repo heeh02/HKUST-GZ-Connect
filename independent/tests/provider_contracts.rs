@@ -1,3 +1,4 @@
+use ec_compat::ErrorKind;
 use ec_compat::engine::provider::{
     AuthMethod, AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
     CapabilityAvailability, CapabilityModel, OfflineResourceDocumentProvider, ProviderError,
@@ -204,6 +205,7 @@ fn production_mfa_rejection_is_typed_and_does_not_touch_the_network() {
         &error,
         ProviderError::Unsupported(Capability::AuthSms)
     ));
+    assert_eq!(error.error_kind(), ErrorKind::UnsupportedCapability);
     assert!(!error.to_string().contains("private-mfa-response"));
 }
 

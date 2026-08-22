@@ -46,15 +46,17 @@ jobs:
 
       - name: Test desktop shell
         working-directory: desktop
+        shell: bash
         run: |
           npm test
+          npm run check:architecture
+          npm run check:secrets
           npm audit --audit-level=high
-          node --check main.js
-          node --check preload.js
-          node --check campus-preload.js
-          node --check lib/campus-browser.js
-          node --check renderer/campus-browser.js
-          node --check renderer/app.js
+          while IFS= read -r source_file; do
+            node --check "$source_file"
+          done < <(rg --files -g '*.js' -g '!node_modules/**' -g '!release/**')
+          bash -n ../hkustgzconnect
+          bash -n ../tools/mac-cli/proxy-credential.sh
 
       - name: Test independent Rust engine
         working-directory: independent
@@ -62,6 +64,7 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
+          node ../desktop/e2e/auth-control-fixture.js
 
       - name: Run release performance disaster guards
         if: matrix.platform == 'mac'
@@ -79,6 +82,8 @@ jobs:
         run: |
           npm run test:main-integration
           ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
+          npm run test:campus-mfa-safety
+          npm run test:campus-popup-mfa-safety
           npm run test:strict-proxy-auth
           npm run test:renderer-layout
           npm run test:browser-performance

@@ -1,6 +1,10 @@
-use ec_compat::engine::control::{
-    ControlAction, ControlExchange, ControlFrameReader, ControlSession, MAX_ACTIVE_REQUESTS,
+use ec_compat::engine::auth_control::{
+    AuthControlErrorCode, AuthControlRequest, auth_error_response,
 };
+use ec_compat::engine::control::{
+    ControlAction, ControlExchange, ControlSession, MAX_ACTIVE_REQUESTS,
+};
+use ec_compat::engine::control_mux::{InheritedControlFrameReader, InheritedControlRequest};
 use ec_compat::engine::dns::{VpnDnsResolver, VpnDnsSource, select_vpn_dns_servers};
 use ec_compat::engine::event::{
     AddressFamily, DnsMode, EngineErrorCode, EngineEvent, EngineEventEmitter, EngineState,
@@ -17,7 +21,7 @@ use ec_compat::engine::socks_auth::{
     read_engine_credentials_prefix,
 };
 use ec_compat::watch::load_json;
-use ec_compat::{Error, Result};
+use ec_compat::{Error, ErrorKind, Result};
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -25,6 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const CONTROL_SHUTDOWN_CANCEL_WINDOW: Duration = Duration::from_millis(100);
+const CONTROL_PREAUTH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct EngineArguments {
     config: PathBuf,
@@ -38,6 +43,11 @@ struct EngineFailure {
     code: EngineErrorCode,
     stop_reason: StopReason,
     error: Error,
+}
+
+enum ControlInput {
+    V2(ControlExchange),
+    V3(AuthControlRequest),
 }
 
 #[derive(Default)]
@@ -101,6 +111,13 @@ impl<W: Write> EngineLifecycle<W> {
 
     fn emit_control(&mut self, exchange: &ControlExchange) -> Result<()> {
         self.events.emit_control(&exchange.response)
+    }
+
+    fn reject_auth_control(&mut self, request: &AuthControlRequest) -> Result<()> {
+        self.events.emit_auth_control(&auth_error_response(
+            request.request_id(),
+            AuthControlErrorCode::TransactionClosed,
+        ))
     }
 
     fn state(&mut self, state: EngineState) -> Result<()> {
@@ -240,7 +257,7 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     })
 }
 
-fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlExchange>> {
+fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlInput>> {
     let (sender, receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
     std::thread::Builder::new()
         .name("ec-engine-control".into())
@@ -260,14 +277,20 @@ fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlExchange>
 
 fn control_reader_loop<R: std::io::Read>(
     reader: R,
-    sender: tokio::sync::mpsc::Sender<ControlExchange>,
+    sender: tokio::sync::mpsc::Sender<ControlInput>,
 ) -> Result<()> {
-    let mut reader = ControlFrameReader::new(reader);
+    let mut reader = InheritedControlFrameReader::new(reader);
     let mut session = ControlSession::new();
     while let Some(request) = reader.read_request()? {
-        let exchange = session.handle(request);
-        let closes_channel = matches!(exchange.action, Some(ControlAction::Close { .. }));
-        if sender.blocking_send(exchange).is_err() {
+        let (input, closes_channel) = match request {
+            InheritedControlRequest::V2(request) => {
+                let exchange = session.handle(request);
+                let closes_channel = matches!(exchange.action, Some(ControlAction::Close { .. }));
+                (ControlInput::V2(exchange), closes_channel)
+            }
+            InheritedControlRequest::V3(request) => (ControlInput::V3(request), false),
+        };
+        if sender.blocking_send(input).is_err() {
             return Ok(());
         }
         if closes_channel {
@@ -308,6 +331,12 @@ fn authentication_error_code(error: &ProviderError) -> EngineErrorCode {
         ProviderError::Unsupported(capability) if capability.is_authentication() => {
             EngineErrorCode::UnsupportedAuthentication
         }
+        ProviderError::Failed(error) if error.kind() == ErrorKind::Configuration => {
+            EngineErrorCode::ConfigurationInvalid
+        }
+        ProviderError::Failed(error) if error.kind() == ErrorKind::Credentials => {
+            EngineErrorCode::CredentialsInvalid
+        }
         _ => EngineErrorCode::AuthFailed,
     }
 }
@@ -315,6 +344,13 @@ fn authentication_error_code(error: &ProviderError) -> EngineErrorCode {
 fn authentication_failure(error: ProviderError) -> EngineFailure {
     let code = authentication_error_code(&error);
     failure(code, StopReason::StartupFailed, Error::from(error))
+}
+
+fn data_plane_setup_error_code(error: &Error) -> EngineErrorCode {
+    match error.kind() {
+        ErrorKind::Configuration => EngineErrorCode::ConfigurationInvalid,
+        _ => EngineErrorCode::DataPlaneSetupFailed,
+    }
 }
 
 fn configured_vpn_dns_servers(config: &serde_json::Value) -> Result<Vec<Ipv4Addr>> {
@@ -450,6 +486,7 @@ async fn run_engine<W: Write>(
     } else {
         None
     };
+    emit_initial_control_exchange(&mut control_receiver, lifecycle).await?;
     let EngineCredentials {
         gateway_username,
         gateway_password,
@@ -469,7 +506,7 @@ async fn run_engine<W: Write>(
         Err(error) => {
             let _ = session.logout();
             return Err(failure(
-                EngineErrorCode::DataPlaneSetupFailed,
+                data_plane_setup_error_code(&error),
                 StopReason::StartupFailed,
                 error,
             ));
@@ -479,7 +516,7 @@ async fn run_engine<W: Write>(
         .connect_or_logout(session)
         .map_err(|error| {
             failure(
-                EngineErrorCode::DataPlaneSetupFailed,
+                data_plane_setup_error_code(&error),
                 StopReason::StartupFailed,
                 error,
             )
@@ -640,20 +677,32 @@ async fn run_engine<W: Write>(
                     break ShutdownCause::UserRequested;
                 }
                 exchange = receive_control(&mut control_receiver), if control_receiver.is_some() => {
-                    let Some(exchange) = exchange else {
+                    let Some(input) = exchange else {
                         // Closing the inherited stdin control stream is not a
                         // request to stop the VPN. Signal/process supervision
                         // remains the legacy-compatible shutdown path.
                         control_receiver = None;
                         continue;
                     };
-                    if let Err(error) = lifecycle.emit_control(&exchange) {
-                        break ShutdownCause::ControlOutputFailed(error);
-                    }
-                    if exchange.action.is_some_and(|action| {
-                        pending_control_actions.apply(action, tokio::time::Instant::now())
-                    }) {
-                            control_receiver = None;
+                    match input {
+                        ControlInput::V2(exchange) => {
+                            if let Err(error) = lifecycle.emit_control(&exchange) {
+                                break ShutdownCause::ControlOutputFailed(error);
+                            }
+                            if exchange.action.is_some_and(|action| {
+                                pending_control_actions.apply(action, tokio::time::Instant::now())
+                            }) {
+                                control_receiver = None;
+                            }
+                        }
+                        ControlInput::V3(request) => {
+                            // The production provider is password-only today.
+                            // A v3 frame is accepted by the private transport,
+                            // but cannot manufacture or resume a transaction.
+                            if let Err(error) = lifecycle.reject_auth_control(&request) {
+                                break ShutdownCause::ControlOutputFailed(error);
+                            }
+                        }
                     }
                 }
             }
@@ -729,11 +778,45 @@ async fn run_engine<W: Write>(
 }
 
 async fn receive_control(
-    receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlExchange>>,
-) -> Option<ControlExchange> {
+    receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+) -> Option<ControlInput> {
     match receiver {
         Some(receiver) => receiver.recv().await,
         None => std::future::pending().await,
+    }
+}
+
+async fn emit_initial_control_exchange<W: Write>(
+    receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    lifecycle: &mut EngineLifecycle<W>,
+) -> EngineResult<()> {
+    let Some(active) = receiver.as_mut() else {
+        return Ok(());
+    };
+    let deadline = tokio::time::Instant::now() + CONTROL_PREAUTH_HANDSHAKE_TIMEOUT;
+    loop {
+        match tokio::time::timeout_at(deadline, active.recv()).await {
+            Ok(Some(ControlInput::V2(exchange))) => {
+                lifecycle
+                    .emit_control(&exchange)
+                    .map_err(event_output_failure)?;
+                if matches!(exchange.action, Some(ControlAction::Close { .. })) {
+                    *receiver = None;
+                }
+                return Ok(());
+            }
+            Ok(Some(ControlInput::V3(request))) => lifecycle
+                .reject_auth_control(&request)
+                .map_err(event_output_failure)?,
+            Ok(None) => {
+                *receiver = None;
+                return Ok(());
+            }
+            // Control v2 remains optional for the password-only production
+            // provider. A future interactive provider must promote this to a
+            // fail-closed requirement before exposing an auth challenge.
+            Err(_) => return Ok(()),
+        }
     }
 }
 
@@ -874,11 +957,17 @@ mod tests {
         control_reader_loop(wire.as_slice(), sender).unwrap();
 
         let hello = receiver.blocking_recv().unwrap();
+        let ControlInput::V2(hello) = hello else {
+            panic!("expected v2 hello");
+        };
         assert!(matches!(
             hello.response,
             ec_compat::engine::control::ControlResponse::Hello { .. }
         ));
         let unsupported = receiver.blocking_recv().unwrap();
+        let ControlInput::V2(unsupported) = unsupported else {
+            panic!("expected v2 capability response");
+        };
         assert!(matches!(
             unsupported.response,
             ec_compat::engine::control::ControlResponse::Error {
@@ -890,11 +979,17 @@ mod tests {
         ));
         assert_eq!(unsupported.action, None);
         let shutdown = receiver.blocking_recv().unwrap();
+        let ControlInput::V2(shutdown) = shutdown else {
+            panic!("expected v2 shutdown");
+        };
         assert_eq!(
             shutdown.action,
             Some(ControlAction::Shutdown { request_id: 3 })
         );
         let cancel = receiver.blocking_recv().unwrap();
+        let ControlInput::V2(cancel) = cancel else {
+            panic!("expected v2 cancel");
+        };
         assert_eq!(
             cancel.action,
             Some(ControlAction::Cancel {
@@ -903,9 +998,37 @@ mod tests {
             })
         );
         let close = receiver.blocking_recv().unwrap();
+        let ControlInput::V2(close) = close else {
+            panic!("expected v2 close");
+        };
         assert_eq!(close.action, Some(ControlAction::Close { request_id: 5 }));
         // Reader EOF/close drops only this bounded channel. There is no
         // synthesized Shutdown action.
+        assert!(receiver.blocking_recv().is_none());
+    }
+
+    #[test]
+    fn control_reader_multiplexes_v3_without_changing_v2_session_state() {
+        let wire = b"{\"type\":\"auth_request\",\"apiVersion\":3,\"requestId\":7,\"generation\":9,\"transactionId\":\"04040404040404040404040404040404\",\"challengeEpoch\":1,\"command\":{\"name\":\"respond\",\"response\":\"private-fixture\"}}\n{\"type\":\"hello\",\"requestId\":8,\"versions\":[2]}\n{\"type\":\"close\",\"apiVersion\":2,\"requestId\":9}\n";
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
+        control_reader_loop(wire.as_slice(), sender).unwrap();
+
+        let ControlInput::V3(request) = receiver.blocking_recv().unwrap() else {
+            panic!("expected v3 auth request");
+        };
+        assert_eq!(request.request_id(), 7);
+        assert!(!format!("{request:?}").contains("private-fixture"));
+        let ControlInput::V2(hello) = receiver.blocking_recv().unwrap() else {
+            panic!("expected v2 hello");
+        };
+        assert!(matches!(
+            hello.response,
+            ec_compat::engine::control::ControlResponse::Hello { .. }
+        ));
+        let ControlInput::V2(close) = receiver.blocking_recv().unwrap() else {
+            panic!("expected v2 close");
+        };
+        assert_eq!(close.action, Some(ControlAction::Close { request_id: 9 }));
         assert!(receiver.blocking_recv().is_none());
     }
 
@@ -1021,6 +1144,27 @@ mod tests {
         assert_eq!(
             authentication_error_code(&ProviderError::Failed(Error("redacted failure".into()))),
             EngineErrorCode::AuthFailed
+        );
+        assert_eq!(
+            authentication_error_code(&ProviderError::Failed(Error::classified(
+                ErrorKind::Configuration,
+                "redacted configuration failure",
+            ))),
+            EngineErrorCode::ConfigurationInvalid
+        );
+        assert_eq!(
+            data_plane_setup_error_code(&Error::classified(
+                ErrorKind::Configuration,
+                "redacted configuration failure",
+            )),
+            EngineErrorCode::ConfigurationInvalid
+        );
+        assert_eq!(
+            data_plane_setup_error_code(&Error::classified(
+                ErrorKind::DataPlaneTransient,
+                "redacted transient failure",
+            )),
+            EngineErrorCode::DataPlaneSetupFailed
         );
     }
 }

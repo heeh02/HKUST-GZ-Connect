@@ -74,7 +74,15 @@ function parseArguments(argv) {
   };
 }
 
-function assertCustomResourceManager({ html, renderer, preload, main }) {
+function assertCustomResourceManager({
+  html,
+  renderer,
+  preload,
+  main,
+  controlDataIpc = '',
+  resourceIpc = '',
+  resourceRenderer = '',
+}) {
   const missing = [];
   if (!String(html).includes('id="manageResources"')) missing.push('manage button');
   if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
@@ -82,13 +90,21 @@ function assertCustomResourceManager({ html, renderer, preload, main }) {
   if (!String(html).includes('id="quickAddCampus"')) missing.push('add and open button');
   if (!String(html).includes('id="resourceSaved"')) missing.push('save confirmation');
   if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');
-  if (!String(renderer).includes('function suggestedResourceName')) missing.push('URL naming helper');
+  const composedResourceRenderer = String(renderer).includes('resourceManager.start(')
+    && String(resourceRenderer).includes('function suggestedResourceName');
+  if (!String(renderer).includes('function suggestedResourceName') && !composedResourceRenderer) {
+    missing.push('URL naming helper');
+  }
   if (!String(preload).includes("saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)")) {
     missing.push('preload bridge');
   }
   const mainSource = String(main);
-  if (!mainSource.includes("ipcMain.handle('save-resource'")
-    && !mainSource.includes("trustedHandle('save-resource'")) {
+  const directHandler = mainSource.includes("ipcMain.handle('save-resource'")
+    || mainSource.includes("trustedHandle('save-resource'");
+  const composedHandler = mainSource.includes('registerControlDataIpc(')
+    && String(controlDataIpc).includes('registerCampusResourceIpc(')
+    && String(resourceIpc).includes("register('save-resource'");
+  if (!directHandler && !composedHandler) {
     missing.push('save handler');
   }
   if (!String(main).includes("app.on('certificate-error'")) missing.push('certificate handler');
@@ -121,11 +137,31 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/login-flow.js',
     '/lib/resource-view.js',
     '/lib/engine-control-client.js',
+    '/lib/engine-auth-control-client.js',
+    '/lib/engine-connection-runtime.js',
+    '/lib/engine-control-suite.js',
+    '/lib/desktop-shell.js',
+    '/lib/campus-browser-manager.js',
+    '/lib/connection-telemetry-coordinator.js',
     '/lib/engine-protocol-session.js',
+    '/lib/auth-challenge-coordinator.js',
+    '/lib/control-data-ipc.js',
+    '/lib/control-ipc-suite.js',
+    '/lib/core-control-ipc.js',
+    '/lib/settings-credential-ipc.js',
+    '/lib/routing-rule-ipc.js',
+    '/lib/certificate-pin-ipc.js',
+    '/lib/campus-resource-ipc.js',
     '/lib/settings-update.js',
     '/lib/tunnel-health.js',
     '/lib/update-check.js',
     '/renderer/app.js',
+    '/renderer/auth-challenge.js',
+    '/renderer/manager-view.js',
+    '/renderer/routing-manager.js',
+    '/renderer/certificate-manager.js',
+    '/renderer/resource-manager.js',
+    '/renderer/proxy-auth-migration.js',
     '/renderer/i18n.js',
     '/renderer/campus-browser.html',
     '/renderer/campus-browser.js',
@@ -135,14 +171,35 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
   }
+  for (const entry of entries) {
+    if (entry.startsWith('/e2e/') || entry.startsWith('/test/')) {
+      throw new Error(`synthetic test fixture entered the packaged application: ${entry}`);
+    }
+  }
 
   const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
   const packagedPreload = asar.extractFile(archive, 'preload.js').toString('utf8');
   const packagedMain = asar.extractFile(archive, 'main.js').toString('utf8');
+  const packagedControlDataIpc = asar.extractFile(archive, 'lib/control-data-ipc.js')
+    .toString('utf8');
+  const packagedResourceIpc = asar.extractFile(archive, 'lib/campus-resource-ipc.js')
+    .toString('utf8');
+  const packagedResourceManager = asar.extractFile(archive, 'renderer/resource-manager.js')
+    .toString('utf8');
   for (const helper of ['login-flow', 'resource-view']) {
     if (!packagedIndex.includes(`../lib/${helper}.js`)) {
       throw new Error(`renderer does not load its shared helper: ${helper}`);
+    }
+  }
+  for (const feature of [
+    'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
+    'proxy-auth-migration',
+  ]) {
+    const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);
+    const appScript = packagedIndex.indexOf('src="app.js"');
+    if (featureScript < 0 || appScript < 0 || featureScript >= appScript) {
+      throw new Error(`renderer does not load its feature before app: ${feature}`);
     }
   }
   for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
@@ -159,6 +216,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     renderer: packagedRenderer,
     preload: packagedPreload,
     main: packagedMain,
+    controlDataIpc: packagedControlDataIpc,
+    resourceIpc: packagedResourceIpc,
+    resourceRenderer: packagedResourceManager,
   });
 
   const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';

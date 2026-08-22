@@ -198,7 +198,7 @@ Setup read timeouts do not expire an otherwise healthy idle receive channel.
 
 Authentication ownership is separate from Modern L3 ownership.
 `AuthenticatedGatewaySession` retains only the authenticated HTTPS cookie jar,
-logout endpoint, and opaque gateway session identifier. It does not own parsed
+logout endpoint, and transport-neutral authenticated session identifier. It does not own parsed
 L3 configuration, the Modern L3 token, DNS results, certificate pin, or data
 plane. `ModernL3TransportBackend` performs configuration/token/bootstrap work,
 and `ModernL3Connection` hands its DNS list and data plane to process assembly.
@@ -206,8 +206,10 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the complete ownership table.
 
 ## Local proxy frontend modes
 
-By default, that frontend keeps the compatible SOCKS5 `NO_AUTH` behavior and
-stdin contains exactly the gateway username and password lines. Passing either
+The raw Engine keeps a flagless SOCKS5 `NO_AUTH` compatibility behavior and
+stdin then contains exactly the gateway username and password lines. Shipped
+Desktop new installations and the root macOS CLI pass strict authentication by
+default. Passing either
 `--socks-auth-optional-stdin` or `--socks-auth-stdin` changes stdin to exactly
 four lines, in this order:
 
@@ -257,8 +259,10 @@ Control API v2 is a separate opt-in control plane. With
 `--control-api-v2-stdin`, the engine reads the fixed two- or four-line
 credential prefix and then keeps that already inherited private stdin pipe for
 bounded control frames. Responses share bounded stdout NDJSON but use
-`apiVersion: 2` and request IDs, while Event v1 remains unchanged. The desktop
-uses the negotiated shutdown request first so the engine can close services
+`apiVersion: 2` and request IDs, while Event v1 remains unchanged. The Desktop
+starts this secret-free handshake immediately after the credential prefix, and
+the Engine answers before password authentication completes. The Desktop uses
+the negotiated shutdown request later so the engine can close services
 and log out, then retains bounded signal and force-stop fallbacks.
 
 Control v2 opens no listener and its closed schema cannot represent a
@@ -270,6 +274,16 @@ close. Resource, WebVPN, CAPTCHA, MFA, SSO, certificate, and HID names exist
 only to return typed unsupported results; this is not feature support. See
 [`spec/ENGINE_CONTROL_API_V2.md`](spec/ENGINE_CONTROL_API_V2.md) for framing,
 bounds, negotiation, cancellation, and EOF semantics.
+
+The generic interactive-auth framework is separate from v2. It provides an
+Engine-owned transaction, a sanitized challenge view, bounded zeroizing
+response bytes, and a secret-bearing Control API v3 codec for respond/resend/
+cancel. v2 and v3 share one zeroizing inherited-pipe multiplexer. The shipped
+password-only provider never creates or advertises an interactive transaction;
+an unsolicited v3 command therefore returns only `transaction_closed`. The
+non-shipped `ec-auth-fixture` and Desktop challenge coordinator exercise the
+complete synthetic pipe until an authorized, sanitized Gateway protocol
+fixture exists.
 
 ## Reproducible maintenance
 

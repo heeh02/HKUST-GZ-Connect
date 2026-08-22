@@ -27,6 +27,19 @@ test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredProxyCommandName('linux', 'x64'), 'ec-proxy-command-linux-amd64');
 });
 
+test('the synthetic auth fixture is never a packaged native resource', () => {
+  const packageDocument = require('../package.json');
+  const filters = packageDocument.build.extraResources
+    .flatMap((resource) => resource.filter || []);
+  assert.equal(filters.some((entry) => String(entry).includes('ec-auth-fixture')), false);
+});
+
+test('Electron synthetic MFA fixtures are excluded from application files', () => {
+  const packageDocument = require('../package.json');
+  assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('e2e/')), false);
+  assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('test/')), false);
+});
+
 test('package verification accepts x86_64 ELF executables and rejects another architecture', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-linux-elf-'));
   const executable = path.join(directory, 'ec-engine-linux-amd64');
@@ -83,5 +96,24 @@ test('package verification rejects a build without the custom website manager', 
     renderer: 'window.api.saveResource function suggestedResourceName',
     preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
     main: "trustedHandle('save-resource' app.on('certificate-error'",
+  }));
+
+  assert.doesNotThrow(() => assertCustomResourceManager({
+    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
+    renderer: 'window.api.saveResource function suggestedResourceName',
+    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    main: "registerControlDataIpc({ app.on('certificate-error'",
+    controlDataIpc: 'registerCampusResourceIpc({ register',
+    resourceIpc: "register('save-resource', handler)",
+  }));
+
+  assert.doesNotThrow(() => assertCustomResourceManager({
+    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
+    renderer: 'window.api.saveResource resourceManager.start(',
+    resourceRenderer: 'function suggestedResourceName',
+    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    main: "registerControlDataIpc({ app.on('certificate-error'",
+    controlDataIpc: 'registerCampusResourceIpc({ register',
+    resourceIpc: "register('save-resource', handler)",
   }));
 });

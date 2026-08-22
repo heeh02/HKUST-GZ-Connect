@@ -7,9 +7,11 @@
 
 use crate::resource_catalogue::{ResourceCatalogue, parse_resource_catalogue};
 use crate::xml::MAX_XML_BYTES;
-use crate::{Error, Result};
+use crate::{Error, ErrorKind, Result};
 use std::fmt::{Display, Formatter};
 use zeroize::Zeroizing;
+
+pub use crate::engine::auth_transaction::AuthProgress;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CapabilityAvailability {
@@ -262,10 +264,7 @@ impl AuthRequest<'_> {
 /// Authentication can complete or request another provider-owned challenge.
 /// The challenge type is an associated type, so this stable boundary does not
 /// invent vendor challenge fields before evidence exists.
-pub enum AuthOutcome<S, C> {
-    Authenticated(S),
-    ChallengeRequired(C),
-}
+pub type AuthOutcome<S, C> = AuthProgress<S, C>;
 
 /// Uninhabited challenge type for providers that implement no continuation.
 pub enum NoAuthChallenge {}
@@ -290,6 +289,25 @@ impl ProviderError {
         match self {
             Self::Unsupported(capability) | Self::Unavailable(capability) => Some(*capability),
             Self::Failed(_) => None,
+        }
+    }
+
+    pub fn failed_with_kind(kind: ErrorKind, error: Error) -> Self {
+        Self::Failed(error.with_kind_if_unclassified(kind))
+    }
+
+    pub const fn error_kind(&self) -> ErrorKind {
+        match self {
+            Self::Unsupported(_) => ErrorKind::UnsupportedCapability,
+            Self::Unavailable(_) => ErrorKind::CapabilityUnavailable,
+            Self::Failed(error) => error.kind(),
+        }
+    }
+
+    pub fn with_failure_kind(self, kind: ErrorKind) -> Self {
+        match self {
+            Self::Failed(error) => Self::failed_with_kind(kind, error),
+            other => other,
         }
     }
 }
@@ -320,7 +338,14 @@ impl From<ProviderError> for Error {
     fn from(error: ProviderError) -> Self {
         match error {
             ProviderError::Failed(error) => error,
-            other => Self(other.to_string()),
+            ProviderError::Unsupported(capability) => Self::classified(
+                ErrorKind::UnsupportedCapability,
+                format!("{} is unsupported", capability.name()),
+            ),
+            ProviderError::Unavailable(capability) => Self::classified(
+                ErrorKind::CapabilityUnavailable,
+                format!("{} is unavailable", capability.name()),
+            ),
         }
     }
 }
@@ -336,6 +361,14 @@ pub trait AuthProvider: Send + Sync {
         &self,
         request: AuthRequest<'_>,
     ) -> ProviderResult<AuthOutcome<Self::Session, Self::Challenge>>;
+
+    fn begin(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> ProviderResult<AuthProgress<Self::Session, Self::Challenge>> {
+        self.authenticate(AuthRequest::Password { username, password })
+    }
 }
 
 pub trait ResourceProvider: Send + Sync {
@@ -502,6 +535,20 @@ mod tests {
             require_supported(Capability::TransportL3, CapabilityAvailability::Unavailable),
             Err(ProviderError::Unavailable(Capability::TransportL3))
         ));
+        assert_eq!(
+            Error::from(ProviderError::unsupported(Capability::AuthSms)).kind(),
+            ErrorKind::UnsupportedCapability
+        );
+        assert_eq!(
+            Error::from(ProviderError::unavailable(Capability::TransportL3)).kind(),
+            ErrorKind::CapabilityUnavailable
+        );
+        let typed =
+            ProviderError::from(Error("fixture".into())).with_failure_kind(ErrorKind::Transport);
+        assert_eq!(typed.error_kind(), ErrorKind::Transport);
+        let preserved = ProviderError::from(Error::classified(ErrorKind::GatewayHttp, "fixture"))
+            .with_failure_kind(ErrorKind::Authentication);
+        assert_eq!(preserved.error_kind(), ErrorKind::GatewayHttp);
     }
 
     #[test]

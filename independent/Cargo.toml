@@ -38,6 +38,10 @@ path = "src/bin/ec-engine.rs"
 name = "ec-proxy-command"
 path = "src/bin/ec-proxy-command.rs"
 
+[[bin]]
+name = "ec-auth-fixture"
+path = "src/bin/ec-auth-fixture.rs"
+
 [dependencies]
 base64 = "0.22"
 flate2 = "1.1"

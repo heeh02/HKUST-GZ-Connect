@@ -6,6 +6,10 @@ const path = require('node:path');
 const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+const shellSource = fs.readFileSync(
+  path.join(__dirname, '..', 'lib', 'desktop-shell.js'),
+  'utf8',
+);
 
 function section(startText, endText) {
   const start = source.indexOf(startText);
@@ -34,11 +38,14 @@ test('final connection snapshot clears both FSM and UI state on read failure', (
 });
 
 test('window close and automatic updates turn settings failures into bounded async outcomes', () => {
-  const close = section('async function handleWindowClose(', '\nfunction createWindow(');
+  const closeStart = shellSource.indexOf('async handleWindowClose(');
+  const closeEnd = shellSource.indexOf('\n  createWindow()', closeStart);
+  const close = shellSource.slice(closeStart, closeEnd);
   assert.match(close, /let action = 'ask';/);
-  assert.match(close, /try \{ action = loadSettingsOrReport\(\)\.closeAction; \} catch \{\}/);
+  assert.match(close, /try \{ action = this\.getCloseAction\(\) \|\| 'ask'; \} catch \{\}/);
+  assert.match(source, /getCloseAction: \(\) => loadSettingsOrReport\(\)\.closeAction/);
   assert.match(source, /async function runAutomaticUpdateCheck\(\)/);
-  assert.match(source, /handleWindowClose\(event\)\.catch\(/);
+  assert.match(shellSource, /this\.handleWindowClose\(event\)\.catch\(this\.onWindowError\)/);
 });
 
 test('a startup PAC failure does not hide an earlier recovery error', () => {

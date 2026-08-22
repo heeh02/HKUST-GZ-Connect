@@ -100,3 +100,27 @@ test('routing manager open event is value-free and removable', () => {
   unsubscribe();
   assert.equal(listeners.has('open-routing-rules'), false);
 });
+
+test('interactive auth preload exposes only response, resend, cancel and sanitized events', async () => {
+  const { api, invocations, listeners } = loadPreload();
+  assert.equal(typeof api.getAuthCookie, 'undefined');
+  assert.equal(typeof api.getAuthTransaction, 'undefined');
+  await api.respondAuthChallenge('synthetic-response');
+  await api.resendAuthChallenge();
+  await api.cancelAuthChallenge();
+  assert.deepEqual(invocations.slice(-3).map(({ channel }) => channel), [
+    'respond-auth-challenge',
+    'resend-auth-challenge',
+    'cancel-auth-challenge',
+  ]);
+  assert.equal(invocations.at(-3).payload.response, 'synthetic-response');
+  assert.equal(invocations.at(-2).argumentCount, 1);
+  assert.equal(invocations.at(-1).argumentCount, 1);
+
+  let received;
+  const unsubscribe = api.onAuthChallenge((challenge) => { received = challenge; });
+  listeners.get('auth-challenge')({}, { kind: 'otp' });
+  assert.deepEqual(received, { kind: 'otp' });
+  unsubscribe();
+  assert.equal(listeners.has('auth-challenge'), false);
+});

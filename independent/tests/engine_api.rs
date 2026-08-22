@@ -111,6 +111,96 @@ fn configuration_failures_do_not_copy_local_paths_to_diagnostics_or_events() {
 }
 
 #[test]
+fn typed_auth_configuration_failure_maps_to_configuration_code() {
+    let config = std::env::temp_dir().join(format!(
+        "hkustgz-empty-engine-config-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&config, b"{}\n").unwrap();
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--credentials-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "9",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"synthetic-user\nsynthetic-password\n")
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    let _ = std::fs::remove_file(config);
+    assert!(!output.status.success());
+    let machine_events = events(&output.stdout);
+    assert!(machine_events.iter().any(|event| {
+        event["type"] == "fatal_error" && event["code"] == "CONFIGURATION_INVALID"
+    }));
+    assert!(
+        !machine_events
+            .iter()
+            .any(|event| { event["type"] == "fatal_error" && event["code"] == "AUTH_FAILED" })
+    );
+}
+
+#[test]
+fn control_handshake_is_answered_before_authentication_finishes() {
+    let config = std::env::temp_dir().join(format!(
+        "hkustgz-preauth-control-config-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&config, b"{}\n").unwrap();
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--credentials-stdin",
+            "--control-api-v2-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "10",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n",
+        )
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    let _ = std::fs::remove_file(config);
+    assert!(!output.status.success());
+    let machine_events = events(&output.stdout);
+    let control_hello = machine_events
+        .iter()
+        .position(|event| event["type"] == "control_hello")
+        .expect("pre-auth control hello");
+    let fatal = machine_events
+        .iter()
+        .position(|event| event["type"] == "fatal_error")
+        .expect("configuration failure");
+    assert!(control_hello < fatal);
+    assert_eq!(machine_events[control_hello]["apiVersion"], 2);
+    assert_eq!(machine_events[fatal]["code"], "CONFIGURATION_INVALID");
+}
+
+#[test]
 fn strict_proxy_credentials_are_bounded_stdin_only_and_never_echoed() {
     let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")

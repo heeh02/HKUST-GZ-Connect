@@ -1,5 +1,5 @@
+use crate::gateway_auth::{AUTHENTICATED_SESSION_ID_LEN, AuthenticatedSessionId};
 use crate::special_tls11::SpecialTls11Stream;
-use crate::xml::{first_descendant_text, parse_xml};
 use crate::{Error, Result};
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -18,7 +18,7 @@ use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
 pub const MODERN_TOKEN_LEN: usize = 48;
-pub const MODERN_SESSION_ID_LEN: usize = 16;
+pub const MODERN_SESSION_ID_LEN: usize = AUTHENTICATED_SESSION_ID_LEN;
 pub const MODERN_CONTROL_REQUEST_LEN: usize = 64;
 pub const MAX_CAPTURED_HANDSHAKE_BYTES: usize = 64 * 1024;
 const TLS_RECORD_HEADER_LEN: usize = 5;
@@ -30,48 +30,14 @@ const TLS11_VERSION: u16 = 0x0302;
 const TLS_RSA_WITH_RC4_128_SHA: u16 = 0x0005;
 const TLS_EMPTY_RENEGOTIATION_INFO_SCSV: u16 = 0x00ff;
 
-pub struct ModernSessionId([u8; MODERN_SESSION_ID_LEN]);
-
-impl ModernSessionId {
-    pub fn from_login_xml(data: &[u8]) -> Result<Self> {
-        let document = parse_xml(data, "password login")?;
-        let value = first_descendant_text(document.root_element(), "TwfID");
-        Self::from_bytes(value.as_bytes())
-    }
-
-    pub fn from_bytes(value: &[u8]) -> Result<Self> {
-        if value.len() != MODERN_SESSION_ID_LEN || !value.iter().all(|byte| byte.is_ascii_graphic())
-        {
-            return Err(Error(
-                "modern session identifier must contain exactly 16 printable bytes".into(),
-            ));
-        }
-        Ok(Self(
-            value.try_into().expect("validated session identifier"),
-        ))
-    }
-
-    fn as_bytes(&self) -> &[u8; MODERN_SESSION_ID_LEN] {
-        &self.0
-    }
-}
-
-impl Debug for ModernSessionId {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("ModernSessionId(<redacted>)")
-    }
-}
-
-impl Drop for ModernSessionId {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
+/// Backward-compatible public name for downstream tools. Production
+/// authentication owns the neutral [`AuthenticatedSessionId`] type directly.
+pub type ModernSessionId = AuthenticatedSessionId;
 
 pub struct ModernToken([u8; MODERN_TOKEN_LEN]);
 
 impl ModernToken {
-    pub fn derive(server_session_id: &[u8], session: &ModernSessionId) -> Result<Self> {
+    pub fn derive(server_session_id: &[u8], session: &AuthenticatedSessionId) -> Result<Self> {
         if server_session_id.len() < 16 || server_session_id.len() > 32 {
             return Err(Error(
                 "TLS ServerHello session identifier has an invalid length".into(),
@@ -744,7 +710,7 @@ fn resolve_gateway(url: &Url) -> Result<(String, SocketAddr)> {
 
 pub fn request_modern_token(
     base_url: &str,
-    session: &ModernSessionId,
+    session: &AuthenticatedSessionId,
     timeout: Duration,
 ) -> Result<ModernTokenAcquisition> {
     let url = Url::parse(base_url).map_err(|_| Error("invalid modern token base URL".into()))?;

@@ -25,6 +25,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       autoConnect: false,
       strictProxyAuth: true,
       proxySecurityVersion: PROXY_SECURITY_VERSION,
+      proxyAuthMigrationPending: false,
       closeAction: 'minimize',
       language: 'en',
       server: 'untrusted.example',
@@ -39,6 +40,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       autoConnect: false,
       strictProxyAuth: true,
       proxySecurityVersion: PROXY_SECURITY_VERSION,
+      proxyAuthMigrationPending: false,
       closeAction: 'minimize',
       language: 'en',
       updateCheckedAt: 0,
@@ -59,17 +61,44 @@ test('invalid ports and retry counts use reviewed defaults', () => {
   const settings = normalizeSettings({ port: 80, maxAttempts: 1.5 });
   assert.equal(settings.port, 1080);
   assert.equal(settings.maxAttempts, 3);
-  assert.equal(settings.strictProxyAuth, false);
+  assert.equal(settings.strictProxyAuth, true);
   assert.equal(settings.proxySecurityVersion, PROXY_SECURITY_VERSION);
 });
 
-test('proxy compatibility is the default and strict authentication remains explicit', () => {
-  assert.equal(normalizeSettings({}).strictProxyAuth, false);
-  assert.equal(normalizeSettings({ strictProxyAuth: false }).strictProxyAuth, false);
+test('new installs default strict while current compatibility choices survive migration', () => {
+  assert.equal(normalizeSettings({}).strictProxyAuth, true);
+  assert.equal(normalizeSettings({ strictProxyAuth: false }).strictProxyAuth, true,
+    'an unversioned value is not proof of an explicit downgrade');
   assert.equal(normalizeSettings({
     strictProxyAuth: true,
     proxySecurityVersion: 1,
   }).strictProxyAuth, false, 'the incompatible version-1 automatic opt-in is repaired');
+  assert.equal(normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: 2,
+  }).strictProxyAuth, false, 'the version-2 compatibility default remains compatible');
+  assert.equal(normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: 2,
+  }).proxyAuthMigrationPending, true,
+  'the inherited compatibility default requires one explicit migration decision');
+  assert.equal(normalizeSettings({
+    strictProxyAuth: true,
+    proxySecurityVersion: 2,
+  }).strictProxyAuth, true, 'a version-2 explicit strict choice remains strict');
+  assert.equal(normalizeSettings({
+    strictProxyAuth: true,
+    proxySecurityVersion: 2,
+  }).proxyAuthMigrationPending, false);
+  assert.equal(normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: PROXY_SECURITY_VERSION,
+  }).strictProxyAuth, false, 'the current UI can explicitly select compatibility');
+  assert.equal(normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: PROXY_SECURITY_VERSION,
+    proxyAuthMigrationPending: true,
+  }).proxyAuthMigrationPending, true, 'a pending decision survives unrelated settings saves');
   assert.equal(normalizeSettings({
     strictProxyAuth: true,
     proxySecurityVersion: PROXY_SECURITY_VERSION,
@@ -167,7 +196,7 @@ test('corrupt settings are isolated and restored from the latest committed backu
   const recovered = loadSettings(file, { onRecovery: (notice) => notices.push(notice) });
   assert.equal(recovered.username, 'second');
   assert.equal(recovered.port, 7200);
-  assert.equal(recovered.strictProxyAuth, false);
+  assert.equal(recovered.strictProxyAuth, true);
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).port, 7200,
     'the recovered settings are restored to the primary path');
   const quarantined = fs.readdirSync(directory)
@@ -213,15 +242,19 @@ test('backup recovery preserves compatibility and explicit strict choices', (t) 
   fs.writeFileSync(`${file}.bak`, JSON.stringify({
     username: 'advanced-user',
     strictProxyAuth: false,
-    proxySecurityVersion: PROXY_SECURITY_VERSION,
+    proxySecurityVersion: 2,
     port: 6180,
   }), { mode: 0o600 });
 
   const recovered = loadSettings(file);
   assert.equal(recovered.port, 6180);
   assert.equal(recovered.strictProxyAuth, false);
+  assert.equal(recovered.proxyAuthMigrationPending, true);
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).strictProxyAuth, false);
   assert.equal(JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8')).strictProxyAuth, false);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).proxySecurityVersion,
+    PROXY_SECURITY_VERSION, 'the preserved choice is migrated to the current schema');
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).proxyAuthMigrationPending, true);
 
   const legacyFile = path.join(directory, 'legacy-settings.json');
   fs.writeFileSync(`${legacyFile}.bak`, JSON.stringify({
@@ -231,7 +264,7 @@ test('backup recovery preserves compatibility and explicit strict choices', (t) 
   }), { mode: 0o600 });
   const legacyRecovered = loadSettings(legacyFile);
   assert.equal(legacyRecovered.port, 7200);
-  assert.equal(legacyRecovered.strictProxyAuth, false);
+  assert.equal(legacyRecovered.strictProxyAuth, true);
   assert.equal(legacyRecovered.proxySecurityVersion, PROXY_SECURITY_VERSION);
 });
 

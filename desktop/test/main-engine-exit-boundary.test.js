@@ -18,5 +18,5 @@ test('engine exit closes the browser request boundary before stdio close cleanup
   assert.match(boundary, /suspendOpenBrowserPolicy\(\)/);
 
   const startCall = source.slice(source.indexOf('const started = engineSupervisor.start({'));
-  assert.match(startCall, /onExit:\s*handleEngineExitBoundary,\s*onClose:/);
+  assert.match(startCall, /onExit:\s*\(result\) => \{\s*engineRuntime\?\.dispose\(\);\s*handleEngineExitBoundary\(result\);\s*\},\s*onClose:/);
 });

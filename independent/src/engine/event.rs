@@ -4,6 +4,7 @@
 //! it. Human diagnostics stay on stderr. Keeping the schema in this module
 //! prevents UI wording changes from becoming accidental protocol changes.
 
+use crate::engine::auth_control::{AuthControlEvent, AuthControlResponse};
 use crate::engine::control::{ControlResponse, encode_control_response};
 use crate::{Error, Result};
 use serde::{Serialize, Serializer};
@@ -173,6 +174,16 @@ impl<W: Write> EngineEventEmitter<W> {
         self.write_frame(&encoded, "engine control response")
     }
 
+    pub fn emit_auth_control(&mut self, response: &AuthControlResponse) -> Result<()> {
+        let encoded = encode_bounded_json_line(response)?;
+        self.write_frame(&encoded, "auth control response")
+    }
+
+    pub fn emit_auth_event(&mut self, event: &AuthControlEvent) -> Result<()> {
+        let encoded = encode_bounded_json_line(event)?;
+        self.write_frame(&encoded, "auth control event")
+    }
+
     fn write_frame(&mut self, encoded: &[u8], kind: &str) -> Result<()> {
         self.writer
             .write_all(encoded)
@@ -322,6 +333,34 @@ mod tests {
         assert_eq!(values[0]["apiVersion"], 1);
         assert_eq!(values[1]["apiVersion"], 2);
         assert_eq!(values[1]["requestId"], 8);
+    }
+
+    #[test]
+    fn v3_auth_events_and_responses_share_stdout_without_secret_fields() {
+        use crate::engine::auth_control::{AuthControlErrorCode, auth_error_response};
+        use crate::engine::auth_transaction::{ChallengeKind, ChallengeView, TransactionId};
+
+        let challenge =
+            ChallengeView::new(&TransactionId::from_bytes([6; 16]), 1, ChallengeKind::Otp).unwrap();
+        let mut emitter = EngineEventEmitter::new(Vec::new());
+        emitter
+            .emit_auth_event(&AuthControlEvent::ChallengeRequired {
+                api_version: 3,
+                challenge,
+            })
+            .unwrap();
+        emitter
+            .emit_auth_control(&auth_error_response(
+                7,
+                AuthControlErrorCode::TransactionClosed,
+            ))
+            .unwrap();
+        let output = String::from_utf8(emitter.into_inner()).unwrap();
+        assert!(output.contains("auth_challenge_required"));
+        assert!(output.contains("transaction_closed"));
+        for forbidden in ["response", "cookie", "csrf"] {
+            assert!(!output.to_ascii_lowercase().contains(forbidden));
+        }
     }
 
     #[test]

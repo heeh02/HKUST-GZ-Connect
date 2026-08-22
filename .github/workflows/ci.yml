@@ -39,19 +39,21 @@ jobs:
         run: npm ci
       - name: Run desktop tests
         run: npm test
+      - name: Enforce desktop architecture growth boundaries
+        run: npm run check:architecture
+      - name: Reject committed secret patterns
+        run: npm run check:secrets
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Check syntax of every entry point
         run: |
-          node --check main.js
-          node --check preload.js
-          node --check campus-preload.js
-          node --check lib/campus-browser.js
-          node --check renderer/campus-browser.js
-          node --check renderer/app.js
+          while IFS= read -r source_file; do
+            node --check "$source_file"
+          done < <(rg --files -g '*.js' -g '!node_modules/**' -g '!release/**')
       - name: Check shell entry points
         run: |
           bash -n ../hkustgzconnect
+          bash -n ../tools/mac-cli/proxy-credential.sh
           bash -n scripts/install-mac.sh
           bash -n scripts/rebuild-mac.sh
           bash -n scripts/build-engine.sh
@@ -75,6 +77,8 @@ jobs:
         run: npm run test:main-integration
       - name: Exercise campus-browser toolbar IPC
         run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
+      - name: Exercise Campus Browser MFA credential boundaries
+        run: npm run test:campus-mfa-safety
       - name: Exercise Chromium strict proxy authentication
         run: npm run test:strict-proxy-auth
       - name: Measure the resource manager at compact window sizes
@@ -94,6 +98,9 @@ jobs:
         working-directory: independent
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Check formatting
@@ -102,6 +109,8 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run engine tests
         run: cargo test --locked
+      - name: Exercise the synthetic Engine/Desktop auth pipe
+        run: node ../desktop/e2e/auth-control-fixture.js
       - name: Run offline performance disaster guards
         run: |
           cargo test --locked --release --lib offline_socks5_frontend_matrix -- \

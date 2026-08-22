@@ -9,6 +9,8 @@ const renderer = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(renderer, 'styles.css'), 'utf8');
 const app = fs.readFileSync(path.join(renderer, 'app.js'), 'utf8');
+const routing = fs.readFileSync(path.join(renderer, 'routing-manager.js'), 'utf8');
+const certificates = fs.readFileSync(path.join(renderer, 'certificate-manager.js'), 'utf8');
 
 test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
   assert.match(html, /<dialog id="routingRulesDialog"[^>]*aria-labelledby="routingRulesTitle"[^>]*aria-describedby="routingRulesDescription"/);
@@ -17,15 +19,16 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
   assert.match(html, /id="routingRuleScope"[\s\S]*value="exact"[\s\S]*value="subdomains"/);
   assert.match(html, /id="routingRuleRoute"[\s\S]*value="campus"[\s\S]*value="direct"/);
   assert.match(html, /id="routingRuleError"[^>]*role="alert"/);
-  assert.match(app, /window\.api\.listRoutingRules\(\)/);
-  assert.match(app, /window\.api\.saveRoutingRule\(payload\)/);
-  assert.match(app, /window\.api\.deleteRoutingRule\(\{[\s\S]{0,120}host: rule\.host,[\s\S]{0,120}includeSubdomains: rule\.includeSubdomains/);
-  assert.match(app, /payload\.previous\s*=\s*\{/,
+  assert.match(routing, /api\.listRoutingRules\(\)/);
+  assert.match(routing, /api\.saveRoutingRule\(payload\)/);
+  assert.match(routing, /api\.deleteRoutingRule\(\{[\s\S]{0,120}host: rule\.host,[\s\S]{0,120}includeSubdomains: rule\.includeSubdomains/);
+  assert.match(routing, /payload\.previous\s*=\s*\{/,
     'editing a host or scope must carry its previous stable identity');
-  assert.match(app, /pendingRoutingDeleteKey/,
+  assert.match(routing, /pendingDeleteKey/,
     'destructive deletion must require an explicit second click');
-  assert.match(app, /window\.api\.onOpenRoutingRules\?\.\(\(\) => \{[\s\S]{0,160}setPage\('tower'\);[\s\S]{0,160}openRoutingRuleManager\(\)/,
+  assert.match(routing, /api\.onOpenRoutingRules\?\.\(\(\) => \{[\s\S]{0,120}openTower\(\);[\s\S]{0,120}open\(\)/,
     'the campus browser can request the same manager without sending page data');
+  assert.match(app, /routingManager\.start\(\{[\s\S]{0,120}setPage\('tower'\)/);
   assert.doesNotMatch(html, /(?:routing|rule)[^>]{0,50}(?:import|export|sync)/i);
 });
 
@@ -33,16 +36,16 @@ test('certificate manager reveals only origin, fingerprint, timestamp, and revok
   assert.match(html, /<dialog id="certificatePinsDialog"[^>]*aria-labelledby="certificatePinsTitle"[^>]*aria-describedby="certificatePinsDescription"/);
   assert.match(html, /id="certificatePinList"[^>]*role="list"[^>]*data-i18n-attr="aria-label:certificates\.listLabel"/);
   assert.match(html, /id="certificatePinError"[^>]*role="alert"/);
-  assert.match(app, /window\.api\.listCertificatePins\(\)/);
-  assert.match(app, /window\.api\.deleteCertificatePin\(\{[\s\S]{0,120}origin: pin\.origin,[\s\S]{0,120}fingerprint: pin\.fingerprint/);
-  assert.match(app, /pin\.origin/);
-  assert.match(app, /pin\.fingerprint/);
-  assert.match(app, /formatManagerTime\(pin\.updatedAt\)/);
-  assert.match(app, /pendingCertificateOrigin/,
+  assert.match(certificates, /api\.listCertificatePins\(\)/);
+  assert.match(certificates, /api\.deleteCertificatePin\(\{[\s\S]{0,120}origin: pin\.origin,[\s\S]{0,120}fingerprint: pin\.fingerprint/);
+  assert.match(certificates, /pin\.origin/);
+  assert.match(certificates, /pin\.fingerprint/);
+  assert.match(certificates, /formatManagerTime\(pin\.updatedAt/);
+  assert.match(certificates, /pendingOrigin/,
     'revocation must require an explicit second click');
-  const certificateRenderer = app.slice(
-    app.indexOf('function renderCertificatePinList()'),
-    app.indexOf('function setCertificatePinBusy'),
+  const certificateRenderer = certificates.slice(
+    certificates.indexOf('function renderList()'),
+    certificates.indexOf('function setBusy'),
   );
   assert.doesNotMatch(certificateRenderer, /issuer|subject|certificate(?:Data|Pem)|serial/i);
 });
@@ -56,17 +59,17 @@ test('manager layout scrolls inside small windows and preserves keyboard focus v
 });
 
 test('all server-provided policy values are escaped before dynamic markup', () => {
-  const ruleRenderer = app.slice(
-    app.indexOf('function renderRoutingRuleList()'),
-    app.indexOf('function updateRoutingRuleFormMode'),
+  const ruleRenderer = routing.slice(
+    routing.indexOf('function renderList()'),
+    routing.indexOf('function updateFormMode'),
   );
   assert.match(ruleRenderer, /esc\(rule\.host\)/);
-  assert.match(ruleRenderer, /esc\(t\('routing\.updated'/);
-  const pinRenderer = app.slice(
-    app.indexOf('function renderCertificatePinList()'),
-    app.indexOf('function setCertificatePinBusy'),
+  assert.match(ruleRenderer, /esc\(translate\('routing\.updated'/);
+  const pinRenderer = certificates.slice(
+    certificates.indexOf('function renderList()'),
+    certificates.indexOf('function setBusy'),
   );
   assert.match(pinRenderer, /esc\(pin\.origin\)/);
   assert.match(pinRenderer, /esc\(pin\.fingerprint\)/);
-  assert.match(pinRenderer, /esc\(t\('certificates\.updated'/);
+  assert.match(pinRenderer, /esc\(translate\('certificates\.updated'/);
 });

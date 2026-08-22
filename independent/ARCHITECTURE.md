@@ -8,7 +8,13 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 
 | Module | Owns | Must not own |
 | --- | --- | --- |
+| `gateway_http.rs` | Origin-bound HTTPS client, internal cookie jar, bounded response and timeout policy | Probe workflows, transport, DNS, local proxy or UI |
+| `gateway_auth.rs` | Redacted/zeroizing artifacts of completed Gateway authentication | Modern token, Data Plane, DNS or proxy policy |
+| `credentials.rs` | Bounded two-line gateway credential stdin contract | Gateway HTTP, provider policy or protocol formats |
 | `engine/provider.rs` | Stable AuthProvider/ResourceProvider/TransportBackend traits, capability states, typed unsupported/unavailable errors | Vendor wire formats, UI state, credentials at rest |
+| `engine/auth_transaction.rs` | Engine-owned generation/transaction/epoch/request binding, sanitized challenge view, zeroizing response, resend/cancel/abort invariants | Vendor endpoint, OTP shape, Renderer state or Data Plane |
+| `engine/auth_control.rs` | Bounded zeroizing secret-bearing Control API v3 codec/session for synthetic/future interactive providers | Public listener, vendor endpoint or password-only capability claims |
+| `engine/control_mux.rs` | Ordered v2/v3 decoding on the inherited private pipe; generic secret-free framing errors | Provider state, public listener or cross-schema coercion |
 | `resource_catalogue.rs` | Bounded offline resource/group parser, opaque handles, redacted presentation schema and private launch-target resolution | Authenticated retrieval, authorization decisions, desktop rendering |
 | `engine/session.rs::AuthenticatedGatewaySession` | Authenticated HTTPS cookie jar, logout endpoint and opaque gateway session identifier | Parsed L3 configuration, Modern L3 token, DNS servers, certificate pin, data plane or proxy policy |
 | `engine/session.rs::{ModernL3TransportBackend, ModernL3Connection}` | Modern L3 configuration/token bootstrap, DNS handoff, certificate binding, data-plane assembly and cleanup on setup failure | Credentials at rest, desktop lifecycle or local proxy policy |
@@ -26,10 +32,20 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `engine/socks/http_forward.rs` | Strict-only bounded ordinary HTTP/WS parsing, header rewriting, body framing, and streaming | DNS, destination authorization, credentials, or gateway protocol details |
 | `bin/ec-engine.rs` | Process assembly, signals, health shutdown, Control v2 action integration, logout and structured terminal state | Event/control encoding or desktop policy |
 | `desktop/lib/campus-browser.js` | Isolated browser session, proxy policy and safe navigation | Gateway authentication or packet formats |
+| `desktop/lib/engine-connection-runtime.js` | Event/control stdout ownership, generation validation, hello deadline and typed Desktop callbacks | UI wording, credential persistence, Browser routing or Engine process policy |
+| `desktop/lib/{routing-rule,certificate-pin,campus-resource}-ipc.js` | Exact-key control-panel CRUD validation and injected transaction calls | Electron window ownership, authentication or transport state |
+| `desktop/lib/settings-credential-ipc.js` | Exact settings IPC, policy rebase, credential journal/recovery and logout orchestration | Electron window/tray rendering, Engine protocol or password decryption |
+| `desktop/lib/desktop-shell.js` | Control window, tray/menu, close prompt and ordered quit cleanup | Engine protocol, Browser routing, settings format or credentials |
+| `desktop/lib/campus-browser-manager.js` | Browser/Vault construction, route/open result mapping and browser lifecycle delegation | Engine process ownership, Gateway protocol or system network changes |
+| `desktop/lib/connection-telemetry-coordinator.js` | Process enumeration, latency/health evidence and bounded reconnect trigger | Authentication, UI DOM or packet forwarding |
+| `desktop/lib/core-control-ipc.js` | Exact core channel schema and narrow operation delegation | Electron/Engine implementation details or secret storage |
+| `desktop/renderer/{routing,certificate,resource}-manager.js` | Escaped feature-local DOM state and narrow Preload CRUD calls | Rust schema, Main persistence, credentials or connection lifecycle |
 | `desktop/lib/tunnel-health.js` | When to probe the tunnel and how much evidence a restart requires | Probing itself, or engine lifecycle |
 
 The loopback listener is the current shared frontend, not a permanent product
-constraint. Its default contract is SOCKS5 `NO_AUTH`. The opt-in optional
+constraint. The raw Engine retains a flagless SOCKS5 `NO_AUTH` compatibility
+contract, but both shipped Desktop new installations and the root macOS CLI
+pass the strict-auth flag by default. The explicit optional
 contract accepts both `NO_AUTH` and RFC 1929, preferring `NO_AUTH` when both are
 offered so legacy tools stay compatible. Its UDP decision follows the selected
 method: `NO_AUTH` retains UDP while RFC 1929 rejects it. The separate strict
@@ -52,7 +68,7 @@ destination policy. They must not modify system DNS or routes by default.
 
 `AuthenticatedGatewaySession` is deliberately authentication-only. It keeps
 the verified HTTPS session needed for authenticated requests and logout plus
-the opaque gateway session identifier returned by login. It does not retain a
+the transport-neutral `AuthenticatedSessionId` returned by login. It does not retain a
 parsed L3 configuration, the Modern L3 transport token, DNS results, a tunnel
 certificate pin, or an `EasyConnectDataPlane`. `ModernL3TransportBackend`
 obtains those transport inputs, and `ModernL3Connection` hands the resulting
@@ -69,15 +85,26 @@ The local engine APIs also have separate directions:
   already inherited private stdin/stdout pipes. Requests use a closed schema,
   a 2048-byte frame limit, version negotiation and request IDs. It opens no
   listener and cannot represent credentials, tokens, URLs or destinations.
+  Its handshake is answered during authentication, before L3/listener setup.
   Its currently advertised capabilities are shutdown, cancellation and
   control-channel close. The process assembler applies accepted actions;
   `engine/control.rs` itself never terminates a process.
+- **Interactive Auth Control API v3** is a separate, secret-bearing bounded
+  schema over the same inherited private pipe. It supports sanitized challenge
+  notification plus respond/resend/cancel with zeroizing inputs. The process
+  assembler multiplexes the schema but the current password-only provider
+  creates no transaction or challenge; unsolicited v3 commands fail closed as
+  `transaction_closed`. A non-shipped synthetic Engine and the Desktop
+  coordinator exercise the interactive path without claiming Gateway support.
 
 The complete wire and EOF contract is in
 [`spec/ENGINE_CONTROL_API_V2.md`](spec/ENGINE_CONTROL_API_V2.md). Recognizing a
 provider capability name in that closed schema is not production support:
 resource retrieval, WebVPN and MFA remain typed unsupported until their own
 providers and school-environment evidence exist.
+
+The provider-inactive interactive-auth schema and activation gates are documented in
+[`spec/ENGINE_AUTH_CONTROL_API_V3.md`](spec/ENGINE_AUTH_CONTROL_API_V3.md).
 
 ## Compatibility laboratory
 

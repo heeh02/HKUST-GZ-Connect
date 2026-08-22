@@ -31,11 +31,11 @@ function redactDiagnosticText(value) {
     '$1: [REDACTED]',
   );
   text = text.replace(
-    /([?&](?:token|access_token|refresh_token|code|ticket|samlrequest|samlresponse|relaystate|session|sid)=)[^&#\s]*/giu,
+    /([?&](?:token|access_token|refresh_token|code|ticket|samlrequest|samlresponse|relaystate|session|sid|otp|totp|one[-_]?time[-_]?code|verification[-_]?code|passcode|twfid|csrf(?:[-_]?rand[-_]?code|[-_]?token)?)=)[^&#\s]*/giu,
     '$1[REDACTED]',
   );
   text = text.replace(
-    /\b(password|passwd|pwd|token|access_token|refresh_token|cookie)\b(\s*[=:]\s*)('[^']*'|"[^"]*"|[^\s,;&}]+)/giu,
+    /\b(password|passwd|pwd|token|access_token|refresh_token|cookie|otp|totp|one[-_ ]?time[-_ ]?code|verification[-_ ]?code|passcode|twfid|csrf(?:[-_ ]?rand[-_ ]?code|[-_ ]?token)?)\b(['"]?\s*[=:]\s*)('[^']*'|"[^"]*"|[^\s,;&}]+)/giu,
     '$1$2[REDACTED]',
   );
   return text;

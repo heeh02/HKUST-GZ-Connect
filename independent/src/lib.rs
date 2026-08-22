@@ -2,7 +2,10 @@ pub mod adapter;
 pub mod auth;
 pub mod binary_watch;
 pub mod config;
+pub mod credentials;
 pub mod engine;
+pub mod gateway_auth;
+pub mod gateway_http;
 pub mod modern;
 pub mod probe;
 pub mod protocol_map;
@@ -14,12 +17,107 @@ pub mod xml;
 
 use std::fmt::{Display, Formatter};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ErrorKind {
+    Unclassified,
+    Credentials,
+    Configuration,
+    Authentication,
+    AuthenticationExpired,
+    AuthenticationStaleContext,
+    DuplicateRequest,
+    ResendUnavailable,
+    UnsupportedCapability,
+    CapabilityUnavailable,
+    GatewayHttp,
+    Transport,
+    DataPlane,
+    DataPlaneTransient,
+    Dns,
+    LocalProxy,
+    Lifecycle,
+    Io,
+    Serialization,
+}
+
+impl ErrorKind {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Unclassified => "unclassified",
+            Self::Credentials => "credentials",
+            Self::Configuration => "configuration",
+            Self::Authentication => "authentication",
+            Self::AuthenticationExpired => "authentication_expired",
+            Self::AuthenticationStaleContext => "authentication_stale_context",
+            Self::DuplicateRequest => "duplicate_request",
+            Self::ResendUnavailable => "resend_unavailable",
+            Self::UnsupportedCapability => "unsupported_capability",
+            Self::CapabilityUnavailable => "capability_unavailable",
+            Self::GatewayHttp => "gateway_http",
+            Self::Transport => "transport",
+            Self::DataPlane => "data_plane",
+            Self::DataPlaneTransient => "data_plane_transient",
+            Self::Dns => "dns",
+            Self::LocalProxy => "local_proxy",
+            Self::Lifecycle => "lifecycle",
+            Self::Io => "io",
+            Self::Serialization => "serialization",
+        }
+    }
+
+    pub const fn is_retryable(self) -> bool {
+        matches!(self, Self::DataPlaneTransient)
+    }
+}
+
 #[derive(Debug)]
-pub struct Error(pub String);
+pub struct Error {
+    message: String,
+    kind: ErrorKind,
+}
+
+impl Error {
+    pub fn new(message: String) -> Self {
+        Self {
+            message,
+            kind: ErrorKind::Unclassified,
+        }
+    }
+
+    pub fn classified(kind: ErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            kind,
+        }
+    }
+
+    pub const fn kind(&self) -> ErrorKind {
+        self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn with_kind_if_unclassified(mut self, kind: ErrorKind) -> Self {
+        if self.kind == ErrorKind::Unclassified {
+            self.kind = kind;
+        }
+        self
+    }
+}
+
+// Preserve the long-standing `Error("message".into())` construction syntax
+// while the implementation migrates incrementally to stable typed kinds.
+#[allow(non_snake_case)]
+pub fn Error(message: String) -> Error {
+    Error::new(message)
+}
 
 impl Display for Error {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.0)
+        formatter.write_str(&self.message)
     }
 }
 
@@ -27,14 +125,41 @@ impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
-        Self(error.to_string())
+        Self::classified(ErrorKind::Io, error.to_string())
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(error: serde_json::Error) -> Self {
-        Self(error.to_string())
+        Self::classified(ErrorKind::Serialization, error.to_string())
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_constructor_and_typed_kinds_coexist() {
+        let legacy = Error("legacy message".into());
+        assert_eq!(legacy.kind(), ErrorKind::Unclassified);
+        assert_eq!(legacy.to_string(), "legacy message");
+
+        let typed = Error::classified(ErrorKind::Authentication, "authentication failed");
+        assert_eq!(typed.kind(), ErrorKind::Authentication);
+        assert_eq!(typed.kind().code(), "authentication");
+        assert!(!typed.kind().is_retryable());
+        assert!(ErrorKind::DataPlaneTransient.is_retryable());
+    }
+
+    #[test]
+    fn standard_sources_receive_stable_kinds() {
+        let io = Error::from(std::io::Error::other("fixture"));
+        assert_eq!(io.kind(), ErrorKind::Io);
+        let serialization =
+            Error::from(serde_json::from_str::<serde_json::Value>("{").unwrap_err());
+        assert_eq!(serialization.kind(), ErrorKind::Serialization);
+    }
+}

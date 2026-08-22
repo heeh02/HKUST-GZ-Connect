@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('api', {
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
   reconnect: () => ipcRenderer.invoke('reconnect'),
+  respondAuthChallenge: (response) => ipcRenderer.invoke('respond-auth-challenge', { response }),
+  resendAuthChallenge: () => ipcRenderer.invoke('resend-auth-challenge'),
+  cancelAuthChallenge: () => ipcRenderer.invoke('cancel-auth-challenge'),
   logout: () => ipcRenderer.invoke('logout'),
   getLogs: () => ipcRenderer.invoke('get-logs'),
   openLog: () => ipcRenderer.invoke('open-log'),
@@ -33,4 +36,10 @@ contextBridge.exposeInMainWorld('api', {
   },
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onTelemetry: (cb) => ipcRenderer.on('telemetry', (_e, t) => cb(t)),
+  onAuthChallenge: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (_event, challenge) => cb(challenge);
+    ipcRenderer.on('auth-challenge', listener);
+    return () => ipcRenderer.removeListener('auth-challenge', listener);
+  },
 });

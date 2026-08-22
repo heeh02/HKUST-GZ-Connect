@@ -4,7 +4,10 @@
 //! Runtime concerns are split by responsibility so a vendor protocol change
 //! does not require modifying the local proxy or userspace TCP/IP stack.
 
+pub mod auth_control;
+pub mod auth_transaction;
 pub mod control;
+pub mod control_mux;
 pub mod data_plane;
 pub mod destination_policy;
 pub mod dns;
