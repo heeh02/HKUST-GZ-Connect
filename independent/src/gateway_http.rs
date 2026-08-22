@@ -86,6 +86,13 @@ impl GatewaySession {
             ));
         }
         let client = Client::builder()
+            // Gateway control traffic must not inherit HTTP(S)_PROXY from the
+            // parent shell or a desktop proxy application. The Modern data
+            // plane opens its own direct sockets; proxying only discovery,
+            // authentication, configuration, or logout would split one VPN
+            // session across unrelated underlays and can recurse into this
+            // application's not-yet-ready loopback listener.
+            .no_proxy()
             .timeout(Duration::from_secs(timeout))
             .redirect(Policy::none())
             .https_only(true)
@@ -242,5 +249,24 @@ mod tests {
         assert!(
             GatewaySession::new("https://vpn.example.edu".into(), "x".repeat(129), 20).is_err()
         );
+    }
+
+    #[test]
+    fn gateway_session_disables_implicit_environment_proxies() {
+        // reqwest's ProxyMatcher is intentionally opaque. Keep this as a
+        // source-level architecture contract instead of mutating global proxy
+        // environment variables in a parallel test process. The locked
+        // reqwest API defines `no_proxy()` as clearing explicit matchers and
+        // disabling automatic system/environment proxy discovery.
+        let source = include_str!("gateway_http.rs");
+        let builder = source
+            .split_once("let client = Client::builder()")
+            .expect("GatewaySession client builder")
+            .1
+            .split_once(".build()")
+            .expect("GatewaySession client build")
+            .0;
+        assert_eq!(builder.matches(".no_proxy()").count(), 1);
+        assert!(builder.find(".no_proxy()").unwrap() < builder.find(".timeout(").unwrap());
     }
 }

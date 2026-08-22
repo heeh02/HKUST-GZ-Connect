@@ -1,7 +1,7 @@
 use ec_compat::engine::auth_control::{
     AuthControlErrorCode, AuthControlRequest, auth_error_response,
 };
-use ec_compat::engine::auth_lifecycle::BlockingAuthentication;
+use ec_compat::engine::auth_lifecycle::BlockingOperation;
 use ec_compat::engine::auth_transaction::AUTH_TRANSACTION_TIMEOUT_MS;
 use ec_compat::engine::control::{
     ControlAction, ControlExchange, ControlSession, MAX_ACTIVE_REQUESTS,
@@ -16,7 +16,9 @@ use ec_compat::engine::ip_packet::stack_mtu;
 use ec_compat::engine::netstack::VirtualNetstack;
 use ec_compat::engine::provider::ProviderError;
 use ec_compat::engine::proxy::{NameResolver, RejectDomainResolver, SystemDnsResolver};
-use ec_compat::engine::session::{AuthenticatedGatewaySession, ModernL3TransportBackend};
+use ec_compat::engine::session::{
+    AuthenticatedGatewaySession, ModernL3Connection, ModernL3TransportBackend,
+};
 use ec_compat::engine::socks::SocksServer;
 use ec_compat::engine::socks_auth::{
     EngineCredentials, ProxyAuthenticationMode, read_engine_credentials,
@@ -32,6 +34,14 @@ use std::time::Duration;
 
 const CONTROL_SHUTDOWN_CANCEL_WINDOW: Duration = Duration::from_millis(100);
 const CONTROL_PREAUTH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
+// A cooperative worker normally observes cancellation between its bounded
+// network operations within milliseconds. Do not let an in-flight blocking
+// socket outlive Desktop's graceful-control envelope: after this drain window
+// the process reports cleanup-unconfirmed and exits fail-closed. The worker
+// cannot promote a result because its owner is dropped with the process.
+const CONNECTION_OPERATION_CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
+const TRANSPORT_BOOTSTRAP_TIMEOUT: Duration = Duration::from_millis(AUTH_TRANSACTION_TIMEOUT_MS);
+const NETSTACK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
 struct EngineArguments {
     config: PathBuf,
@@ -102,7 +112,7 @@ type EngineResult<T> = std::result::Result<T, EngineFailure>;
 struct EngineLifecycle<W> {
     events: EngineEventEmitter<W>,
     generation: u64,
-    stopping: bool,
+    phase: Option<EngineState>,
 }
 
 impl<W: Write> EngineLifecycle<W> {
@@ -110,7 +120,7 @@ impl<W: Write> EngineLifecycle<W> {
         Self {
             events: EngineEventEmitter::new(writer),
             generation,
-            stopping: false,
+            phase: None,
         }
     }
 
@@ -130,6 +140,31 @@ impl<W: Write> EngineLifecycle<W> {
     }
 
     fn state(&mut self, state: EngineState) -> Result<()> {
+        let allowed = matches!(
+            (self.phase, state),
+            (None, EngineState::Connecting | EngineState::Stopping)
+                | (
+                    Some(EngineState::Connecting),
+                    EngineState::Authenticating | EngineState::Stopping
+                )
+                | (
+                    Some(EngineState::Authenticating),
+                    EngineState::PreparingTunnel | EngineState::Stopping
+                )
+                | (
+                    Some(EngineState::PreparingTunnel),
+                    EngineState::Connected | EngineState::Stopping
+                )
+                | (Some(EngineState::Connected), EngineState::Stopping)
+                | (Some(EngineState::Stopping), EngineState::Stopped)
+        );
+        if !allowed {
+            return Err(Error::classified(
+                ErrorKind::Lifecycle,
+                "invalid engine lifecycle transition",
+            ));
+        }
+        self.phase = Some(state);
         self.emit(EngineEvent::StateChanged {
             state,
             generation: self.generation,
@@ -137,14 +172,17 @@ impl<W: Write> EngineLifecycle<W> {
     }
 
     fn begin_stopping(&mut self) -> Result<()> {
-        if self.stopping {
+        if matches!(
+            self.phase,
+            Some(EngineState::Stopping | EngineState::Stopped)
+        ) {
             return Ok(());
         }
-        self.stopping = true;
         self.state(EngineState::Stopping)
     }
 
     fn finish(&mut self, reason: StopReason) -> Result<()> {
+        self.begin_stopping()?;
         self.state(EngineState::Stopped)?;
         self.emit(EngineEvent::Stopped {
             reason,
@@ -401,6 +439,19 @@ fn failure_after_gateway_cleanup(
     }
 }
 
+async fn failure_after_runtime_cleanup(
+    netstack: &VirtualNetstack,
+    session: AuthenticatedGatewaySession,
+    failure: EngineFailure,
+) -> EngineFailure {
+    if let Err(error) = netstack.shutdown(NETSTACK_SHUTDOWN_TIMEOUT).await {
+        // Preserve the earlier primary failure. Event v1 intentionally has only
+        // one secondary slot, reserved for remote Gateway cleanup uncertainty.
+        eprintln!("ec-engine: {error}");
+    }
+    failure_after_gateway_cleanup(session, failure)
+}
+
 fn configured_vpn_dns_servers(config: &serde_json::Value) -> Result<Vec<Ipv4Addr>> {
     let Some(value) = config.pointer("/proxy/vpn_dns_servers") else {
         return Ok(Vec::new());
@@ -432,11 +483,124 @@ fn dns_mode_for_source(source: VpnDnsSource) -> DnsMode {
     }
 }
 
-enum AuthenticationCancellationCause {
+enum ConnectionOperationCancellationCause {
     UserRequested,
     DeadlineExpired,
     SignalFailed(Error),
     ControlOutputFailed(Error),
+}
+
+enum ConnectionOperationOutcome<S, E> {
+    Completed(std::result::Result<S, E>),
+    WorkerFailed(Error),
+    Cancelled {
+        cause: ConnectionOperationCancellationCause,
+        completion: Result<std::result::Result<S, E>>,
+    },
+}
+
+async fn drive_blocking_connection_operation<S, E, W: Write>(
+    operation: &mut BlockingOperation<S, E>,
+    deadline: tokio::time::Instant,
+    control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    pending_control_actions: &mut PendingControlActions,
+    lifecycle: &mut EngineLifecycle<W>,
+) -> ConnectionOperationOutcome<S, E>
+where
+    S: Send + 'static,
+    E: Send + 'static,
+{
+    let signal = shutdown_signal();
+    tokio::pin!(signal);
+    let cause = loop {
+        let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
+        tokio::select! {
+            // Promotion is the lowest-priority outcome.  If a blocking worker
+            // finishes at the same instant as its owner closes the private
+            // control pipe (or a previously accepted shutdown commits), the
+            // stop boundary must win so a stale Auth/Transport result cannot
+            // be promoted into listener resources.
+            biased;
+            _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
+                break ConnectionOperationCancellationCause::UserRequested;
+            }
+            signal = &mut signal => {
+                break match signal {
+                    Ok(()) => ConnectionOperationCancellationCause::UserRequested,
+                    Err(error) => ConnectionOperationCancellationCause::SignalFailed(error),
+                };
+            }
+            _ = tokio::time::sleep_until(deadline) => {
+                break ConnectionOperationCancellationCause::DeadlineExpired;
+            }
+            input = receive_control(control_receiver), if control_receiver.is_some() => {
+                let Some(input) = input else {
+                    // Before listener readiness, the inherited private pipe is
+                    // part of the connection-attempt owner boundary. Losing it
+                    // cancels auth or transport so no session continues without
+                    // its generation controller.
+                    *control_receiver = None;
+                    break ConnectionOperationCancellationCause::UserRequested;
+                };
+                match input {
+                    ControlInput::V2(exchange) => {
+                        if let Err(error) = lifecycle.emit_control(&exchange) {
+                            break ConnectionOperationCancellationCause::ControlOutputFailed(error);
+                        }
+                        if let Some(action) = exchange.action {
+                            if pending_control_actions.apply(action, tokio::time::Instant::now()) {
+                                *control_receiver = None;
+                                break ConnectionOperationCancellationCause::UserRequested;
+                            }
+                        }
+                    }
+                    ControlInput::V3(request) => {
+                        if let Err(error) = lifecycle.reject_auth_control(&request) {
+                            break ConnectionOperationCancellationCause::ControlOutputFailed(error);
+                        }
+                    }
+                }
+            }
+            completion = operation.wait() => {
+                return match completion {
+                    Ok(result) => ConnectionOperationOutcome::Completed(result),
+                    Err(error) => ConnectionOperationOutcome::WorkerFailed(error),
+                };
+            }
+        }
+    };
+
+    operation.cancel();
+    let completion =
+        match tokio::time::timeout(CONNECTION_OPERATION_CANCEL_DRAIN_TIMEOUT, operation.wait())
+            .await
+        {
+            Ok(completion) => completion,
+            Err(_) => Err(Error::classified(
+                ErrorKind::Lifecycle,
+                "connection operation did not stop within its cancellation drain deadline",
+            )),
+        };
+    ConnectionOperationOutcome::Cancelled { cause, completion }
+}
+
+fn attach_cleanup_status(failure: EngineFailure, cleanup_unconfirmed: bool) -> EngineFailure {
+    if cleanup_unconfirmed {
+        failure.with_secondary_code(Some(EngineErrorCode::AuthCleanupUnconfirmed))
+    } else {
+        failure
+    }
+}
+
+fn cancelled_connection_attempt_failure(message: &'static str) -> EngineFailure {
+    attach_cleanup_status(
+        failure(
+            EngineErrorCode::LogoutFailed,
+            StopReason::LogoutFailed,
+            Error::classified(ErrorKind::Lifecycle, message),
+        ),
+        true,
+    )
 }
 
 async fn authenticate_password_with_lifecycle<W: Write>(
@@ -444,10 +608,11 @@ async fn authenticate_password_with_lifecycle<W: Write>(
     gateway_username: zeroize::Zeroizing<String>,
     gateway_password: zeroize::Zeroizing<String>,
     control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    pending_control_actions: &mut PendingControlActions,
     lifecycle: &mut EngineLifecycle<W>,
 ) -> EngineResult<Option<AuthenticatedGatewaySession>> {
     let worker_config = config.clone();
-    let mut authentication = BlockingAuthentication::spawn(move |cancellation| {
+    let mut authentication = BlockingOperation::spawn(move |cancellation| {
         AuthenticatedGatewaySession::authenticate_with_provider_error_cancellable(
             &worker_config,
             &gateway_username,
@@ -455,86 +620,48 @@ async fn authenticate_password_with_lifecycle<W: Write>(
             &cancellation,
         )
     });
-    let signal = shutdown_signal();
-    tokio::pin!(signal);
     let authentication_deadline =
         tokio::time::Instant::now() + Duration::from_millis(AUTH_TRANSACTION_TIMEOUT_MS);
-    let mut pending_control_actions = PendingControlActions::default();
-    let cancellation_cause = loop {
-        let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
-        tokio::select! {
-            completion = authentication.wait() => {
-                let provider_result = completion.map_err(|error| {
-                    failure(
-                        EngineErrorCode::AuthFailed,
-                        StopReason::StartupFailed,
-                        error,
-                    )
-                })?;
-                return provider_result
-                    .map(Some)
-                    .map_err(authentication_failure);
-            }
-            signal = &mut signal => {
-                break match signal {
-                    Ok(()) => AuthenticationCancellationCause::UserRequested,
-                    Err(error) => AuthenticationCancellationCause::SignalFailed(error),
-                };
-            }
-            _ = tokio::time::sleep_until(authentication_deadline) => {
-                break AuthenticationCancellationCause::DeadlineExpired;
-            }
-            _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
-                break AuthenticationCancellationCause::UserRequested;
-            }
-            input = receive_control(control_receiver), if control_receiver.is_some() => {
-                let Some(input) = input else {
-                    // During authentication the private pipe is part of the
-                    // transaction owner boundary. Losing it cannot leave a
-                    // background login attempt running without a controller.
-                    *control_receiver = None;
-                    break AuthenticationCancellationCause::UserRequested;
-                };
-                match input {
-                    ControlInput::V2(exchange) => {
-                        if let Err(error) = lifecycle.emit_control(&exchange) {
-                            break AuthenticationCancellationCause::ControlOutputFailed(error);
-                        }
-                        if let Some(action) = exchange.action {
-                            if pending_control_actions.apply(action, tokio::time::Instant::now()) {
-                                *control_receiver = None;
-                                break AuthenticationCancellationCause::UserRequested;
-                            }
-                        }
-                    }
-                    ControlInput::V3(request) => {
-                        if let Err(error) = lifecycle.reject_auth_control(&request) {
-                            break AuthenticationCancellationCause::ControlOutputFailed(error);
-                        }
-                    }
-                }
-            }
+    let outcome = drive_blocking_connection_operation(
+        &mut authentication,
+        authentication_deadline,
+        control_receiver,
+        pending_control_actions,
+        lifecycle,
+    )
+    .await;
+    let (cause, completion) = match outcome {
+        ConnectionOperationOutcome::Completed(provider_result) => {
+            return provider_result.map(Some).map_err(authentication_failure);
         }
+        ConnectionOperationOutcome::WorkerFailed(error) => {
+            return Err(attach_cleanup_status(
+                failure(
+                    EngineErrorCode::AuthIndeterminate,
+                    StopReason::StartupFailed,
+                    error,
+                ),
+                true,
+            ));
+        }
+        ConnectionOperationOutcome::Cancelled { cause, completion } => (cause, completion),
     };
-
-    authentication.cancel();
     if let Err(error) = lifecycle.begin_stopping() {
-        let _ = authentication.wait().await;
-        return Err(event_output_failure(error));
+        let cleanup_unconfirmed = authentication_completion_cleanup_unconfirmed(completion);
+        return Err(attach_cleanup_status(
+            event_output_failure(error),
+            cleanup_unconfirmed,
+        ));
     }
-    // The verified synchronous provider has bounded per-request timeouts and
-    // checks cancellation between requests. Awaiting it here prevents an
-    // authenticated session from escaping after its generation was stopped.
-    let completion = authentication.wait().await;
-    let cleanup_unconfirmed = match completion {
-        Ok(Ok(session)) => session.logout().is_err(),
-        Ok(Err(ProviderError::Failed(error))) => error.cleanup_unconfirmed(),
-        Ok(Err(_)) => false,
-        Err(_) => true,
-    };
-    match cancellation_cause {
-        AuthenticationCancellationCause::UserRequested => Ok(None),
-        AuthenticationCancellationCause::DeadlineExpired => {
+    let cleanup_unconfirmed = authentication_completion_cleanup_unconfirmed(completion);
+    match cause {
+        ConnectionOperationCancellationCause::UserRequested if cleanup_unconfirmed => {
+            Err(cancelled_connection_attempt_failure(
+                "authentication cancellation cleanup is unconfirmed",
+            ))
+        }
+        ConnectionOperationCancellationCause::UserRequested => Ok(None),
+        ConnectionOperationCancellationCause::DeadlineExpired => {
             let primary = Error::classified(
                 ErrorKind::AuthenticationExpired,
                 "authentication transaction reached its total deadline",
@@ -546,14 +673,120 @@ async fn authenticate_password_with_lifecycle<W: Write>(
             };
             Err(authentication_failure(ProviderError::Failed(primary)))
         }
-        AuthenticationCancellationCause::SignalFailed(error) => Err(failure(
-            EngineErrorCode::ShutdownSignalFailed,
-            StopReason::ShutdownFailed,
-            error,
+        ConnectionOperationCancellationCause::SignalFailed(error) => Err(attach_cleanup_status(
+            failure(
+                EngineErrorCode::ShutdownSignalFailed,
+                StopReason::ShutdownFailed,
+                error,
+            ),
+            cleanup_unconfirmed,
         )),
-        AuthenticationCancellationCause::ControlOutputFailed(error) => {
-            Err(event_output_failure(error))
+        ConnectionOperationCancellationCause::ControlOutputFailed(error) => Err(
+            attach_cleanup_status(event_output_failure(error), cleanup_unconfirmed),
+        ),
+    }
+}
+
+fn authentication_completion_cleanup_unconfirmed(
+    completion: Result<std::result::Result<AuthenticatedGatewaySession, ProviderError>>,
+) -> bool {
+    match completion {
+        Ok(Ok(session)) => session.logout().is_err(),
+        Ok(Err(ProviderError::Failed(error))) => error.cleanup_unconfirmed(),
+        Ok(Err(_)) => false,
+        Err(_) => true,
+    }
+}
+
+async fn prepare_transport_with_lifecycle<W: Write>(
+    backend: ModernL3TransportBackend,
+    session: AuthenticatedGatewaySession,
+    control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    pending_control_actions: &mut PendingControlActions,
+    lifecycle: &mut EngineLifecycle<W>,
+) -> EngineResult<Option<(AuthenticatedGatewaySession, ModernL3Connection)>> {
+    let mut transport = BlockingOperation::spawn(move |cancellation| {
+        backend.connect_or_logout_cancellable(session, &cancellation)
+    });
+    let outcome = drive_blocking_connection_operation(
+        &mut transport,
+        tokio::time::Instant::now() + TRANSPORT_BOOTSTRAP_TIMEOUT,
+        control_receiver,
+        pending_control_actions,
+        lifecycle,
+    )
+    .await;
+    let (cause, completion) = match outcome {
+        ConnectionOperationOutcome::Completed(result) => {
+            return result.map(Some).map_err(|error| {
+                failure_preserving_cleanup(
+                    data_plane_setup_error_code(&error),
+                    StopReason::StartupFailed,
+                    error,
+                )
+            });
         }
+        ConnectionOperationOutcome::WorkerFailed(error) => {
+            return Err(attach_cleanup_status(
+                failure(
+                    EngineErrorCode::DataPlaneSetupFailed,
+                    StopReason::StartupFailed,
+                    error,
+                ),
+                true,
+            ));
+        }
+        ConnectionOperationOutcome::Cancelled { cause, completion } => (cause, completion),
+    };
+    let cleanup_unconfirmed = transport_completion_cleanup_unconfirmed(completion);
+    if let Err(error) = lifecycle.begin_stopping() {
+        return Err(attach_cleanup_status(
+            event_output_failure(error),
+            cleanup_unconfirmed,
+        ));
+    }
+    match cause {
+        ConnectionOperationCancellationCause::UserRequested if cleanup_unconfirmed => Err(
+            cancelled_connection_attempt_failure("transport cancellation cleanup is unconfirmed"),
+        ),
+        ConnectionOperationCancellationCause::UserRequested => Ok(None),
+        ConnectionOperationCancellationCause::DeadlineExpired => Err(attach_cleanup_status(
+            failure(
+                EngineErrorCode::DataPlaneSetupFailed,
+                StopReason::StartupFailed,
+                Error::classified(
+                    ErrorKind::Transport,
+                    "transport bootstrap reached its total deadline",
+                ),
+            ),
+            cleanup_unconfirmed,
+        )),
+        ConnectionOperationCancellationCause::SignalFailed(error) => Err(attach_cleanup_status(
+            failure(
+                EngineErrorCode::ShutdownSignalFailed,
+                StopReason::ShutdownFailed,
+                error,
+            ),
+            cleanup_unconfirmed,
+        )),
+        ConnectionOperationCancellationCause::ControlOutputFailed(error) => Err(
+            attach_cleanup_status(event_output_failure(error), cleanup_unconfirmed),
+        ),
+    }
+}
+
+fn transport_completion_cleanup_unconfirmed(
+    completion: Result<
+        std::result::Result<(AuthenticatedGatewaySession, ModernL3Connection), Error>,
+    >,
+) -> bool {
+    match completion {
+        Ok(Ok((session, connection))) => {
+            drop(connection);
+            session.logout().is_err()
+        }
+        Ok(Err(error)) => error.cleanup_unconfirmed(),
+        Err(_) => true,
     }
 }
 
@@ -668,6 +901,10 @@ async fn run_engine<W: Write>(
         lifecycle.begin_stopping().map_err(event_output_failure)?;
         return Ok(StopReason::UserRequested);
     }
+    // Accepted control actions belong to the whole connection attempt, not one
+    // phase. A shutdown acknowledged just before Auth or Transport completes
+    // must remain pending in the next phase until its cancellation window ends.
+    let mut pending_control_actions = PendingControlActions::default();
     let EngineCredentials {
         gateway_username,
         gateway_password,
@@ -678,12 +915,20 @@ async fn run_engine<W: Write>(
         gateway_username,
         gateway_password,
         &mut control_receiver,
+        &mut pending_control_actions,
         lifecycle,
     )
     .await?
     else {
         return Ok(StopReason::UserRequested);
     };
+
+    if let Err(error) = lifecycle.state(EngineState::PreparingTunnel) {
+        return Err(failure_after_gateway_cleanup(
+            session,
+            event_output_failure(error),
+        ));
+    }
 
     let transport_backend = match ModernL3TransportBackend::new(&config) {
         Ok(backend) => backend,
@@ -696,15 +941,17 @@ async fn run_engine<W: Write>(
             return Err(failure_after_gateway_cleanup(session, failure));
         }
     };
-    let (session, transport) = transport_backend
-        .connect_or_logout(session)
-        .map_err(|error| {
-            failure_preserving_cleanup(
-                data_plane_setup_error_code(&error),
-                StopReason::StartupFailed,
-                error,
-            )
-        })?;
+    let Some((session, transport)) = prepare_transport_with_lifecycle(
+        transport_backend,
+        session,
+        &mut control_receiver,
+        &mut pending_control_actions,
+        lifecycle,
+    )
+    .await?
+    else {
+        return Ok(StopReason::UserRequested);
+    };
     let gateway_dns_servers = transport.dns_servers().to_vec();
     let data_plane = transport.into_data_plane();
     let mtu = stack_mtu(config["tunnel"]["mtu"].as_u64());
@@ -731,7 +978,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_gateway_cleanup(session, failure));
+            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
         }
     };
     let (resolver, dns_mode): (Arc<dyn NameResolver>, DnsMode) = if let Some(selection) = vpn_dns {
@@ -748,7 +995,7 @@ async fn run_engine<W: Write>(
                     StopReason::StartupFailed,
                     error,
                 );
-                return Err(failure_after_gateway_cleanup(session, failure));
+                return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
             }
         };
         (Arc::new(resolver), dns_mode)
@@ -770,7 +1017,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_gateway_cleanup(session, failure));
+            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
         }
     };
     let server = match server.bind().await {
@@ -781,7 +1028,7 @@ async fn run_engine<W: Write>(
                 StopReason::StartupFailed,
                 error,
             );
-            return Err(failure_after_gateway_cleanup(session, failure));
+            return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
         }
     };
 
@@ -797,7 +1044,7 @@ async fn run_engine<W: Write>(
     })();
     if let Err(error) = metadata_result {
         let failure = event_output_failure(error);
-        return Err(failure_after_gateway_cleanup(session, failure));
+        return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
     }
 
     // These preserve human-readable diagnostics and the old desktop fallback,
@@ -828,9 +1075,9 @@ async fn run_engine<W: Write>(
             .map_err(|error| Error(format!("SOCKS5 service failed: {error}")))
     });
     if let Err(error) = lifecycle.state(EngineState::Connected) {
-        services.abort_all();
+        abort_and_drain_services(&mut services).await;
         let failure = event_output_failure(error);
-        return Err(failure_after_gateway_cleanup(session, failure));
+        return Err(failure_after_runtime_cleanup(&netstack, session, failure).await);
     }
 
     let shutdown = {
@@ -847,19 +1094,23 @@ async fn run_engine<W: Write>(
         tokio::pin!(signal);
         let unhealthy = wait_for_unhealthy(health);
         tokio::pin!(unhealthy);
-        let mut pending_control_actions = PendingControlActions::default();
         loop {
             let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
             tokio::select! {
+                // Keep simultaneous terminal causes deterministic. A committed
+                // user shutdown outranks incidental health/service failure;
+                // passive control frames remain lowest priority and cannot
+                // starve an already-ready terminal condition.
+                biased;
+                _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
+                    break ShutdownCause::UserRequested;
+                }
                 signal = &mut signal => break match signal {
                     Ok(()) => ShutdownCause::UserRequested,
                     Err(error) => ShutdownCause::SignalFailed(error),
                 },
                 error = &mut service_exit => break ShutdownCause::LocalServiceFailed(error),
                 _ = &mut unhealthy => break ShutdownCause::NetworkDisconnected,
-                _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
-                    break ShutdownCause::UserRequested;
-                }
                 exchange = receive_control(&mut control_receiver), if control_receiver.is_some() => {
                     let Some(input) = exchange else {
                         // Closing the inherited stdin control stream is not a
@@ -892,7 +1143,10 @@ async fn run_engine<W: Write>(
             }
         }
     };
-    services.abort_all();
+    // Listener ownership and its outer serving task are gone before the
+    // netstack closes its sockets and joins the runner/bridges. Gateway logout
+    // is deliberately last so no local request races session teardown.
+    abort_and_drain_services(&mut services).await;
 
     let unhealthy_event_error = if matches!(&shutdown, ShutdownCause::NetworkDisconnected) {
         lifecycle
@@ -904,12 +1158,34 @@ async fn run_engine<W: Write>(
         None
     };
     let stopping_error = lifecycle.begin_stopping().err();
+    let netstack_shutdown = netstack.shutdown(NETSTACK_SHUTDOWN_TIMEOUT).await;
     let logout = session.logout();
     if let Some(error) = unhealthy_event_error.or(stopping_error) {
-        if let Err(logout_error) = logout {
-            eprintln!("ec-engine: {logout_error}");
+        if let Err(netstack_error) = netstack_shutdown {
+            eprintln!("ec-engine: {netstack_error}");
         }
-        return Err(event_output_failure(error));
+        return Err(attach_cleanup_status(
+            event_output_failure(error),
+            logout.is_err(),
+        ));
+    }
+    if let Err(error) = netstack_shutdown {
+        if !matches!(&shutdown, ShutdownCause::UserRequested) {
+            // A signal, local-service, network, or control-output failure was
+            // observed first and remains the primary cause. Event v1 has no
+            // general secondary-error list, so retain the shutdown detail only
+            // in redacted diagnostics.
+            eprintln!("ec-engine: {error}");
+        } else {
+            return Err(attach_cleanup_status(
+                failure(
+                    EngineErrorCode::DataPlaneShutdownFailed,
+                    StopReason::ShutdownFailed,
+                    error,
+                ),
+                logout.is_err(),
+            ));
+        }
     }
 
     match shutdown {
@@ -922,42 +1198,34 @@ async fn run_engine<W: Write>(
                 )
             })
         }
-        ShutdownCause::SignalFailed(error) => {
-            if let Err(logout_error) = logout {
-                eprintln!("ec-engine: {logout_error}");
-            }
-            Err(failure(
+        ShutdownCause::SignalFailed(error) => Err(attach_cleanup_status(
+            failure(
                 EngineErrorCode::ShutdownSignalFailed,
                 StopReason::ShutdownFailed,
                 error,
-            ))
-        }
-        ShutdownCause::LocalServiceFailed(error) => {
-            if let Err(logout_error) = logout {
-                eprintln!("ec-engine: {logout_error}");
-            }
-            Err(failure(
+            ),
+            logout.is_err(),
+        )),
+        ShutdownCause::LocalServiceFailed(error) => Err(attach_cleanup_status(
+            failure(
                 EngineErrorCode::LocalListenerFailed,
                 StopReason::LocalServiceFailed,
                 error,
-            ))
-        }
-        ShutdownCause::NetworkDisconnected => {
-            if let Err(logout_error) = logout {
-                eprintln!("ec-engine: {logout_error}");
-            }
-            Err(failure(
+            ),
+            logout.is_err(),
+        )),
+        ShutdownCause::NetworkDisconnected => Err(attach_cleanup_status(
+            failure(
                 EngineErrorCode::NetworkDisconnected,
                 StopReason::NetworkUnhealthy,
                 Error("VPN data plane disconnected".into()),
-            ))
-        }
-        ShutdownCause::ControlOutputFailed(error) => {
-            if let Err(logout_error) = logout {
-                eprintln!("ec-engine: {logout_error}");
-            }
-            Err(event_output_failure(error))
-        }
+            ),
+            logout.is_err(),
+        )),
+        ShutdownCause::ControlOutputFailed(error) => Err(attach_cleanup_status(
+            event_output_failure(error),
+            logout.is_err(),
+        )),
     }
 }
 
@@ -968,6 +1236,11 @@ async fn receive_control(
         Some(receiver) => receiver.recv().await,
         None => std::future::pending().await,
     }
+}
+
+async fn abort_and_drain_services(services: &mut tokio::task::JoinSet<Result<()>>) {
+    services.abort_all();
+    while services.join_next().await.is_some() {}
 }
 
 async fn emit_initial_control_exchange<W: Write>(
@@ -1234,6 +1507,294 @@ mod tests {
         ));
         assert_eq!(pending.next_shutdown_deadline(), None);
         assert!(pending.apply(ControlAction::Close { request_id: 43 }, now));
+    }
+
+    #[tokio::test]
+    async fn connection_operation_close_cancels_and_collects_its_late_result() {
+        let mut operation = BlockingOperation::spawn(|cancellation| {
+            while !cancellation.is_cancelled() {
+                std::thread::yield_now();
+            }
+            Ok::<_, ()>("late-transport-result")
+        });
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        sender
+            .send(ControlInput::V2(ControlExchange {
+                response: ec_compat::engine::control::ControlResponse::Result {
+                    api_version: 2,
+                    request_id: 7,
+                    status: ec_compat::engine::control::ControlStatus::Accepted,
+                },
+                action: Some(ControlAction::Close { request_id: 7 }),
+            }))
+            .await
+            .unwrap();
+        let mut receiver = Some(receiver);
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 9);
+        let outcome = drive_blocking_connection_operation(
+            &mut operation,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = outcome else {
+            panic!("control close must cancel the connection-stage worker");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::UserRequested
+        ));
+        assert_eq!(completion.unwrap(), Ok("late-transport-result"));
+    }
+
+    #[tokio::test]
+    async fn accepted_shutdown_survives_an_operation_phase_transition() {
+        let mut first = BlockingOperation::spawn(|_| {
+            std::thread::sleep(Duration::from_millis(20));
+            Ok::<_, ()>("authenticated")
+        });
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        sender
+            .send(ControlInput::V2(ControlExchange {
+                response: ec_compat::engine::control::ControlResponse::Result {
+                    api_version: 2,
+                    request_id: 8,
+                    status: ec_compat::engine::control::ControlStatus::Accepted,
+                },
+                action: Some(ControlAction::Shutdown { request_id: 8 }),
+            }))
+            .await
+            .unwrap();
+        let mut receiver = Some(receiver);
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 11);
+        let first_outcome = drive_blocking_connection_operation(
+            &mut first,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        assert!(matches!(
+            first_outcome,
+            ConnectionOperationOutcome::Completed(Ok("authenticated"))
+        ));
+        assert!(pending_control_actions.next_shutdown_deadline().is_some());
+
+        let mut second = BlockingOperation::spawn(|cancellation| {
+            while !cancellation.is_cancelled() {
+                std::thread::yield_now();
+            }
+            Ok::<_, ()>("late-transport")
+        });
+        let second_outcome = drive_blocking_connection_operation(
+            &mut second,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = second_outcome else {
+            panic!("the accepted shutdown must commit in the next phase");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::UserRequested
+        ));
+        assert_eq!(completion.unwrap(), Ok("late-transport"));
+    }
+
+    #[tokio::test]
+    async fn connection_operation_deadline_cancels_and_collects_its_late_result() {
+        let mut operation = BlockingOperation::spawn(|cancellation| {
+            while !cancellation.is_cancelled() {
+                std::thread::yield_now();
+            }
+            Ok::<_, ()>("deadline-result")
+        });
+        let mut receiver = None;
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 10);
+        let outcome = drive_blocking_connection_operation(
+            &mut operation,
+            tokio::time::Instant::now() + Duration::from_millis(10),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = outcome else {
+            panic!("deadline must cancel the connection-stage worker");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::DeadlineExpired
+        ));
+        assert_eq!(completion.unwrap(), Ok("deadline-result"));
+    }
+
+    #[tokio::test]
+    async fn connection_operation_owner_eof_cancels_and_collects_its_late_result() {
+        let mut operation = BlockingOperation::spawn(|cancellation| {
+            while !cancellation.is_cancelled() {
+                std::thread::yield_now();
+            }
+            Ok::<_, ()>("owner-eof-result")
+        });
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        drop(sender);
+        let mut receiver = Some(receiver);
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 12);
+        let outcome = drive_blocking_connection_operation(
+            &mut operation,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = outcome else {
+            panic!("owner EOF must cancel the connection-stage worker");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::UserRequested
+        ));
+        assert_eq!(completion.unwrap(), Ok("owner-eof-result"));
+        assert!(receiver.is_none());
+    }
+
+    #[tokio::test]
+    async fn connection_operation_owner_eof_wins_over_ready_worker_completion() {
+        let mut operation = BlockingOperation::spawn(|_| Ok::<_, ()>("completed"));
+        // Make both branches ready before entering the coordinator.  A random
+        // select winner used to let the result escape the pre-listener owner
+        // boundary intermittently.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        drop(sender);
+        let mut receiver = Some(receiver);
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 13);
+        let outcome = drive_blocking_connection_operation(
+            &mut operation,
+            tokio::time::Instant::now() + Duration::from_secs(1),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = outcome else {
+            panic!("owner EOF must outrank a simultaneously ready worker result");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::UserRequested
+        ));
+        assert_eq!(completion.unwrap(), Ok("completed"));
+        assert!(receiver.is_none());
+    }
+
+    #[tokio::test]
+    async fn non_cooperative_connection_operation_fails_closed_within_drain_deadline() {
+        let (release, release_rx) = std::sync::mpsc::channel();
+        let mut operation = BlockingOperation::spawn(move |_| {
+            release_rx.recv().unwrap();
+            Ok::<_, ()>("too-late")
+        });
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        drop(sender);
+        let mut receiver = Some(receiver);
+        let mut pending_control_actions = PendingControlActions::default();
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 14);
+        let started = tokio::time::Instant::now();
+        let outcome = drive_blocking_connection_operation(
+            &mut operation,
+            tokio::time::Instant::now() + Duration::from_secs(5),
+            &mut receiver,
+            &mut pending_control_actions,
+            &mut lifecycle,
+        )
+        .await;
+        let ConnectionOperationOutcome::Cancelled { cause, completion } = outcome else {
+            panic!("owner EOF must cancel a non-cooperative operation");
+        };
+        assert!(matches!(
+            cause,
+            ConnectionOperationCancellationCause::UserRequested
+        ));
+        let error = completion.unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Lifecycle);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        // Let the detached blocking task finish before this test runtime shuts
+        // down; production exits the Engine process after emitting the typed
+        // cleanup-unconfirmed terminal outcome.
+        release.send(()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn service_abort_is_drained_before_the_shutdown_sequence_continues() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct Dropped(std::sync::Arc<AtomicBool>);
+        impl Drop for Dropped {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let dropped = std::sync::Arc::new(AtomicBool::new(false));
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let mut services = tokio::task::JoinSet::new();
+        let task_drop = std::sync::Arc::clone(&dropped);
+        services.spawn(async move {
+            let _guard = Dropped(task_drop);
+            let _ = started.send(());
+            std::future::pending::<()>().await;
+            Ok(())
+        });
+        started_rx.await.unwrap();
+        abort_and_drain_services(&mut services).await;
+        assert!(dropped.load(Ordering::SeqCst));
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn cancelled_attempt_with_unconfirmed_cleanup_is_not_a_clean_user_stop() {
+        let completion = Ok(Err(ProviderError::Failed(
+            Error::classified(ErrorKind::Lifecycle, "synthetic cancellation")
+                .with_cleanup_unconfirmed(),
+        )));
+        assert!(authentication_completion_cleanup_unconfirmed(completion));
+        let failure = cancelled_connection_attempt_failure("synthetic cleanup failure");
+        assert_eq!(failure.code, EngineErrorCode::LogoutFailed);
+        assert_eq!(failure.stop_reason, StopReason::LogoutFailed);
+        assert_eq!(
+            failure.secondary_code,
+            Some(EngineErrorCode::AuthCleanupUnconfirmed)
+        );
+    }
+
+    #[test]
+    fn engine_lifecycle_accepts_only_the_reviewed_phase_order() {
+        let mut lifecycle = EngineLifecycle::new(Vec::new(), 17);
+        assert!(lifecycle.state(EngineState::Authenticating).is_err());
+        lifecycle.state(EngineState::Connecting).unwrap();
+        assert!(lifecycle.state(EngineState::Connected).is_err());
+        lifecycle.state(EngineState::Authenticating).unwrap();
+        lifecycle.state(EngineState::PreparingTunnel).unwrap();
+        lifecycle.state(EngineState::Connected).unwrap();
+        assert!(lifecycle.state(EngineState::Authenticating).is_err());
+        lifecycle.begin_stopping().unwrap();
+        lifecycle.begin_stopping().unwrap();
+        lifecycle.finish(StopReason::UserRequested).unwrap();
+        assert!(lifecycle.finish(StopReason::UserRequested).is_err());
     }
 
     #[test]

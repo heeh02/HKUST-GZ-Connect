@@ -18,8 +18,11 @@ const DNS_HEADER_LEN: usize = 12;
 const DNS_PORT: u16 = 53;
 const DNS_MAX_UDP_RESPONSE: usize = 4096;
 const DNS_TYPE_A: u16 = 1;
+const DNS_TYPE_CNAME: u16 = 5;
 const DNS_CLASS_IN: u16 = 1;
 const MAX_POINTER_JUMPS: usize = 16;
+const MAX_CNAME_CHAIN: usize = 8;
+const MAX_DNS_NAME_WIRE_LEN: usize = 255;
 // A SOCKS5 client that lets the proxy resolve names sends the hostname on every
 // CONNECT, so one page load asks for the same handful of hosts dozens of times.
 // The floor keeps a zero or one-second gateway TTL from turning each of those
@@ -434,37 +437,53 @@ fn read_u16(data: &[u8], offset: usize) -> Result<u16> {
     Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
-fn skip_name(data: &[u8], mut offset: usize) -> Result<usize> {
-    let start = offset;
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DnsName(Vec<Vec<u8>>);
+
+fn decode_name(data: &[u8], offset: usize) -> Result<(DnsName, usize)> {
+    let mut cursor = offset;
     let mut consumed = None;
     let mut jumps = 0;
+    let mut expanded_wire_len = 1_usize;
+    let mut labels = Vec::new();
     loop {
         let length = *data
-            .get(offset)
+            .get(cursor)
             .ok_or_else(|| Error("DNS name is truncated".into()))?;
         if length & 0xc0 == 0xc0 {
             let suffix = *data
-                .get(offset + 1)
+                .get(cursor + 1)
                 .ok_or_else(|| Error("DNS compression pointer is truncated".into()))?;
             let target = (usize::from(length & 0x3f) << 8) | usize::from(suffix);
-            if target >= data.len() || target >= offset || jumps >= MAX_POINTER_JUMPS {
+            if target >= data.len() || target >= cursor || jumps >= MAX_POINTER_JUMPS {
                 return Err(Error("DNS compression pointer is invalid".into()));
             }
-            consumed.get_or_insert(offset + 2);
-            offset = target;
+            consumed.get_or_insert(cursor + 2);
+            cursor = target;
             jumps += 1;
         } else if length == 0 {
-            return Ok(consumed.unwrap_or(offset + 1).max(start + 1));
+            return Ok((DnsName(labels), consumed.unwrap_or(cursor + 1)));
         } else {
             if length > 63 || length & 0xc0 != 0 {
                 return Err(Error("DNS label length is invalid".into()));
             }
-            offset = offset
-                .checked_add(1 + usize::from(length))
+            let label_start = cursor
+                .checked_add(1)
                 .ok_or_else(|| Error("DNS label length overflow".into()))?;
-            if offset > data.len() {
-                return Err(Error("DNS label is truncated".into()));
+            let label_end = label_start
+                .checked_add(usize::from(length))
+                .ok_or_else(|| Error("DNS label length overflow".into()))?;
+            let label = data
+                .get(label_start..label_end)
+                .ok_or_else(|| Error("DNS label is truncated".into()))?;
+            expanded_wire_len = expanded_wire_len
+                .checked_add(1 + label.len())
+                .ok_or_else(|| Error("DNS name length overflow".into()))?;
+            if expanded_wire_len > MAX_DNS_NAME_WIRE_LEN {
+                return Err(Error("DNS name exceeds the wire limit".into()));
             }
+            labels.push(label.iter().map(u8::to_ascii_lowercase).collect());
+            cursor = label_end;
         }
     }
 }
@@ -475,25 +494,115 @@ enum ParsedDnsResponse {
     Truncated,
 }
 
-fn validate_response_question(data: &[u8], query: &[u8]) -> Result<usize> {
+fn validate_response_question(data: &[u8], query: &[u8]) -> Result<(DnsName, usize)> {
     if read_u16(data, 4)? != 1 {
         return Err(Error("DNS response question count is invalid".into()));
     }
-    let question_end = skip_name(data, DNS_HEADER_LEN)?
+    if read_u16(query, 4)? != 1 {
+        return Err(Error("DNS query question count is invalid".into()));
+    }
+    let (actual_name, actual_name_end) = decode_name(data, DNS_HEADER_LEN)?;
+    let question_end = actual_name_end
         .checked_add(4)
         .ok_or_else(|| Error("DNS response question length overflow".into()))?;
-    let actual = data
-        .get(DNS_HEADER_LEN..question_end)
+    let actual_type_and_class = data
+        .get(actual_name_end..question_end)
         .ok_or_else(|| Error("DNS response question is truncated".into()))?;
-    let expected = query
-        .get(DNS_HEADER_LEN..)
+    let (expected_name, expected_name_end) = decode_name(query, DNS_HEADER_LEN)?;
+    let expected_question_end = expected_name_end
+        .checked_add(4)
+        .ok_or_else(|| Error("DNS query question length overflow".into()))?;
+    let expected_type_and_class = query
+        .get(expected_name_end..expected_question_end)
         .ok_or_else(|| Error("DNS query question is missing".into()))?;
-    if actual.len() != expected.len() || !actual.eq_ignore_ascii_case(expected) {
+    if expected_question_end != query.len()
+        || read_u16(query, expected_name_end)? != DNS_TYPE_A
+        || read_u16(query, expected_name_end + 2)? != DNS_CLASS_IN
+        || actual_name != expected_name
+        || actual_type_and_class != expected_type_and_class
+    {
         return Err(Error(
             "DNS response question does not match the query".into(),
         ));
     }
-    Ok(question_end)
+    Ok((expected_name, question_end))
+}
+
+#[derive(Debug)]
+enum DnsAnswerRecord {
+    Address {
+        owner: DnsName,
+        address: Ipv4Addr,
+        ttl_seconds: u32,
+    },
+    CanonicalName {
+        owner: DnsName,
+        target: DnsName,
+        ttl_seconds: u32,
+    },
+}
+
+fn resolve_answer_chain(
+    question: &DnsName,
+    records: &[DnsAnswerRecord],
+) -> Result<(Ipv4Addr, u32)> {
+    let mut current = question.clone();
+    let mut visited = vec![current.clone()];
+    let mut chain_ttl = None::<u32>;
+
+    for followed in 0..=MAX_CNAME_CHAIN {
+        let mut address = None;
+        let mut alias = None;
+        for record in records {
+            match record {
+                DnsAnswerRecord::Address {
+                    owner,
+                    address: value,
+                    ttl_seconds,
+                } if owner == &current && address.is_none() => {
+                    address = Some((*value, *ttl_seconds));
+                }
+                DnsAnswerRecord::CanonicalName { owner, .. }
+                    if owner == &current && alias.is_some() =>
+                {
+                    return Err(Error("DNS answer contains multiple canonical names".into()));
+                }
+                DnsAnswerRecord::CanonicalName {
+                    owner,
+                    target,
+                    ttl_seconds,
+                } if owner == &current => {
+                    alias = Some((target, *ttl_seconds));
+                }
+                _ => {}
+            }
+        }
+
+        if address.is_some() && alias.is_some() {
+            return Err(Error("DNS answer contains conflicting record types".into()));
+        }
+        if let Some((address, ttl_seconds)) = address {
+            return Ok((
+                address,
+                chain_ttl.map_or(ttl_seconds, |ttl| ttl.min(ttl_seconds)),
+            ));
+        }
+        let Some((target, ttl_seconds)) = alias else {
+            return Err(Error(
+                "DNS response contains no IPv4 address for the query".into(),
+            ));
+        };
+        if followed == MAX_CNAME_CHAIN {
+            return Err(Error("DNS canonical-name chain exceeds the limit".into()));
+        }
+        if visited.contains(target) {
+            return Err(Error("DNS canonical-name chain contains a loop".into()));
+        }
+        chain_ttl = Some(chain_ttl.map_or(ttl_seconds, |ttl| ttl.min(ttl_seconds)));
+        current = (*target).clone();
+        visited.push(current.clone());
+    }
+    Err(Error("DNS canonical-name chain exceeds the limit".into()))
 }
 
 fn parse_dns_response(data: &[u8], query: &[u8]) -> Result<ParsedDnsResponse> {
@@ -504,10 +613,10 @@ fn parse_dns_response(data: &[u8], query: &[u8]) -> Result<ParsedDnsResponse> {
         return Err(Error("DNS response header is invalid".into()));
     }
     let flags = read_u16(data, 2)?;
-    if flags & 0x8000 == 0 || flags & 0x000f != 0 {
+    if flags & 0x8000 == 0 || flags & 0x7800 != 0 || flags & 0x000f != 0 {
         return Err(Error("DNS response status is not successful".into()));
     }
-    let mut offset = validate_response_question(data, query)?;
+    let (question, mut offset) = validate_response_question(data, query)?;
     if flags & 0x0200 != 0 {
         return Ok(ParsedDnsResponse::Truncated);
     }
@@ -515,8 +624,10 @@ fn parse_dns_response(data: &[u8], query: &[u8]) -> Result<ParsedDnsResponse> {
     if answer_count == 0 {
         return Err(Error("DNS response contains no answer".into()));
     }
+    let mut records = Vec::with_capacity(answer_count.min(32));
     for _ in 0..answer_count {
-        offset = skip_name(data, offset)?;
+        let (owner, record_start) = decode_name(data, offset)?;
+        offset = record_start;
         let record = data
             .get(offset..offset + 10)
             .ok_or_else(|| Error("DNS answer is truncated".into()))?;
@@ -528,25 +639,76 @@ fn parse_dns_response(data: &[u8], query: &[u8]) -> Result<ParsedDnsResponse> {
         let record_data = data
             .get(offset..offset + data_length)
             .ok_or_else(|| Error("DNS answer data is truncated".into()))?;
-        if record_type == DNS_TYPE_A && class == DNS_CLASS_IN && data_length == 4 {
-            return Ok(ParsedDnsResponse::Answer((
-                Ipv4Addr::new(
+        if record_type == DNS_TYPE_A && class == DNS_CLASS_IN {
+            if data_length != 4 {
+                return Err(Error("DNS IPv4 answer has an invalid length".into()));
+            }
+            records.push(DnsAnswerRecord::Address {
+                owner,
+                address: Ipv4Addr::new(
                     record_data[0],
                     record_data[1],
                     record_data[2],
                     record_data[3],
                 ),
                 ttl_seconds,
-            )));
+            });
+        } else if record_type == DNS_TYPE_CNAME && class == DNS_CLASS_IN {
+            let (target, encoded_end) = decode_name(data, offset)?;
+            if encoded_end != offset + data_length {
+                return Err(Error(
+                    "DNS canonical-name data has an invalid length".into(),
+                ));
+            }
+            records.push(DnsAnswerRecord::CanonicalName {
+                owner,
+                target,
+                ttl_seconds,
+            });
         }
         offset += data_length;
     }
-    Err(Error("DNS response contains no IPv4 address".into()))
+    resolve_answer_chain(&question, &records).map(ParsedDnsResponse::Answer)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn encoded_name(host: &str) -> Vec<u8> {
+        let query = build_query(host, 1).unwrap();
+        query[DNS_HEADER_LEN..query.len() - 4].to_vec()
+    }
+
+    fn response_with_answers(query: &[u8], answer_count: u16) -> Vec<u8> {
+        let mut response = query.to_vec();
+        response[2..4].copy_from_slice(&0x8180_u16.to_be_bytes());
+        response[6..8].copy_from_slice(&answer_count.to_be_bytes());
+        response
+    }
+
+    fn append_record(
+        response: &mut Vec<u8>,
+        owner: &[u8],
+        record_type: u16,
+        ttl_seconds: u32,
+        record_data: &[u8],
+    ) {
+        response.extend_from_slice(owner);
+        response.extend_from_slice(&record_type.to_be_bytes());
+        response.extend_from_slice(&DNS_CLASS_IN.to_be_bytes());
+        response.extend_from_slice(&ttl_seconds.to_be_bytes());
+        response.extend_from_slice(&(record_data.len() as u16).to_be_bytes());
+        response.extend_from_slice(record_data);
+    }
+
+    fn append_address(response: &mut Vec<u8>, owner: &[u8], ttl_seconds: u32, address: [u8; 4]) {
+        append_record(response, owner, DNS_TYPE_A, ttl_seconds, &address);
+    }
+
+    fn append_cname(response: &mut Vec<u8>, owner: &[u8], ttl_seconds: u32, target: &[u8]) {
+        append_record(response, owner, DNS_TYPE_CNAME, ttl_seconds, target);
+    }
 
     #[test]
     fn gateway_dns_servers_obey_the_shared_destination_policy() {
@@ -623,15 +785,113 @@ mod tests {
     #[test]
     fn parses_compressed_a_answer() {
         let query = build_query("host.example", 0x1234).unwrap();
-        let mut response = query.clone();
-        response[2..4].copy_from_slice(&0x8180_u16.to_be_bytes());
-        response[6..8].copy_from_slice(&1_u16.to_be_bytes());
-        response.extend_from_slice(&[0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4, 10, 20, 30, 40]);
+        let mut response = response_with_answers(&query, 1);
+        response[DNS_HEADER_LEN + 1] = b'H';
+        append_address(&mut response, &[0xc0, 0x0c], 30, [10, 20, 30, 40]);
         assert_eq!(
             parse_dns_response(&response, &query).unwrap(),
             ParsedDnsResponse::Answer((Ipv4Addr::new(10, 20, 30, 40), 30))
         );
         assert!(parse_dns_response(&response, &build_query("host.example", 7).unwrap()).is_err());
+    }
+
+    #[test]
+    fn rejects_non_query_opcode_and_unrelated_address_owner() {
+        let query = build_query("host.example", 0x1234).unwrap();
+        let mut wrong_opcode = response_with_answers(&query, 1);
+        wrong_opcode[2..4].copy_from_slice(&0x8980_u16.to_be_bytes());
+        append_address(&mut wrong_opcode, &[0xc0, 0x0c], 30, [10, 20, 30, 40]);
+        assert!(parse_dns_response(&wrong_opcode, &query).is_err());
+
+        let mut unrelated = response_with_answers(&query, 1);
+        append_address(
+            &mut unrelated,
+            &encoded_name("unrelated.example"),
+            30,
+            [10, 20, 30, 40],
+        );
+        assert!(parse_dns_response(&unrelated, &query).is_err());
+    }
+
+    #[test]
+    fn follows_a_bounded_cname_chain_and_clamps_its_ttl() {
+        let query = build_query("alias.example", 0x1234).unwrap();
+        let canonical = encoded_name("canonical.example");
+        let mut response = response_with_answers(&query, 2);
+        // Record ordering is not the trust boundary: resolve the owner graph
+        // after every bounded answer has been parsed.
+        append_address(&mut response, &canonical, 120, [10, 20, 30, 40]);
+        append_cname(&mut response, &[0xc0, 0x0c], 30, &canonical);
+        assert_eq!(
+            parse_dns_response(&response, &query).unwrap(),
+            ParsedDnsResponse::Answer((Ipv4Addr::new(10, 20, 30, 40), 30))
+        );
+    }
+
+    #[test]
+    fn rejects_cname_loops_and_chains_beyond_the_limit() {
+        let query = build_query("first.example", 0x1234).unwrap();
+        let first = encoded_name("first.example");
+        let second = encoded_name("second.example");
+        let mut looped = response_with_answers(&query, 2);
+        append_cname(&mut looped, &[0xc0, 0x0c], 30, &second);
+        append_cname(&mut looped, &second, 30, &first);
+        assert!(
+            parse_dns_response(&looped, &query)
+                .unwrap_err()
+                .to_string()
+                .contains("loop")
+        );
+
+        let query = build_query("n0.example", 0x4321).unwrap();
+        let answer_count = u16::try_from(MAX_CNAME_CHAIN + 2).unwrap();
+        let mut too_long = response_with_answers(&query, answer_count);
+        for index in 0..=MAX_CNAME_CHAIN {
+            append_cname(
+                &mut too_long,
+                &encoded_name(&format!("n{index}.example")),
+                30,
+                &encoded_name(&format!("n{}.example", index + 1)),
+            );
+        }
+        append_address(
+            &mut too_long,
+            &encoded_name(&format!("n{}.example", MAX_CNAME_CHAIN + 1)),
+            30,
+            [10, 20, 30, 40],
+        );
+        assert!(
+            parse_dns_response(&too_long, &query)
+                .unwrap_err()
+                .to_string()
+                .contains("exceeds the limit")
+        );
+    }
+
+    #[test]
+    fn rejects_conflicting_or_malformed_answer_records() {
+        let query = build_query("host.example", 0x1234).unwrap();
+        let target = encoded_name("target.example");
+        let mut conflicting = response_with_answers(&query, 2);
+        append_address(&mut conflicting, &[0xc0, 0x0c], 30, [10, 20, 30, 40]);
+        append_cname(&mut conflicting, &[0xc0, 0x0c], 30, &target);
+        assert!(parse_dns_response(&conflicting, &query).is_err());
+
+        let mut malformed = response_with_answers(&query, 1);
+        let mut malformed_target = target;
+        malformed_target.push(0);
+        append_cname(&mut malformed, &[0xc0, 0x0c], 30, &malformed_target);
+        assert!(parse_dns_response(&malformed, &query).is_err());
+
+        let mut malformed_address = response_with_answers(&query, 1);
+        append_record(
+            &mut malformed_address,
+            &[0xc0, 0x0c],
+            DNS_TYPE_A,
+            30,
+            &[10, 20, 30],
+        );
+        assert!(parse_dns_response(&malformed_address, &query).is_err());
     }
 
     #[test]

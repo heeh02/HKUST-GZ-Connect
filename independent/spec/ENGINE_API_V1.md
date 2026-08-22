@@ -46,6 +46,7 @@ fields to the NDJSON event schema.
 {"type":"hello","apiVersion":1,"capabilities":["password","l3","udp"]}
 {"type":"state_changed","state":"connecting","generation":7}
 {"type":"state_changed","state":"authenticating","generation":7}
+{"type":"state_changed","state":"preparing_tunnel","generation":7}
 {"type":"client_ip_assigned","family":4}
 {"type":"dns_mode","mode":"gateway"}
 {"type":"listener_ready","port":6180}
@@ -58,8 +59,12 @@ fields to the NDJSON event schema.
 {"type":"stopped","reason":"network_unhealthy","generation":7}
 ```
 
-Valid state values are `connecting`, `authenticating`, `connected`, `stopping`,
-and `stopped`. DNS modes are `gateway`, `system_fallback`, and `disabled`.
+Valid state values are `connecting`, `authenticating`, `preparing_tunnel`,
+`connected`, `stopping`, and `stopped`. `preparing_tunnel` means password
+authentication produced an owned Gateway session and the Engine is establishing
+Modern L3; supervisors that predate this additive state may ignore it and still
+use the later `listener_ready`/`connected` events. DNS modes are `gateway`,
+`system_fallback`, and `disabled`.
 Address family is the numeric IP version `4` or `6`; the assigned address is
 never included.
 
@@ -77,6 +82,7 @@ Stable fatal codes in v1 are:
 - `AUTH_CLEANUP_UNCONFIRMED` (secondary code only)
 - `UNSUPPORTED_AUTHENTICATION`
 - `DATA_PLANE_SETUP_FAILED`
+- `DATA_PLANE_SHUTDOWN_FAILED`
 - `LOCAL_LISTENER_FAILED`
 - `NETWORK_DISCONNECTED`
 - `LOGOUT_FAILED`
@@ -89,6 +95,10 @@ rejection emits `AUTH_REJECTED`; uncertain network/response outcomes emit
 `AUTH_INDETERMINATE`; schema violations emit `AUTH_PROTOCOL_INVALID`.
 `secondaryCode` is omitted unless it is `AUTH_CLEANUP_UNCONFIRMED`, which adds
 remote-cleanup status without replacing the primary failure.
+`DATA_PLANE_SHUTDOWN_FAILED` is a primary code used only when normal terminal
+cleanup cannot close and join the userspace data plane inside its bounded
+deadline. If an earlier primary failure already exists, that earlier code is
+preserved and the local shutdown diagnostic remains on redacted stderr.
 
 Final stop reasons are `user_requested`, `startup_failed`,
 `local_service_failed`, `network_unhealthy`, `logout_failed`,

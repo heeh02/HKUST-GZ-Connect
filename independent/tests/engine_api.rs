@@ -17,15 +17,23 @@ fn events(output: &[u8]) -> Vec<Value> {
         .collect()
 }
 
-fn slow_gateway_config(label: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
+fn slow_gateway_config(
+    label: &str,
+) -> (
+    PathBuf,
+    std::thread::JoinHandle<()>,
+    std::sync::mpsc::Receiver<()>,
+) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
+    let (accepted, accepted_rx) = std::sync::mpsc::channel();
     let server = std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             match listener.accept() {
                 Ok((_stream, _)) => {
+                    let _ = accepted.send(());
                     std::thread::sleep(Duration::from_secs(2));
                     return;
                 }
@@ -57,7 +65,7 @@ fn slow_gateway_config(label: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
         }
     });
     std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
-    (path, server)
+    (path, server, accepted_rx)
 }
 
 fn wait_bounded(mut child: Child) -> Output {
@@ -258,8 +266,8 @@ fn control_handshake_is_answered_before_authentication_finishes() {
 }
 
 #[test]
-fn shutdown_during_blocking_authentication_reaches_one_terminal_state() {
-    let (config, server) = slow_gateway_config("shutdown");
+fn shutdown_during_stalled_authentication_is_bounded_and_cleanup_unconfirmed() {
+    let (config, server, accepted) = slow_gateway_config("shutdown");
     let mut child = engine()
         .args([
             "--config",
@@ -279,7 +287,16 @@ fn shutdown_during_blocking_authentication_reaches_one_terminal_state() {
     let mut stdin = child.stdin.take().unwrap();
     stdin
         .write_all(
-            b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":2,\"command\":{\"name\":\"shutdown\"}}\n",
+            b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n",
+        )
+        .unwrap();
+    stdin.flush().unwrap();
+    accepted
+        .recv_timeout(Duration::from_secs(2))
+        .expect("authentication request must be in flight before shutdown");
+    stdin
+        .write_all(
+            b"{\"type\":\"request\",\"apiVersion\":2,\"requestId\":2,\"command\":{\"name\":\"shutdown\"}}\n",
         )
         .unwrap();
     stdin.flush().unwrap();
@@ -288,25 +305,26 @@ fn shutdown_during_blocking_authentication_reaches_one_terminal_state() {
     let _ = server.join();
     let _ = std::fs::remove_file(config);
 
-    assert!(output.status.success());
+    assert!(!output.status.success());
     let machine_events = events(&output.stdout);
     assert!(
         machine_events
             .iter()
             .any(|event| { event["type"] == "control_result" && event["requestId"] == 2 })
     );
-    assert!(
-        !machine_events
-            .iter()
-            .any(|event| event["type"] == "fatal_error")
-    );
+    let fatal = machine_events
+        .iter()
+        .find(|event| event["type"] == "fatal_error")
+        .expect("stalled cancellation must be an explicit terminal failure");
+    assert_eq!(fatal["code"], "LOGOUT_FAILED");
+    assert_eq!(fatal["secondaryCode"], "AUTH_CLEANUP_UNCONFIRMED");
     assert_eq!(machine_events.last().unwrap()["type"], "stopped");
-    assert_eq!(machine_events.last().unwrap()["reason"], "user_requested");
+    assert_eq!(machine_events.last().unwrap()["reason"], "logout_failed");
 }
 
 #[test]
-fn private_pipe_eof_during_authentication_cancels_the_generation() {
-    let (config, server) = slow_gateway_config("eof");
+fn private_pipe_eof_during_stalled_authentication_is_cleanup_unconfirmed() {
+    let (config, server, accepted) = slow_gateway_config("eof");
     let mut child = engine()
         .args([
             "--config",
@@ -323,32 +341,36 @@ fn private_pipe_eof_during_authentication_cancels_the_generation() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
         .write_all(
             b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n",
         )
         .unwrap();
+    stdin.flush().unwrap();
+    accepted
+        .recv_timeout(Duration::from_secs(2))
+        .expect("authentication request must be in flight before owner EOF");
+    drop(stdin);
     let output = wait_bounded(child);
     let _ = server.join();
     let _ = std::fs::remove_file(config);
 
-    assert!(output.status.success());
+    assert!(!output.status.success());
     let machine_events = events(&output.stdout);
-    assert!(
-        !machine_events
-            .iter()
-            .any(|event| event["type"] == "fatal_error")
-    );
+    let fatal = machine_events
+        .iter()
+        .find(|event| event["type"] == "fatal_error")
+        .expect("stalled owner loss must be an explicit terminal failure");
+    assert_eq!(fatal["code"], "LOGOUT_FAILED");
+    assert_eq!(fatal["secondaryCode"], "AUTH_CLEANUP_UNCONFIRMED");
     assert_eq!(machine_events.last().unwrap()["type"], "stopped");
-    assert_eq!(machine_events.last().unwrap()["reason"], "user_requested");
+    assert_eq!(machine_events.last().unwrap()["reason"], "logout_failed");
 }
 
 #[test]
 fn gateway_timeout_is_indeterminate_and_never_reported_as_rejected() {
-    let (config, server) = slow_gateway_config("timeout");
+    let (config, server, _accepted) = slow_gateway_config("timeout");
     let mut child = engine()
         .args([
             "--config",

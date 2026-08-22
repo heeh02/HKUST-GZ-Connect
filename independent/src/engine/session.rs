@@ -1,6 +1,6 @@
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
 use crate::config::{parse_gateway_configuration, parse_resource_dns_servers};
-use crate::engine::auth_lifecycle::AuthenticationCancellation;
+use crate::engine::auth_lifecycle::{AuthenticationCancellation, OperationCancellation};
 use crate::engine::data_plane::EasyConnectDataPlane;
 use crate::engine::provider::{
     AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
@@ -23,11 +23,12 @@ use zeroize::{Zeroize, Zeroizing};
 const MODERN_ADDRESS_SETTLE_DELAY: Duration = Duration::from_secs(1);
 const DATA_PLANE_SETUP_ATTEMPTS: usize = 3;
 const DATA_PLANE_RETRY_STEP: Duration = Duration::from_secs(2);
+const OPERATION_CANCELLATION_POLL: Duration = Duration::from_millis(25);
 // The desktop gives the engine a finite grace period after requesting
 // shutdown.  Logout must retain the authenticated cookies while using a
 // shorter, independent deadline, rather than inheriting the normal 15-second
 // request timeout and colliding with that grace period.
-const LOGOUT_TIMEOUT: Duration = Duration::from_secs(5);
+const LOGOUT_TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct UnsupportedAuthDecision {
@@ -167,7 +168,32 @@ impl ModernL3TransportBackend {
         &self,
         session: AuthenticatedGatewaySession,
     ) -> Result<(AuthenticatedGatewaySession, ModernL3Connection)> {
-        match self.connect(&session) {
+        self.connect_or_logout_with_cancellation(session, None)
+    }
+
+    /// Establishes the verified Modern L3 transport while allowing the process
+    /// coordinator to stop the attempt between bounded blocking operations.
+    ///
+    /// The currently reviewed wire implementation remains synchronous, so an
+    /// in-flight socket operation is bounded by its own timeout. The token is
+    /// checked before and after every such operation and throughout retry waits.
+    pub fn connect_or_logout_cancellable(
+        &self,
+        session: AuthenticatedGatewaySession,
+        cancellation: &OperationCancellation,
+    ) -> Result<(AuthenticatedGatewaySession, ModernL3Connection)> {
+        self.connect_or_logout_with_cancellation(session, Some(cancellation))
+    }
+
+    fn connect_or_logout_with_cancellation(
+        &self,
+        session: AuthenticatedGatewaySession,
+        cancellation: Option<&OperationCancellation>,
+    ) -> Result<(AuthenticatedGatewaySession, ModernL3Connection)> {
+        let result = ensure_transport_active(cancellation)
+            .map_err(ProviderError::from)
+            .and_then(|_| self.establish_modern_l3_with_cancellation(&session, cancellation));
+        match result {
             Ok(connection) => Ok((session, connection)),
             Err(error) => {
                 let error = Error::from(error);
@@ -185,10 +211,20 @@ impl ModernL3TransportBackend {
         &self,
         session: &AuthenticatedGatewaySession,
     ) -> ProviderResult<ModernL3Connection> {
+        self.establish_modern_l3_with_cancellation(session, None)
+    }
+
+    fn establish_modern_l3_with_cancellation(
+        &self,
+        session: &AuthenticatedGatewaySession,
+        cancellation: Option<&OperationCancellation>,
+    ) -> ProviderResult<ModernL3Connection> {
+        ensure_transport_active(cancellation)?;
         let (configuration, _, _) =
             session
                 .http
                 .request(&self.configuration_path, Method::GET, None)?;
+        ensure_transport_active(cancellation)?;
         let configuration = Zeroizing::new(configuration);
         let gateway_configuration = parse_gateway_configuration(&configuration)?;
         if !gateway_configuration.has_l3_configuration {
@@ -216,15 +252,21 @@ impl ModernL3TransportBackend {
                 }
             }
         }
+        ensure_transport_active(cancellation)?;
         let acquisition =
             request_modern_token(&self.base_url, &session.session_identifier, self.timeout)?;
+        ensure_transport_active(cancellation)?;
         let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
         let mut attempt = 1;
         loop {
             // The gateway intermittently rejects an address request sent
             // immediately after token acquisition. Keep this transport pacing
             // inside the Modern backend rather than the auth session.
-            std::thread::sleep(address_settle_delay(data_plane_not_before, Instant::now()));
+            cancellable_wait(
+                address_settle_delay(data_plane_not_before, Instant::now()),
+                cancellation,
+            )?;
+            ensure_transport_active(cancellation)?;
             match EasyConnectDataPlane::connect(
                 &self.gateway_host,
                 &acquisition,
@@ -232,6 +274,7 @@ impl ModernL3TransportBackend {
                 self.configured_certificate_pin.as_ref(),
             ) {
                 Ok(data_plane) => {
+                    ensure_transport_active(cancellation)?;
                     return Ok(ModernL3Connection {
                         data_plane,
                         dns_servers,
@@ -241,12 +284,11 @@ impl ModernL3TransportBackend {
                     if attempt < DATA_PLANE_SETUP_ATTEMPTS
                         && retryable_data_plane_setup_error(&error) =>
                 {
-                    std::thread::sleep(DATA_PLANE_RETRY_STEP * attempt as u32);
+                    cancellable_wait(DATA_PLANE_RETRY_STEP * attempt as u32, cancellation)?;
                     attempt += 1;
                 }
                 Err(error) => {
-                    let kind = data_plane_setup_error_kind(&error);
-                    return Err(ProviderError::failed_with_kind(kind, error));
+                    return Err(ProviderError::failed_with_kind(ErrorKind::DataPlane, error));
                 }
             }
         }
@@ -494,6 +536,35 @@ impl AuthenticatedGatewaySession {
     }
 }
 
+fn ensure_transport_active(cancellation: Option<&OperationCancellation>) -> Result<()> {
+    if cancellation.is_some_and(OperationCancellation::is_cancelled) {
+        return Err(Error::classified(
+            ErrorKind::Lifecycle,
+            "transport setup was cancelled",
+        ));
+    }
+    Ok(())
+}
+
+fn cancellable_wait(
+    duration: Duration,
+    cancellation: Option<&OperationCancellation>,
+) -> Result<()> {
+    if cancellation.is_none() {
+        std::thread::sleep(duration);
+        return Ok(());
+    }
+    let started = Instant::now();
+    loop {
+        ensure_transport_active(cancellation)?;
+        let remaining = duration.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Ok(());
+        }
+        std::thread::sleep(remaining.min(OPERATION_CANCELLATION_POLL));
+    }
+}
+
 fn ensure_authentication_active(
     cancellation: Option<&AuthenticationCancellation>,
 ) -> ProviderResult<()> {
@@ -633,21 +704,7 @@ fn address_settle_delay(deadline: Instant, now: Instant) -> Duration {
 }
 
 fn retryable_data_plane_setup_error(error: &Error) -> bool {
-    data_plane_setup_error_kind(error).is_retryable()
-}
-
-fn data_plane_setup_error_kind(error: &Error) -> ErrorKind {
-    let message = error.to_string();
-    if message.contains("failed to fill whole buffer")
-        || message.contains("modern address reply rejected the request (status=3)")
-        || message.contains("Connection reset by peer")
-        || message.contains("connection reset by peer")
-        || message.contains("unexpected end of file")
-    {
-        ErrorKind::DataPlaneTransient
-    } else {
-        ErrorKind::DataPlane
-    }
+    error.kind().is_retryable()
 }
 
 fn required_text<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
@@ -695,23 +752,18 @@ mod tests {
 
     #[test]
     fn only_transient_data_plane_failures_are_retried() {
-        let send = Error("modern send reply: failed to fill whole buffer".into());
-        let address = Error("modern address reply rejected the request (status=3)".into());
-        let certificate =
-            Error("special TLS certificate does not match verified HTTPS leaf".into());
-        let channel = Error("modern channel reply has an unexpected status".into());
-        assert!(retryable_data_plane_setup_error(&send));
-        assert!(retryable_data_plane_setup_error(&address));
-        assert!(!retryable_data_plane_setup_error(&certificate));
-        assert!(!retryable_data_plane_setup_error(&channel));
-        assert_eq!(
-            data_plane_setup_error_kind(&send),
-            ErrorKind::DataPlaneTransient
+        let transient_with_permanent_wording = Error::classified(
+            ErrorKind::DataPlaneTransient,
+            "certificate validation wording must not control retry",
         );
-        assert_eq!(
-            data_plane_setup_error_kind(&certificate),
-            ErrorKind::DataPlane
-        );
+        let permanent_with_legacy_transient_wording =
+            Error::classified(ErrorKind::DataPlane, "failed to fill whole buffer");
+        assert!(retryable_data_plane_setup_error(
+            &transient_with_permanent_wording
+        ));
+        assert!(!retryable_data_plane_setup_error(
+            &permanent_with_legacy_transient_wording
+        ));
     }
 
     #[test]
@@ -766,6 +818,21 @@ mod tests {
     fn logout_deadline_is_short_and_independent() {
         assert!(LOGOUT_TIMEOUT < Duration::from_secs(DEFAULT_TIMEOUT_SECONDS));
         assert!(!LOGOUT_TIMEOUT.is_zero());
+    }
+
+    #[test]
+    fn transport_cancellation_interrupts_retry_waits_between_socket_operations() {
+        let cancellation = OperationCancellation::default();
+        let trigger = cancellation.clone();
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(30));
+            trigger.cancel();
+        });
+        let started = Instant::now();
+        let error = cancellable_wait(Duration::from_secs(2), Some(&cancellation)).unwrap_err();
+        canceller.join().unwrap();
+        assert_eq!(error.kind(), ErrorKind::Lifecycle);
+        assert!(started.elapsed() < Duration::from_millis(250));
     }
 
     #[test]

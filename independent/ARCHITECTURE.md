@@ -25,7 +25,7 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `engine/data_plane.rs` | Address lease and send/receive channel ownership | TCP/UDP socket semantics |
 | `engine/ip_packet.rs` | Bounded IPv4 validation and stream framing | Gateway authentication |
 | `engine/netstack.rs` | Userspace TCP/UDP stack, packet bridges, bounded TCP connect | Proxy parsing or DNS wire parsing |
-| `engine/dns.rs` | Bounded DNS A queries through VPN UDP plus a TTL-bounded answer cache | Public/system DNS fallback |
+| `engine/dns.rs` | Bounded DNS A queries through VPN UDP, same-resolver TCP retry after a valid truncated response, and a TTL-bounded answer cache | Public/system DNS fallback |
 | `engine/proxy.rs` | Shared destination validation plus gateway/system resolver policy | Listener lifecycle or gateway protocol |
 | `engine/socks_auth.rs` | Bounded stdin proxy credentials, zeroizing constant-time RFC 1929/Basic verification | argv, events, logging, or gateway authentication |
 | `engine/socks.rs` | One-port protocol detection and dispatch; compatible, optional-auth, and strict SOCKS5 contracts plus the strict HTTP frontend | HTTP message rewriting or gateway protocol details |
@@ -74,6 +74,23 @@ certificate pin, or an `EasyConnectDataPlane`. `ModernL3TransportBackend`
 obtains those transport inputs, and `ModernL3Connection` hands the resulting
 DNS list and data plane to process assembly. A failed transport setup logs out
 the still-valid authenticated session instead of leaving ownership ambiguous.
+
+Authentication and Transport setup run in process-owned blocking workers while
+the async coordinator continues consuming private control, EOF, signal and
+deadline events. Cancellation is cooperative between bounded network calls.
+A cooperative late result is drained and cleaned; if an in-flight synchronous
+syscall does not return within the cancellation drain deadline, the Engine
+terminates with cleanup-unconfirmed. It never promotes that late result or
+waits past the Desktop graceful-stop envelope.
+
+Normal runtime shutdown is ordered and bounded: process assembly first closes
+and drains the local proxy service, then `VirtualNetstack::shutdown` closes all
+three Modern data-plane sockets, aborts/awaits the Tokio runner, and joins both
+packet bridge threads before Gateway logout begins. `VirtualNetstack::Drop`
+performs only non-blocking socket closure and runner cancellation as a panic/
+early-return backstop; it is not evidence of a successful normal join. A join
+that exceeds the runtime deadline is a typed `DATA_PLANE_SHUTDOWN_FAILED`
+terminal failure rather than a clean user stop.
 
 The local engine APIs also have separate directions:
 
@@ -211,8 +228,9 @@ the value it settled on at startup.
 ## VPN DNS source selection
 
 `engine/dns.rs` owns the bounded DNS client that sends UDP through
-`VirtualNetstack`; it does not modify operating-system DNS or routes. The
-runtime selects one of two reviewed sources:
+`VirtualNetstack` and retries a valid matching `TC=1` response over length-prefixed
+TCP to the same resolver through the same netstack. It does not modify
+operating-system DNS or routes. The runtime selects one of two reviewed sources:
 
 1. addresses authenticated and advertised by the gateway in
    `rclist.csp` (`Resource/Dns@dnsserver`) or the optional `conf.csp` L3 fields;
@@ -221,7 +239,8 @@ runtime selects one of two reviewed sources:
 
 The selected list is deduplicated, capped at eight servers, checked by the same
 tunnel destination policy as SOCKS TCP/UDP, and raced to the first valid A
-answer. The HKUST(GZ) production profile supplies `10.90.63.2` and
+answer. UDP timeout or failure does not cause a public/system query or speculative
+TCP hedge. The HKUST(GZ) production profile supplies `10.90.63.2` and
 `10.90.63.3` and sets `proxy.allow_system_dns_fallback` to `false`. This keeps
 HPC-only hostnames inside the VPN while still adopting new gateway-advertised
 DNS automatically. The Event API reports `gateway` or `vpn_profile` without

@@ -1,6 +1,6 @@
 use crate::gateway_auth::{AUTHENTICATED_SESSION_ID_LEN, AuthenticatedSessionId};
 use crate::special_tls11::SpecialTls11Stream;
-use crate::{Error, Result};
+use crate::{Error, ErrorKind, Result};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use rustls::client::WebPkiServerVerifier;
@@ -158,16 +158,29 @@ impl Debug for ModernControlRequest {
 
 pub fn parse_address_reply(reply: &[u8]) -> Result<Ipv4Addr> {
     if reply.len() < 8 {
-        return Err(Error("modern address reply is shorter than 8 bytes".into()));
+        return Err(Error::classified(
+            ErrorKind::DataPlane,
+            "modern address reply is shorter than 8 bytes",
+        ));
     }
     if reply[0] != ModernCommand::RequestAddress as u8 {
         // The status byte is protocol metadata, not session material. Keeping
         // it in the diagnostic makes gateway-side transient rejections
         // distinguishable without ever logging the token or raw reply.
-        return Err(Error(format!(
-            "modern address reply rejected the request (status={})",
-            reply[0]
-        )));
+        let kind = if reply[0] == 3 {
+            // Status 3 is the one gateway-side address-allocation rejection
+            // observed to clear after the existing bounded settle/retry path.
+            ErrorKind::DataPlaneTransient
+        } else {
+            ErrorKind::DataPlane
+        };
+        return Err(Error::classified(
+            kind,
+            format!(
+                "modern address reply rejected the request (status={})",
+                reply[0]
+            ),
+        ));
     }
     Ok(Ipv4Addr::new(reply[4], reply[5], reply[6], reply[7]))
 }
@@ -177,17 +190,22 @@ pub fn validate_channel_reply(reply: &[u8], command: ModernCommand) -> Result<()
         ModernCommand::Send => 2,
         ModernCommand::Receive => 1,
         ModernCommand::RequestAddress => {
-            return Err(Error(
-                "address replies require the address reply parser".into(),
+            return Err(Error::classified(
+                ErrorKind::DataPlane,
+                "address replies require the address reply parser",
             ));
         }
     };
     if reply.is_empty() {
-        return Err(Error("modern channel reply is empty".into()));
+        return Err(Error::classified(
+            ErrorKind::DataPlane,
+            "modern channel reply is empty",
+        ));
     }
     if reply[0] != expected {
-        return Err(Error(
-            "modern channel reply has an unexpected status".into(),
+        return Err(Error::classified(
+            ErrorKind::DataPlane,
+            "modern channel reply has an unexpected status",
         ));
     }
     Ok(())
@@ -668,27 +686,40 @@ pub(crate) fn connect_gateway_tcp(address: SocketAddr, timeout: Duration) -> Res
     const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
 
     let stream = TcpStream::connect_timeout(&address, timeout).map_err(|error| {
-        Error(format!(
-            "cannot connect to the gateway TCP endpoint: {error}"
-        ))
+        Error::classified(
+            ErrorKind::DataPlaneTransient,
+            format!("cannot connect to the gateway TCP endpoint: {error}"),
+        )
     })?;
-    stream
-        .set_read_timeout(Some(timeout))
-        .map_err(|error| Error(format!("cannot set the gateway TCP read timeout: {error}")))?;
-    stream
-        .set_write_timeout(Some(timeout))
-        .map_err(|error| Error(format!("cannot set the gateway TCP write timeout: {error}")))?;
+    stream.set_read_timeout(Some(timeout)).map_err(|error| {
+        Error::classified(
+            ErrorKind::DataPlane,
+            format!("cannot set the gateway TCP read timeout: {error}"),
+        )
+    })?;
+    stream.set_write_timeout(Some(timeout)).map_err(|error| {
+        Error::classified(
+            ErrorKind::DataPlane,
+            format!("cannot set the gateway TCP write timeout: {error}"),
+        )
+    })?;
     stream.set_nodelay(true).map_err(|error| {
-        Error(format!(
-            "cannot disable Nagle on the gateway TCP socket: {error}"
-        ))
+        Error::classified(
+            ErrorKind::DataPlane,
+            format!("cannot disable Nagle on the gateway TCP socket: {error}"),
+        )
     })?;
     let keepalive = TcpKeepalive::new()
         .with_time(KEEPALIVE_IDLE)
         .with_interval(KEEPALIVE_INTERVAL);
     SockRef::from(&stream)
         .set_tcp_keepalive(&keepalive)
-        .map_err(|error| Error(format!("cannot enable gateway TCP keepalive: {error}")))?;
+        .map_err(|error| {
+            Error::classified(
+                ErrorKind::DataPlane,
+                format!("cannot enable gateway TCP keepalive: {error}"),
+            )
+        })?;
     Ok(stream)
 }
 
@@ -847,17 +878,30 @@ mod tests {
             parse_address_reply(&[0, 0, 0, 0, 10, 0, 0, 9]).unwrap(),
             Ipv4Addr::new(10, 0, 0, 9)
         );
-        assert!(parse_address_reply(&[0; 7]).is_err());
-        let rejected = parse_address_reply(&[3, 0, 0, 0, 10, 0, 0, 9])
-            .unwrap_err()
-            .to_string();
         assert_eq!(
-            rejected,
+            parse_address_reply(&[0; 7]).unwrap_err().kind(),
+            ErrorKind::DataPlane
+        );
+        let rejected = parse_address_reply(&[3, 0, 0, 0, 10, 0, 0, 9]).unwrap_err();
+        assert_eq!(rejected.kind(), ErrorKind::DataPlaneTransient);
+        assert_eq!(
+            rejected.to_string(),
             "modern address reply rejected the request (status=3)"
+        );
+        assert_eq!(
+            parse_address_reply(&[4, 0, 0, 0, 10, 0, 0, 9])
+                .unwrap_err()
+                .kind(),
+            ErrorKind::DataPlane
         );
         assert!(validate_channel_reply(&[2], ModernCommand::Send).is_ok());
         assert!(validate_channel_reply(&[1], ModernCommand::Receive).is_ok());
-        assert!(validate_channel_reply(&[1], ModernCommand::Send).is_err());
+        assert_eq!(
+            validate_channel_reply(&[1], ModernCommand::Send)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::DataPlane
+        );
     }
 
     #[test]

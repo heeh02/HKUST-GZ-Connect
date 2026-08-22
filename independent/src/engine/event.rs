@@ -26,6 +26,7 @@ pub enum EngineCapability {
 pub enum EngineState {
     Connecting,
     Authenticating,
+    PreparingTunnel,
     Connected,
     Stopping,
     Stopped,
@@ -92,6 +93,7 @@ pub enum EngineErrorCode {
     AuthLimitExceeded,
     UnsupportedAuthentication,
     DataPlaneSetupFailed,
+    DataPlaneShutdownFailed,
     LocalListenerFailed,
     NetworkDisconnected,
     LogoutFailed,
@@ -241,6 +243,17 @@ mod tests {
                 json!({"type": "state_changed", "state": "connecting", "generation": 42}),
             ),
             (
+                EngineEvent::StateChanged {
+                    state: EngineState::PreparingTunnel,
+                    generation: 42,
+                },
+                json!({
+                    "type": "state_changed",
+                    "state": "preparing_tunnel",
+                    "generation": 42,
+                }),
+            ),
+            (
                 EngineEvent::ClientIpAssigned {
                     family: AddressFamily::Ipv4,
                 },
@@ -298,6 +311,13 @@ mod tests {
                     "code": "AUTH_INDETERMINATE",
                     "secondaryCode": "AUTH_CLEANUP_UNCONFIRMED",
                 }),
+            ),
+            (
+                EngineEvent::FatalError {
+                    code: EngineErrorCode::DataPlaneShutdownFailed,
+                    secondary_code: None,
+                },
+                json!({"type": "fatal_error", "code": "DATA_PLANE_SHUTDOWN_FAILED"}),
             ),
             (
                 EngineEvent::Stopped {
