@@ -95,6 +95,8 @@ Linux 只有在系统提供 Secret Service/密钥环时才会保存密码；没�
 
 访问 HPC 等仅能由校园内部 DNS 解析的域名时，无需手动填写 DNS。应用会优先使用
 学校在认证会话中下发的 DNS，并让查询只经过校园隧道，不会修改电脑的系统 DNS。
+如果校园 DNS 的 UDP 响应被截断，应用会在同一校园 DNS 上自动改用隧道内 TCP，
+不会回退到公共或系统 DNS。
 
 ## 选择“校园隧道”还是“直连”
 
@@ -128,6 +130,7 @@ Linux 只有在系统提供 Secret Service/密钥环时才会保存密码；没�
 
 在 HTTPS 登录页成功登录后，校园浏览器会询问是否保存密码。只有用户明确点击
 “保存”才会写入本机；修改密码、重置密码和登录失败页面不会被当成成功登录保存。
+无用户名证据且未明确标注 `current-password` 的单一 secret 输入框也不会被自动填充或保存。
 
 密码按网站来源分别保存，并由 macOS Keychain、Windows DPAPI 或 Linux Secret
 Service 保护。地址栏旁的密码按钮可以填入或删除当前网站的凭据。项目维护者无法
@@ -316,6 +319,8 @@ university home page. Campus Browser supports multiple tabs and these shortcuts:
 Campus-only names such as HPC hosts need no manual DNS setup. The app prefers
 DNS supplied by the authenticated school session and sends those queries only
 through the campus tunnel without changing operating-system DNS.
+If a campus DNS UDP response is truncated, the app retries that same campus
+resolver over tunnel TCP and never falls back to a public or system resolver.
 
 ## Campus tunnel or Direct
 
@@ -353,6 +358,8 @@ Custom shortcuts stay on this computer and are not uploaded or synchronized.
 After a successful HTTPS login, Campus Browser can ask whether to save the
 credential. Nothing is stored unless the user explicitly chooses **Save**.
 Password-change, reset, and failed-login forms are excluded.
+Single secret fields without username evidence or explicit `current-password`
+semantics are also excluded from autofill and capture.
 
 Credentials are isolated per website origin and protected by macOS Keychain,
 Windows DPAPI, or Linux Secret Service. The password button beside the address

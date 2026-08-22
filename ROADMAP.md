@@ -1,4 +1,4 @@
-# HKUST(GZ) Connect 1.2.2 baseline and roadmap
+# HKUST(GZ) Connect 1.2.3 baseline and roadmap
 
 This roadmap is an implementation and evidence ledger, not a promise that an
 unobserved proprietary gateway revision will work forever. A trait, parser,
@@ -21,27 +21,38 @@ The compatibility matrix in `independent/spec/COMPATIBILITY_MATRIX.md` remains
 the detailed evidence record. If this roadmap and that matrix disagree, use the
 more conservative status until the discrepancy is reviewed.
 
-## Release 1.2.2 baseline
+## Release 1.2.3 baseline
 
 | Area | Status | Production result | Evidence still needed |
 | --- | --- | --- | --- |
 | Independent password + modern L3 engine | **Done** for the current HKUST(GZ) profile | Rust owns authentication, tunnel setup, userspace TCP/UDP and loopback proxying; the authenticated session is separated from L3 configuration, token, DNS and data-plane ownership | Repeat the restricted canary after a gateway or official-client upgrade |
 | Isolated Campus Browser | **Done** for the current Web path | Multi-tab browser, direct/campus routing, local credential vault and fail-closed tunnel policy; a two-process Electron gate proves exact/subdomain rules and PAC survive an app restart | Cross-platform campus-site canary for each release |
-| SOCKS/PAC/Clash/SSH frontends | **Done** for documented TCP use | Default compatibility mode plus opt-in strict local authentication; no global network mutation | Live UDP service coverage remains incomplete |
-| Lifecycle and recovery | **Partial** | Event API v1 emits a generation-bound structured `stopped` reason; the desktop prefers private bounded Control v2 graceful shutdown/logout before bounded signal fallbacks | Sleep/resume, network switching and server-initiated termination need real-device canaries |
+| SOCKS/PAC/Clash/SSH frontends | **Done** for documented TCP use | New installs default to strict local authentication; older compatibility choices require an explicit migration decision; no global network mutation | Windows current-user-only helper sidecar requires the remote Windows CI result for this release |
+| Authentication correctness | **Done** for the current password-only profile | Explicit rejection, indeterminate network outcome and protocol-invalid responses have distinct stable codes; stale cancel cannot destroy a valid transaction; Engine-owned deadlines and budgets fail closed | Real Gateway MFA remains unsupported until authorized sanitized evidence exists |
+| Lifecycle and recovery | **Partial** | Event API v1 emits a generation-bound structured `stopped` reason; authentication consumes shutdown/pipe EOF through a cancellable coordinator and renderer loss cancels a pending challenge | Sleep/resume, network switching and server-initiated termination need real-device canaries |
 | Desktop performance | **Partial** | Offline 20-tab switching/lifecycle soak and a hidden-idle telemetry contract exist | Stable product baselines on supported macOS/Windows hardware and a real campus page set |
-| Split-horizon campus DNS | **Done** for the current HKUST(GZ) profile | Authenticated `rclist.csp`/`conf.csp` DNS is acquired automatically; the production profile is fallback-only and public/system fallback is disabled | Repeat the HPC hostname canary after a gateway or school DNS change |
+| Split-horizon campus DNS | **Done** for the current HKUST(GZ) profile | Authenticated `rclist.csp`/`conf.csp` DNS is acquired automatically; matching truncated UDP responses retry the same campus resolver over userspace TCP; public/system fallback is disabled | Repeat the HPC hostname and truncated-answer canary after a gateway or school DNS change |
 
-### 1.2.2 split-horizon DNS evidence
+### 1.2.3 authentication and DNS hardening
 
 The active gateway publishes split-horizon DNS in the authenticated
 `rclist.csp` resource policy even when the optional `conf.csp` fields are
-empty. Version 1.2.2 reads both protocol locations on every connection.
+empty. The 1.2.x line reads both protocol locations on every connection.
 Downloaded policy is authoritative; the bounded reviewed deployment profile
 is selected only when both locations are empty or unavailable. Queries travel
-through `VirtualNetstack`, responses are validated, and only bounded A answers
-are cached. Public/system fallback is disabled and no operating-system DNS
-setting or route is changed.
+through `VirtualNetstack`, responses validate transaction ID and the exact
+question, and only bounded A answers are cached. Version 1.2.3 adds
+length-prefixed TCP to the same resolver only after a valid `TC=1` response.
+Public/system fallback is disabled and no operating-system DNS setting or route
+is changed.
+
+Authentication now treats only a verified structured password-required state
+as credential rejection. Timeout/reset/partial outcomes are indeterminate and
+stop blind automatic retries; malformed structured responses are protocol
+invalid. Remote cleanup status is secondary and never overwrites the primary
+failure. Generic interactive transactions remain synthetic-only but are
+bounded by Engine-owned monotonic deadlines, steps, submissions, resends and
+continuation-request ceilings.
 
 ### 1.2.1 lifecycle and restart evidence
 
@@ -51,7 +62,9 @@ bidirectional protocol over the already inherited private stdin/stdout pipes;
 it does not open a loopback control listener. Closing that stdin channel closes
 control only and does not implicitly stop the tunnel. The current implemented
 control capabilities are graceful engine shutdown, request cancellation, and
-control-channel close. Names for resource, WebVPN, or MFA capabilities return
+control-channel close. During authentication, losing the private pipe cancels
+that generation; after connection, pipe EOF closes control only and leaves the
+tunnel under process/signal supervision. Names for resource, WebVPN, or MFA capabilities return
 typed unsupported errors and are not implementations.
 The framing and EOF contract is documented in
 [`independent/spec/ENGINE_CONTROL_API_V2.md`](independent/spec/ENGINE_CONTROL_API_V2.md).
