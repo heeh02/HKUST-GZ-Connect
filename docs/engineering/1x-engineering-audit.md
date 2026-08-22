@@ -323,7 +323,7 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 - Desktop：519 total，518 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
 - Desktop graph：194 files / 243 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
-- Offline performance：SOCKS 18/18，最大p95 1.834 ms；netstack 27/27，最大p95 6.083 ms；均不是Gateway吞吐证据。
+- Offline performance：SOCKS 18/18，最大p95 2.210 ms；netstack 27/27，最大p95 5.370 ms；均不是Gateway吞吐证据。
 - 每批精确暂存secret gate通过；最终文档提交仍需再次扫描完整index。
 
 当前未发现仍成立的本地代码级P0/P1。Architecture Frozen和Release仍为NO：远端CI、
