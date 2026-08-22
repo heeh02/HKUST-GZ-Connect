@@ -24,7 +24,7 @@ const { resolveUserDataOverride } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
-  classifyEngineStopReason,
+  classifyEngineStopReason, formatEngineEventDiagnostic,
   resolveEngineFailureKind,
 } = require('./lib/engine-output');
 const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
@@ -186,7 +186,7 @@ const authChallengeCoordinator = new AuthChallengeCoordinator({
 const engineControlRegistry = new EngineControlRegistry({ authChallenges: authChallengeCoordinator });
 const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
 const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
-const logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure });
+const logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure, onRecovered: () => { if (state.diagnosticNotice) { state.diagnosticNotice = null; emit(); } } });
 const externalProxyCredentialStore = new ExternalProxyCredentialStore({
   filePath: PROXY_CREDENTIAL,
   safeStorage,
@@ -924,7 +924,6 @@ async function connectOnce(isRetry, intent) {
       emit();
     }
   };
-
   engineRuntime = new EngineConnectionRuntime({
     generation: engineGeneration,
     expectedPort: Number(s.port),
@@ -932,6 +931,7 @@ async function connectOnce(isRetry, intent) {
     controlRegistry: engineControlRegistry,
     isCurrent: (generation) => engineSupervisor.isCurrent(generation),
     handlers: {
+      onDiagnostic: (event) => logWriter.append(formatEngineEventDiagnostic(event, { ...connectionState.snapshot(), generation: engineGeneration })),
       onConnecting: (engineState) => {
         if (!connectionState.markEnginePhase(engineGeneration, engineState)) return;
         emit();

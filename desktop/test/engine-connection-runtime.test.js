@@ -18,6 +18,7 @@ function fixture(overrides = {}) {
   const control = new FakeControl();
   const binds = [];
   const calls = [];
+  const diagnostics = [];
   let timerCallback;
   let clearedTimer = null;
   const handlers = Object.fromEntries([
@@ -44,7 +45,7 @@ function fixture(overrides = {}) {
       },
     },
     isCurrent: () => true,
-    handlers,
+    handlers: { ...handlers, onDiagnostic: (event) => diagnostics.push(event) },
     setTimeoutFn: (callback, delay) => {
       timerCallback = callback;
       return { delay, unref() {} };
@@ -56,6 +57,7 @@ function fixture(overrides = {}) {
     binds,
     calls,
     control,
+    diagnostics,
     get clearedTimer() { return clearedTimer; },
     runtime,
     stdout: new EventEmitter(),
@@ -88,6 +90,19 @@ test('runtime binds one generation, negotiates before readiness, and dispatches 
   ));
   assert.equal(f.runtime.helloSeen, true);
   assert.equal(f.runtime.stoppedReason, 'startup_failed');
+  assert.deepEqual(f.diagnostics.map((event) => event.type), [
+    'hello',
+    'state_changed',
+    'state_changed',
+    'state_changed',
+    'listener_ready',
+    'client_ip_assigned',
+    'dns_mode',
+    'network_unhealthy',
+    'state_changed',
+    'fatal_error',
+    'stopped',
+  ]);
   assert.deepEqual(f.calls, [
     ['onConnecting', 'authenticating'],
     ['onConnecting', 'preparing_tunnel'],
@@ -156,6 +171,9 @@ test('exit drain rejects buffered readiness but preserves terminal outcome until
     ['onStopped', 'network_unhealthy'],
   ]);
   assert.equal(f.runtime.stoppedReason, 'network_unhealthy');
+  assert.deepEqual(f.diagnostics.slice(-2).map((event) => event.type), [
+    'fatal_error', 'stopped',
+  ]);
   assert.equal(f.stdout.listenerCount('data'), 1, 'terminal drain remains attached through close');
   assert.equal(f.runtime.dispose(), true);
   assert.equal(f.stdout.listenerCount('data'), 0);

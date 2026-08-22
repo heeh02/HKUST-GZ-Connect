@@ -2,6 +2,45 @@
 
 const { createT } = require('./i18n');
 
+const SAFE_DIAGNOSTIC_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/u;
+
+function diagnosticToken(value) {
+  const token = String(value ?? '');
+  return SAFE_DIAGNOSTIC_TOKEN.test(token) ? token : 'unknown';
+}
+
+function diagnosticInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function formatConnectionDiagnostic({
+  intent,
+  generation,
+  attempt,
+  phase,
+  event,
+  outcome = null,
+  retryCount = 0,
+} = {}) {
+  return `[connection=${diagnosticInteger(intent)}:${diagnosticInteger(generation)} ` +
+    `attempt=${diagnosticInteger(attempt)} retry=${diagnosticInteger(retryCount)} ` +
+    `phase=${diagnosticToken(phase)} event=${diagnosticToken(event)} ` +
+    `outcome=${diagnosticToken(outcome)} underlay=system_route]\n`;
+}
+
+function formatEngineEventDiagnostic(event, context = {}) {
+  const outcome = event?.code ?? event?.reason ?? event?.state ?? event?.mode ?? null;
+  return formatConnectionDiagnostic({
+    intent: context.intent,
+    generation: context.generation,
+    attempt: context.attemptNumber,
+    retryCount: context.attempts,
+    phase: context.phase,
+    event: event?.type,
+    outcome,
+  });
+}
+
 function classifyEngineOutput(text, socksPort, t = createT('zh')) {
   if (/gateway authentication failed|login failed|invalid username/i.test(text)) {
     return t('engine.authFailed');
@@ -124,5 +163,7 @@ module.exports = {
   engineFailureKind,
   engineFailureKindFromCode,
   engineFailureKindFromStopReason,
+  formatConnectionDiagnostic,
+  formatEngineEventDiagnostic,
   resolveEngineFailureKind,
 };

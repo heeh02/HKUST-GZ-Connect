@@ -345,3 +345,45 @@ test('threshold and timer flush failures are reported without unhandled rejectio
     await writer.close();
   }
 });
+
+test('log I/O notifications are throttled per failure episode and clear after proven recovery', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('creating symbolic links requires elevated privileges on some Windows hosts');
+    return;
+  }
+  const snapshot = symbolicLogTarget(t);
+  const errors = [];
+  let recoveries = 0;
+  const writer = new BufferedLogWriter(snapshot.file, {
+    flushIntervalMs: 60_000,
+    onError: (error) => errors.push(error),
+    onRecovered: () => { recoveries += 1; },
+  });
+
+  writer.append('first failure\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  writer.append('same episode\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  assert.equal(errors.length, 1, 'repeated failures must not spam the UI');
+  assert.equal(writer.lastError.code, 'ERR_UNSAFE_LOG_PATH');
+
+  fs.unlinkSync(snapshot.file);
+  writer.append('recovered flush\n');
+  await writer.flush();
+  assert.equal(recoveries, 1);
+  assert.equal(writer.lastError, null);
+  await writer.flush();
+  assert.equal(recoveries, 1, 'an empty flush is not new recovery evidence');
+
+  fs.unlinkSync(snapshot.file);
+  fs.symlinkSync(snapshot.target, snapshot.file);
+  writer.append('new failure episode\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  assert.equal(errors.length, 2);
+  await writer.reset();
+  assert.equal(recoveries, 2);
+  assert.equal(writer.lastError, null);
+  assert.equal(fs.lstatSync(snapshot.file).isSymbolicLink(), false);
+  assertTargetUnchanged(snapshot);
+  await writer.close();
+});

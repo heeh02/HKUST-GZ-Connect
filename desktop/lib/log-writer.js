@@ -52,6 +52,7 @@ class BufferedLogWriter {
     clearTimeoutFn = clearTimeout,
     redact = redactDiagnosticText,
     onError = null,
+    onRecovered = null,
   } = {}) {
     this.file = file;
     this.rotatedFile = `${file}.1`;
@@ -75,12 +76,14 @@ class BufferedLogWriter {
     this.clearTimeoutFn = typeof clearTimeoutFn === 'function' ? clearTimeoutFn : clearTimeout;
     this.redact = typeof redact === 'function' ? redact : redactDiagnosticText;
     this.onError = typeof onError === 'function' ? onError : null;
+    this.onRecovered = typeof onRecovered === 'function' ? onRecovered : null;
     this.buffer = '';
     this.timer = null;
     this.operation = Promise.resolve();
     this.closed = false;
     this.droppedBytes = 0;
     this.lastError = null;
+    this.errorEpisode = false;
     this.retentionStartedAt = null;
     this.retentionTimer = null;
 
@@ -91,14 +94,27 @@ class BufferedLogWriter {
 
   observeBackground(operation) {
     operation.catch((error) => {
-      this.lastError = error;
-      try {
-        this.onError?.(error);
-      } catch {
-        // Diagnostics must never turn an expected log I/O failure into another
-        // uncaught exception. The original error remains in lastError.
-      }
+      this.reportError(error);
     });
+  }
+
+  reportError(error) {
+    this.lastError = error;
+    if (this.errorEpisode) return;
+    this.errorEpisode = true;
+    try { this.onError?.(error); } catch {
+      // Diagnostics must never turn an expected log I/O failure into another
+      // uncaught exception. The original error remains in lastError.
+    }
+  }
+
+  reportRecovery() {
+    if (!this.errorEpisode) return;
+    this.errorEpisode = false;
+    this.lastError = null;
+    try { this.onRecovered?.(); } catch {
+      // Recovery notification is advisory and must not fail a durable write.
+    }
   }
 
   flushInBackground() {
@@ -237,8 +253,12 @@ class BufferedLogWriter {
     return chunk;
   }
 
-  enqueue(operation) {
-    const next = this.operation.then(operation, operation);
+  enqueue(operation, { reportIo = false } = {}) {
+    const queued = this.operation.then(operation, operation);
+    const next = reportIo ? queued.then(
+      (value) => { this.reportRecovery(); return value; },
+      (error) => { this.reportError(error); throw error; },
+    ) : queued;
     this.operation = next.catch(() => {});
     return next;
   }
@@ -298,7 +318,7 @@ class BufferedLogWriter {
       let chunk = Buffer.from(buffered);
       if (chunk.length > this.maxBytes) chunk = chunk.subarray(chunk.length - this.maxBytes);
       await this.appendChunk(chunk);
-    });
+    }, { reportIo: true });
   }
 
   reset() {
@@ -310,7 +330,7 @@ class BufferedLogWriter {
       await this.writeRetentionStart(now);
       this.retentionStartedAt = now;
       this.scheduleRetention();
-    });
+    }, { reportIo: true });
   }
 
   async close() {

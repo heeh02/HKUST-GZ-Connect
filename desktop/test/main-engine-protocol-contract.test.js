@@ -19,6 +19,7 @@ test('main consumes generation-bound stopped reasons at process close', () => {
   assert.match(source, /engineRuntime\?\.dispose\(\)/);
   assert.match(source, /resolveEngineFailureKind\(\{[\s\S]*stopReason: structuredStopReason/);
   assert.match(source, /classifyEngineStopReason\(structuredStopReason, stoppedSocksPort, t\)/);
+  assert.match(source, /onDiagnostic: \(event\) => logWriter\.append\(formatEngineEventDiagnostic\(event,/);
 });
 
 test('desktop requires Engine API hello and has no English stdout readiness fallback', () => {

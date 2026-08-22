@@ -62,8 +62,9 @@ test('settings, recovery, browser, and log outcomes have separate domains', () =
   assert.match(source, /settingsError: null/);
   assert.match(source, /recoveryError: null/);
   assert.match(source, /diagnosticNotice: null/);
-  assert.match(source, /new BufferedLogWriter\(LOG, \{ onError: reportLogFailure \}\)/);
+  assert.match(source, /new BufferedLogWriter\(LOG, \{ onError: reportLogFailure, onRecovered:/);
   assert.match(source, /state\.diagnosticNotice = t\('error\.logUnavailable'\)/);
+  assert.match(source, /onRecovered:[^\n]+state\.diagnosticNotice = null; emit\(\)/);
   assert.doesNotMatch(source, /logWriter\.(?:flush|close)\(\)\.catch\(\(\) => \{\}\)/);
   assert.match(source, /onWindowError:[\s\S]*?state\.settingsError =/);
 });

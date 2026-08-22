@@ -38,6 +38,7 @@ class EngineConnectionRuntime {
     this.expectedPort = expectedPort;
     this.isCurrent = isCurrent;
     this.handlers = {
+      onDiagnostic: handlers.onDiagnostic || NOOP,
       onConnecting: handlers.onConnecting || NOOP,
       onStopping: handlers.onStopping || NOOP,
       onConnectionCandidate: handlers.onConnectionCandidate || NOOP,
@@ -131,6 +132,7 @@ class EngineConnectionRuntime {
     // readiness/state metadata must never reopen Browser or connection state
     // after the process has already released its listener.
     if (this.exitDraining && event.type !== 'fatal_error' && event.type !== 'stopped') return;
+    this.handlers.onDiagnostic(event);
     switch (event.type) {
       case 'hello':
         if (this.helloTimer) this.clearTimeoutFn(this.helloTimer);

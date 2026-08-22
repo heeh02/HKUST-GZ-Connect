@@ -9,8 +9,45 @@ const {
   engineFailureKind,
   engineFailureKindFromCode,
   engineFailureKindFromStopReason,
+  formatConnectionDiagnostic,
+  formatEngineEventDiagnostic,
   resolveEngineFailureKind,
 } = require('../lib/engine-output');
+
+test('connection diagnostics are correlated, bounded, and cannot echo free-form data', () => {
+  const diagnostic = formatConnectionDiagnostic({
+    intent: 4,
+    generation: 12,
+    attempt: 2,
+    retryCount: 1,
+    phase: 'preparing_tunnel',
+    event: 'fatal_error',
+    outcome: 'DATA_PLANE_SETUP_FAILED',
+    password: 'must-not-appear',
+    url: 'https://private.example.invalid/path?token=secret',
+  });
+  assert.match(diagnostic, /connection=4:12/);
+  assert.match(diagnostic, /attempt=2 retry=1/);
+  assert.match(diagnostic, /outcome=DATA_PLANE_SETUP_FAILED/);
+  assert.ok(Buffer.byteLength(diagnostic) < 512);
+  assert.doesNotMatch(diagnostic, /must-not-appear|private\.example|secret/);
+
+  const malformed = formatConnectionDiagnostic({
+    intent: -1,
+    generation: Number.MAX_SAFE_INTEGER + 1,
+    phase: 'x\npassword=value',
+    event: 'event with spaces',
+    outcome: 'A'.repeat(1000),
+  });
+  assert.match(malformed, /connection=0:0/);
+  assert.match(malformed, /phase=unknown event=unknown outcome=unknown/);
+  assert.ok(Buffer.byteLength(malformed) < 512);
+
+  assert.match(formatEngineEventDiagnostic(
+    { type: 'stopped', reason: 'network_unhealthy', privateValue: 'ignored' },
+    { intent: 4, generation: 12, attemptNumber: 3, attempts: 2, phase: 'stopping' },
+  ), /connection=4:12 attempt=3 retry=2.*event=stopped outcome=network_unhealthy/);
+});
 
 test('native engine authentication failure is terminal and user-readable', () => {
   const message = classifyEngineOutput('ec-engine: gateway authentication failed', 1080);
