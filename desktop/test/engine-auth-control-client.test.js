@@ -112,6 +112,21 @@ test('resend accepts a higher challenge epoch and stale stable errors contain no
   await assert.rejects(cancel, (error) => (
     error.code === 'stale_context' && !error.message.includes('synthetic-accepted')
   ));
+  assert.notEqual(client.challenge, null, 'a stale cancel must preserve the valid transaction');
+});
+
+test('provider cleanup failure after cancel closes the terminal challenge', async () => {
+  const writable = new FakeWritable();
+  const cleared = [];
+  const client = new EngineAuthControlClient({ writable, generation: 9 });
+  client.setHandlers({ onCleared: (reason) => cleared.push(reason) });
+  client.feed(challengeEvent());
+  const cancel = client.cancel();
+  client.feed('{"type":"auth_error","apiVersion":3,"requestId":1,"code":"provider_failure"}\n');
+  await assert.rejects(cancel, (error) => error.code === 'provider_failure');
+  assert.equal(client.challenge, null);
+  assert.deepEqual(cleared, ['provider_failure']);
+  await assert.rejects(client.respond(Buffer.from('late')), /no active/);
 });
 
 test('malformed and oversized frames are discarded without unbounded buffering', () => {

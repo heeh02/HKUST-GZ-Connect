@@ -198,7 +198,9 @@ class EngineAuthControlClient {
         this.#clearChallenge('cancelled');
         pending.resolve(message);
       } else if (message.type === 'auth_error') {
-        if (message.code === 'transaction_closed' || message.code === 'challenge_expired') {
+        if ((pending.cancelRequest && message.code === 'provider_failure') ||
+            message.code === 'transaction_closed' ||
+            message.code === 'challenge_expired') {
           this.#clearChallenge(message.code);
         }
         const error = new Error(`engine auth control request failed: ${message.code}`);
@@ -231,7 +233,10 @@ class EngineAuthControlClient {
   }
 
   cancel() {
-    return this.#request((context) => ({ ...context, command: { name: 'cancel' } }));
+    return this.#request(
+      (context) => ({ ...context, command: { name: 'cancel' } }),
+      { cancelRequest: true },
+    );
   }
 
   close(error = new Error('engine auth control stream closed')) {
@@ -259,7 +264,7 @@ class EngineAuthControlClient {
     if (hadChallenge) this.handlers.onCleared?.(reason);
   }
 
-  #request(buildFrame) {
+  #request(buildFrame, { cancelRequest = false } = {}) {
     if (this.closed) return Promise.reject(new Error('engine auth control stream is closed'));
     const challenge = this.challenge;
     if (!challenge) return Promise.reject(new Error('no active authentication challenge'));
@@ -298,7 +303,7 @@ class EngineAuthControlClient {
         this.close(error);
       }, this.requestTimeoutMs);
       timer.unref?.();
-      this.pending.set(requestId, { resolve, reject, timer });
+      this.pending.set(requestId, { resolve, reject, timer, cancelRequest });
       this.inFlightFrames.add(encoded);
       try {
         this.writable.write(encoded, (error) => {

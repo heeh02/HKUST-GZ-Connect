@@ -1,5 +1,6 @@
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
 use crate::config::{parse_gateway_configuration, parse_resource_dns_servers};
+use crate::engine::auth_lifecycle::AuthenticationCancellation;
 use crate::engine::data_plane::EasyConnectDataPlane;
 use crate::engine::provider::{
     AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
@@ -280,6 +281,20 @@ impl AuthenticatedGatewaySession {
         }
     }
 
+    pub fn authenticate_with_provider_error_cancellable(
+        config: &Value,
+        username: &str,
+        password: &str,
+        cancellation: &AuthenticationCancellation,
+    ) -> ProviderResult<Self> {
+        Self::authenticate_password_with_cancellation(
+            config,
+            username,
+            password,
+            Some(cancellation),
+        )
+    }
+
     pub const fn capability_model() -> CapabilityModel {
         CapabilityModel::production_password_l3()
     }
@@ -289,6 +304,16 @@ impl AuthenticatedGatewaySession {
         username: &str,
         password: &str,
     ) -> ProviderResult<Self> {
+        Self::authenticate_password_with_cancellation(config, username, password, None)
+    }
+
+    fn authenticate_password_with_cancellation(
+        config: &Value,
+        username: &str,
+        password: &str,
+        cancellation: Option<&AuthenticationCancellation>,
+    ) -> ProviderResult<Self> {
+        ensure_authentication_active(cancellation)?;
         let base_url = required_text(config, "base_url")?;
         let parsed_url = Url::parse(base_url).map_err(|_| {
             Error::classified(ErrorKind::Configuration, "engine base URL is invalid")
@@ -315,8 +340,10 @@ impl AuthenticatedGatewaySession {
 
         let discovery_path = required_endpoint(config, "discovery")?;
         let _ = http.request(discovery_path, Method::GET, None)?;
+        cancel_partial_authentication_if_requested(&http, &logout_path, cancellation)?;
         let password_config_path = required_endpoint(config, "password_config")?;
         let (password_config, _, _) = http.request(password_config_path, Method::GET, None)?;
+        cancel_partial_authentication_if_requested(&http, &logout_path, cancellation)?;
         let password_config = Zeroizing::new(password_config);
         let document = parse_xml(&password_config, "engine password configuration")
             .map_err(|error| ProviderError::failed_with_kind(ErrorKind::Authentication, error))?;
@@ -350,6 +377,7 @@ impl AuthenticatedGatewaySession {
         ]
         .into_iter()
         .collect::<BTreeMap<String, String>>();
+        ensure_authentication_active(cancellation)?;
         let login_result = http.request(
             required_endpoint(config, "password_login")?,
             Method::POST,
@@ -371,6 +399,7 @@ impl AuthenticatedGatewaySession {
             }
         };
         let login = Zeroizing::new(login);
+        cancel_partial_authentication_if_requested(&http, &logout_path, cancellation)?;
         let login_summary = match auth_summary(&login, "engine password login") {
             Ok(summary) => summary,
             Err(error) => {
@@ -419,11 +448,16 @@ impl AuthenticatedGatewaySession {
                 ));
             }
         };
-        Ok(Self {
+        let session = Self {
             http,
             logout_path,
             session_identifier,
-        })
+        };
+        if cancellation.is_some_and(AuthenticationCancellation::is_cancelled) {
+            let _ = session.logout();
+            return Err(authentication_cancelled_error());
+        }
+        Ok(session)
     }
 
     pub fn logout(self) -> Result<()> {
@@ -437,6 +471,34 @@ impl AuthenticatedGatewaySession {
                 )
             })
     }
+}
+
+fn ensure_authentication_active(
+    cancellation: Option<&AuthenticationCancellation>,
+) -> ProviderResult<()> {
+    if cancellation.is_some_and(AuthenticationCancellation::is_cancelled) {
+        return Err(authentication_cancelled_error());
+    }
+    Ok(())
+}
+
+fn cancel_partial_authentication_if_requested(
+    http: &GatewaySession,
+    logout_path: &str,
+    cancellation: Option<&AuthenticationCancellation>,
+) -> ProviderResult<()> {
+    if cancellation.is_none_or(|cancellation| !cancellation.is_cancelled()) {
+        return Ok(());
+    }
+    let _ = http.request_with_timeout(logout_path, Method::GET, None, LOGOUT_TIMEOUT);
+    Err(authentication_cancelled_error())
+}
+
+fn authentication_cancelled_error() -> ProviderError {
+    ProviderError::failed_with_kind(
+        ErrorKind::Lifecycle,
+        Error::classified(ErrorKind::Lifecycle, "authentication was cancelled"),
+    )
 }
 
 fn unsupported_auth_decision(state: AuthState) -> Option<UnsupportedAuthDecision> {

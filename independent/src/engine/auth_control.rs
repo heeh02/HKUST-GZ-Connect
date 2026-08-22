@@ -256,14 +256,31 @@ impl<T: AuthTransaction> AuthControlSession<T> {
             AuthControlCommand::Cancel => {
                 let result = self
                     .owner
-                    .take()
+                    .as_mut()
                     .ok_or_else(transaction_closed)
                     .and_then(|owner| owner.cancel(context));
+                // Context validation happens before the owner consumes its
+                // provider transaction. A stale or duplicate cancel therefore
+                // leaves the valid transaction intact. Once provider cleanup
+                // has started, success and failure are both terminal: the
+                // provider state is no longer safe to reuse.
+                let terminal = self.owner.as_ref().is_some_and(|owner| !owner.is_active());
+                if terminal {
+                    self.owner.take();
+                }
                 match result {
                     Ok(()) => AuthControlExchange {
                         response: AuthControlResponse::Cancelled {
                             api_version: INTERACTIVE_AUTH_CONTROL_API_VERSION,
                             request_id,
+                        },
+                        action: AuthControlAction::Cancelled,
+                    },
+                    Err(error) if terminal => AuthControlExchange {
+                        response: AuthControlResponse::Error {
+                            api_version: INTERACTIVE_AUTH_CONTROL_API_VERSION,
+                            request_id,
+                            code: auth_control_error_code(error.kind()),
                         },
                         action: AuthControlAction::Cancelled,
                     },
@@ -432,6 +449,8 @@ mod tests {
     use super::*;
     use crate::engine::auth_transaction::{ChallengeKind, TransactionId};
     use std::io::Cursor;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct SyntheticTransaction {
         view: ChallengeView,
@@ -469,6 +488,88 @@ mod tests {
         let view = ChallengeView::new(&id, 1, ChallengeKind::Otp).unwrap();
         let owner = AuthTransactionOwner::new(9, SyntheticTransaction { view }).unwrap();
         AuthControlSession::new(owner)
+    }
+
+    struct ObservedCancelTransaction {
+        view: ChallengeView,
+        cancel_calls: Arc<AtomicUsize>,
+        fail_cancel: bool,
+    }
+
+    impl AuthTransaction for ObservedCancelTransaction {
+        type Session = &'static str;
+
+        fn public_challenge(&self) -> ChallengeView {
+            self.view.clone()
+        }
+
+        fn respond(
+            &mut self,
+            _response: SecretBytes,
+        ) -> Result<AuthProgress<Self::Session, ChallengeView>> {
+            Ok(AuthProgress::ChallengeRequired(self.view.clone()))
+        }
+
+        fn resend(&mut self) -> Result<ChallengeView> {
+            let id = TransactionId::from_bytes([4; 16]);
+            self.view = ChallengeView::new(
+                &id,
+                self.view.challenge_epoch().saturating_add(1),
+                ChallengeKind::Otp,
+            )?
+            .with_resend(true, None);
+            Ok(self.view.clone())
+        }
+
+        fn cancel(self) -> Result<()> {
+            self.cancel_calls.fetch_add(1, Ordering::SeqCst);
+            if self.fail_cancel {
+                Err(Error::classified(
+                    ErrorKind::Authentication,
+                    "synthetic provider cleanup failed",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn observed_cancel_session(
+        fail_cancel: bool,
+    ) -> (
+        AuthControlSession<ObservedCancelTransaction>,
+        Arc<AtomicUsize>,
+    ) {
+        let id = TransactionId::from_bytes([4; 16]);
+        let view = ChallengeView::new(&id, 1, ChallengeKind::Otp)
+            .unwrap()
+            .with_resend(true, None);
+        let cancel_calls = Arc::new(AtomicUsize::new(0));
+        let owner = AuthTransactionOwner::new(
+            9,
+            ObservedCancelTransaction {
+                view,
+                cancel_calls: Arc::clone(&cancel_calls),
+                fail_cancel,
+            },
+        )
+        .unwrap();
+        (AuthControlSession::new(owner), cancel_calls)
+    }
+
+    fn request(
+        request_id: u64,
+        generation: u64,
+        challenge_epoch: u32,
+        command: &str,
+    ) -> AuthControlRequest {
+        decode_auth_control_request(
+            format!(
+                "{{\"type\":\"auth_request\",\"apiVersion\":3,\"requestId\":{request_id},\"generation\":{generation},\"transactionId\":\"04040404040404040404040404040404\",\"challengeEpoch\":{challenge_epoch},\"command\":{command}}}"
+            )
+            .as_bytes(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -526,5 +627,108 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn stale_and_duplicate_cancel_keep_the_valid_transaction_active() {
+        let (mut session, cancel_calls) = observed_cancel_session(false);
+        let stale = session.handle(request(1, 8, 1, r#"{"name":"cancel"}"#));
+        assert!(matches!(
+            stale.response,
+            AuthControlResponse::Error {
+                code: AuthControlErrorCode::StaleContext,
+                ..
+            }
+        ));
+        assert!(matches!(stale.action, AuthControlAction::None));
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 0);
+
+        let pending = session.handle(request(2, 9, 1, r#"{"name":"respond","response":"wrong"}"#));
+        assert!(matches!(
+            pending.response,
+            AuthControlResponse::Challenge { .. }
+        ));
+
+        let duplicate = session.handle(request(2, 9, 1, r#"{"name":"cancel"}"#));
+        assert!(matches!(
+            duplicate.response,
+            AuthControlResponse::Error {
+                code: AuthControlErrorCode::DuplicateRequest,
+                ..
+            }
+        ));
+        assert!(matches!(duplicate.action, AuthControlAction::None));
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 0);
+
+        let valid = session.handle(request(3, 9, 1, r#"{"name":"cancel"}"#));
+        assert!(matches!(
+            valid.response,
+            AuthControlResponse::Cancelled { .. }
+        ));
+        assert!(matches!(valid.action, AuthControlAction::Cancelled));
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn valid_cancel_is_terminal_exactly_once_even_when_provider_cleanup_fails() {
+        for fail_cancel in [false, true] {
+            let (mut session, cancel_calls) = observed_cancel_session(fail_cancel);
+            let cancelled = session.handle(request(1, 9, 1, r#"{"name":"cancel"}"#));
+            if fail_cancel {
+                assert!(matches!(
+                    cancelled.response,
+                    AuthControlResponse::Error {
+                        code: AuthControlErrorCode::ProviderFailure,
+                        ..
+                    }
+                ));
+            } else {
+                assert!(matches!(
+                    cancelled.response,
+                    AuthControlResponse::Cancelled { .. }
+                ));
+            }
+            assert!(matches!(cancelled.action, AuthControlAction::Cancelled));
+            assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+
+            let after_cancel =
+                session.handle(request(2, 9, 1, r#"{"name":"respond","response":"late"}"#));
+            assert!(matches!(
+                after_cancel.response,
+                AuthControlResponse::Error {
+                    code: AuthControlErrorCode::TransactionClosed,
+                    ..
+                }
+            ));
+            assert!(matches!(after_cancel.action, AuthControlAction::None));
+            assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[test]
+    fn serialized_cancel_wins_over_late_respond_and_resend_commands() {
+        let (mut session, cancel_calls) = observed_cancel_session(false);
+        let resent = session.handle(request(1, 9, 1, r#"{"name":"resend"}"#));
+        assert!(matches!(
+            resent.response,
+            AuthControlResponse::Challenge { .. }
+        ));
+        let cancelled = session.handle(request(2, 9, 2, r#"{"name":"cancel"}"#));
+        assert!(matches!(cancelled.action, AuthControlAction::Cancelled));
+
+        for (request_id, command) in [
+            (3, r#"{"name":"respond","response":"late"}"#),
+            (4, r#"{"name":"resend"}"#),
+        ] {
+            let late = session.handle(request(request_id, 9, 2, command));
+            assert!(matches!(
+                late.response,
+                AuthControlResponse::Error {
+                    code: AuthControlErrorCode::TransactionClosed,
+                    ..
+                }
+            ));
+        }
+        assert_eq!(cancel_calls.load(Ordering::SeqCst), 1);
     }
 }

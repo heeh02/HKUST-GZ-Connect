@@ -335,7 +335,7 @@ impl<T: AuthTransaction> AuthTransactionOwner<T> {
         Ok(view)
     }
 
-    pub fn cancel(mut self, context: AuthCommandContext<'_>) -> Result<()> {
+    pub fn cancel(&mut self, context: AuthCommandContext<'_>) -> Result<()> {
         self.validate_context(context, false)?;
         self.remember_request(context.request_id)?;
         self.transaction

@@ -1,7 +1,9 @@
 use serde_json::Value;
 use std::io::Write;
+use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 fn engine() -> Command {
     Command::new(env!("CARGO_BIN_EXE_ec-engine"))
@@ -13,6 +15,61 @@ fn events(output: &[u8]) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).expect("every stdout line must be one JSON event"))
         .collect()
+}
+
+fn slow_gateway_config(label: &str) -> (PathBuf, std::thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((_stream, _)) => {
+                    std::thread::sleep(Duration::from_secs(2));
+                    return;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("synthetic gateway accept failed: {error}"),
+            }
+        }
+    });
+    let path = std::env::temp_dir().join(format!(
+        "hkustgz-auth-lifecycle-{label}-{}.json",
+        std::process::id()
+    ));
+    let config = serde_json::json!({
+        "base_url": format!("https://{address}"),
+        "timeout_seconds": 1,
+        "user_agent": "synthetic-auth-lifecycle",
+        "endpoints": {
+            "discovery": "/discovery",
+            "password_config": "/password-config",
+            "password_login": "/password-login",
+            "logout": "/logout",
+            "session_config": "/session-config"
+        },
+        "proxy": {
+            "allow_system_dns_fallback": false,
+            "vpn_dns_servers": []
+        }
+    });
+    std::fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+    (path, server)
+}
+
+fn wait_bounded(mut child: Child) -> Output {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if child.try_wait().unwrap().is_some() {
+            return child.wait_with_output().unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = child.kill();
+    panic!("engine did not terminate inside the authentication lifecycle bound");
 }
 
 #[test]
@@ -175,15 +232,15 @@ fn control_handshake_is_answered_before_authentication_finishes() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
         .write_all(
             b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n",
         )
         .unwrap();
+    stdin.flush().unwrap();
     let output = child.wait_with_output().unwrap();
+    drop(stdin);
     let _ = std::fs::remove_file(config);
     assert!(!output.status.success());
     let machine_events = events(&output.stdout);
@@ -198,6 +255,95 @@ fn control_handshake_is_answered_before_authentication_finishes() {
     assert!(control_hello < fatal);
     assert_eq!(machine_events[control_hello]["apiVersion"], 2);
     assert_eq!(machine_events[fatal]["code"], "CONFIGURATION_INVALID");
+}
+
+#[test]
+fn shutdown_during_blocking_authentication_reaches_one_terminal_state() {
+    let (config, server) = slow_gateway_config("shutdown");
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--credentials-stdin",
+            "--control-api-v2-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "110",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(
+            b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":2,\"command\":{\"name\":\"shutdown\"}}\n",
+        )
+        .unwrap();
+    stdin.flush().unwrap();
+    let output = wait_bounded(child);
+    drop(stdin);
+    let _ = server.join();
+    let _ = std::fs::remove_file(config);
+
+    assert!(output.status.success());
+    let machine_events = events(&output.stdout);
+    assert!(
+        machine_events
+            .iter()
+            .any(|event| { event["type"] == "control_result" && event["requestId"] == 2 })
+    );
+    assert!(
+        !machine_events
+            .iter()
+            .any(|event| event["type"] == "fatal_error")
+    );
+    assert_eq!(machine_events.last().unwrap()["type"], "stopped");
+    assert_eq!(machine_events.last().unwrap()["reason"], "user_requested");
+}
+
+#[test]
+fn private_pipe_eof_during_authentication_cancels_the_generation() {
+    let (config, server) = slow_gateway_config("eof");
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--credentials-stdin",
+            "--control-api-v2-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "111",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            b"synthetic-user\nsynthetic-password\n{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n",
+        )
+        .unwrap();
+    let output = wait_bounded(child);
+    let _ = server.join();
+    let _ = std::fs::remove_file(config);
+
+    assert!(output.status.success());
+    let machine_events = events(&output.stdout);
+    assert!(
+        !machine_events
+            .iter()
+            .any(|event| event["type"] == "fatal_error")
+    );
+    assert_eq!(machine_events.last().unwrap()["type"], "stopped");
+    assert_eq!(machine_events.last().unwrap()["reason"], "user_requested");
 }
 
 #[test]

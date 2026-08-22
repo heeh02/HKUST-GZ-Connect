@@ -95,3 +95,24 @@ fn synthetic_wrong_response_resend_and_cancel_keep_one_bound_transaction() {
     assert!(!observed.contains("synthetic-wrong"));
     assert!(!observed.contains("response"));
 }
+
+#[test]
+fn stale_and_duplicate_cancel_frames_do_not_close_the_fixture_transaction() {
+    let mut fixture = Fixture::start(15);
+    fixture.handshake();
+    fixture.send(r#"{"type":"auth_request","apiVersion":3,"requestId":2,"generation":14,"transactionId":"04040404040404040404040404040404","challengeEpoch":1,"command":{"name":"cancel"}}"#);
+    let stale = fixture.read();
+    assert_eq!(stale["type"], "auth_error");
+    assert_eq!(stale["code"], "stale_context");
+
+    fixture.send(r#"{"type":"auth_request","apiVersion":3,"requestId":3,"generation":15,"transactionId":"04040404040404040404040404040404","challengeEpoch":1,"command":{"name":"respond","response":"synthetic-wrong"}}"#);
+    assert_eq!(fixture.read()["type"], "auth_challenge");
+    fixture.send(r#"{"type":"auth_request","apiVersion":3,"requestId":3,"generation":15,"transactionId":"04040404040404040404040404040404","challengeEpoch":1,"command":{"name":"cancel"}}"#);
+    let duplicate = fixture.read();
+    assert_eq!(duplicate["type"], "auth_error");
+    assert_eq!(duplicate["code"], "duplicate_request");
+
+    fixture.send(r#"{"type":"auth_request","apiVersion":3,"requestId":4,"generation":15,"transactionId":"04040404040404040404040404040404","challengeEpoch":1,"command":{"name":"cancel"}}"#);
+    assert_eq!(fixture.read()["type"], "auth_cancelled");
+    fixture.finish();
+}

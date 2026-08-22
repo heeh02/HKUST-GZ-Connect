@@ -5,6 +5,7 @@
 //! does not require modifying the local proxy or userspace TCP/IP stack.
 
 pub mod auth_control;
+pub mod auth_lifecycle;
 pub mod auth_transaction;
 pub mod control;
 pub mod control_mux;

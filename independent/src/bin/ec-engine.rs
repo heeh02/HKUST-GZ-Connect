@@ -1,6 +1,7 @@
 use ec_compat::engine::auth_control::{
     AuthControlErrorCode, AuthControlRequest, auth_error_response,
 };
+use ec_compat::engine::auth_lifecycle::BlockingAuthentication;
 use ec_compat::engine::control::{
     ControlAction, ControlExchange, ControlSession, MAX_ACTIVE_REQUESTS,
 };
@@ -384,6 +385,110 @@ fn dns_mode_for_source(source: VpnDnsSource) -> DnsMode {
     }
 }
 
+enum AuthenticationCancellationCause {
+    UserRequested,
+    SignalFailed(Error),
+    ControlOutputFailed(Error),
+}
+
+async fn authenticate_password_with_lifecycle<W: Write>(
+    config: &serde_json::Value,
+    gateway_username: zeroize::Zeroizing<String>,
+    gateway_password: zeroize::Zeroizing<String>,
+    control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
+    lifecycle: &mut EngineLifecycle<W>,
+) -> EngineResult<Option<AuthenticatedGatewaySession>> {
+    let worker_config = config.clone();
+    let mut authentication = BlockingAuthentication::spawn(move |cancellation| {
+        AuthenticatedGatewaySession::authenticate_with_provider_error_cancellable(
+            &worker_config,
+            &gateway_username,
+            &gateway_password,
+            &cancellation,
+        )
+    });
+    let signal = shutdown_signal();
+    tokio::pin!(signal);
+    let mut pending_control_actions = PendingControlActions::default();
+    let cancellation_cause = loop {
+        let control_shutdown_deadline = pending_control_actions.next_shutdown_deadline();
+        tokio::select! {
+            completion = authentication.wait() => {
+                let provider_result = completion.map_err(|error| {
+                    failure(
+                        EngineErrorCode::AuthFailed,
+                        StopReason::StartupFailed,
+                        error,
+                    )
+                })?;
+                return provider_result
+                    .map(Some)
+                    .map_err(authentication_failure);
+            }
+            signal = &mut signal => {
+                break match signal {
+                    Ok(()) => AuthenticationCancellationCause::UserRequested,
+                    Err(error) => AuthenticationCancellationCause::SignalFailed(error),
+                };
+            }
+            _ = wait_for_control_shutdown(control_shutdown_deadline), if control_shutdown_deadline.is_some() => {
+                break AuthenticationCancellationCause::UserRequested;
+            }
+            input = receive_control(control_receiver), if control_receiver.is_some() => {
+                let Some(input) = input else {
+                    // During authentication the private pipe is part of the
+                    // transaction owner boundary. Losing it cannot leave a
+                    // background login attempt running without a controller.
+                    *control_receiver = None;
+                    break AuthenticationCancellationCause::UserRequested;
+                };
+                match input {
+                    ControlInput::V2(exchange) => {
+                        if let Err(error) = lifecycle.emit_control(&exchange) {
+                            break AuthenticationCancellationCause::ControlOutputFailed(error);
+                        }
+                        if let Some(action) = exchange.action {
+                            if pending_control_actions.apply(action, tokio::time::Instant::now()) {
+                                *control_receiver = None;
+                                break AuthenticationCancellationCause::UserRequested;
+                            }
+                        }
+                    }
+                    ControlInput::V3(request) => {
+                        if let Err(error) = lifecycle.reject_auth_control(&request) {
+                            break AuthenticationCancellationCause::ControlOutputFailed(error);
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    authentication.cancel();
+    if let Err(error) = lifecycle.begin_stopping() {
+        let _ = authentication.wait().await;
+        return Err(event_output_failure(error));
+    }
+    // The verified synchronous provider has bounded per-request timeouts and
+    // checks cancellation between requests. Awaiting it here prevents an
+    // authenticated session from escaping after its generation was stopped.
+    let completion = authentication.wait().await;
+    if let Ok(Ok(session)) = completion {
+        let _ = session.logout();
+    }
+    match cancellation_cause {
+        AuthenticationCancellationCause::UserRequested => Ok(None),
+        AuthenticationCancellationCause::SignalFailed(error) => Err(failure(
+            EngineErrorCode::ShutdownSignalFailed,
+            StopReason::ShutdownFailed,
+            error,
+        )),
+        AuthenticationCancellationCause::ControlOutputFailed(error) => {
+            Err(event_output_failure(error))
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let exit_code = engine_main().await;
@@ -486,20 +591,28 @@ async fn run_engine<W: Write>(
     } else {
         None
     };
+    let had_control_channel = control_receiver.is_some();
     emit_initial_control_exchange(&mut control_receiver, lifecycle).await?;
+    if had_control_channel && control_receiver.is_none() {
+        lifecycle.begin_stopping().map_err(event_output_failure)?;
+        return Ok(StopReason::UserRequested);
+    }
     let EngineCredentials {
         gateway_username,
         gateway_password,
         proxy_authentication,
     } = credentials;
-    let session = AuthenticatedGatewaySession::authenticate_with_provider_error(
+    let Some(session) = authenticate_password_with_lifecycle(
         &config,
-        &gateway_username,
-        &gateway_password,
+        gateway_username,
+        gateway_password,
+        &mut control_receiver,
+        lifecycle,
     )
-    .map_err(authentication_failure)?;
-    drop(gateway_password);
-    drop(gateway_username);
+    .await?
+    else {
+        return Ok(StopReason::UserRequested);
+    };
 
     let transport_backend = match ModernL3TransportBackend::new(&config) {
         Ok(backend) => backend,
