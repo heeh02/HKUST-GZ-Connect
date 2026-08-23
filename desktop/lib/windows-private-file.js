@@ -16,7 +16,7 @@ if ($item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::Repars
 $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
 `;
 const VERIFY_SUFFIX = String.raw`
-$verified = Get-Acl -LiteralPath $privatePath
+$verified = [System.IO.File]::GetAccessControl($privatePath)
 $ownerSid = $verified.GetOwner([Security.Principal.SecurityIdentifier])
 $rules = @($verified.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))
 $validRule = $rules.Count -eq 1 -and
@@ -39,7 +39,7 @@ $rule = New-Object Security.AccessControl.FileSystemAccessRule(
   [Security.AccessControl.AccessControlType]::Allow
 )
 $acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $privatePath -AclObject $acl
+[System.IO.File]::SetAccessControl($privatePath, $acl)
 ${VERIFY_SUFFIX}`;
 const VERIFY_SCRIPT = `${COMMON_PREFIX}
 ${VERIFY_SUFFIX}`;

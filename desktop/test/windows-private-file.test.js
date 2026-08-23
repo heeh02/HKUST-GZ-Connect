@@ -29,9 +29,16 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     platform: 'win32',
   }), true);
   assert.equal(calls.length, 2);
-  for (const call of calls) {
+  for (const [index, call] of calls.entries()) {
     assert.equal(call.command, 'powershell.exe');
     assert.equal(call.args.includes(file), false, 'the path is not interpolated into PowerShell');
+    const script = call.args.at(-1);
+    assert.doesNotMatch(script, /\b(?:Get|Set)-Acl\b/u,
+      'the ACL boundary must not depend on an autoloadable PowerShell module');
+    assert.match(script, /\[System\.IO\.File\]::GetAccessControl\(\$privatePath\)/u);
+    if (index === 0) {
+      assert.match(script, /\[System\.IO\.File\]::SetAccessControl\(\$privatePath, \$acl\)/u);
+    }
     assert.equal(call.options.env[PRIVATE_FILE_ENV], file);
     assert.equal(call.options.windowsHide, true);
     assert.equal(call.options.maxBuffer, 4096);

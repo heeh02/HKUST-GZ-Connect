@@ -4,11 +4,14 @@
 # exercised by the desktop Node test suite. It never prints credential values.
 
 cli_proxy_file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null
+  # GNU stat accepts `-f` too, but interprets it as filesystem mode and can
+  # exit successfully with the wrong shape. Try its file-format contract first;
+  # BSD/macOS stat rejects `-c`, then uses the reviewed fallback.
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
 }
 
 cli_proxy_file_links() {
-  stat -f '%l' "$1" 2>/dev/null || stat -c '%h' "$1" 2>/dev/null
+  stat -c '%h' "$1" 2>/dev/null || stat -f '%l' "$1" 2>/dev/null
 }
 
 cli_proxy_valid_endpoint() {
