@@ -106,6 +106,16 @@ test('release builds strictly verify macOS signatures and smoke-test unpacked ap
     workflow,
     /Smoke-test packaged Linux application[\s\S]*release\/linux-unpacked\/hkustgzconnect/u,
   );
+  assert.match(
+    workflow,
+    /sandbox_helper="release\/linux-unpacked\/chrome-sandbox"[\s\S]*chown root:root[\s\S]*chmod 4755/u,
+    'Linux unpacked smoke must configure Chromium sandbox ownership without changing the AppImage',
+  );
+  assert.match(
+    workflow,
+    /packaged Linux stderr \(tail\)[\s\S]*tail -n 120/u,
+    'Linux smoke failures must retain bounded Chromium diagnostics',
+  );
   assert.match(workflow, /softwareupdate --install-rosetta --agree-to-license/u);
   assert.match(workflow, /timeout --kill-after=2s 3s xvfb-run -a/u);
   assert.match(workflow, /HKUSTGZ_USER_DATA_DIR/u);

@@ -336,6 +336,18 @@ jobs:
             esac
           }
           trap cleanup_smoke EXIT
+          sandbox_helper="release/linux-unpacked/chrome-sandbox"
+          test -f "$sandbox_helper" || {
+            echo "packaged Linux application is missing chrome-sandbox" >&2
+            exit 1
+          }
+          # The unpacked tree is owned by the runner, while Chromium requires
+          # its setuid helper to be root-owned mode 4755 when unprivileged user
+          # namespaces are unavailable. Configure only this disposable smoke
+          # tree; the AppImage artifact itself remains byte-for-byte unchanged.
+          sudo chown root:root "$sandbox_helper"
+          sudo chmod 4755 "$sandbox_helper"
+          test "$(stat -c '%u:%g:%a' "$sandbox_helper")" = "0:0:4755"
           set +e
           timeout --kill-after=2s 3s xvfb-run -a env \
             HKUSTGZ_USER_DATA_DIR="$smoke_profile" \
@@ -345,6 +357,10 @@ jobs:
           set -e
           if [ "$smoke_status" -ne 124 ]; then
             echo "packaged Linux application exited during launch smoke (${smoke_status})" >&2
+            echo "--- packaged Linux stdout (tail) ---" >&2
+            tail -n 80 "$smoke_profile/stdout.log" >&2 || true
+            echo "--- packaged Linux stderr (tail) ---" >&2
+            tail -n 120 "$smoke_profile/stderr.log" >&2 || true
             exit 1
           fi
 
