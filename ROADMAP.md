@@ -161,6 +161,10 @@ point if an optional EasyConnect feature is enabled later. It is not a 2.0.0
 release commitment, and none of the Partial entries below is advertised as a
 working user feature.
 
+2.0准备阶段的证据、clean-room、架构接缝与分阶段PR计划见
+[`docs/plans/2.0-preparation-execution-plan.md`](docs/plans/2.0-preparation-execution-plan.md)。
+该计划当前只授权研究和架构准备，不授权production功能或Release。
+
 The trigger for implementation is evidence that the school has enabled a
 specific capability on a controlled test profile. Work should then cover only
 that capability, compare it with the supported official client, and pass the

@@ -5,8 +5,8 @@ runtime.toml
 .hkustgzconnect/
 
 # ---- generated engine binaries (built from independent/ by CI / setup) ----
-zju-connect
-zju-connect.exe
+/zju-connect
+/zju-connect.exe
 desktop/engine/*
 !desktop/engine/.gitkeep
 
