@@ -18,26 +18,26 @@ const {
 
 const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
 
-test('password presence is a non-decrypting private-file check', {
-  skip: process.platform === 'win32',
-}, (t) => {
+test('password presence is a non-decrypting private-file check', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-presence-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const missing = path.join(directory, 'missing.bin');
   const empty = path.join(directory, 'empty.bin');
   const privateFile = path.join(directory, 'cred.bin');
 
-  assert.equal(hasStoredPassword(missing, 'darwin'), false);
+  assert.equal(hasStoredPassword(missing, HOST_PRIVATE_FILE_PLATFORM), false);
   fs.writeFileSync(empty, '');
-  assert.equal(hasStoredPassword(empty, 'darwin'), false);
-  assert.equal(hasStoredPassword(directory, 'darwin'), false);
+  assert.equal(hasStoredPassword(empty, HOST_PRIVATE_FILE_PLATFORM), false);
+  assert.equal(hasStoredPassword(directory, HOST_PRIVATE_FILE_PLATFORM), false);
 
   fs.writeFileSync(privateFile, Buffer.from([1]));
   fs.chmodSync(privateFile, 0o600);
-  assert.equal(hasStoredPassword(privateFile, 'darwin'), true);
+  assert.equal(hasStoredPassword(privateFile, HOST_PRIVATE_FILE_PLATFORM), true);
 
-  fs.chmodSync(privateFile, 0o644);
-  assert.equal(hasStoredPassword(privateFile, 'darwin'), false);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(privateFile, 0o644);
+    assert.equal(hasStoredPassword(privateFile, HOST_PRIVATE_FILE_PLATFORM), false);
+  }
 });
 
 test('Windows presence check accepts the platform ACL model without safeStorage', (t) => {
@@ -74,9 +74,7 @@ test('oversized and symbolic credential blobs are rejected before decryption', (
   assert.equal(loadPasswordResult(link, safeStorage, 'darwin').status, 'corrupt');
 });
 
-test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', {
-  skip: process.platform === 'win32',
-}, (t) => {
+test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-result-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const missing = path.join(directory, 'missing.bin');
@@ -86,25 +84,27 @@ test('credential loading distinguishes missing, unavailable, corrupt and decrypt
     decryptString: (data) => data.toString('utf8').replace('encrypted:', ''),
   };
 
-  assert.deepEqual(loadPasswordResult(missing, safeStorage, 'darwin'), {
+  assert.deepEqual(loadPasswordResult(missing, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
     status: 'missing', password: '',
   });
   assert.deepEqual(loadPasswordResult(missing, {
     isEncryptionAvailable: () => false,
-  }, 'darwin'), { status: 'unavailable', password: '' });
+  }, HOST_PRIVATE_FILE_PLATFORM), { status: 'unavailable', password: '' });
 
   fs.writeFileSync(file, Buffer.from('encrypted:secret'), { mode: 0o644 });
-  assert.deepEqual(loadPasswordResult(file, safeStorage, 'darwin'), {
-    status: 'corrupt', password: '',
-  });
-  fs.chmodSync(file, 0o600);
-  assert.deepEqual(loadPasswordResult(file, safeStorage, 'darwin'), {
+  if (process.platform !== 'win32') {
+    assert.deepEqual(loadPasswordResult(file, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
+      status: 'corrupt', password: '',
+    });
+    fs.chmodSync(file, 0o600);
+  }
+  assert.deepEqual(loadPasswordResult(file, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
     status: 'decrypted', password: 'secret',
   });
   assert.deepEqual(loadPasswordResult(file, {
     isEncryptionAvailable: () => true,
     decryptString: () => { throw new Error('fixture denied'); },
-  }, 'darwin'), { status: 'decrypt_failed', password: '' });
+  }, HOST_PRIVATE_FILE_PLATFORM), { status: 'decrypt_failed', password: '' });
   assert.equal(credentialLoadErrorKey('corrupt'), 'error.credentialStoreCorrupt');
   assert.equal(credentialLoadErrorKey('decrypt_failed'), 'error.credentialDecryptFailed');
   assert.equal(credentialLoadErrorKey('unavailable'), 'error.credentialStoreUnavailable');
