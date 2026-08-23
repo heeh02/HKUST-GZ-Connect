@@ -87,8 +87,10 @@ test('certificate pins persist only versioned metadata in atomic owner-only file
     updatedAt: now,
   }]);
   assert.deepEqual(loadCertificateTrust(filePath, { now }), saved);
-  assert.equal((fs.statSync(filePath).mode & 0o777), 0o600);
-  assert.equal((fs.statSync(`${filePath}${BACKUP_SUFFIX}`).mode & 0o777), 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal((fs.statSync(filePath).mode & 0o777), 0o600);
+    assert.equal((fs.statSync(`${filePath}${BACKUP_SUFFIX}`).mode & 0o777), 0o600);
+  }
   const disk = fs.readFileSync(filePath, 'utf8');
   assert.doesNotMatch(disk, /BEGIN CERTIFICATE|fixture-certificate-der/);
   assert.deepEqual(JSON.parse(disk), {
@@ -275,9 +277,11 @@ test('certificate authorization never follows a symlink or a broad-permission fi
   assert.deepEqual(loadCertificateTrust(filePath, { now: 1_800_000_010_000 }), []);
   assert.equal(fs.existsSync(target), true);
 
-  fs.writeFileSync(filePath, fs.readFileSync(target), { mode: 0o644 });
-  fs.chmodSync(filePath, 0o644);
-  assert.deepEqual(loadCertificateTrust(filePath, { now: 1_800_000_010_000 }), []);
+  if (process.platform !== 'win32') {
+    fs.writeFileSync(filePath, fs.readFileSync(target), { mode: 0o644 });
+    fs.chmodSync(filePath, 0o644);
+    assert.deepEqual(loadCertificateTrust(filePath, { now: 1_800_000_010_000 }), []);
+  }
 });
 
 test('store interface matches browser single-flight and replaces stale origin fingerprints', (t) => {

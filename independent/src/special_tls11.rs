@@ -1,5 +1,5 @@
 use crate::modern::{build_special_client_hello, connect_gateway_tcp, verify_special_certificates};
-use crate::{Error, Result};
+use crate::{Error, ErrorKind, Result};
 use hmac::{Hmac, Mac};
 use md5::Md5;
 use rand::RngCore;
@@ -10,7 +10,7 @@ use rsa::pkcs8::DecodePublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use sha1::Sha1;
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::time::Duration;
 use subtle::ConstantTimeEq;
 use x509_parser::parse_x509_certificate;
@@ -303,6 +303,10 @@ fn handshake_message(message_type: u8, body: &[u8]) -> Result<Zeroizing<Vec<u8>>
     Ok(message)
 }
 
+fn transient_data_plane_io(context: &'static str, error: std::io::Error) -> Error {
+    Error::classified(ErrorKind::DataPlaneTransient, format!("{context}: {error}"))
+}
+
 fn write_record<W: Write>(stream: &mut W, content_type: u8, payload: &[u8]) -> Result<()> {
     if payload.len() > MAX_RECORD_PAYLOAD {
         return Err(Error("TLS record payload exceeds limit".into()));
@@ -320,13 +324,17 @@ fn write_record<W: Write>(stream: &mut W, content_type: u8, payload: &[u8]) -> R
             .to_be_bytes(),
     );
     record.extend_from_slice(payload);
-    stream.write_all(&record)?;
+    stream
+        .write_all(&record)
+        .map_err(|error| transient_data_plane_io("special TLS record write failed", error))?;
     Ok(())
 }
 
 fn read_record(stream: &mut TcpStream) -> Result<(u8, Zeroizing<Vec<u8>>)> {
     let mut header = [0_u8; 5];
-    stream.read_exact(&mut header)?;
+    stream
+        .read_exact(&mut header)
+        .map_err(|error| transient_data_plane_io("special TLS record header read failed", error))?;
     if header[1..3] != TLS11_VERSION {
         return Err(Error("special TLS record has an unexpected version".into()));
     }
@@ -335,7 +343,9 @@ fn read_record(stream: &mut TcpStream) -> Result<(u8, Zeroizing<Vec<u8>>)> {
         return Err(Error("special TLS record exceeds limit".into()));
     }
     let mut payload = Zeroizing::new(vec![0_u8; length]);
-    stream.read_exact(&mut payload)?;
+    stream
+        .read_exact(&mut payload)
+        .map_err(|error| transient_data_plane_io("special TLS record body read failed", error))?;
     Ok((header[0], payload))
 }
 
@@ -447,7 +457,55 @@ pub struct SpecialTls11Stream {
     server_cipher: RecordCipher,
 }
 
+/// A cipher-free handle that can only close the underlying transport socket.
+///
+/// The userspace netstack keeps packet send/receive streams on dedicated OS
+/// threads. A cloned TCP handle lets process assembly wake those blocking reads
+/// during normal shutdown without cloning record keys or exposing wire access.
+#[must_use = "the shutdown handle must be retained for the stream lifetime"]
+pub(crate) struct SpecialTls11Shutdown {
+    stream: TcpStream,
+}
+
+impl SpecialTls11Shutdown {
+    #[cfg(test)]
+    pub(crate) fn from_tcp_stream_for_test(stream: TcpStream) -> Self {
+        Self { stream }
+    }
+
+    pub(crate) fn shutdown(&self) -> Result<()> {
+        match self.stream.shutdown(Shutdown::Both) {
+            Ok(()) => Ok(()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotConnected
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                ) =>
+            {
+                Ok(())
+            }
+            Err(_) => Err(Error("cannot close special TLS transport socket".into())),
+        }
+    }
+}
+
+impl Drop for SpecialTls11Shutdown {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
 impl SpecialTls11Stream {
+    pub(crate) fn shutdown_handle(&self) -> Result<SpecialTls11Shutdown> {
+        self.stream
+            .try_clone()
+            .map(|stream| SpecialTls11Shutdown { stream })
+            .map_err(|_| Error("cannot clone special TLS shutdown handle".into()))
+    }
+
     pub fn connect(
         address: SocketAddr,
         host: &str,
@@ -643,6 +701,23 @@ impl SpecialTls11Stream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cipher_free_shutdown_handle_wakes_a_blocked_peer() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        server
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let handle = SpecialTls11Shutdown {
+            stream: client.try_clone().unwrap(),
+        };
+        handle.shutdown().unwrap();
+        let mut byte = [0_u8; 1];
+        assert_eq!(server.read(&mut byte).unwrap(), 0);
+    }
 
     #[test]
     fn prf_is_deterministic_and_label_bound() {

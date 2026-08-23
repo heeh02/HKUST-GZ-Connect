@@ -4,6 +4,7 @@
 //! it. Human diagnostics stay on stderr. Keeping the schema in this module
 //! prevents UI wording changes from becoming accidental protocol changes.
 
+use crate::engine::auth_control::{AuthControlEvent, AuthControlResponse};
 use crate::engine::control::{ControlResponse, encode_control_response};
 use crate::{Error, Result};
 use serde::{Serialize, Serializer};
@@ -25,6 +26,7 @@ pub enum EngineCapability {
 pub enum EngineState {
     Connecting,
     Authenticating,
+    PreparingTunnel,
     Connected,
     Stopping,
     Stopped,
@@ -83,8 +85,16 @@ pub enum EngineErrorCode {
     ConfigurationInvalid,
     CredentialsInvalid,
     AuthFailed,
+    AuthRejected,
+    AuthIndeterminate,
+    AuthProtocolInvalid,
+    AuthCleanupUnconfirmed,
+    AuthExpired,
+    AuthLimitExceeded,
     UnsupportedAuthentication,
+    DataPlaneSetupTransient,
     DataPlaneSetupFailed,
+    DataPlaneShutdownFailed,
     LocalListenerFailed,
     NetworkDisconnected,
     LogoutFailed,
@@ -130,6 +140,8 @@ pub enum EngineEvent {
     },
     FatalError {
         code: EngineErrorCode,
+        #[serde(rename = "secondaryCode", skip_serializing_if = "Option::is_none")]
+        secondary_code: Option<EngineErrorCode>,
     },
     Stopped {
         reason: StopReason,
@@ -171,6 +183,16 @@ impl<W: Write> EngineEventEmitter<W> {
     pub fn emit_control(&mut self, response: &ControlResponse) -> Result<()> {
         let encoded = encode_control_response(response)?;
         self.write_frame(&encoded, "engine control response")
+    }
+
+    pub fn emit_auth_control(&mut self, response: &AuthControlResponse) -> Result<()> {
+        let encoded = encode_bounded_json_line(response)?;
+        self.write_frame(&encoded, "auth control response")
+    }
+
+    pub fn emit_auth_event(&mut self, event: &AuthControlEvent) -> Result<()> {
+        let encoded = encode_bounded_json_line(event)?;
+        self.write_frame(&encoded, "auth control event")
     }
 
     fn write_frame(&mut self, encoded: &[u8], kind: &str) -> Result<()> {
@@ -222,6 +244,17 @@ mod tests {
                 json!({"type": "state_changed", "state": "connecting", "generation": 42}),
             ),
             (
+                EngineEvent::StateChanged {
+                    state: EngineState::PreparingTunnel,
+                    generation: 42,
+                },
+                json!({
+                    "type": "state_changed",
+                    "state": "preparing_tunnel",
+                    "generation": 42,
+                }),
+            ),
+            (
                 EngineEvent::ClientIpAssigned {
                     family: AddressFamily::Ipv4,
                 },
@@ -258,14 +291,34 @@ mod tests {
             (
                 EngineEvent::FatalError {
                     code: EngineErrorCode::AuthFailed,
+                    secondary_code: None,
                 },
                 json!({"type": "fatal_error", "code": "AUTH_FAILED"}),
             ),
             (
                 EngineEvent::FatalError {
                     code: EngineErrorCode::UnsupportedAuthentication,
+                    secondary_code: None,
                 },
                 json!({"type": "fatal_error", "code": "UNSUPPORTED_AUTHENTICATION"}),
+            ),
+            (
+                EngineEvent::FatalError {
+                    code: EngineErrorCode::AuthIndeterminate,
+                    secondary_code: Some(EngineErrorCode::AuthCleanupUnconfirmed),
+                },
+                json!({
+                    "type": "fatal_error",
+                    "code": "AUTH_INDETERMINATE",
+                    "secondaryCode": "AUTH_CLEANUP_UNCONFIRMED",
+                }),
+            ),
+            (
+                EngineEvent::FatalError {
+                    code: EngineErrorCode::DataPlaneShutdownFailed,
+                    secondary_code: None,
+                },
+                json!({"type": "fatal_error", "code": "DATA_PLANE_SHUTDOWN_FAILED"}),
             ),
             (
                 EngineEvent::Stopped {
@@ -325,6 +378,34 @@ mod tests {
     }
 
     #[test]
+    fn v3_auth_events_and_responses_share_stdout_without_secret_fields() {
+        use crate::engine::auth_control::{AuthControlErrorCode, auth_error_response};
+        use crate::engine::auth_transaction::{ChallengeKind, ChallengeView, TransactionId};
+
+        let challenge =
+            ChallengeView::new(&TransactionId::from_bytes([6; 16]), 1, ChallengeKind::Otp).unwrap();
+        let mut emitter = EngineEventEmitter::new(Vec::new());
+        emitter
+            .emit_auth_event(&AuthControlEvent::ChallengeRequired {
+                api_version: 3,
+                challenge,
+            })
+            .unwrap();
+        emitter
+            .emit_auth_control(&auth_error_response(
+                7,
+                AuthControlErrorCode::TransactionClosed,
+            ))
+            .unwrap();
+        let output = String::from_utf8(emitter.into_inner()).unwrap();
+        assert!(output.contains("auth_challenge_required"));
+        assert!(output.contains("transaction_closed"));
+        for forbidden in ["response", "cookie", "csrf"] {
+            assert!(!output.to_ascii_lowercase().contains(forbidden));
+        }
+    }
+
+    #[test]
     fn oversized_serialization_is_rejected_before_writing() {
         #[derive(Serialize)]
         struct Oversized<'a> {
@@ -343,6 +424,7 @@ mod tests {
             },
             EngineEvent::FatalError {
                 code: EngineErrorCode::AuthFailed,
+                secondary_code: Some(EngineErrorCode::AuthCleanupUnconfirmed),
             },
         ];
         let encoded = serde_json::to_string(&events).unwrap();

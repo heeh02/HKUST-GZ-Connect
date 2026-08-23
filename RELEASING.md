@@ -23,7 +23,8 @@ bash desktop/scripts/build-engine.sh   # 编译 Rust 引擎，放进 desktop/eng
 bash desktop/scripts/rebuild-mac.sh    # macOS：打包、校验并安装到 /Applications
 ```
 
-`build-engine.sh` 在 `independent/` 下 `cargo build --locked --release --bin ec-engine`，
+`build-engine.sh` 在 `independent/` 下以`--no-default-features`构建`ec-engine`和
+`ec-proxy-command`，
 把二进制复制为 `desktop/engine/ec-engine-<平台>-<架构>`，并复制
 `config/hkustgz.json`。打包时 electron-builder 通过 `extraResources`
 把 `desktop/engine/` 放进应用包。
@@ -47,11 +48,19 @@ node --check main.js preload.js campus-preload.js lib/campus-browser.js \
 
 cd ../independent
 cargo fmt --all -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo clippy --locked --all-targets --no-default-features -- -D warnings
+cargo test --locked --no-default-features
+cargo clippy --locked --all-targets --no-default-features \
+  --features engine-lifecycle-fixture -- -D warnings
+cargo test --locked --no-default-features \
+  --features engine-lifecycle-fixture --test engine_success_lifecycle
 ```
 
-以上命令与 CI（`.github/workflows/build.yml`）中的检查一致。
+最后一项串行运行100轮真实`ec-engine`的non-routing post-Transport生命周期soak；它不连接
+Gateway、DNS或校园目标，也不能替代真实环境canary。
+
+production命令与`.github/workflows/build.yml`一致；test feature检查与普通
+`.github/workflows/ci.yml`一致。
 
 ## 版本号
 
@@ -78,14 +87,20 @@ cargo test --locked
 推送 `v*` 标签触发 `.github/workflows/build.yml`（也可在 Actions 页面用
 workflow_dispatch 手动触发）：
 
-- **macOS 作业**：分别编译 arm64 和 x64 引擎并暂存进 `desktop/engine/`，
-  运行 `npx electron-builder --mac dmg --arm64 --x64`（最多重试 3 次，
-  仍失败则以 “no macOS DMG was produced” 报错退出），再用
-  `build/verify-package.js` 校验两个 app 包的内容和引擎架构。
+- **macOS 作业**：分别编译arm64和x64原生程序。每次只向`desktop/engine/`暂存
+  当前架构的Engine/helper，再分别运行`electron-builder --mac dmg --arm64`和
+  `electron-builder --mac dmg --x64`（每个架构最多重试3次）；最后用
+  `build/verify-package.js`校验两个app包的内容和引擎架构。
 - **Windows 作业**：编译引擎后运行 `npm run dist:win`，生成 x64 NSIS
   安装程序，并用 `build/verify-package.js` 校验。
-- 产物只有 `desktop/release/*.dmg` 和 `desktop/release/*.exe`。标签构建
-  会通过 softprops/action-gh-release 自动附加到同名 GitHub Release。
+- **Linux 作业**：编译x64原生程序、生成AppImage、校验解包资源并通过Xvfb启动smoke。
+- 只发布`desktop/release/*.dmg`、`desktop/release/*.exe`和
+  `desktop/release/*.AppImage`。标签构建会通过softprops/action-gh-release
+  自动附加到同名GitHub Release。
+
+非默认`engine-lifecycle-fixture` feature只用于测试。发布构建显式使用
+`--no-default-features`；若误把feature构建的Engine暂存进应用，包验证器会通过固定
+`HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1` marker拒绝它。
 
 ## 签名与公证
 
@@ -124,8 +139,8 @@ bash desktop/scripts/build-engine.sh   # build the Rust engine into desktop/engi
 bash desktop/scripts/rebuild-mac.sh    # macOS: package, verify, install to /Applications
 ```
 
-`build-engine.sh` runs `cargo build --locked --release --bin ec-engine` in
-`independent/`, copies the binary to `desktop/engine/ec-engine-<platform>-<arch>`,
+`build-engine.sh` builds `ec-engine` and `ec-proxy-command` with
+`--no-default-features` in `independent/`, copies the binaries to `desktop/engine/`,
 and copies `config/hkustgz.json`. electron-builder bundles `desktop/engine/`
 via `extraResources`.
 
@@ -149,11 +164,20 @@ node --check main.js preload.js campus-preload.js lib/campus-browser.js \
 
 cd ../independent
 cargo fmt --all -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo clippy --locked --all-targets --no-default-features -- -D warnings
+cargo test --locked --no-default-features
+cargo clippy --locked --all-targets --no-default-features \
+  --features engine-lifecycle-fixture -- -D warnings
+cargo test --locked --no-default-features \
+  --features engine-lifecycle-fixture --test engine_success_lifecycle
 ```
 
-These match the checks in CI (`.github/workflows/build.yml`).
+The final command serially runs 100 rounds of the real `ec-engine` with the
+non-routing post-Transport lifecycle fixture. It contacts no Gateway, DNS, or
+campus target and cannot replace a real-environment canary.
+
+The production commands match `.github/workflows/build.yml`; the test-feature
+checks match the ordinary `.github/workflows/ci.yml` gate.
 
 ## Version numbers
 
@@ -180,15 +204,24 @@ These match the checks in CI (`.github/workflows/build.yml`).
 Pushing a `v*` tag triggers `.github/workflows/build.yml` (it can also be
 started manually via workflow_dispatch):
 
-- **macOS job**: builds arm64 and x64 engines into `desktop/engine/`, runs
-  `npx electron-builder --mac dmg --arm64 --x64` (up to 3 attempts, then
-  fails with "no macOS DMG was produced"), and verifies both app bundles and
-  engine architectures with `build/verify-package.js`.
+- **macOS job**: builds both native architectures, stages only the matching
+  Engine/helper for each package, and runs `electron-builder --mac dmg --arm64`
+  and `electron-builder --mac dmg --x64` separately (up to three attempts per
+  architecture). It then verifies both app bundles and engine architectures
+  with `build/verify-package.js`.
 - **Windows job**: builds the engine, runs `npm run dist:win` to produce the
   x64 NSIS installer, and verifies it with `build/verify-package.js`.
-- Only `desktop/release/*.dmg` and `desktop/release/*.exe` are produced.
+- **Linux job**: builds x64 native binaries, produces an AppImage, verifies its
+  unpacked resources, and runs an Xvfb launch smoke.
+- Only `desktop/release/*.dmg`, `desktop/release/*.exe`, and
+  `desktop/release/*.AppImage` are published.
   Tag builds attach them to the matching GitHub Release via
   softprops/action-gh-release.
+
+The non-default `engine-lifecycle-fixture` feature is test-only. Release builds
+explicitly disable default/features, and the package verifier rejects its fixed
+`HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1` marker if a feature-enabled Engine is
+ever staged accidentally.
 
 ## Signing and notarization
 

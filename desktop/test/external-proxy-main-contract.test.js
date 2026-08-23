@@ -21,8 +21,8 @@ test('strict and compatibility generations share one stable credential with dist
 });
 
 test('Clash credentials stay in main and activate optional auth for an existing listener', () => {
-  const start = source.indexOf("trustedHandle('copy-clash-node'");
-  const end = source.indexOf("trustedHandle('logout'", start);
+  const start = source.indexOf('copyClashNode: async () =>');
+  const end = source.indexOf('getLogs: async () =>', start);
   assert.ok(start >= 0 && end > start);
   const handler = source.slice(start, end);
   assert.match(handler, /ensureExternalProxyAccess\(Number\(settings\.port\)\)/);

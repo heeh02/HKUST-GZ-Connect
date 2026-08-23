@@ -20,7 +20,7 @@ bash "$HERE/scripts/build-engine.sh"
 echo "→ packaging the app…"
 cd "$HERE"
 # `dir` produces only the .app: no dmg or zip copies to clean up afterwards.
-CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir --arm64
+CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir --arm64 --publish never
 
 echo "→ verifying the package…"
 node "$HERE/build/verify-package.js" "$BUILT/Contents/Resources" darwin arm64

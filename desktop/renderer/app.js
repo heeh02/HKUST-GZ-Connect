@@ -21,19 +21,9 @@ let campusResources = [];
 let resourcesExpanded = false;
 let towerDirty = false;
 let towerSaving = false;
-let proxyAuthSaving = false;
 let loginPending = false;
-const resourceDialog = $('resourceDialog');
-const routingRulesDialog = $('routingRulesDialog');
-const certificatePinsDialog = $('certificatePinsDialog');
-let routingRules = [];
-let routingRuleBusy = false;
-let pendingRoutingDeleteKey = '';
-let pendingRoutingDeleteTimer = null;
-let certificatePins = [];
-let certificatePinBusy = false;
-let pendingCertificateOrigin = '';
-let pendingCertificateDeleteTimer = null;
+let resourceEditorManager = null;
+let proxyAuthFeature = null;
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
 
@@ -49,11 +39,7 @@ function applyLocale(rawLocale) {
     button.textContent = expanded ? t('section.collapse') : t('section.expand');
     button.setAttribute('aria-expanded', String(expanded));
   });
-  if (routingRulesDialog.open) {
-    renderRoutingRuleList();
-    updateRoutingRuleFormMode();
-  }
-  if (certificatePinsDialog.open) renderCertificatePinList();
+  document.dispatchEvent(new Event('app-locale-changed'));
 }
 function setPage(page) {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n.dataset.page === page));
@@ -143,25 +129,8 @@ function renderResources() {
   toggle.setAttribute('aria-expanded', String(resourcesExpanded));
 }
 
-function suggestedResourceName(value) {
-  const source = String(value || '').trim();
-  if (!source) return '';
-  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ? source : `https://${source}`;
-  try {
-    const parsed = new URL(candidate);
-    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.host : '';
-  } catch {
-    return '';
-  }
-}
-
 function setResourceSaved(message) {
   $('resourceSaved').textContent = message || '';
-}
-
-function clearResourceMessages() {
-  $('resourceFormError').textContent = '';
-  $('resourceFormSaved').textContent = '';
 }
 
 async function saveCampusResource(payload) {
@@ -169,7 +138,7 @@ async function saveCampusResource(payload) {
   if (!result?.ok) return { ok: false, error: result?.error || t('dialog.saveFailed') };
   campusResources = result.resources || campusResources;
   renderResources();
-  renderResourceEditorList();
+  resourceEditorManager?.renderList();
   return { ok: true, resource: result.resource };
 }
 
@@ -181,6 +150,7 @@ function populateTowerForm() {
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
   $('autoConnect').checked = settings.autoConnect !== false;
+  proxyAuthFeature?.render();
 }
 
 async function refreshState({ preserveTower = false } = {}) {
@@ -330,7 +300,7 @@ $('quickAddCampus').addEventListener('click', async () => {
   campusActionBusy = true;
   renderConnect(st);
   try {
-    const name = suggestedResourceName(url);
+    const name = window.resourceManager.suggestedResourceName(url);
     const saved = await saveCampusResource({ name, url, description: '' });
     if (!saved.ok) {
       $('quickAddErr').textContent = saved.error;
@@ -363,598 +333,9 @@ $('toggleResources').addEventListener('click', () => {
   renderResources();
 });
 
-function clearResourceEditor() {
-  disarmDeleteConfirm();
-  $('resourceId').value = '';
-  $('resourceName').value = '';
-  $('resourceUrl').value = '';
-  $('resourceDescription').value = '';
-  $('resourceRoute').value = 'campus';
-  clearResourceMessages();
-  setResourceFormMode(null);
-  document.querySelectorAll('.resource-editor-row').forEach((row) => row.classList.remove('active'));
-}
-
-function setResourceFormMode(editingResource) {
-  const editing = !!editingResource;
-  $('saveResource').textContent = editing ? t('dialog.saveChanges') : t('dialog.add');
-  $('cancelResource').textContent = editing ? t('dialog.cancelEdit') : t('dialog.clear');
-  $('resourceEditHint').textContent = editing
-    ? t('dialog.editing', { name: editingResource.name || editingResource.url })
-    : '';
-}
-
-function fillResourceEditor(resource) {
-  disarmDeleteConfirm();
-  $('resourceId').value = resource?.builtin ? '' : (resource?.id || '');
-  $('resourceName').value = resource?.name || '';
-  $('resourceUrl').value = resource?.url || '';
-  $('resourceDescription').value = resource?.description || '';
-  $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
-  clearResourceMessages();
-  setResourceFormMode(resource && !resource.builtin ? resource : null);
-  $('resourceFormError').textContent = resource?.builtin ? t('dialog.builtinReadonly') : '';
-  document.querySelectorAll('.resource-editor-row').forEach((row) => {
-    row.classList.toggle('active', row.dataset.resourceId === resource?.id);
-  });
-}
-
-const RESOURCE_ICONS = {
-  edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
-  up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
-  down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
-  delete: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>',
-  'cancel-delete': '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-};
-
-function resourceActionButton(action, label, disabled = false) {
-  return `<button class="row-icon${action === 'delete' ? ' danger' : ''}" type="button"`
-    + ` data-resource-action="${action}" title="${esc(label)}" aria-label="${esc(label)}"${disabled ? ' disabled' : ''}>`
-    + `${RESOURCE_ICONS[action]}</button>`;
-}
-
-let pendingDeleteId = null;
-let pendingDeleteTimer = null;
-
-function disarmDeleteConfirm() {
-  pendingDeleteId = null;
-  clearTimeout(pendingDeleteTimer);
-  pendingDeleteTimer = null;
-}
-
-function armDeleteConfirm(id) {
-  pendingDeleteId = id;
-  clearTimeout(pendingDeleteTimer);
-  pendingDeleteTimer = setTimeout(() => {
-    disarmDeleteConfirm();
-    renderResourceEditorList();
-  }, 4000);
-  renderResourceEditorList();
-}
-
-function renderResourceEditorList() {
-  const customIds = campusResources.filter((item) => !item.builtin).map((item) => item.id);
-  $('resourceEditorList').innerHTML = campusResources.map((resource) => {
-    const custom = !resource.builtin;
-    let actions;
-    if (!custom) {
-      actions = `<span class="resource-editor-route">${esc(t('dialog.builtin'))}</span>`;
-    } else if (pendingDeleteId === resource.id) {
-      actions = `<button class="row-icon confirm-delete" type="button" data-resource-action="delete">${esc(t('dialog.confirmDelete'))}</button>`
-        + resourceActionButton('cancel-delete', t('dialog.cancelDelete'));
-    } else {
-      const index = customIds.indexOf(resource.id);
-      actions = resourceActionButton('edit', t('dialog.edit'))
-        + resourceActionButton('up', t('dialog.moveUp'), index <= 0)
-        + resourceActionButton('down', t('dialog.moveDown'), index === customIds.length - 1)
-        + resourceActionButton('delete', t('dialog.delete'));
-    }
-    return `<div class="resource-editor-row" data-resource-id="${esc(resource.id)}">`
-      + `<div class="resource-editor-summary"><span class="resource-editor-name">${esc(resource.name)}</span>`
-      + `<span class="resource-editor-route">${esc(routeLabel(resource, t))}</span></div>`
-      + `<div class="resource-editor-actions">${actions}</div>`
-      + `</div>`;
-  }).join('');
-}
-
-async function openResourceManager() {
-  renderResourceEditorList();
-  clearResourceEditor();
-  if (!resourceDialog.open) resourceDialog.showModal();
-}
-
-$('manageResources').addEventListener('click', openResourceManager);
-$('closeResourceDialog').addEventListener('click', () => resourceDialog.close());
-$('cancelResource').addEventListener('click', clearResourceEditor);
-$('resourceUrl').addEventListener('blur', () => {
-  if ($('resourceName').value.trim()) return;
-  const suggestion = suggestedResourceName($('resourceUrl').value);
-  if (suggestion) $('resourceName').value = suggestion;
-});
-$('resourceEditorList').addEventListener('click', async (event) => {
-  const row = event.target.closest('[data-resource-id]');
-  if (!row) return;
-  const resource = campusResources.find((item) => item.id === row.dataset.resourceId);
-  const action = event.target.closest('[data-resource-action]')?.dataset.resourceAction;
-  if (!resource || resource.builtin) return;
-  if (action === 'cancel-delete') {
-    disarmDeleteConfirm();
-    renderResourceEditorList();
-    return;
-  }
-  if (action === 'delete') {
-    if (pendingDeleteId !== resource.id) {
-      armDeleteConfirm(resource.id);
-      return;
-    }
-    disarmDeleteConfirm();
-    const result = await window.api.deleteResource(resource.id);
-    if (!result?.ok) { $('resourceFormError').textContent = result?.error || t('dialog.deleteFailed'); return; }
-    campusResources = result.resources || campusResources.filter((item) => item.id !== resource.id);
-    renderResources();
-    renderResourceEditorList();
-    clearResourceEditor();
-    return;
-  }
-  disarmDeleteConfirm();
-  if (action === 'edit') fillResourceEditor(resource);
-  if (action === 'up' || action === 'down') {
-    const localIds = campusResources.filter((item) => !item.builtin).map((item) => item.id);
-    const index = localIds.indexOf(resource.id);
-    const target = action === 'up' ? index - 1 : index + 1;
-    if (index < 0 || target < 0 || target >= localIds.length) return;
-    [localIds[index], localIds[target]] = [localIds[target], localIds[index]];
-    const result = await window.api.reorderResources(localIds);
-    if (result?.ok) {
-      campusResources = result.resources || campusResources;
-      renderResources();
-      renderResourceEditorList();
-    }
-  }
-});
-$('resourceForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  clearResourceMessages();
-  if (!$('resourceName').value.trim()) $('resourceName').value = suggestedResourceName($('resourceUrl').value);
-  const editing = !!$('resourceId').value;
-  try {
-    const saved = await saveCampusResource({
-      id: $('resourceId').value || undefined,
-      name: $('resourceName').value,
-      url: $('resourceUrl').value,
-      description: $('resourceDescription').value,
-      route: $('resourceRoute').value,
-    });
-    if (!saved.ok) { $('resourceFormError').textContent = saved.error; return; }
-    clearResourceEditor();
-    const message = editing ? t('resources.changesSaved') : t('resources.saved');
-    $('resourceFormSaved').textContent = message;
-    setResourceSaved(message);
-  } catch (error) {
-    $('resourceFormError').textContent = error?.message || t('dialog.saveFailed');
-  }
-});
-
-// Website route rules -------------------------------------------------------
-// The renderer treats main-process results as untrusted structured input. The
-// main process remains the authoritative validator and persistence boundary.
-function collectionFromResult(result, key) {
-  if (Array.isArray(result)) return result;
-  return Array.isArray(result?.[key]) ? result[key] : null;
-}
-
-function operationError(result, fallback) {
-  const message = typeof result?.error === 'string' ? result.error.trim() : '';
-  return message ? message.slice(0, 300) : fallback;
-}
-
-function formatManagerTime(value) {
-  const numeric = value === null || value === undefined || value === '' ? Number.NaN : Number(value);
-  const instant = Number.isFinite(numeric) ? new Date(numeric) : new Date(String(value || ''));
-  if (!Number.isFinite(instant.getTime())) return t('common.unknownTime');
-  try {
-    return new Intl.DateTimeFormat(document.documentElement.lang || 'zh-CN', {
-      dateStyle: 'medium', timeStyle: 'short',
-    }).format(instant);
-  } catch {
-    return instant.toLocaleString();
-  }
-}
-
-function normalizeRoutingHostInput(value) {
-  const source = String(value || '').trim();
-  if (!source || source.length > 254 || /[\u0000-\u0020\u007f:/@*?#\\]/u.test(source)
-      || source.startsWith('.') || source.endsWith('..')) {
-    throw new Error(t('routing.invalidHost'));
-  }
-  const withoutRootDot = source.endsWith('.') ? source.slice(0, -1) : source;
-  let host;
-  try {
-    host = new URL(`https://${withoutRootDot}`).hostname.toLowerCase().replace(/\.$/, '');
-  } catch {
-    throw new Error(t('routing.invalidHost'));
-  }
-  if (!host || host.length > 253 || host.includes('..') || host.split('.').some((label) => (
-    !label || label.length > 63 || !/^[a-z0-9-]+$/u.test(label)
-    || label.startsWith('-') || label.endsWith('-')
-  ))) {
-    throw new Error(t('routing.invalidHost'));
-  }
-  return host;
-}
-
-function routingRuleKey(rule) {
-  return `${rule.host}|${rule.includeSubdomains === true ? '1' : '0'}`;
-}
-
-function routingRulesForView(input) {
-  return (Array.isArray(input) ? input : []).filter((rule) => (
-    rule && typeof rule.host === 'string' && rule.host.length <= 253
-    && typeof rule.includeSubdomains === 'boolean'
-    && (rule.route === 'campus' || rule.route === 'direct')
-  )).slice(0, 128).map((rule) => ({
-    host: rule.host,
-    includeSubdomains: rule.includeSubdomains,
-    route: rule.route,
-    updatedAt: rule.updatedAt,
-  }));
-}
-
-function disarmRoutingDelete() {
-  pendingRoutingDeleteKey = '';
-  clearTimeout(pendingRoutingDeleteTimer);
-  pendingRoutingDeleteTimer = null;
-}
-
-function armRoutingDelete(rule) {
-  pendingRoutingDeleteKey = routingRuleKey(rule);
-  clearTimeout(pendingRoutingDeleteTimer);
-  pendingRoutingDeleteTimer = setTimeout(() => {
-    disarmRoutingDelete();
-    renderRoutingRuleList();
-  }, 4000);
-  renderRoutingRuleList();
-}
-
-function renderRoutingRuleList() {
-  $('routingRuleList').innerHTML = routingRules.map((rule, index) => {
-    const pending = pendingRoutingDeleteKey === routingRuleKey(rule);
-    const disabled = routingRuleBusy ? ' disabled' : '';
-    const actions = pending
-      ? `<button class="mini confirm-action" type="button" data-routing-action="delete" data-routing-index="${index}"${disabled}>${esc(t('routing.confirmDelete'))}</button>`
-        + `<button class="mini" type="button" data-routing-action="cancel-delete" data-routing-index="${index}"${disabled}>${esc(t('routing.cancelDelete'))}</button>`
-      : `<button class="mini" type="button" data-routing-action="edit" data-routing-index="${index}"${disabled}>${esc(t('routing.edit'))}</button>`
-        + `<button class="mini danger-action" type="button" data-routing-action="delete" data-routing-index="${index}"${disabled}>${esc(t('routing.delete'))}</button>`;
-    return `<div class="manager-item routing-rule-item" role="listitem">`
-      + `<div class="manager-item-main"><div class="manager-item-title">${esc(rule.host)}</div>`
-      + `<div class="manager-item-details"><span class="manager-chip">${esc(rule.includeSubdomains ? t('routing.scopeSubdomains') : t('routing.scopeExact'))}</span>`
-      + `<span class="manager-chip ${rule.route}">${esc(rule.route === 'direct' ? t('routing.routeDirect') : t('routing.routeCampus'))}</span>`
-      + `<span class="manager-time">${esc(t('routing.updated', { time: formatManagerTime(rule.updatedAt) }))}</span></div></div>`
-      + `<div class="manager-item-actions">${actions}</div></div>`;
-  }).join('');
-  $('routingRuleListStatus').textContent = routingRules.length ? '' : t('routing.empty');
-}
-
-function updateRoutingRuleFormMode() {
-  const host = $('routingOriginalHost').value;
-  const editing = !!host;
-  $('saveRoutingRule').textContent = editing ? t('routing.save') : t('routing.add');
-  $('cancelRoutingRule').textContent = editing ? t('routing.cancelEdit') : t('routing.clear');
-  $('routingRuleEditHint').textContent = editing ? t('routing.editing', { host }) : '';
-}
-
-function clearRoutingRuleForm({ keepMessages = false } = {}) {
-  $('routingOriginalHost').value = '';
-  $('routingOriginalScope').value = '';
-  $('routingRuleHost').value = '';
-  $('routingRuleScope').value = 'exact';
-  $('routingRuleRoute').value = 'campus';
-  if (!keepMessages) {
-    $('routingRuleError').textContent = '';
-    $('routingRuleSaved').textContent = '';
-  }
-  updateRoutingRuleFormMode();
-  document.querySelectorAll('.routing-rule-item').forEach((row) => row.classList.remove('active'));
-}
-
-function editRoutingRule(rule, index) {
-  disarmRoutingDelete();
-  $('routingOriginalHost').value = rule.host;
-  $('routingOriginalScope').value = rule.includeSubdomains ? 'subdomains' : 'exact';
-  $('routingRuleHost').value = rule.host;
-  $('routingRuleScope').value = rule.includeSubdomains ? 'subdomains' : 'exact';
-  $('routingRuleRoute').value = rule.route;
-  $('routingRuleError').textContent = '';
-  $('routingRuleSaved').textContent = '';
-  updateRoutingRuleFormMode();
-  document.querySelectorAll('.routing-rule-item').forEach((row, rowIndex) => {
-    row.classList.toggle('active', rowIndex === index);
-  });
-  $('routingRuleHost').focus();
-}
-
-function setRoutingRuleBusy(busy) {
-  routingRuleBusy = busy;
-  $('routingRuleForm').setAttribute('aria-busy', String(busy));
-  $('routingRuleForm').querySelectorAll('input, select, button').forEach((control) => {
-    control.disabled = busy;
-  });
-  renderRoutingRuleList();
-}
-
-async function loadRoutingRules() {
-  $('routingRuleList').innerHTML = '';
-  $('routingRuleListStatus').textContent = t('routing.loading');
-  $('routingRuleError').textContent = '';
-  try {
-    const result = await window.api.listRoutingRules();
-    if (result?.ok === false) throw new Error(operationError(result, t('routing.loadFailed')));
-    const rules = collectionFromResult(result, 'rules');
-    if (!rules) throw new Error(t('routing.loadFailed'));
-    routingRules = routingRulesForView(rules);
-    renderRoutingRuleList();
-    return true;
-  } catch (error) {
-    routingRules = [];
-    $('routingRuleList').innerHTML = '';
-    $('routingRuleListStatus').textContent = '';
-    $('routingRuleError').textContent = error?.message || t('routing.loadFailed');
-    return false;
-  }
-}
-
-async function openRoutingRuleManager() {
-  if (routingRulesDialog.open && routingRuleBusy) return;
-  disarmRoutingDelete();
-  clearRoutingRuleForm();
-  if (!routingRulesDialog.open) routingRulesDialog.showModal();
-  setRoutingRuleBusy(true);
-  let loaded = false;
-  try {
-    loaded = await loadRoutingRules();
-  } finally {
-    setRoutingRuleBusy(false);
-  }
-  if (loaded) $('routingRuleHost').focus();
-}
-
-$('manageRoutingRules').addEventListener('click', openRoutingRuleManager);
-$('closeRoutingRulesDialog').addEventListener('click', () => routingRulesDialog.close());
-$('cancelRoutingRule').addEventListener('click', () => clearRoutingRuleForm());
-routingRulesDialog.addEventListener('close', disarmRoutingDelete);
-window.api.onOpenRoutingRules?.(() => {
-  show('dash');
-  setPage('tower');
-  openRoutingRuleManager();
-});
-$('routingRuleList').addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-routing-action]');
-  const index = Number(button?.dataset.routingIndex);
-  const rule = Number.isInteger(index) ? routingRules[index] : null;
-  if (!button || !rule || routingRuleBusy) return;
-  if (button.dataset.routingAction === 'cancel-delete') {
-    disarmRoutingDelete();
-    renderRoutingRuleList();
-    return;
-  }
-  if (button.dataset.routingAction === 'edit') {
-    editRoutingRule(rule, index);
-    return;
-  }
-  if (button.dataset.routingAction !== 'delete') return;
-  if (pendingRoutingDeleteKey !== routingRuleKey(rule)) {
-    armRoutingDelete(rule);
-    return;
-  }
-  disarmRoutingDelete();
-  setRoutingRuleBusy(true);
-  $('routingRuleError').textContent = '';
-  $('routingRuleSaved').textContent = '';
-  try {
-    const result = await window.api.deleteRoutingRule({
-      host: rule.host,
-      includeSubdomains: rule.includeSubdomains,
-    });
-    if (result?.ok === false) throw new Error(operationError(result, t('routing.deleteFailed')));
-    const rules = collectionFromResult(result, 'rules');
-    if (rules) {
-      routingRules = routingRulesForView(rules);
-      renderRoutingRuleList();
-    } else {
-      await loadRoutingRules();
-    }
-    if ($('routingOriginalHost').value === rule.host
-        && ($('routingOriginalScope').value === 'subdomains') === rule.includeSubdomains) {
-      clearRoutingRuleForm({ keepMessages: true });
-    }
-    $('routingRuleSaved').textContent = t('routing.deleted');
-  } catch (error) {
-    $('routingRuleError').textContent = error?.message || t('routing.deleteFailed');
-  } finally {
-    setRoutingRuleBusy(false);
-  }
-});
-
-$('routingRuleForm').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (routingRuleBusy) return;
-  $('routingRuleError').textContent = '';
-  $('routingRuleSaved').textContent = '';
-  let host;
-  try {
-    host = normalizeRoutingHostInput($('routingRuleHost').value);
-  } catch (error) {
-    $('routingRuleError').textContent = error?.message || t('routing.invalidHost');
-    $('routingRuleHost').focus();
-    return;
-  }
-  const scope = $('routingRuleScope').value;
-  const route = $('routingRuleRoute').value;
-  if (!['exact', 'subdomains'].includes(scope) || !['campus', 'direct'].includes(route)) {
-    $('routingRuleError').textContent = t('routing.saveFailed');
-    return;
-  }
-  const originalHost = $('routingOriginalHost').value;
-  const originalScope = $('routingOriginalScope').value;
-  const payload = { host, includeSubdomains: scope === 'subdomains', route };
-  if (originalHost && ['exact', 'subdomains'].includes(originalScope)) {
-    payload.previous = {
-      host: originalHost,
-      includeSubdomains: originalScope === 'subdomains',
-    };
-  }
-  setRoutingRuleBusy(true);
-  try {
-    const result = await window.api.saveRoutingRule(payload);
-    if (result?.ok === false) throw new Error(operationError(result, t('routing.saveFailed')));
-    const rules = collectionFromResult(result, 'rules');
-    if (rules) {
-      routingRules = routingRulesForView(rules);
-      renderRoutingRuleList();
-    } else {
-      await loadRoutingRules();
-    }
-    clearRoutingRuleForm({ keepMessages: true });
-    $('routingRuleSaved').textContent = t('routing.saved');
-  } catch (error) {
-    $('routingRuleError').textContent = error?.message || t('routing.saveFailed');
-  } finally {
-    setRoutingRuleBusy(false);
-  }
-});
-
-// Certificate trust ---------------------------------------------------------
-function certificatePinsForView(input) {
-  return (Array.isArray(input) ? input : []).filter((pin) => (
-    pin && typeof pin.origin === 'string' && pin.origin.length <= 2048
-    && typeof pin.fingerprint === 'string' && /^[a-f0-9]{64}$/iu.test(pin.fingerprint)
-  )).slice(0, 32).map((pin) => ({
-    origin: pin.origin,
-    fingerprint: pin.fingerprint.toLowerCase(),
-    updatedAt: pin.updatedAt,
-  }));
-}
-
-function disarmCertificateDelete() {
-  pendingCertificateOrigin = '';
-  clearTimeout(pendingCertificateDeleteTimer);
-  pendingCertificateDeleteTimer = null;
-}
-
-function armCertificateDelete(origin) {
-  pendingCertificateOrigin = origin;
-  clearTimeout(pendingCertificateDeleteTimer);
-  pendingCertificateDeleteTimer = setTimeout(() => {
-    disarmCertificateDelete();
-    renderCertificatePinList();
-  }, 4000);
-  renderCertificatePinList();
-}
-
-function renderCertificatePinList() {
-  $('certificatePinList').innerHTML = certificatePins.map((pin, index) => {
-    const pending = pendingCertificateOrigin === pin.origin;
-    const disabled = certificatePinBusy ? ' disabled' : '';
-    const actions = pending
-      ? `<button class="mini confirm-action" type="button" data-certificate-action="delete" data-certificate-index="${index}"${disabled}>${esc(t('certificates.confirmRevoke'))}</button>`
-        + `<button class="mini" type="button" data-certificate-action="cancel-delete" data-certificate-index="${index}"${disabled}>${esc(t('certificates.cancelRevoke'))}</button>`
-      : `<button class="mini danger-action" type="button" data-certificate-action="delete" data-certificate-index="${index}"${disabled}>${esc(t('certificates.revoke'))}</button>`;
-    return `<div class="manager-item certificate-pin-item" role="listitem">`
-      + `<div class="manager-item-main"><div class="manager-item-title">${esc(pin.origin)}</div>`
-      + `<code class="certificate-fingerprint">${esc(pin.fingerprint)}</code>`
-      + `<span class="manager-time">${esc(t('certificates.updated', { time: formatManagerTime(pin.updatedAt) }))}</span></div>`
-      + `<div class="manager-item-actions">${actions}</div></div>`;
-  }).join('');
-  $('certificatePinStatus').textContent = certificatePins.length ? '' : t('certificates.empty');
-}
-
-function setCertificatePinBusy(busy) {
-  certificatePinBusy = busy;
-  $('certificatePinList').setAttribute('aria-busy', String(busy));
-  renderCertificatePinList();
-}
-
-async function loadCertificatePins() {
-  $('certificatePinList').innerHTML = '';
-  $('certificatePinStatus').textContent = t('certificates.loading');
-  $('certificatePinError').textContent = '';
-  $('certificatePinSaved').textContent = '';
-  try {
-    const result = await window.api.listCertificatePins();
-    if (result?.ok === false) throw new Error(operationError(result, t('certificates.loadFailed')));
-    const pins = collectionFromResult(result, 'pins');
-    if (!pins) throw new Error(t('certificates.loadFailed'));
-    certificatePins = certificatePinsForView(pins);
-    renderCertificatePinList();
-    return true;
-  } catch (error) {
-    certificatePins = [];
-    $('certificatePinList').innerHTML = '';
-    $('certificatePinStatus').textContent = '';
-    $('certificatePinError').textContent = error?.message || t('certificates.loadFailed');
-    return false;
-  }
-}
-
-async function openCertificatePinManager() {
-  if (certificatePinsDialog.open && certificatePinBusy) return;
-  disarmCertificateDelete();
-  if (!certificatePinsDialog.open) certificatePinsDialog.showModal();
-  setCertificatePinBusy(true);
-  try {
-    await loadCertificatePins();
-    $('closeCertificatePinsDialog').focus();
-  } finally {
-    setCertificatePinBusy(false);
-  }
-}
-
-$('manageCertificatePins').addEventListener('click', openCertificatePinManager);
-$('closeCertificatePinsDialog').addEventListener('click', () => certificatePinsDialog.close());
-certificatePinsDialog.addEventListener('close', disarmCertificateDelete);
-$('certificatePinList').addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-certificate-action]');
-  const index = Number(button?.dataset.certificateIndex);
-  const pin = Number.isInteger(index) ? certificatePins[index] : null;
-  if (!button || !pin || certificatePinBusy) return;
-  if (button.dataset.certificateAction === 'cancel-delete') {
-    disarmCertificateDelete();
-    renderCertificatePinList();
-    return;
-  }
-  if (button.dataset.certificateAction !== 'delete') return;
-  if (pendingCertificateOrigin !== pin.origin) {
-    armCertificateDelete(pin.origin);
-    return;
-  }
-  disarmCertificateDelete();
-  setCertificatePinBusy(true);
-  $('certificatePinError').textContent = '';
-  $('certificatePinSaved').textContent = '';
-  try {
-    const result = await window.api.deleteCertificatePin({
-      origin: pin.origin,
-      fingerprint: pin.fingerprint,
-    });
-    if (result?.ok === false) throw new Error(operationError(result, t('certificates.deleteFailed')));
-    const pins = collectionFromResult(result, 'pins');
-    if (pins) {
-      certificatePins = certificatePinsForView(pins);
-      renderCertificatePinList();
-    } else {
-      await loadCertificatePins();
-    }
-    $('certificatePinSaved').textContent = t('certificates.revoked');
-  } catch (error) {
-    $('certificatePinError').textContent = error?.message || t('certificates.deleteFailed');
-  } finally {
-    setCertificatePinBusy(false);
-  }
-});
-
 // control tower
 async function saveTower() {
-  if (towerSaving || proxyAuthSaving) return { ok: false, busy: true };
+  if (towerSaving || proxyAuthFeature?.isBusy()) return { ok: false, busy: true };
   const port = Number($('towerPort').value);
   const maxAttempts = Number($('maxAttempts').value);
   if (!Number.isInteger(port) || port < 1025 || port > 65535) {
@@ -997,49 +378,7 @@ async function saveTower() {
     $('towerSave').disabled = false;
     $('towerReconnect').disabled = false;
     $('strictProxyAuth').disabled = false;
-  }
-}
-
-async function applyStrictProxyAuth(requested) {
-  const checkbox = $('strictProxyAuth');
-  const previous = settings.strictProxyAuth === true;
-  if (proxyAuthSaving || towerSaving) {
-    checkbox.checked = previous;
-    return { ok: false, busy: true };
-  }
-  if (requested === previous) return { ok: true, unchanged: true };
-
-  proxyAuthSaving = true;
-  checkbox.disabled = true;
-  $('towerSave').disabled = true;
-  $('towerReconnect').disabled = true;
-  flashSaved(t('tower.proxyAuthSwitching'));
-  try {
-    // This switch owns a separate settings transaction. Unsaved port, PAC,
-    // retry, and launch fields stay untouched in the form and on disk.
-    const result = await window.api.save({ strictProxyAuth: requested });
-    if (!result?.ok) {
-      checkbox.checked = previous;
-      flashSaved(result?.error || t('tower.saveFailed'), true);
-      return result || { ok: false };
-    }
-    settings = result.settings || { ...settings, strictProxyAuth: requested };
-    checkbox.checked = settings.strictProxyAuth === true;
-    const stateLabel = t(checkbox.checked ? 'tower.proxyAuthOn' : 'tower.proxyAuthOff');
-    flashSaved(result.warning || t(
-      result.reconnected ? 'tower.proxyAuthReconnected' : 'tower.proxyAuthApplied',
-      { state: stateLabel },
-    ), !!result.warning);
-    return result;
-  } catch (error) {
-    checkbox.checked = previous;
-    flashSaved(error?.message || t('tower.saveFailed'), true);
-    return { ok: false };
-  } finally {
-    proxyAuthSaving = false;
-    checkbox.disabled = false;
-    $('towerSave').disabled = false;
-    $('towerReconnect').disabled = false;
+    proxyAuthFeature?.render();
   }
 }
 let flashTimer = null;
@@ -1076,9 +415,6 @@ for (const id of [
   $(id).addEventListener('input', () => { towerDirty = true; });
   $(id).addEventListener('change', () => { towerDirty = true; });
 }
-$('strictProxyAuth').addEventListener('change', (event) => {
-  void applyStrictProxyAuth(event.currentTarget.checked === true);
-});
 $('closeAction').addEventListener('change', async () => {
   await window.api.save({ closeAction: $('closeAction').value });
   settings.closeAction = $('closeAction').value;
@@ -1162,4 +498,27 @@ window.api.onStatus((s) => {
   if (s.update) renderUpdateResult(s.update);
 });
 window.api.onTelemetry(renderTelemetry);
+proxyAuthFeature = window.proxyAuthMigration.createProxyAuthMigration({
+  api: window.api,
+  document,
+  translate: (key, vars) => t(key, vars),
+  getSettings: () => settings,
+  setSettings: (next) => { settings = next; },
+  isTowerBusy: () => towerSaving,
+  flash: flashSaved,
+});
+proxyAuthFeature.start();
+window.routingManager.start({
+  openTower: () => { show('dash'); setPage('tower'); },
+});
+window.certificateManager.start();
+resourceEditorManager = window.resourceManager.start({
+  getResources: () => campusResources,
+  setResources: (resources) => {
+    campusResources = resources;
+    renderResources();
+  },
+  saveResource: saveCampusResource,
+  setSaved: setResourceSaved,
+});
 init();

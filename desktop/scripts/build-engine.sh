@@ -28,7 +28,7 @@ run_cargo() {
 }
 
 cd "$ROOT/independent"
-run_cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+run_cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
 mkdir -p "$HERE/engine"
 cp target/release/ec-engine "$HERE/engine/ec-engine-$PLATFORM-$ARCH"
 cp target/release/ec-proxy-command "$HERE/engine/ec-proxy-command-$PLATFORM-$ARCH"

@@ -6,6 +6,12 @@ const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
 
+const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[-_]?gateway|test[-_]?ca|pki)(?:\/|[-_.])|(?:^|\/)private[-_]?key(?:$|[-_.\/])|\.(?:pem|key|p12|pfx)$/iu;
+const TEST_ONLY_ENGINE_MARKER = 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1';
+const TEST_ONLY_ENGINE_MARKER_BYTES = Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii');
+const MARKER_SCAN_CHUNK_BYTES = 64 * 1024;
+const MAC_SYSTEM_DYLIB_PREFIXES = ['/usr/lib/', '/System/Library/'];
+
 function resolveResourcesDirectory(input) {
   const resolved = path.resolve(input);
   return resolved.endsWith('.app') ? path.join(resolved, 'Contents', 'Resources') : resolved;
@@ -59,6 +65,59 @@ function assertLinuxElfArchitecture(executable, architectureName) {
   }
 }
 
+function parseMachODylibDependencies(output) {
+  const lines = String(output || '').split(/\r?\n/u);
+  return lines.slice(1).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const metadata = line.indexOf(' (compatibility version ');
+    return metadata >= 0 ? line.slice(0, metadata) : line.split(/\s+/u)[0];
+  }).filter(Boolean);
+}
+
+function assertMacDylibDependenciesAllowed(dependencies) {
+  for (const dependency of dependencies) {
+    if (!MAC_SYSTEM_DYLIB_PREFIXES.some((prefix) => dependency.startsWith(prefix))) {
+      throw new Error(
+        `packaged macOS native executable depends on a non-system dylib: ${dependency}`,
+      );
+    }
+  }
+}
+
+function assertMacSystemOnlyDylibs(executable) {
+  const result = spawnSync('otool', ['-L', executable], { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `otool diagnostics failed for ${executable}: ${String(result.stderr || '').trim()}`,
+    );
+  }
+  const dependencies = parseMachODylibDependencies(result.stdout);
+  assertMacDylibDependenciesAllowed(dependencies);
+  return dependencies;
+}
+
+function assertNoTestOnlyEngineMarker(executable) {
+  const descriptor = fs.openSync(executable, 'r');
+  let overlap = Buffer.alloc(0);
+  try {
+    while (true) {
+      const chunk = Buffer.alloc(MARKER_SCAN_CHUNK_BYTES);
+      const bytesRead = fs.readSync(descriptor, chunk, 0, chunk.length, null);
+      if (bytesRead === 0) break;
+      const searchable = overlap.length
+        ? Buffer.concat([overlap, chunk.subarray(0, bytesRead)])
+        : chunk.subarray(0, bytesRead);
+      if (searchable.indexOf(TEST_ONLY_ENGINE_MARKER_BYTES) !== -1) {
+        throw new Error(`test-only lifecycle Engine entered the package: ${executable}`);
+      }
+      const overlapBytes = Math.min(TEST_ONLY_ENGINE_MARKER_BYTES.length - 1, searchable.length);
+      overlap = Buffer.from(searchable.subarray(searchable.length - overlapBytes));
+    }
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
 function parseArguments(argv) {
   const positional = [];
   let requireAppleSignature = false;
@@ -74,7 +133,15 @@ function parseArguments(argv) {
   };
 }
 
-function assertCustomResourceManager({ html, renderer, preload, main }) {
+function assertCustomResourceManager({
+  html,
+  renderer,
+  preload,
+  main,
+  controlDataIpc = '',
+  resourceIpc = '',
+  resourceRenderer = '',
+}) {
   const missing = [];
   if (!String(html).includes('id="manageResources"')) missing.push('manage button');
   if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
@@ -82,19 +149,91 @@ function assertCustomResourceManager({ html, renderer, preload, main }) {
   if (!String(html).includes('id="quickAddCampus"')) missing.push('add and open button');
   if (!String(html).includes('id="resourceSaved"')) missing.push('save confirmation');
   if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');
-  if (!String(renderer).includes('function suggestedResourceName')) missing.push('URL naming helper');
+  const composedResourceRenderer = String(renderer).includes('resourceManager.start(')
+    && String(resourceRenderer).includes('function suggestedResourceName');
+  if (!String(renderer).includes('function suggestedResourceName') && !composedResourceRenderer) {
+    missing.push('URL naming helper');
+  }
   if (!String(preload).includes("saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)")) {
     missing.push('preload bridge');
   }
   const mainSource = String(main);
-  if (!mainSource.includes("ipcMain.handle('save-resource'")
-    && !mainSource.includes("trustedHandle('save-resource'")) {
+  const directHandler = mainSource.includes("ipcMain.handle('save-resource'")
+    || mainSource.includes("trustedHandle('save-resource'");
+  const composedHandler = mainSource.includes('registerControlDataIpc(')
+    && String(controlDataIpc).includes('registerCampusResourceIpc(')
+    && String(resourceIpc).includes("register('save-resource'");
+  if (!directHandler && !composedHandler) {
     missing.push('save handler');
   }
   if (!String(main).includes("app.on('certificate-error'")) missing.push('certificate handler');
   if (missing.length) {
     throw new Error(`custom resource manager is incomplete: ${missing.join(', ')}`);
   }
+}
+
+function assertNoTestOnlyPackageEntries(entries) {
+  for (const rawEntry of entries) {
+    const entry = String(rawEntry).replaceAll('\\', '/');
+    if (FORBIDDEN_TEST_RESOURCE.test(entry)) {
+      throw new Error(`test-only or private-key resource entered the package: ${entry}`);
+    }
+  }
+}
+
+function assertNoTestOnlyNativeResources(engineDirectory) {
+  let directoryStat;
+  try { directoryStat = fs.lstatSync(engineDirectory); } catch {}
+  if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) {
+    throw new Error(`missing packaged engine directory: ${engineDirectory}`);
+  }
+  const entries = fs.readdirSync(engineDirectory, { withFileTypes: true });
+  for (const entry of entries) {
+    const normalized = `/${entry.name}`;
+    if (!entry.isFile() || entry.isSymbolicLink() || FORBIDDEN_TEST_RESOURCE.test(normalized)) {
+      throw new Error(`test-only or unsafe native resource entered the package: ${entry.name}`);
+    }
+  }
+}
+
+function assertExactNativeResources(engineDirectory, expectedNames) {
+  if (!Array.isArray(expectedNames) || expectedNames.length === 0 ||
+      expectedNames.some((name) => (
+        typeof name !== 'string' || !name || path.basename(name) !== name || /[\0\r\n]/u.test(name)
+      ))) {
+    throw new TypeError('expected native resource names are invalid');
+  }
+  let directoryStat;
+  try { directoryStat = fs.lstatSync(engineDirectory); } catch {}
+  if (!directoryStat?.isDirectory() || directoryStat.isSymbolicLink()) {
+    throw new Error(`missing packaged engine directory: ${engineDirectory}`);
+  }
+
+  const expected = [...new Set(expectedNames)].sort();
+  const actual = [];
+  for (const entry of fs.readdirSync(engineDirectory, { withFileTypes: true })) {
+    const normalized = `/${entry.name}`;
+    if (!entry.isFile() || entry.isSymbolicLink() || FORBIDDEN_TEST_RESOURCE.test(normalized)) {
+      throw new Error(`test-only or unsafe native resource entered the package: ${entry.name}`);
+    }
+    const resource = path.join(engineDirectory, entry.name);
+    if (fs.statSync(resource).size === 0) {
+      throw new Error(`empty native resource entered the package: ${entry.name}`);
+    }
+    actual.push(entry.name);
+  }
+  actual.sort();
+
+  const missing = expected.filter((name) => !actual.includes(name));
+  const unexpected = actual.filter((name) => !expected.includes(name));
+  if (missing.length || unexpected.length) {
+    const details = [
+      missing.length ? `missing=${missing.join(',')}` : '',
+      unexpected.length ? `unexpected=${unexpected.join(',')}` : '',
+    ].filter(Boolean).join(' ');
+    throw new Error(`packaged native resource set is not exact: ${details}`);
+  }
+  return actual;
 }
 
 function verifyPackage({ resourcesArgument, platform = process.platform, architecture = process.arch, requireAppleSignature = false }) {
@@ -121,11 +260,32 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/login-flow.js',
     '/lib/resource-view.js',
     '/lib/engine-control-client.js',
+    '/lib/engine-auth-control-client.js',
+    '/lib/engine-connection-runtime.js',
+    '/lib/engine-control-suite.js',
+    '/lib/desktop-shell.js',
+    '/lib/windows-private-file.js',
+    '/lib/campus-browser-manager.js',
+    '/lib/connection-telemetry-coordinator.js',
     '/lib/engine-protocol-session.js',
+    '/lib/auth-challenge-coordinator.js',
+    '/lib/control-data-ipc.js',
+    '/lib/control-ipc-suite.js',
+    '/lib/core-control-ipc.js',
+    '/lib/settings-credential-ipc.js',
+    '/lib/routing-rule-ipc.js',
+    '/lib/certificate-pin-ipc.js',
+    '/lib/campus-resource-ipc.js',
     '/lib/settings-update.js',
     '/lib/tunnel-health.js',
     '/lib/update-check.js',
     '/renderer/app.js',
+    '/renderer/auth-challenge.js',
+    '/renderer/manager-view.js',
+    '/renderer/routing-manager.js',
+    '/renderer/certificate-manager.js',
+    '/renderer/resource-manager.js',
+    '/renderer/proxy-auth-migration.js',
     '/renderer/i18n.js',
     '/renderer/campus-browser.html',
     '/renderer/campus-browser.js',
@@ -135,14 +295,31 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
   }
+  assertNoTestOnlyPackageEntries(entries);
 
   const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
   const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
   const packagedPreload = asar.extractFile(archive, 'preload.js').toString('utf8');
   const packagedMain = asar.extractFile(archive, 'main.js').toString('utf8');
+  const packagedControlDataIpc = asar.extractFile(archive, 'lib/control-data-ipc.js')
+    .toString('utf8');
+  const packagedResourceIpc = asar.extractFile(archive, 'lib/campus-resource-ipc.js')
+    .toString('utf8');
+  const packagedResourceManager = asar.extractFile(archive, 'renderer/resource-manager.js')
+    .toString('utf8');
   for (const helper of ['login-flow', 'resource-view']) {
     if (!packagedIndex.includes(`../lib/${helper}.js`)) {
       throw new Error(`renderer does not load its shared helper: ${helper}`);
+    }
+  }
+  for (const feature of [
+    'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
+    'proxy-auth-migration',
+  ]) {
+    const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);
+    const appScript = packagedIndex.indexOf('src="app.js"');
+    if (featureScript < 0 || appScript < 0 || featureScript >= appScript) {
+      throw new Error(`renderer does not load its feature before app: ${feature}`);
     }
   }
   for (const helper of ['evaluateLoginProgress', 'visibleResources', 'routeLabel']) {
@@ -159,6 +336,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     renderer: packagedRenderer,
     preload: packagedPreload,
     main: packagedMain,
+    controlDataIpc: packagedControlDataIpc,
+    resourceIpc: packagedResourceIpc,
+    resourceRenderer: packagedResourceManager,
   });
 
   const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
@@ -168,11 +348,17 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const proxyCommandName = `ec-proxy-command-${platformName}-${architectureName}${extension}`;
   const engine = path.join(resources, 'engine', engineName);
   const proxyCommand = path.join(resources, 'engine', proxyCommandName);
+  assertExactNativeResources(path.join(resources, 'engine'), [
+    engineName,
+    proxyCommandName,
+    'hkustgz.json',
+  ]);
   for (const [label, executable] of [['engine', engine], ['SSH proxy helper', proxyCommand]]) {
     if (!fs.existsSync(executable) || !fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
       throw new Error(`missing packaged ${label}: ${executable}`);
     }
   }
+  assertNoTestOnlyEngineMarker(engine);
 
   if (platformName === 'windows') {
     for (const executable of [engine, proxyCommand]) {
@@ -192,6 +378,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   } else if (platformName === 'linux') {
     for (const executable of [engine, proxyCommand]) {
       assertLinuxElfArchitecture(executable, architectureName);
+    }
+  } else if (platformName === 'darwin') {
+    for (const executable of [engine, proxyCommand]) {
+      assertMacSystemOnlyDylibs(executable);
     }
   }
 
@@ -214,9 +404,17 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 }
 
 module.exports = {
+  TEST_ONLY_ENGINE_MARKER,
+  assertMacDylibDependenciesAllowed,
+  assertMacSystemOnlyDylibs,
   assertLinuxElfArchitecture,
   assertCustomResourceManager,
+  assertExactNativeResources,
+  assertNoTestOnlyEngineMarker,
+  assertNoTestOnlyNativeResources,
+  assertNoTestOnlyPackageEntries,
   parseArguments,
+  parseMachODylibDependencies,
   readMacSignature,
   resolveMacAppPath,
   resolveResourcesDirectory,

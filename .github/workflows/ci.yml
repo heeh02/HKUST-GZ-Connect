@@ -39,19 +39,21 @@ jobs:
         run: npm ci
       - name: Run desktop tests
         run: npm test
+      - name: Enforce desktop architecture growth boundaries
+        run: npm run check:architecture
+      - name: Reject committed secret patterns
+        run: npm run check:secrets -- --tree "$GITHUB_SHA"
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Check syntax of every entry point
         run: |
-          node --check main.js
-          node --check preload.js
-          node --check campus-preload.js
-          node --check lib/campus-browser.js
-          node --check renderer/campus-browser.js
-          node --check renderer/app.js
+          while IFS= read -r source_file; do
+            node --check "$source_file"
+          done < <(rg --files -g '*.js' -g '!node_modules/**' -g '!release/**')
       - name: Check shell entry points
         run: |
           bash -n ../hkustgzconnect
+          bash -n ../tools/mac-cli/proxy-credential.sh
           bash -n scripts/install-mac.sh
           bash -n scripts/rebuild-mac.sh
           bash -n scripts/build-engine.sh
@@ -73,8 +75,14 @@ jobs:
         run: npm ci
       - name: Exercise the real Electron main process
         run: npm run test:main-integration
+      - name: Exercise Main with a synthetic Engine lifecycle
+        run: npm run test:main-engine-lifecycle
       - name: Exercise campus-browser toolbar IPC
         run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
+      - name: Exercise Campus Browser MFA credential boundaries
+        run: npm run test:campus-mfa-safety
+      - name: Exercise popup and cross-origin MFA credential boundaries
+        run: npm run test:campus-popup-mfa-safety
       - name: Exercise Chromium strict proxy authentication
         run: npm run test:strict-proxy-auth
       - name: Measure the resource manager at compact window sizes
@@ -86,6 +94,26 @@ jobs:
       - name: Record the bounded hidden-idle baseline
         run: npm run test:idle-performance
 
+  windows-private-file:
+    timeout-minutes: 10
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install test dependencies
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+      - name: Verify current-user-only helper credential DACL
+        run: node --test test/windows-private-file.test.js test/external-proxy-config.test.js
+
   engine:
     timeout-minutes: 20
     runs-on: ubuntu-latest
@@ -94,20 +122,29 @@ jobs:
         working-directory: independent
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint all targets
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
       - name: Run engine tests
-        run: cargo test --locked
+        run: cargo test --locked --no-default-features
+      - name: Lint the feature-gated Engine lifecycle fixture
+        run: cargo clippy --locked --all-targets --no-default-features --features engine-lifecycle-fixture -- -D warnings
+      - name: Exercise the successful Engine subprocess lifecycle
+        run: cargo test --locked --no-default-features --features engine-lifecycle-fixture --test engine_success_lifecycle
+      - name: Exercise the synthetic Engine/Desktop auth pipe
+        run: node ../desktop/e2e/auth-control-fixture.js
       - name: Run offline performance disaster guards
         run: |
-          cargo test --locked --release --lib offline_socks5_frontend_matrix -- \
+          cargo test --locked --release --no-default-features --lib offline_socks5_frontend_matrix -- \
             --ignored --nocapture --test-threads=1
-          cargo test --locked --release --test poll_latency_probe \
+          cargo test --locked --release --no-default-features --test poll_latency_probe \
             offline_netstack_poll_latency_matrix -- \
             --ignored --nocapture --test-threads=1
       - name: Build shipped native binaries
-        run: cargo build --locked --release --bin ec-engine --bin ec-proxy-command
+        run: cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command

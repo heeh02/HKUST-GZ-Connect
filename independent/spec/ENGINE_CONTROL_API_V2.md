@@ -19,8 +19,15 @@ arguments, diagnostics, events, or control frames.
 
 Responses share the bounded stdout NDJSON stream with Event API v1. Their
 `apiVersion: 2` and request IDs distinguish them; old v1 consumers ignore the
-unknown response shapes. Closing stdin ends only the optional control channel
-and never requests engine shutdown.
+unknown response shapes. Before `listener_ready`, the inherited pipe is also
+the supervisor-ownership boundary for the in-progress Auth/Transport attempt:
+EOF or an accepted `control.close` cancels that attempt and performs bounded
+session cleanup. If an in-flight synchronous syscall cannot reach a cooperative
+cancellation point within the drain deadline, the Engine exits nonzero with
+cleanup-unconfirmed instead of allowing the result to outlive its generation.
+After listener readiness, EOF/`control.close` ends only the
+optional control channel and leaves the established tunnel under ordinary
+signal/process supervision. Neither case synthesizes a shutdown request.
 
 ## Framing and bounds
 
@@ -59,7 +66,9 @@ local `ControlAction::Shutdown`:
 `cancel` names an active request by ID. Accepted shutdown requests have a
 bounded 100 ms commit window so a cancellation received after the response can
 remove the queued shutdown before engine teardown starts. `close` closes only
-the private control connection. These produce `ControlAction::Cancel` and
+the private control connection; before listener readiness, process assembly
+also treats loss of that owner connection as cancellation of the unfinished
+connection attempt. These produce `ControlAction::Cancel` and
 `ControlAction::Close`; the codec itself does not terminate processes or tasks.
 
 Known but unimplemented provider capabilities can be queried only through the

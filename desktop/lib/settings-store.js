@@ -7,10 +7,12 @@ const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./pac');
 const { normalizeCustomResources } = require('./campus-resources');
 
 const BACKUP_SUFFIX = '.bak';
-// Version 2 restores SOCKS5 compatibility as the default. Version 1 briefly
-// migrated every installation to strict authentication, which broke Clash and
-// SSH clients that cannot receive the app's ephemeral credential.
-const PROXY_SECURITY_VERSION = 2;
+// Version 3 makes strict authentication the new-install default. Version 2
+// used compatibility by default and is preserved for existing installations;
+// version 1 briefly auto-enabled an incompatible strict mode and is repaired.
+const PROXY_SECURITY_VERSION = 3;
+const COMPATIBILITY_DEFAULT_PROXY_SECURITY_VERSION = 2;
+const BROKEN_STRICT_MIGRATION_VERSION = 1;
 const MAX_SETTINGS_DOCUMENT_BYTES = 512 * 1024;
 let temporarySequence = 0;
 
@@ -21,11 +23,13 @@ const DEFAULTS = Object.freeze({
   maxAttempts: 3,
   startAtLogin: false,
   autoConnect: true,
-  // Compatibility is the product default: Clash, SSH and existing SOCKS5
-  // clients can use the loopback endpoint without app-specific credentials.
-  // Shared-machine users can explicitly opt in to strict authentication.
-  strictProxyAuth: false,
+  // A loopback listener is still a local authorization boundary: other
+  // processes and users on one machine can otherwise borrow the authenticated
+  // campus session. New installations therefore require proxy credentials.
+  // Existing version-2 choices are preserved by normalizeStrictProxyAuth.
+  strictProxyAuth: true,
   proxySecurityVersion: PROXY_SECURITY_VERSION,
+  proxyAuthMigrationPending: false,
   closeAction: 'ask',
   language: 'auto',
   updateCheckedAt: 0,
@@ -35,6 +39,39 @@ const DEFAULTS = Object.freeze({
 
 function isValidPort(port) {
   return Number.isInteger(port) && port >= 1025 && port <= 65535;
+}
+
+function normalizeStrictProxyAuth(saved = {}) {
+  const version = Number(saved.proxySecurityVersion);
+  if (version === PROXY_SECURITY_VERSION) return saved.strictProxyAuth !== false;
+  if (version === COMPATIBILITY_DEFAULT_PROXY_SECURITY_VERSION) {
+    // Version 2 shipped compatibility as the default and then persisted the
+    // normalized value on any settings save. Preserve that installed-base
+    // choice instead of silently breaking existing Clash/SSH clients.
+    return saved.strictProxyAuth === true;
+  }
+  if (version === BROKEN_STRICT_MIGRATION_VERSION) {
+    // Version 1 could mark users strict without a compatible external-client
+    // credential contract. Keep repairing that known automatic opt-in.
+    return false;
+  }
+  // A missing/unknown security version is not proof of an explicit downgrade.
+  // It follows the reviewed secure default and can be changed in the UI.
+  return DEFAULTS.strictProxyAuth;
+}
+
+function normalizeProxyAuthMigrationPending(saved = {}) {
+  const version = Number(saved.proxySecurityVersion);
+  if (version === COMPATIBILITY_DEFAULT_PROXY_SECURITY_VERSION) {
+    // Version 2 persisted compatibility as its default. Preserve service until
+    // the user explicitly chooses the secure mode or acknowledges compatibility,
+    // but do not let that inherited downgrade remain invisible indefinitely.
+    return saved.strictProxyAuth !== true;
+  }
+  if (version === PROXY_SECURITY_VERSION) {
+    return saved.proxyAuthMigrationPending === true && saved.strictProxyAuth !== true;
+  }
+  return false;
 }
 
 function normalizeSettings(saved = {}) {
@@ -49,12 +86,9 @@ function normalizeSettings(saved = {}) {
       : DEFAULTS.maxAttempts,
     startAtLogin: saved.startAtLogin === true,
     autoConnect: saved.autoConnect !== false,
-    // Keep SOCKS5 NO_AUTH compatible by default. Only a choice saved by the
-    // current compatibility-aware UI enables strict mode. This also repairs
-    // version-1 settings that silently opted every user into authentication.
-    strictProxyAuth: saved.proxySecurityVersion === PROXY_SECURITY_VERSION
-      && saved.strictProxyAuth === true,
+    strictProxyAuth: normalizeStrictProxyAuth(saved),
     proxySecurityVersion: PROXY_SECURITY_VERSION,
+    proxyAuthMigrationPending: normalizeProxyAuthMigrationPending(saved),
     closeAction: ['ask', 'minimize', 'quit'].includes(saved.closeAction)
       ? saved.closeAction
       : DEFAULTS.closeAction,
@@ -257,5 +291,7 @@ module.exports = {
   isValidPort,
   loadSettings,
   normalizeSettings,
+  normalizeProxyAuthMigrationPending,
+  normalizeStrictProxyAuth,
   saveSettings,
 };

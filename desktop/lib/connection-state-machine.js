@@ -4,12 +4,42 @@ const { planReconnect } = require('./reconnect-policy');
 
 const CONNECTION_PHASE = Object.freeze({
   IDLE: 'idle',
-  CONNECTING: 'connecting',
+  STARTING: 'starting',
+  AUTHENTICATING: 'authenticating',
+  PREPARING_TUNNEL: 'preparing-tunnel',
   CONNECTED: 'connected',
   STOPPING: 'stopping',
   RETRY_WAIT: 'retry-wait',
   CONNECTIVITY_PAUSED: 'connectivity-paused',
 });
+
+const CONNECTING_PHASES = new Set([
+  CONNECTION_PHASE.STARTING,
+  CONNECTION_PHASE.AUTHENTICATING,
+  CONNECTION_PHASE.PREPARING_TUNNEL,
+  CONNECTION_PHASE.RETRY_WAIT,
+]);
+const READINESS_PHASES = new Set([
+  CONNECTION_PHASE.PREPARING_TUNNEL,
+  CONNECTION_PHASE.CONNECTED,
+]);
+
+function connectionPresentation(snapshot) {
+  const phase = snapshot?.phase;
+  return Object.freeze({
+    phase,
+    connected: phase === CONNECTION_PHASE.CONNECTED,
+    connecting: CONNECTING_PHASES.has(phase),
+  });
+}
+
+function projectConnectionStatus(state, presentation, connectedAt) {
+  const notice = [state?.notice, state?.browserNotice, state?.diagnosticNotice]
+    .filter(Boolean).join('\n') || null;
+  const lastError = [state?.lastError, state?.settingsError, state?.recoveryError]
+    .filter(Boolean).join('\n') || null;
+  return Object.freeze({ ...state, notice, lastError, ...presentation, connectedAt });
+}
 
 function validGeneration(value) {
   return Number.isSafeInteger(value) && value > 0;
@@ -25,6 +55,10 @@ class ConnectionStateMachine {
   #attempts;
   #phase;
   #engineGeneration;
+  #engineConnectedCandidate;
+  #listenerReady;
+  #wasConnectedBeforeStop;
+  #connectedUptimeBeforeStop;
 
   constructor() {
     this.#intent = 0;
@@ -33,6 +67,10 @@ class ConnectionStateMachine {
     this.#attempts = 0;
     this.#phase = CONNECTION_PHASE.IDLE;
     this.#engineGeneration = null;
+    this.#engineConnectedCandidate = false;
+    this.#listenerReady = false;
+    this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
   }
 
   snapshot() {
@@ -44,6 +82,10 @@ class ConnectionStateMachine {
       attemptNumber: this.#attempts + 1,
       phase: this.#phase,
       engineGeneration: this.#engineGeneration,
+      engineConnectedCandidate: this.#engineConnectedCandidate,
+      listenerReady: this.#listenerReady,
+      wasConnectedBeforeStop: this.#wasConnectedBeforeStop,
+      connectedUptimeBeforeStop: this.#connectedUptimeBeforeStop,
     });
   }
 
@@ -86,7 +128,7 @@ class ConnectionStateMachine {
       this.#attempts = 0;
       this.#userDisconnected = false;
     }
-    this.#phase = CONNECTION_PHASE.CONNECTING;
+    this.#phase = CONNECTION_PHASE.STARTING;
     return true;
   }
 
@@ -107,7 +149,7 @@ class ConnectionStateMachine {
   resumeAfterStop(intent) {
     if (!this.canContinue(intent)) return false;
     this.#userDisconnected = false;
-    this.#phase = CONNECTION_PHASE.CONNECTING;
+    this.#phase = CONNECTION_PHASE.STARTING;
     return true;
   }
 
@@ -121,19 +163,27 @@ class ConnectionStateMachine {
   resumeConnectivity(intent, { isQuitting = false, autoReconnect = true } = {}) {
     if (!this.canRecover(intent, { isQuitting, autoReconnect })) return false;
     this.#userDisconnected = false;
-    this.#phase = CONNECTION_PHASE.CONNECTING;
+    this.#phase = CONNECTION_PHASE.STARTING;
     return true;
   }
 
   bindEngineGeneration(generation) {
     if (!validGeneration(generation) || !this.#desiredConnected) return false;
     this.#engineGeneration = generation;
+    this.#engineConnectedCandidate = false;
+    this.#listenerReady = false;
+    this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
     return true;
   }
 
   invalidateEngineGeneration() {
     const previous = this.#engineGeneration;
     this.#engineGeneration = null;
+    this.#engineConnectedCandidate = false;
+    this.#listenerReady = false;
+    this.#wasConnectedBeforeStop = false;
+    this.#connectedUptimeBeforeStop = 0;
     return previous;
   }
 
@@ -141,18 +191,83 @@ class ConnectionStateMachine {
     return validGeneration(generation) && generation === this.#engineGeneration;
   }
 
-  markConnecting(generation) {
+  markEnginePhase(generation, engineState) {
     if (!this.isCurrentGeneration(generation) || !this.#desiredConnected ||
         this.#userDisconnected) return false;
-    this.#phase = CONNECTION_PHASE.CONNECTING;
+    const next = {
+      connecting: CONNECTION_PHASE.STARTING,
+      authenticating: CONNECTION_PHASE.AUTHENTICATING,
+      preparing_tunnel: CONNECTION_PHASE.PREPARING_TUNNEL,
+    }[engineState];
+    if (!next) return false;
+    if (next === this.#phase) return true;
+    const allowed = {
+      [CONNECTION_PHASE.STARTING]: new Set([
+        CONNECTION_PHASE.AUTHENTICATING,
+        CONNECTION_PHASE.PREPARING_TUNNEL,
+      ]),
+      [CONNECTION_PHASE.AUTHENTICATING]: new Set([
+        CONNECTION_PHASE.PREPARING_TUNNEL,
+      ]),
+    };
+    if (!allowed[this.#phase]?.has(next)) return false;
+    this.#phase = next;
     return true;
   }
 
-  markConnected(generation) {
+  recordEngineConnectedCandidate(generation) {
     if (!this.isCurrentGeneration(generation) || !this.#desiredConnected ||
-        this.#userDisconnected) return false;
+        this.#userDisconnected || !READINESS_PHASES.has(this.#phase)) return false;
+    this.#engineConnectedCandidate = true;
+    return this.isReadyToConnect(generation);
+  }
+
+  recordListenerReady(generation) {
+    if (!this.isCurrentGeneration(generation) || !this.#desiredConnected ||
+        this.#userDisconnected || !READINESS_PHASES.has(this.#phase)) return false;
+    this.#listenerReady = true;
+    return this.isReadyToConnect(generation);
+  }
+
+  isReadyToConnect(generation) {
+    return this.isCurrentGeneration(generation) && this.#desiredConnected &&
+      !this.#userDisconnected && READINESS_PHASES.has(this.#phase) &&
+      this.#engineConnectedCandidate && this.#listenerReady;
+  }
+
+  markConnected(generation) {
+    if (!this.isReadyToConnect(generation)) return false;
     this.#phase = CONNECTION_PHASE.CONNECTED;
     return true;
+  }
+
+  markEngineStopping(generation, { uptimeMs = 0 } = {}) {
+    if (!this.isCurrentGeneration(generation)) return false;
+    if (this.#phase === CONNECTION_PHASE.CONNECTED) {
+      this.#wasConnectedBeforeStop = true;
+      if (Number.isFinite(uptimeMs) && uptimeMs >= 0) {
+        this.#connectedUptimeBeforeStop = Math.max(
+          this.#connectedUptimeBeforeStop,
+          Math.trunc(uptimeMs),
+        );
+      }
+    }
+    this.#engineConnectedCandidate = false;
+    this.#listenerReady = false;
+    this.#phase = CONNECTION_PHASE.STOPPING;
+    return true;
+  }
+
+  presentation() {
+    return connectionPresentation(this.snapshot());
+  }
+
+  isConnected() {
+    return this.#phase === CONNECTION_PHASE.CONNECTED;
+  }
+
+  isConnecting() {
+    return CONNECTING_PHASES.has(this.#phase);
   }
 
   failIntent(intent = this.#intent) {
@@ -168,7 +283,6 @@ class ConnectionStateMachine {
     terminalFailure = false,
     autoReconnect = true,
     maxAttempts = 0,
-    wasConnected = false,
     uptimeMs = 0,
     failureKind = 'unknown',
   } = {}) {
@@ -178,7 +292,9 @@ class ConnectionStateMachine {
     if (!supervisorGenerationCurrent || !this.isCurrentGeneration(generation)) {
       return Object.freeze({ action: 'ignored' });
     }
-    this.#engineGeneration = null;
+    const wasConnected = this.#phase === CONNECTION_PHASE.CONNECTED || this.#wasConnectedBeforeStop;
+    uptimeMs = Math.max(uptimeMs, this.#connectedUptimeBeforeStop);
+    this.invalidateEngineGeneration();
     this.#phase = CONNECTION_PHASE.IDLE;
 
     if (this.#userDisconnected || !this.#desiredConnected || terminalFailure) {
@@ -206,9 +322,14 @@ class ConnectionStateMachine {
     return Object.freeze({ action: 'exhausted' });
   }
 
-  shouldStopWaiting({ connecting = false, hasActive = false, lastError = null } = {}) {
-    return this.#userDisconnected || (!connecting && !hasActive && Boolean(lastError));
+  shouldStopWaiting({ hasActive = false, lastError = null } = {}) {
+    return this.#userDisconnected || (!this.isConnecting() && !hasActive && Boolean(lastError));
   }
 }
 
-module.exports = { CONNECTION_PHASE, ConnectionStateMachine };
+module.exports = {
+  CONNECTION_PHASE,
+  ConnectionStateMachine,
+  connectionPresentation,
+  projectConnectionStatus,
+};

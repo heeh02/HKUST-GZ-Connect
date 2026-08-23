@@ -4,12 +4,14 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
 ENGINE="$HERE/independent/target/release/ec-engine"
+PROXY_HELPER="$HERE/independent/target/release/ec-proxy-command"
 ENGINE_CONFIG="$HERE/independent/config/hkustgz.json"
 CONF="$HERE/config.toml"
 
 RUNDIR="$HOME/.hkustgzconnect"
 LOG="$RUNDIR/hkustgzconnect.log"
 PIDFILE="$RUNDIR/hkustgzconnect.pid"
+PROXY_CREDENTIAL="$RUNDIR/local-proxy-credential"
 KEYCHAIN_SERVICE="hkustgzconnect"
 SOCKS_HOST="127.0.0.1"
 SOCKS_PORT="$(awk -F'[:\"]' '/^socks_bind/{print $(NF-1); exit}' "$CONF" 2>/dev/null)"
@@ -19,6 +21,14 @@ SOCKS_PORT="${SOCKS_PORT:-1080}"
 LABEL="com.hkustgz.connect"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 HPC_PROBE_IP="10.120.48.30"
+PROXY_CREDENTIAL_LIBRARY="$HERE/tools/mac-cli/proxy-credential.sh"
+
+[ -r "$PROXY_CREDENTIAL_LIBRARY" ] || {
+  echo "✗ local proxy credential support is missing" >&2
+  exit 1
+}
+# shellcheck source=tools/mac-cli/proxy-credential.sh
+source "$PROXY_CREDENTIAL_LIBRARY"
 
 mkdir -p "$RUNDIR"
 chmod 700 "$RUNDIR"
@@ -39,7 +49,7 @@ proxies_listening(){ socks_listening; }
 svc_loaded(){ launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; }
 
 ensure_engine(){
-  [ -x "$ENGINE" ] && return 0
+  [ -x "$ENGINE" ] && [ -x "$PROXY_HELPER" ] && return 0
   if command -v cargo >/dev/null 2>&1; then
     cargo_runner=(cargo)
   elif command -v rustup >/dev/null 2>&1; then
@@ -48,7 +58,8 @@ ensure_engine(){
   else
     die "engine missing and cargo/rustup is unavailable"
   fi
-  (cd "$HERE/independent" && "${cargo_runner[@]}" build --locked --release --bin ec-engine) \
+  (cd "$HERE/independent" && "${cargo_runner[@]}" build --locked --release \
+    --bin ec-engine --bin ec-proxy-command) \
     || die "independent engine build failed"
 }
 
@@ -63,7 +74,7 @@ wait_socks(){
 
 report_up(){
   if proxies_listening; then
-    echo "✓ up — SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
+    echo "✓ up — authenticated SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
   else
     echo "✗ failed to come up — last log lines:"
     tail -8 "$LOG" 2>/dev/null | sed 's/^/  /'
@@ -75,13 +86,20 @@ run_engine(){
   local pw
   pw="$(get_pw)" || true
   [ -n "${pw:-}" ] || die "no password in Keychain — run: $(basename "$0") set-password"
+  cli_proxy_load_or_create "$PROXY_CREDENTIAL" "$SOCKS_HOST:$SOCKS_PORT" \
+    || die "local proxy credential file is unsafe or unavailable"
   {
     printf '%s\n' "$ACC"
     printf '%s\n' "$pw"
+    printf '%s\n' "$CLI_PROXY_USERNAME"
+    printf '%s\n' "$CLI_PROXY_PASSWORD"
   } | "$ENGINE" \
     --config "$ENGINE_CONFIG" \
     --credentials-stdin \
-    --socks-bind "$SOCKS_HOST:$SOCKS_PORT"
+    --socks-bind "$SOCKS_HOST:$SOCKS_PORT" \
+    --socks-auth-stdin
+  pw=''
+  cli_proxy_clear
 }
 
 case "${1:-}" in
@@ -141,14 +159,40 @@ case "${1:-}" in
     socks_listening && echo "  SOCKS5 $SOCKS_HOST:$SOCKS_PORT: listening" || echo "  SOCKS5: not listening"
     get_pw >/dev/null 2>&1 && echo "  Keychain password: present" || echo "  Keychain password: missing"
     [ -x "$ENGINE" ] && echo "  independent engine: built" || echo "  independent engine: not built"
+    if cli_proxy_read_file "$PROXY_CREDENTIAL"; then
+      echo "  local proxy authentication: required (credential ready)"
+      cli_proxy_clear
+    else
+      echo "  local proxy authentication: required (credential created on next start)"
+    fi
     [ -f "$PLIST" ] && echo "  autostart: installed" || echo "  autostart: not installed"
     ;;
 
   test)
     socks_listening || die "SOCKS not listening"
+    [ -x "$PROXY_HELPER" ] || ensure_engine
+    cli_proxy_load_or_create "$PROXY_CREDENTIAL" "$SOCKS_HOST:$SOCKS_PORT" \
+      || die "local proxy credential file is unsafe or unavailable"
     echo -n "HPC $HPC_PROBE_IP:22 via independent SOCKS → "
-    banner="$(nc -X 5 -x "$SOCKS_HOST:$SOCKS_PORT" -G 6 -w 6 "$HPC_PROBE_IP" 22 </dev/null 2>&1 | head -1)"
+    banner="$("$PROXY_HELPER" --credential-file "$PROXY_CREDENTIAL" -- \
+      "$HPC_PROBE_IP" 22 </dev/null 2>/dev/null | head -1)"
+    cli_proxy_clear
     [ -n "$banner" ] && echo "$banner" || echo "(no banner / unreachable)"
+    ;;
+
+  proxy-config)
+    cli_proxy_load_or_create "$PROXY_CREDENTIAL" "$SOCKS_HOST:$SOCKS_PORT" \
+      || die "local proxy credential file is unsafe or unavailable"
+    echo "# Sensitive local-only proxy credential; do not publish this output."
+    echo "proxies:"
+    echo "  - name: HKUST(GZ) Connect CLI"
+    echo "    type: socks5"
+    echo "    server: $SOCKS_HOST"
+    echo "    port: $SOCKS_PORT"
+    echo "    username: $CLI_PROXY_USERNAME"
+    echo "    password: $CLI_PROXY_PASSWORD"
+    echo "    udp: false"
+    cli_proxy_clear
     ;;
 
   install)
@@ -198,7 +242,8 @@ hkustgzconnect — independent Rust EasyConnect client
   down           stop the engine
   restart        restart the engine
   status         show engine and proxy state
-  test           read the approved HPC SSH banner through SOCKS
+  test           read the approved HPC SSH banner through authenticated SOCKS
+  proxy-config   print a sensitive Clash/Mihomo node for the local proxy
   logs           follow engine logs
   install        install launchd autostart
   uninstall      remove launchd autostart

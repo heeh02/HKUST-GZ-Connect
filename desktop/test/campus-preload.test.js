@@ -5,7 +5,11 @@ const test = require('node:test');
 const {
   createSpaCredentialMonitor,
   credentialFromForm,
+  isAuthenticationChallengeForm,
+  isChallengeInput,
   isPasswordChangeForm,
+  loginPasswordInput,
+  pageHasAuthenticationChallenge,
   pageCredentialState,
   SPA_CREDENTIAL_SETTLE_MS,
 } = require('../campus-preload');
@@ -13,10 +17,12 @@ const {
 function input(properties = {}) {
   return {
     autocomplete: '',
+    ariaLabel: '',
     disabled: false,
     id: '',
     name: '',
     placeholder: '',
+    inputMode: '',
     type: 'text',
     value: '',
     ...properties,
@@ -25,6 +31,12 @@ function input(properties = {}) {
 
 function form(inputs, properties = {}) {
   return {
+    action: '',
+    ariaLabel: '',
+    className: '',
+    id: '',
+    name: '',
+    textContent: '',
     ...properties,
     querySelectorAll(selector) {
       if (selector === 'input[type="password"]') {
@@ -54,6 +66,48 @@ test('login credential candidate is exact-origin HTTPS data', () => {
   assert.equal(credentialFromForm(login, { protocol: 'http:', origin: 'http://sso.example.edu' }), null);
 });
 
+test('traditional and explicit password-only login evidence remains compatible', () => {
+  const traditional = form([
+    input({ name: 'account', value: 'student001' }),
+    input({ name: 'password', type: 'password', value: 'secret' }),
+  ]);
+  assert.deepEqual(credentialFromForm(traditional, HTTPS_LOCATION), {
+    origin: HTTPS_LOCATION.origin,
+    username: 'student001',
+    password: 'secret',
+  });
+
+  const passwordOnly = form([
+    input({ type: 'password', autocomplete: 'current-password', value: 'secret' }),
+  ]);
+  assert.deepEqual(credentialFromForm(passwordOnly, HTTPS_LOCATION), {
+    origin: HTTPS_LOCATION.origin,
+    username: '',
+    password: 'secret',
+  });
+});
+
+test('ambiguous single-secret fields are rejected before their values are read', () => {
+  for (const ambiguous of [
+    input({ type: 'password' }),
+    input({ type: 'password', inputMode: 'numeric' }),
+  ]) {
+    Object.defineProperty(ambiguous, 'value', {
+      configurable: true,
+      get() { throw new Error('ambiguous secret values must never be read'); },
+    });
+    const ambiguousForm = form([ambiguous]);
+    assert.equal(loginPasswordInput(ambiguousForm), null);
+    assert.equal(credentialFromForm(ambiguousForm, HTTPS_LOCATION), null);
+  }
+
+  const unlabeledTextIsNotUsernameEvidence = form([
+    input({ value: 'not-explicitly-a-username' }),
+    input({ type: 'password', value: 'ambiguous-secret' }),
+  ]);
+  assert.equal(credentialFromForm(unlabeledTextIsNotUsernameEvidence, HTTPS_LOCATION), null);
+});
+
 test('password change and reset forms never become login candidates', () => {
   const change = form([
     input({ type: 'password', autocomplete: 'current-password', value: 'old-secret' }),
@@ -74,11 +128,71 @@ test('password change and reset forms never become login candidates', () => {
   assert.equal(credentialFromForm(actionOnly, HTTPS_LOCATION), null);
 });
 
+test('generic OTP and MFA fields never become password candidates or autofill targets', () => {
+  const oneTimeCode = input({
+    autocomplete: 'one-time-code',
+    inputMode: 'numeric',
+    name: 'otp',
+    type: 'text',
+  });
+  const passwordShapedOtp = input({
+    ariaLabel: 'Verification code',
+    name: 'verificationCode',
+    type: 'password',
+  });
+  const pushChallenge = form([], { textContent: 'Approve sign-in on your device' });
+  const codeForm = form([oneTimeCode]);
+  const passwordCodeForm = form([passwordShapedOtp]);
+
+  assert.equal(isChallengeInput(oneTimeCode), true);
+  assert.equal(isChallengeInput(passwordShapedOtp), true);
+  assert.equal(isAuthenticationChallengeForm(codeForm), true);
+  assert.equal(isAuthenticationChallengeForm(passwordCodeForm), true);
+  assert.equal(isAuthenticationChallengeForm(pushChallenge), true);
+  assert.equal(loginPasswordInput(passwordCodeForm, { requireValue: false }), null);
+  assert.equal(credentialFromForm(passwordCodeForm, HTTPS_LOCATION), null);
+
+  assert.equal(isChallengeInput(input({ name: 'code' })), true);
+  assert.equal(isChallengeInput(input({ name: 'studentCode', autocomplete: 'username' })), false,
+    'a username identifier containing code is not automatically an OTP');
+
+  Object.defineProperty(passwordShapedOtp, 'value', {
+    configurable: true,
+    get() { throw new Error('OTP values must never be read'); },
+  });
+  assert.equal(credentialFromForm(passwordCodeForm, HTTPS_LOCATION), null);
+});
+
+test('page context catches an unlabelled password-shaped challenge without blocking normal login', () => {
+  const unlabelled = form([input({ type: 'password' })]);
+  const challengeDocument = {
+    title: 'Two-factor verification',
+    body: { innerText: 'Enter the security code from your device' },
+    forms: [unlabelled],
+  };
+  assert.equal(isAuthenticationChallengeForm(unlabelled, challengeDocument), true);
+  assert.equal(pageHasAuthenticationChallenge(challengeDocument), true);
+  assert.equal(loginPasswordInput(unlabelled, {
+    requireValue: false,
+    pageDocument: challengeDocument,
+  }), null);
+
+  const normalLogin = form([
+    input({ autocomplete: 'username' }),
+    input({ type: 'password', autocomplete: 'current-password' }),
+  ]);
+  assert.ok(loginPasswordInput(normalLogin, {
+    requireValue: false,
+    pageDocument: challengeDocument,
+  }), 'a username/password form remains an ordinary login surface');
+});
+
 test('page state reports whether the post-navigation document still has a login form', () => {
   const login = form([input({ type: 'password', autocomplete: 'current-password' })]);
   assert.deepEqual(pageCredentialState({ forms: [login] }, HTTPS_LOCATION), {
     origin: HTTPS_LOCATION.origin,
     hasLoginForm: true,
+    hasChallengeForm: false,
   });
   const passwordReset = form([
     input({ type: 'password', autocomplete: 'new-password' }),
@@ -86,10 +200,20 @@ test('page state reports whether the post-navigation document still has a login 
   assert.deepEqual(pageCredentialState({ forms: [passwordReset] }, HTTPS_LOCATION), {
     origin: HTTPS_LOCATION.origin,
     hasLoginForm: true,
+    hasChallengeForm: false,
   });
   assert.deepEqual(pageCredentialState({ forms: [] }, HTTPS_LOCATION), {
     origin: HTTPS_LOCATION.origin,
     hasLoginForm: false,
+    hasChallengeForm: false,
+  });
+  const challenge = form([
+    input({ type: 'password', autocomplete: 'one-time-code' }),
+  ]);
+  assert.deepEqual(pageCredentialState({ forms: [challenge] }, HTTPS_LOCATION), {
+    origin: HTTPS_LOCATION.origin,
+    hasLoginForm: false,
+    hasChallengeForm: true,
   });
   assert.equal(pageCredentialState({ forms: [] }, { protocol: 'http:', origin: 'http://x' }), null);
 });
@@ -125,6 +249,10 @@ test('SPA login waits for a stable same-origin password-form removal', () => {
 
   assert.equal(monitor.arm(HTTPS_LOCATION.origin), true);
   assert.equal(timers.length, 0, 'the submitted login form still blocks confirmation');
+  const challenge = form([input({ autocomplete: 'one-time-code', name: 'otp' })]);
+  pageDocument.forms = [challenge];
+  observerCallback();
+  assert.equal(timers.length, 0, 'a second-factor form is not post-login evidence');
   pageDocument.forms = [];
   observerCallback();
   assert.equal(timers.length, 1);
@@ -142,6 +270,7 @@ test('SPA login waits for a stable same-origin password-form removal', () => {
   assert.deepEqual(states, [{
     origin: HTTPS_LOCATION.origin,
     hasLoginForm: false,
+    hasChallengeForm: false,
     transition: 'same-document',
   }]);
   observerCallback();

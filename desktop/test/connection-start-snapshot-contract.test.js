@@ -19,7 +19,9 @@ test('connect takes its final settings and credential snapshot after the last pr
 
   const snapshotToSpawn = connectOnce.slice(finalSnapshot, spawn);
   assert.match(snapshotToSpawn, /s = loadSettings\(\);/);
-  assert.match(snapshotToSpawn, /pw = loadPassword\(\);/);
+  assert.match(snapshotToSpawn, /credentialResult = loadPasswordResult\(\);/);
+  assert.match(snapshotToSpawn, /pw = credentialResult\.password;/);
+  assert.match(snapshotToSpawn, /credentialResult\.status !== 'decrypted'/);
   assert.doesNotMatch(snapshotToSpawn, /\bawait\b/);
 });
 

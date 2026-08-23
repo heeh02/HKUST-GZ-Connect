@@ -8,15 +8,53 @@ const test = require('node:test');
 const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 
 test('engine exit closes the browser request boundary before stdio close cleanup', () => {
-  const boundaryStart = source.indexOf('function handleEngineExitBoundary(');
+  const boundaryStart = source.indexOf('function revokeEngineServing(');
   const connectStart = source.indexOf('async function connectOnce(');
   assert.ok(boundaryStart >= 0 && connectStart > boundaryStart);
   const boundary = source.slice(boundaryStart, connectStart);
   assert.match(boundary, /engineSupervisor\.isCurrent\(generation\)/);
-  assert.match(boundary, /connectionState\.isCurrentGeneration\(generation\)/);
+  assert.match(boundary, /connectionState\.markEngineStopping\(generation, \{ uptimeMs \}\)/);
   assert.match(boundary, /clearActiveProxyCredential\(generation\)/);
   assert.match(boundary, /suspendOpenBrowserPolicy\(\)/);
 
   const startCall = source.slice(source.indexOf('const started = engineSupervisor.start({'));
-  assert.match(startCall, /onExit:\s*handleEngineExitBoundary,\s*onClose:/);
+  assert.match(startCall, /onExit:\s*\(result\) => \{\s*engineRuntime\?\.beginExitDrain\(\);\s*handleEngineExitBoundary\(result\);\s*\},\s*onClose:/);
+  assert.match(startCall, /const structuredStopReason = engineRuntime\?\.stoppedReason \|\| null;\s*engineRuntime\?\.dispose\(\)/);
+});
+
+test('fatal, stopping, and exit boundaries revoke in-flight serving promotion', () => {
+  const revokeStart = source.indexOf('function revokeEngineServing(');
+  const exitStart = source.indexOf('function handleEngineExitBoundary(', revokeStart);
+  assert.ok(revokeStart >= 0 && exitStart > revokeStart);
+  const revoke = source.slice(revokeStart, exitStart);
+  assert.match(revoke, /connectionState\.markEngineStopping\(generation, \{ uptimeMs \}\)/);
+  assert.match(revoke, /suspendOpenBrowserPolicy\(\)/);
+  assert.match(revoke, /clearConnectionPresentation\(\)/);
+
+  const handlers = source.slice(source.indexOf('handlers: {', exitStart));
+  assert.match(handlers, /onStopping:.*revokeEngineServing\(engineGeneration\)/);
+  assert.match(handlers, /onListenerMismatch:[\s\S]*?revokeEngineServing\(engineGeneration\)[\s\S]*?engineSupervisor\.stop/);
+  assert.match(handlers, /onFatalError:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
+  assert.match(handlers, /onProtocolTimeout:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
+  const close = source.slice(source.indexOf('function handleEngineClose('), revokeStart);
+  assert.match(close, /closeSnapshot\.wasConnectedBeforeStop/);
+  assert.match(close, /closeSnapshot\.connectedUptimeBeforeStop/);
+  assert.match(close, /cleanupProxyAccessForEngineClose\(\{[\s\S]*generation,[\s\S]*supervisorGenerationCurrent,[\s\S]*connectionGenerationCurrent: connectionState\.isCurrentGeneration\(generation\),[\s\S]*clearCredential: clearActiveProxyCredential,[\s\S]*removeSidecar: removeExternalProxySidecar/);
+  assert.match(close, /\}\)\) return;/);
+});
+
+test('an unclean stop releases the local process but blocks automatic reconnect', () => {
+  const recoveryStart = source.indexOf('async function recoverConnectivity(');
+  const connectStart = source.indexOf('\nasync function connect(', recoveryStart);
+  const recovery = source.slice(recoveryStart, connectStart);
+  assert.match(recovery, /stopped\.cleanExit === false/);
+  assert.match(recovery, /connectionState\.failIntent\(intent\)/);
+  assert.match(recovery, /error\.engineCleanupUnconfirmed/);
+
+  const reconnectStart = source.indexOf('async function reconnect(');
+  const pacStart = source.indexOf('// ---------- PAC file', reconnectStart);
+  const reconnect = source.slice(reconnectStart, pacStart);
+  assert.match(reconnect, /stopResult\.cleanExit === false/);
+  assert.match(reconnect, /connectionState\.failIntent\(intent\)/);
+  assert.match(reconnect, /error\.engineCleanupUnconfirmed/);
 });

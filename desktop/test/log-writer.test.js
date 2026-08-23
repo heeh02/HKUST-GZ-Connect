@@ -50,6 +50,34 @@ test('redacts common authentication material before it reaches disk', () => {
   assert.match(result, /\[REDACTED\]/);
 });
 
+test('redacts generic MFA and continuation fields without depending on a protocol endpoint', () => {
+  const secrets = [
+    'otp=654321',
+    'TOTP: 918273',
+    'one_time_code="alpha-code"',
+    'verification-code: verify-me',
+    'passcode=pass-me',
+    'TwfID: partial-session',
+    'CSRF_RAND_CODE=csrf-material',
+    '{"otp":"json-otp","TwfID":"json-session"}',
+    'https://id.example/challenge?otp=url-otp&verification_code=url-code&csrf_token=url-csrf',
+    'requestId=42 challengeEpoch=3',
+  ];
+  const result = redactDiagnosticText(secrets.join('\n'));
+  for (const secret of [
+    '654321', '918273', 'alpha-code', 'verify-me', 'pass-me',
+    'partial-session', 'csrf-material', 'json-otp', 'json-session',
+    'url-otp', 'url-code', 'url-csrf',
+  ]) {
+    assert.doesNotMatch(result, new RegExp(secret));
+  }
+  assert.match(result, /otp=\[REDACTED\]/i);
+  assert.match(result, /TwfID: \[REDACTED\]/i);
+  assert.match(result, /requestId=42/);
+  assert.equal(redactDiagnosticText('requestId=42 challengeEpoch=3'),
+    'requestId=42 challengeEpoch=3');
+});
+
 test('buffers writes, keeps owner-only permissions, and rotates at a fixed limit', async (t) => {
   const file = temporaryLog(t);
   const writer = new BufferedLogWriter(file, {
@@ -316,4 +344,46 @@ test('threshold and timer flush failures are reported without unhandled rejectio
     assert.equal(fs.statSync(target).mode & 0o777, mode);
     await writer.close();
   }
+});
+
+test('log I/O notifications are throttled per failure episode and clear after proven recovery', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('creating symbolic links requires elevated privileges on some Windows hosts');
+    return;
+  }
+  const snapshot = symbolicLogTarget(t);
+  const errors = [];
+  let recoveries = 0;
+  const writer = new BufferedLogWriter(snapshot.file, {
+    flushIntervalMs: 60_000,
+    onError: (error) => errors.push(error),
+    onRecovered: () => { recoveries += 1; },
+  });
+
+  writer.append('first failure\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  writer.append('same episode\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  assert.equal(errors.length, 1, 'repeated failures must not spam the UI');
+  assert.equal(writer.lastError.code, 'ERR_UNSAFE_LOG_PATH');
+
+  fs.unlinkSync(snapshot.file);
+  writer.append('recovered flush\n');
+  await writer.flush();
+  assert.equal(recoveries, 1);
+  assert.equal(writer.lastError, null);
+  await writer.flush();
+  assert.equal(recoveries, 1, 'an empty flush is not new recovery evidence');
+
+  fs.unlinkSync(snapshot.file);
+  fs.symlinkSync(snapshot.target, snapshot.file);
+  writer.append('new failure episode\n');
+  await assert.rejects(writer.flush(), { code: 'ERR_UNSAFE_LOG_PATH' });
+  assert.equal(errors.length, 2);
+  await writer.reset();
+  assert.equal(recoveries, 2);
+  assert.equal(writer.lastError, null);
+  assert.equal(fs.lstatSync(snapshot.file).isSymbolicLink(), false);
+  assertTargetUnchanged(snapshot);
+  await writer.close();
 });

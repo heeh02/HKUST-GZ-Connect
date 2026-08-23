@@ -105,9 +105,22 @@ svpn_rand_code=<CAPTCHA response or empty>
    state instead of being treated as tunnel-ready. Until a reviewed provider
    implements that state, production performs a bounded best-effort logout and
    returns the stable `UNSUPPORTED_AUTHENTICATION` machine code.
+   A valid `PasswordRequired` transition is the only current response mapped
+   to `AUTH_REJECTED`. HTTP timeout/reset/partial-read outcomes map to
+   `AUTH_INDETERMINATE`; malformed or unknown structured results map to
+   `AUTH_PROTOCOL_INVALID`. Cleanup failure is reported as secondary
+   `AUTH_CLEANUP_UNCONFIRMED` and never overwrites the primary outcome.
 9. After authentication, the observed profile returned XML from
    `/por/conf.csp?apiversion=1` and `/por/rclist.csp?apiversion=1`.
 10. Logout is `GET /por/logout.csp?apiversion=1`.
+
+VPN DNS remains independent of authentication protocol details. Queries use
+the authenticated gateway DNS list, or the reviewed deployment-profile list
+only when the gateway supplies none. A normal query uses UDP through
+`VirtualNetstack`; only a successful response with matching transaction ID and
+question plus `TC=1` opens length-prefixed TCP to that same resolver on port 53.
+UDP and TCP share one timeout. Failure never falls back to a public or system
+resolver in the HKUST(GZ) production profile.
 
 The observed password key was 2048 bits and the anti-MITM helper flag was off.
 Those are profile facts, not hard-coded requirements. Redirects and TLS

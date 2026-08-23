@@ -7,12 +7,16 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   clearPasswordSnapshot,
+  credentialLoadErrorKey,
   hasStoredPassword,
   loadPassword,
+  loadPasswordResult,
   restorePasswordSnapshot,
   savePassword,
   snapshotPasswordFile,
 } = require('../lib/credential-store');
+
+const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
 
 test('password presence is a non-decrypting private-file check', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-presence-'));
@@ -21,17 +25,19 @@ test('password presence is a non-decrypting private-file check', (t) => {
   const empty = path.join(directory, 'empty.bin');
   const privateFile = path.join(directory, 'cred.bin');
 
-  assert.equal(hasStoredPassword(missing, 'darwin'), false);
+  assert.equal(hasStoredPassword(missing, HOST_PRIVATE_FILE_PLATFORM), false);
   fs.writeFileSync(empty, '');
-  assert.equal(hasStoredPassword(empty, 'darwin'), false);
-  assert.equal(hasStoredPassword(directory, 'darwin'), false);
+  assert.equal(hasStoredPassword(empty, HOST_PRIVATE_FILE_PLATFORM), false);
+  assert.equal(hasStoredPassword(directory, HOST_PRIVATE_FILE_PLATFORM), false);
 
   fs.writeFileSync(privateFile, Buffer.from([1]));
   fs.chmodSync(privateFile, 0o600);
-  assert.equal(hasStoredPassword(privateFile, 'darwin'), true);
+  assert.equal(hasStoredPassword(privateFile, HOST_PRIVATE_FILE_PLATFORM), true);
 
-  fs.chmodSync(privateFile, 0o644);
-  assert.equal(hasStoredPassword(privateFile, 'darwin'), false);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(privateFile, 0o644);
+    assert.equal(hasStoredPassword(privateFile, HOST_PRIVATE_FILE_PLATFORM), false);
+  }
 });
 
 test('Windows presence check accepts the platform ACL model without safeStorage', (t) => {
@@ -64,6 +70,44 @@ test('oversized and symbolic credential blobs are rejected before decryption', (
   assert.equal(loadPassword(oversized, safeStorage, 'darwin'), '');
   assert.equal(loadPassword(link, safeStorage, 'darwin'), '');
   assert.equal(decryptions, 0);
+  assert.equal(loadPasswordResult(oversized, safeStorage, 'darwin').status, 'corrupt');
+  assert.equal(loadPasswordResult(link, safeStorage, 'darwin').status, 'corrupt');
+});
+
+test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-result-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const missing = path.join(directory, 'missing.bin');
+  const file = path.join(directory, 'credential.bin');
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    decryptString: (data) => data.toString('utf8').replace('encrypted:', ''),
+  };
+
+  assert.deepEqual(loadPasswordResult(missing, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
+    status: 'missing', password: '',
+  });
+  assert.deepEqual(loadPasswordResult(missing, {
+    isEncryptionAvailable: () => false,
+  }, HOST_PRIVATE_FILE_PLATFORM), { status: 'unavailable', password: '' });
+
+  fs.writeFileSync(file, Buffer.from('encrypted:secret'), { mode: 0o644 });
+  if (process.platform !== 'win32') {
+    assert.deepEqual(loadPasswordResult(file, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
+      status: 'corrupt', password: '',
+    });
+    fs.chmodSync(file, 0o600);
+  }
+  assert.deepEqual(loadPasswordResult(file, safeStorage, HOST_PRIVATE_FILE_PLATFORM), {
+    status: 'decrypted', password: 'secret',
+  });
+  assert.deepEqual(loadPasswordResult(file, {
+    isEncryptionAvailable: () => true,
+    decryptString: () => { throw new Error('fixture denied'); },
+  }, HOST_PRIVATE_FILE_PLATFORM), { status: 'decrypt_failed', password: '' });
+  assert.equal(credentialLoadErrorKey('corrupt'), 'error.credentialStoreCorrupt');
+  assert.equal(credentialLoadErrorKey('decrypt_failed'), 'error.credentialDecryptFailed');
+  assert.equal(credentialLoadErrorKey('unavailable'), 'error.credentialStoreUnavailable');
 });
 
 test('main VPN credential replacement is atomic and preserves the old blob on failure', (t) => {
@@ -78,16 +122,18 @@ test('main VPN credential replacement is atomic and preserves the old blob on fa
   const failingFileSystem = Object.create(fs);
   failingFileSystem.renameSync = () => { throw new Error('simulated commit failure'); };
 
-  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin', failingFileSystem), false);
+  assert.equal(savePassword(
+    file, 'new-secret', safeStorage, HOST_PRIVATE_FILE_PLATFORM, failingFileSystem,
+  ), false);
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
   assert.deepEqual(
     fs.readdirSync(directory).filter((entry) => entry.endsWith('.tmp')),
     [],
   );
 
-  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin'), true);
+  assert.equal(savePassword(file, 'new-secret', safeStorage, HOST_PRIVATE_FILE_PLATFORM), true);
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:new-secret');
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
 
 test('encryption failure never truncates an existing VPN credential', (t) => {
@@ -104,7 +150,9 @@ test('encryption failure never truncates an existing VPN credential', (t) => {
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
 });
 
-test('credential replacement reports a post-rename directory-fsync failure', (t) => {
+test('credential replacement reports a post-rename directory-fsync failure', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-fsync-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'credential.bin');

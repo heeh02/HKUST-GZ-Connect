@@ -145,6 +145,13 @@
               </summary>
               <p id="strictProxyAuthHint" class="hint" data-i18n="tower.strictProxyAuthHint">例如实验室多人共用一台电脑时，开启后可降低其他本机程序或登录用户直接借用你校园隧道的风险；个人电脑通常保持关闭即可。开启前请先点击“复制 Clash 节点”更新一次 Clash，SSH 复制一次配置即可。开关会立即保存，已连接时自动重连。</p>
             </details>
+            <div id="proxyAuthMigration" class="proxy-auth-migration" hidden>
+              <p data-i18n="tower.proxyAuthMigration">升级前的兼容设置允许本机其他程序无需认证使用隧道。请选择启用认证，或明确继续兼容旧客户端。</p>
+              <div class="proxy-auth-migration-actions">
+                <button id="proxyAuthMigrationEnable" class="mini" type="button" data-i18n="tower.proxyAuthMigrationEnable">启用认证</button>
+                <button id="proxyAuthMigrationKeep" class="ghost sm" type="button" data-i18n="tower.proxyAuthMigrationKeep">继续兼容</button>
+              </div>
+            </div>
           </div>
           <label class="sw"><span data-i18n="tower.autoReconnect">自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk" data-i18n="tower.maxAttempts">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
@@ -338,9 +345,42 @@
     </div>
   </dialog>
 
+  <dialog id="authChallengeDialog" class="auth-challenge-dialog" aria-labelledby="authChallengeTitle" aria-describedby="authChallengeDescription">
+    <form id="authChallengeForm" class="auth-challenge-form">
+      <div class="dialog-head">
+        <div>
+          <h3 id="authChallengeTitle" data-i18n="auth.title">需要额外验证</h3>
+          <p id="authChallengeDescription"></p>
+        </div>
+      </div>
+      <div class="auth-challenge-body">
+        <p id="authChallengeDestination" class="auth-challenge-meta" hidden></p>
+        <p id="authChallengeAttempts" class="auth-challenge-meta" hidden></p>
+        <label id="authChallengeResponseField" class="auth-challenge-field">
+          <span data-i18n="auth.response">验证响应</span>
+          <input id="authChallengeResponse" class="inp" type="text" autocomplete="one-time-code"
+                 autocapitalize="none" spellcheck="false" maxlength="4096"
+                 data-1password-ignore="true" data-lpignore="true" />
+        </label>
+        <p id="authChallengeError" class="dialog-error" role="alert"></p>
+      </div>
+      <div class="dialog-actions auth-challenge-actions">
+        <button id="authChallengeResend" class="ghost sm" type="button" data-i18n="auth.resend">重新发送</button>
+        <button id="authChallengeCancel" class="ghost sm" type="button" data-i18n="auth.cancel">取消连接</button>
+        <button id="authChallengeSubmit" class="primary sm" type="submit" data-i18n="auth.submit">提交验证</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="i18n.js"></script>
   <script src="../lib/login-flow.js"></script>
   <script src="../lib/resource-view.js"></script>
+  <script src="manager-view.js"></script>
+  <script src="routing-manager.js"></script>
+  <script src="certificate-manager.js"></script>
+  <script src="resource-manager.js"></script>
+  <script src="proxy-auth-migration.js"></script>
   <script src="app.js"></script>
+  <script src="auth-challenge.js"></script>
 </body>
 </html>

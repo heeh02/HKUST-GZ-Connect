@@ -36,8 +36,12 @@ pub const STACK_MTU_ENV: &str = "HKUSTGZ_TUNNEL_MTU";
 /// The environment override wins over the configuration file; anything
 /// unparseable falls through to the configured value.
 pub fn stack_mtu(configured: Option<u64>) -> usize {
-    let requested = std::env::var(STACK_MTU_ENV)
-        .ok()
+    let environment = std::env::var(STACK_MTU_ENV).ok();
+    stack_mtu_with_override(configured, environment.as_deref())
+}
+
+fn stack_mtu_with_override(configured: Option<u64>, environment: Option<&str>) -> usize {
+    let requested = environment
         .and_then(|value| value.trim().parse::<u64>().ok())
         .or(configured);
     match requested {
@@ -114,12 +118,6 @@ pub fn push_and_extract_ipv4(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn packet(payload: &[u8]) -> Vec<u8> {
         let mut packet = vec![0_u8; IPV4_MIN_HEADER_LEN];
@@ -148,31 +146,29 @@ mod tests {
 
     #[test]
     fn configured_mtu_is_clamped_to_a_carriable_range() {
-        // Serialised with the override test: both read the same process environment.
-        let _guard = env_lock().lock().unwrap_or_else(|error| error.into_inner());
-        unsafe { std::env::remove_var(STACK_MTU_ENV) };
-        assert_eq!(stack_mtu(None), DEFAULT_STACK_MTU);
-        assert_eq!(stack_mtu(Some(1300)), 1300);
-        assert_eq!(stack_mtu(Some(9000)), MAX_TUNNEL_PACKET_BYTES);
-        assert_eq!(stack_mtu(Some(0)), MIN_STACK_MTU);
-        assert_eq!(stack_mtu(Some(68)), MIN_STACK_MTU);
+        assert_eq!(stack_mtu_with_override(None, None), DEFAULT_STACK_MTU);
+        assert_eq!(stack_mtu_with_override(Some(1300), None), 1300);
+        assert_eq!(
+            stack_mtu_with_override(Some(9000), None),
+            MAX_TUNNEL_PACKET_BYTES
+        );
+        assert_eq!(stack_mtu_with_override(Some(0), None), MIN_STACK_MTU);
+        assert_eq!(stack_mtu_with_override(Some(68), None), MIN_STACK_MTU);
     }
 
     #[test]
     fn the_environment_can_retune_the_mtu_without_repackaging() {
-        let _guard = env_lock().lock().unwrap_or_else(|error| error.into_inner());
-        unsafe { std::env::set_var(STACK_MTU_ENV, "1200") };
-        assert_eq!(stack_mtu(Some(1400)), 1200);
-        assert_eq!(stack_mtu(None), 1200);
-        unsafe { std::env::set_var(STACK_MTU_ENV, "not-a-number") };
+        assert_eq!(stack_mtu_with_override(Some(1400), Some("1200")), 1200);
+        assert_eq!(stack_mtu_with_override(None, Some("1200")), 1200);
         assert_eq!(
-            stack_mtu(Some(1400)),
+            stack_mtu_with_override(Some(1400), Some("not-a-number")),
             1400,
             "garbage falls back to the config"
         );
-        unsafe { std::env::set_var(STACK_MTU_ENV, "60000") };
-        assert_eq!(stack_mtu(None), MAX_TUNNEL_PACKET_BYTES);
-        unsafe { std::env::remove_var(STACK_MTU_ENV) };
+        assert_eq!(
+            stack_mtu_with_override(None, Some("60000")),
+            MAX_TUNNEL_PACKET_BYTES
+        );
     }
 
     #[test]

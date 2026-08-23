@@ -1,0 +1,142 @@
+'use strict';
+
+// Test-only process fixture for the real Electron Main lifecycle. It implements
+// only the bounded credential prefix, Event API v1 and Control API v2 shutdown
+// contract needed by main-engine-lifecycle.electron.js. It opens only a
+// loopback readiness listener, forwards no traffic, performs no external
+// network request and never records credential values.
+
+const fs = require('node:fs');
+const net = require('node:net');
+const path = require('node:path');
+const readline = require('node:readline');
+
+const userData = process.env.HKUSTGZ_USER_DATA_DIR;
+if (!userData || !path.isAbsolute(userData)) process.exit(64);
+
+function argument(name) {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : '';
+}
+
+const generation = Number(argument('--generation'));
+const bind = argument('--socks-bind');
+const port = Number(String(bind).split(':').at(-1));
+if (!Number.isSafeInteger(generation) || generation <= 0 ||
+    !Number.isInteger(port) || port < 1025 || port > 65535) process.exit(64);
+
+const attemptFile = path.join(userData, 'synthetic-engine-attempt.txt');
+const observationFile = path.join(userData, 'synthetic-engine-observations.jsonl');
+let attempt = 1;
+try { attempt = Number(fs.readFileSync(attemptFile, 'utf8')) + 1; } catch {}
+fs.writeFileSync(attemptFile, String(attempt));
+
+function observe(type, detail = {}) {
+  fs.appendFileSync(observationFile, `${JSON.stringify({
+    attempt,
+    generation,
+    type,
+    ...detail,
+  })}\n`);
+}
+
+function send(value, callback) {
+  observe(value.type, value.type === 'state_changed' ? { state: value.state } : {});
+  process.stdout.write(`${JSON.stringify(value)}\n`, callback);
+}
+
+function state(stateName, eventGeneration = generation) {
+  send({ type: 'state_changed', state: stateName, generation: eventGeneration });
+}
+
+let stopping = false;
+let listener = null;
+function stopCleanly(requestId = null) {
+  if (stopping) return;
+  stopping = true;
+  if (requestId !== null) {
+    send({
+      type: 'control_result',
+      apiVersion: 2,
+      requestId,
+      status: 'accepted',
+    });
+  }
+  state('stopping');
+  const finish = () => send(
+    { type: 'stopped', reason: 'user_requested', generation },
+    () => process.exit(0),
+  );
+  if (listener?.listening) listener.close(finish);
+  else finish();
+}
+
+process.on('SIGTERM', () => stopCleanly());
+process.on('SIGINT', () => stopCleanly());
+
+send({ type: 'hello', apiVersion: 1, capabilities: ['password', 'l3'] });
+
+let credentialLines = 0;
+const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+input.on('line', (line) => {
+  if (credentialLines < 2) {
+    credentialLines += 1;
+    if (credentialLines !== 2) return;
+    observe('credentials_received');
+    if (attempt === 1) {
+      state('connecting');
+      state('authenticating');
+      state('preparing_tunnel');
+      setTimeout(() => {
+        send({ type: 'stopped', reason: 'startup_failed', generation }, () => process.exit(23));
+      }, 150);
+      return;
+    }
+
+    state('connected', generation - 1);
+    observe('stale_generation_sent', { staleGeneration: generation - 1 });
+    setTimeout(() => {
+      state('connecting');
+      state('authenticating');
+      state('preparing_tunnel');
+      send({ type: 'client_ip_assigned', family: 4 });
+      send({ type: 'dns_mode', mode: 'gateway' });
+      listener = net.createServer((socket) => socket.destroy());
+      listener.once('error', (error) => {
+        observe('listener_error', { code: String(error?.code || 'unknown') });
+        process.exit(70);
+      });
+      listener.listen(port, '127.0.0.1', () => {
+        observe('listener_bound');
+        send({ type: 'listener_ready', port });
+        observe('listener_ready_sent');
+        // Match the production Engine contract: the bound-listener metadata
+        // precedes the final connected phase. Main must require both facts.
+        setTimeout(() => {
+          state('connected');
+          observe('connected_candidate_sent');
+        }, 300);
+      });
+    }, 600);
+    return;
+  }
+
+  let frame;
+  try { frame = JSON.parse(line); } catch { return; }
+  if (frame?.type === 'hello' && Number.isSafeInteger(frame.requestId)) {
+    send({
+      type: 'control_hello',
+      apiVersion: 2,
+      requestId: frame.requestId,
+      capabilities: ['engine.shutdown'],
+    });
+  } else if (frame?.type === 'request' && frame.apiVersion === 2 &&
+      frame.command?.name === 'shutdown' && Number.isSafeInteger(frame.requestId)) {
+    observe('shutdown_received');
+    stopCleanly(frame.requestId);
+  }
+});
+
+input.on('close', () => {
+  if (!stopping) stopCleanly();
+});

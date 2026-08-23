@@ -44,11 +44,29 @@ test('strict local proxy authentication is boolean and requests an engine restar
   });
   const changed = applySettingsPatch(previous, { strictProxyAuth: true });
   assert.equal(changed.settings.strictProxyAuth, true);
+  assert.equal(changed.settings.proxyAuthMigrationPending, false);
   assert.equal(changed.proxyAuthChanged, true);
   assert.equal(changed.portChanged, false);
   assert.throws(
     () => applySettingsPatch(previous, { strictProxyAuth: 'true' }),
     /布尔值/,
+  );
+});
+
+test('version-2 compatibility remains active only behind an explicit pending decision', () => {
+  const previous = normalizeSettings({
+    strictProxyAuth: false,
+    proxySecurityVersion: 2,
+  });
+  assert.equal(previous.proxyAuthMigrationPending, true);
+
+  const kept = applySettingsPatch(previous, { proxyAuthMigrationAcknowledged: true });
+  assert.equal(kept.settings.strictProxyAuth, false);
+  assert.equal(kept.settings.proxyAuthMigrationPending, false);
+  assert.equal(kept.proxyAuthChanged, false);
+  assert.throws(
+    () => applySettingsPatch(previous, { proxyAuthMigrationAcknowledged: false }),
+    /必须为 true/,
   );
 });
 

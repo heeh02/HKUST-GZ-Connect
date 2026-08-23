@@ -12,8 +12,16 @@ const {
   requiredProxyCommandName,
 } = require('../build/afterPack');
 const {
+  TEST_ONLY_ENGINE_MARKER,
+  assertMacDylibDependenciesAllowed,
+  assertMacSystemOnlyDylibs,
   assertCustomResourceManager,
+  assertExactNativeResources,
   assertLinuxElfArchitecture,
+  assertNoTestOnlyEngineMarker,
+  assertNoTestOnlyNativeResources,
+  assertNoTestOnlyPackageEntries,
+  parseMachODylibDependencies,
   resolveResourcesDirectory,
 } = require('../build/verify-package');
 
@@ -25,6 +33,105 @@ test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredProxyCommandName('darwin', 'arm64'), 'ec-proxy-command-darwin-arm64');
   assert.equal(requiredProxyCommandName('win32', 'x64'), 'ec-proxy-command-windows-amd64.exe');
   assert.equal(requiredProxyCommandName('linux', 'x64'), 'ec-proxy-command-linux-amd64');
+});
+
+test('the synthetic auth fixture is never a packaged native resource', () => {
+  const packageDocument = require('../package.json');
+  const filters = packageDocument.build.extraResources
+    .flatMap((resource) => resource.filter || []);
+  assert.equal(filters.some((entry) => String(entry).includes('ec-auth-fixture')), false);
+});
+
+test('Electron synthetic MFA fixtures are excluded from application files', () => {
+  const packageDocument = require('../package.json');
+  assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('e2e/')), false);
+  assert.equal(packageDocument.build.files.some((entry) => String(entry).startsWith('test/')), false);
+});
+
+test('package verifier rejects fake gateways, test PKI and private-key formats', (t) => {
+  for (const entry of [
+    '/fixtures/gateway.json',
+    '/synthetic/auth.js',
+    '/assets/test-ca.pem',
+    '/assets/private-key.bin',
+    '/lib/fake_gateway.js',
+  ]) {
+    assert.throws(
+      () => assertNoTestOnlyPackageEntries(['/main.js', entry]),
+      /test-only or private-key/u,
+    );
+  }
+  assert.doesNotThrow(() => assertNoTestOnlyPackageEntries([
+    '/main.js', '/lib/auth-challenge-coordinator.js', '/assets/campus-resources.json',
+  ]));
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-native-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'ec-engine-darwin-arm64'), 'binary');
+  assert.doesNotThrow(() => assertNoTestOnlyNativeResources(directory));
+  fs.writeFileSync(path.join(directory, 'test-ca.pem'), 'not-a-real-certificate');
+  assert.throws(() => assertNoTestOnlyNativeResources(directory), /unsafe native resource/u);
+});
+
+test('package verifier rejects the feature-gated lifecycle Engine marker across read chunks', (t) => {
+  assert.equal(TEST_ONLY_ENGINE_MARKER, 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1');
+  const verifierSource = fs.readFileSync(path.join(__dirname, '..', 'build', 'verify-package.js'), 'utf8');
+  assert.match(verifierSource, /assertNoTestOnlyEngineMarker\(engine\)/u);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-test-engine-marker-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const clean = path.join(directory, 'clean-engine');
+  const marked = path.join(directory, 'marked-engine');
+  const boundaryMarked = path.join(directory, 'boundary-marked-engine');
+  fs.writeFileSync(clean, `production:${TEST_ONLY_ENGINE_MARKER.slice(0, -1)}`);
+  fs.writeFileSync(marked, `prefix${TEST_ONLY_ENGINE_MARKER}suffix`);
+  fs.writeFileSync(boundaryMarked, Buffer.concat([
+    Buffer.alloc((64 * 1024) - 7, 0x78),
+    Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii'),
+  ]));
+
+  assert.doesNotThrow(() => assertNoTestOnlyEngineMarker(clean));
+  assert.throws(() => assertNoTestOnlyEngineMarker(marked), /test-only lifecycle Engine/u);
+  assert.throws(() => assertNoTestOnlyEngineMarker(boundaryMarked), /test-only lifecycle Engine/u);
+});
+
+test('package verifier accepts only the exact target engine, helper and configuration', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-exact-native-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const expected = [
+    'ec-engine-darwin-arm64',
+    'ec-proxy-command-darwin-arm64',
+    'hkustgz.json',
+  ];
+  for (const name of expected) fs.writeFileSync(path.join(directory, name), 'fixture');
+
+  assert.deepEqual(assertExactNativeResources(directory, expected), [...expected].sort());
+
+  fs.writeFileSync(path.join(directory, 'ec-engine-darwin-amd64'), 'wrong architecture');
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /native resource set is not exact:.*unexpected=ec-engine-darwin-amd64/u,
+  );
+  fs.unlinkSync(path.join(directory, 'ec-engine-darwin-amd64'));
+  fs.unlinkSync(path.join(directory, 'hkustgz.json'));
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /native resource set is not exact:.*missing=hkustgz\.json/u,
+  );
+  fs.writeFileSync(path.join(directory, 'hkustgz.json'), '');
+  assert.throws(
+    () => assertExactNativeResources(directory, expected),
+    /empty native resource entered the package: hkustgz\.json/u,
+  );
+
+  if (process.platform !== 'win32') {
+    const linkedDirectory = `${directory}-link`;
+    fs.symlinkSync(directory, linkedDirectory, 'dir');
+    t.after(() => fs.unlinkSync(linkedDirectory));
+    assert.throws(
+      () => assertExactNativeResources(linkedDirectory, expected),
+      /missing packaged engine directory/u,
+    );
+  }
 });
 
 test('package verification accepts x86_64 ELF executables and rejects another architecture', () => {
@@ -42,6 +149,37 @@ test('package verification accepts x86_64 ELF executables and rejects another ar
   );
 });
 
+test('macOS package verification rejects Homebrew and other host-only dylibs', () => {
+  const dependencies = parseMachODylibDependencies(`fixture-engine:
+\t/opt/homebrew/opt/xz/lib/liblzma.5.dylib (compatibility version 14.0.0, current version 14.3.0)
+\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
+\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61439.120.27)
+`);
+  assert.deepEqual(dependencies, [
+    '/opt/homebrew/opt/xz/lib/liblzma.5.dylib',
+    '/usr/lib/libiconv.2.dylib',
+    '/System/Library/Frameworks/Security.framework/Versions/A/Security',
+  ]);
+  assert.throws(
+    () => assertMacDylibDependenciesAllowed(dependencies),
+    /non-system dylib: \/opt\/homebrew\/opt\/xz\/lib\/liblzma\.5\.dylib/u,
+  );
+  assert.doesNotThrow(() => assertMacDylibDependenciesAllowed(dependencies.slice(1)));
+  assert.throws(
+    () => assertMacSystemOnlyDylibs('/definitely/missing/native-executable'),
+    /otool diagnostics failed|ENOENT/u,
+  );
+  for (const dependency of dependencies.slice(1)) {
+    assert.ok(
+      dependency.startsWith('/usr/lib/') || dependency.startsWith('/System/Library/'),
+    );
+  }
+  assert.equal(
+    dependencies[0].startsWith('/usr/lib/') || dependencies[0].startsWith('/System/Library/'),
+    false,
+  );
+});
+
 test('packaging fails before signing when the SSH proxy helper is absent', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-helper-'));
   assert.throws(
@@ -55,6 +193,19 @@ test('packaging fails before signing when the native engine is absent', () => {
   assert.throws(
     () => assertEnginePresent(directory, 'darwin', 'arm64'),
     /missing packaged engine:.*ec-engine-darwin-arm64/,
+  );
+});
+
+test('packaging fails before signing when the native engine contains the lifecycle fixture', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-feature-engine-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(directory, 'ec-engine-darwin-arm64'),
+    `native-prefix:${TEST_ONLY_ENGINE_MARKER}:native-suffix`,
+  );
+  assert.throws(
+    () => assertEnginePresent(directory, 'darwin', 'arm64'),
+    /test-only lifecycle Engine entered the package/u,
   );
 });
 
@@ -83,5 +234,24 @@ test('package verification rejects a build without the custom website manager', 
     renderer: 'window.api.saveResource function suggestedResourceName',
     preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
     main: "trustedHandle('save-resource' app.on('certificate-error'",
+  }));
+
+  assert.doesNotThrow(() => assertCustomResourceManager({
+    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
+    renderer: 'window.api.saveResource function suggestedResourceName',
+    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    main: "registerControlDataIpc({ app.on('certificate-error'",
+    controlDataIpc: 'registerCampusResourceIpc({ register',
+    resourceIpc: "register('save-resource', handler)",
+  }));
+
+  assert.doesNotThrow(() => assertCustomResourceManager({
+    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
+    renderer: 'window.api.saveResource resourceManager.start(',
+    resourceRenderer: 'function suggestedResourceName',
+    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    main: "registerControlDataIpc({ app.on('certificate-error'",
+    controlDataIpc: 'registerCampusResourceIpc({ register',
+    resourceIpc: "register('save-resource', handler)",
   }));
 });

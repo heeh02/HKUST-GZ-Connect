@@ -9,22 +9,76 @@ const {
   engineFailureKind,
   engineFailureKindFromCode,
   engineFailureKindFromStopReason,
+  formatConnectionDiagnostic,
+  formatEngineEventDiagnostic,
   resolveEngineFailureKind,
 } = require('../lib/engine-output');
 
+test('connection diagnostics are correlated, bounded, and cannot echo free-form data', () => {
+  const diagnostic = formatConnectionDiagnostic({
+    intent: 4,
+    generation: 12,
+    attempt: 2,
+    retryCount: 1,
+    phase: 'preparing_tunnel',
+    event: 'fatal_error',
+    outcome: 'DATA_PLANE_SETUP_FAILED',
+    password: 'must-not-appear',
+    url: 'https://private.example.invalid/path?token=secret',
+  });
+  assert.match(diagnostic, /connection=4:12/);
+  assert.match(diagnostic, /attempt=2 retry=1/);
+  assert.match(diagnostic, /outcome=DATA_PLANE_SETUP_FAILED/);
+  assert.ok(Buffer.byteLength(diagnostic) < 512);
+  assert.doesNotMatch(diagnostic, /must-not-appear|private\.example|secret/);
+
+  const malformed = formatConnectionDiagnostic({
+    intent: -1,
+    generation: Number.MAX_SAFE_INTEGER + 1,
+    phase: 'x\npassword=value',
+    event: 'event with spaces',
+    outcome: 'A'.repeat(1000),
+  });
+  assert.match(malformed, /connection=0:0/);
+  assert.match(malformed, /phase=unknown event=unknown outcome=unknown/);
+  assert.ok(Buffer.byteLength(malformed) < 512);
+
+  assert.match(formatEngineEventDiagnostic(
+    { type: 'stopped', reason: 'network_unhealthy', privateValue: 'ignored' },
+    { intent: 4, generation: 12, attemptNumber: 3, attempts: 2, phase: 'stopping' },
+  ), /connection=4:12 attempt=3 retry=2.*event=stopped outcome=network_unhealthy/);
+});
+
 test('native engine authentication failure is terminal and user-readable', () => {
   const message = classifyEngineOutput('ec-engine: gateway authentication failed', 1080);
-  assert.match(message, /账号或密码错误/);
+  assert.match(message, /无法确认是否为密码问题/);
   assert.match(message, /停止自动重试/);
 });
 
 test('structured engine error codes are stable, readable and classify retry safety', () => {
-  assert.match(classifyEngineCode('AUTH_FAILED', 1080), /账号或密码错误/);
+  assert.match(classifyEngineCode('AUTH_FAILED', 1080), /无法确认是否为密码问题/);
+  assert.match(classifyEngineCode('AUTH_REJECTED', 1080), /账号或密码未被网关接受/);
+  assert.match(classifyEngineCode('AUTH_INDETERMINATE', 1080), /结果无法确认/);
+  assert.doesNotMatch(classifyEngineCode('AUTH_INDETERMINATE', 1080), /密码错误/);
+  assert.match(classifyEngineCode('AUTH_PROTOCOL_INVALID', 1080), /响应.*不兼容/);
+  assert.match(classifyEngineCode('AUTH_LIMIT_EXCEEDED', 1080), /安全上限/);
+  assert.match(
+    classifyEngineCode('AUTH_INDETERMINATE', 1080, undefined, 'AUTH_CLEANUP_UNCONFIRMED'),
+    /清理未能确认/,
+  );
   assert.match(classifyEngineCode('LOCAL_LISTENER_FAILED', 6180), /6180/);
   assert.match(classifyEngineCode('CONFIGURATION_INVALID', 1080), /配置无效/);
   assert.equal(engineFailureKindFromCode('AUTH_FAILED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_REJECTED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_INDETERMINATE'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_PROTOCOL_INVALID'), 'terminal');
+  assert.equal(engineFailureKindFromCode('AUTH_LIMIT_EXCEEDED'), 'terminal');
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SETUP_TRANSIENT'), 'gateway-transient');
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SETUP_FAILED'), 'terminal');
   assert.equal(engineFailureKindFromCode('NETWORK_DISCONNECTED'), 'gateway-transient');
   assert.equal(engineFailureKindFromCode('LOCAL_LISTENER_FAILED'), 'terminal');
+  assert.match(classifyEngineCode('DATA_PLANE_SHUTDOWN_FAILED', 1080), /停止自动重连/);
+  assert.equal(engineFailureKindFromCode('DATA_PLANE_SHUTDOWN_FAILED'), 'terminal');
 });
 
 test('unsupported MFA is distinct from a wrong password and never retried', () => {

@@ -12,16 +12,23 @@ changes can be supported without review.
 - The engine listener is always an explicit loopback endpoint. The app never
   changes system DNS, the default route, the global proxy, or a system network
   extension.
-- 新安装默认使用仅监听回环地址的 SOCKS5 `NO_AUTH` 兼容模式，保证 SSH、Clash
-  与外部 PAC 无需应用私有凭据即可使用。同机其他进程或登录用户可能借用已认证
-  会话，这是默认易用性与共享主机隔离之间的明确取舍。
-- Strict authentication is an explicit shared-machine hardening option. A
+- 新安装默认要求本地代理认证；回环地址不是跨本机用户/进程的授权边界。已由旧版
+  security schema 保存的兼容选择继续保留，确需支持无认证旧客户端时可显式关闭。
+- Strict authentication is the new-install default. A
   stable random local-proxy credential is encrypted with the operating-system
   secure-storage service; each engine generation receives only a short-lived
   in-memory copy. Campus Browser authenticates automatically, Clash receives an
   authenticated `udp: false` node through an explicit clipboard action, and
   the bundled SSH helper reads an owner-only sidecar that is removed whenever
   the listener stops. Credentials never enter argv or logs.
+- Compatibility mode is an explicit downgrade for legacy SOCKS5 clients. It
+  retains NO_AUTH and UDP ASSOCIATE behavior, so its local authorization risk
+  must remain visible in the UI and documentation.
+- The root macOS CLI also starts the Engine in strict mode. Its random local
+  proxy credential is a three-line, owner-only sidecar shared only with the
+  bundled Rust proxy helper; the VPN password remains in Keychain and neither
+  secret enters argv or routine diagnostics. `proxy-config` is the sole
+  explicit command that prints the local proxy credential for client setup.
 - Campus Browser is one persistent, sandboxed, context-isolated Session. It
   denies device permissions, Node integration, arbitrary IPC, and unsupported
   navigation schemes.
@@ -32,7 +39,41 @@ changes can be supported without review.
   Control API v2 reuses the already inherited private stdin/stdout pipes after
   the fixed credential prefix; it opens no listener and its closed frame schema
   cannot carry arbitrary credentials, tokens, URLs, or destinations. Closing
-  the control channel is not a tunnel-shutdown request.
+  the control channel is not a tunnel-shutdown request. The secret-free v2
+  handshake is answered during authentication, before L3/listener readiness.
+- Interactive Auth Control v3 is a separate bounded, zeroizing, secret-bearing
+  schema for sanitized challenge notification and respond/resend/cancel. Main
+  owns its generation/transaction/epoch binding and sends Renderer only display
+  metadata. Renderer clears the DOM response before IPC; Main and Rust clear
+  bounded byte/frame copies after encoding, submit, cancel, expiry and teardown.
+  JavaScript strings cannot be reliably overwritten in place, so the UI/Main
+  code bounds them, drops references immediately and never attaches them to
+  errors, logs, settings, telemetry or crash metadata; Rust owns the enforceable
+  zeroizing secret boundary.
+  The path is synthetic-only: the password-only provider creates no challenge
+  and unsolicited v3 commands return `transaction_closed`.
+- `EngineConnectionRuntime` owns stdout multiplexing, Event API generation
+  validation, the hello deadline and pre-auth Control negotiation. `main.js`
+  receives typed lifecycle callbacks and no longer parses Rust wire schemas.
+- Routing-rule, certificate-pin and campus-resource IPC handlers are separate
+  exact-key feature modules behind the trusted-sender registration boundary.
+  They receive only injected stores/transactions; none can access Engine
+  credentials, browser sessions or transport state.
+- `SettingsCredentialIpc` owns the exact settings schema, policy-queue rebase,
+  crash-safe credential journal invocation, recovery classification, logout
+  mutation and best-effort clearing of every Main-process password reference.
+  Main injects persistence and UI effects but no longer implements this flow.
+- Control-panel routing, certificate and resource managers are separate
+  sandboxed Renderer features loaded before `app.js`. They consume only their
+  narrow Preload methods and escaped display models; connection/login/tower
+  state remains in the small shell.
+- `DesktopShell`, `CampusBrowserManager` and `ConnectionTelemetryCoordinator`
+  separately own window/tray/quit policy, browser/vault construction, and
+  Network health evidence. Main injects callbacks and contains no Chromium
+  manager state, process-enumeration parser, SOCKS probe or telemetry timer.
+- Core control IPC validation is centralized beside settings/data IPC. CI also
+  scans every Git-tracked text file for common private-key/cloud-token shapes;
+  runtime-specific credential vocabulary remains covered by redaction/DTO tests.
 - Chromium WebRTC is started with `disable_non_proxied_udp`. Explicit
   localhost, loopback, link-local, WebSocket, and legacy localhost aliases are
   denied again at `webRequest` because PAC mode cannot override Chromium's
@@ -47,6 +88,9 @@ changes can be supported without review.
   HTTPS origin, before any main-frame commit, after every password form stays
   absent for a bounded settling interval. A remaining/reappearing password
   form cancels confirmation; password-change/reset forms are never captured.
+  OTP/MFA/challenge fields and push-approval pages block autofill, capture and
+  login-success confirmation. A committed challenge SPA can complete only
+  after that exact origin and challenge state were observed.
   Both paths still require an explicit save confirmation. Linux `basic_text`
   fallback is rejected.
 
@@ -83,16 +127,19 @@ and correlated bounded Control API v2 responses; neither schema contains a
 secret field. Human diagnostics go to redacted stderr/log files with bounded
 rotation, an 8 MiB cap on both the current and single rotated file, and a
 persistent three-day retention window that is enforced even across app
-restarts. Control input frames begin only after the private stdin credential
-prefix and likewise have no arbitrary secret payload; the fact that both use
-one inherited pipe does not make credentials part of Control v2.
+restarts. Control v2 input frames begin only after the private stdin credential
+prefix and have no arbitrary secret payload; the fact that both use one
+inherited pipe does not make credentials part of Control v2.
 
 The explicit **Copy Clash Node** action necessarily places the local proxy
 credential on the operating-system clipboard, and Clash stores the pasted
 credential in its own configuration. The application neither reads nor edits
 that configuration. This user-authorized integration boundary is distinct from
 logs, telemetry, renderer IPC responses, and process arguments, where the
-credential remains prohibited.
+credential remains prohibited. Interactive v3 response frames are the one
+explicit authentication exception: they use only the inherited private pipe, bounded
+zeroizing buffers and a schema that never emits the response back to events or
+diagnostics.
 
 ## Known limits / 已知边界
 
@@ -122,7 +169,8 @@ credential remains prohibited.
 
 ## Required review gates / 必须通过的门禁
 
-Every release must pass desktop unit tests, real Electron main/toolbar/layout
+Every release must pass desktop unit tests, syntax checks for every project JS
+file, real Electron main/toolbar/layout
 tests, SPA credential confirmation tests, true two-process route-restart
 persistence, browser lifecycle/hidden-idle guards, dependency audit, Rust
 format/Clippy/tests, offline performance matrices, package-content

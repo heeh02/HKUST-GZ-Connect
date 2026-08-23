@@ -389,7 +389,7 @@ fn peer_departed(error: &std::io::Error) -> bool {
 /// actionable engine diagnostics.
 fn should_report_request_error(error: &Error) -> bool {
     !matches!(
-        error.0.as_str(),
+        error.message(),
         "SOCKS5 client offered no supported method"
             | "SOCKS5 username/password authentication failed"
             | "HTTP proxy authentication failed"

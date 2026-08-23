@@ -6,6 +6,16 @@ rust-version = "1.85"
 license = "GPL-3.0-only"
 publish = false
 
+[lints.rust]
+unsafe_code = "forbid"
+
+[features]
+default = []
+# Builds one explicitly selected, non-vendor post-Transport lifecycle seam into
+# ec-engine for the subprocess regression only. Release/package builds must not
+# enable this feature.
+engine-lifecycle-fixture = []
+
 [lib]
 name = "ec_compat"
 path = "src/lib.rs"
@@ -38,6 +48,10 @@ path = "src/bin/ec-engine.rs"
 name = "ec-proxy-command"
 path = "src/bin/ec-proxy-command.rs"
 
+[[bin]]
+name = "ec-auth-fixture"
+path = "src/bin/ec-auth-fixture.rs"
+
 [dependencies]
 base64 = "0.22"
 flate2 = "1.1"
@@ -68,7 +82,10 @@ ts_netstack_smoltcp = { package = "geiserx_ts_netstack_smoltcp", version = "=0.4
 url = "2"
 webpki-roots = "1"
 x509-parser = "0.18"
-xz2 = "0.1"
+# Always build liblzma from the vendored source.  The default xz2/lzma-sys
+# behavior prefers pkg-config, which can record a Homebrew-only absolute dylib
+# path in a packaged macOS Engine and make it fail before main() on another Mac.
+xz2 = { version = "0.1", features = ["static"] }
 zeroize = "1"
 zstd = "0.13"
 

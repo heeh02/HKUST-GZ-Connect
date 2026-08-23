@@ -15,7 +15,19 @@ test('normalizes only bounded API v1 machine events and drops extra data', () =>
   });
   assert.deepEqual(normalizeEngineEvent({
     type: 'fatal_error', code: 'AUTH_FAILED', response: 'private gateway response',
-  }), { type: 'fatal_error', code: 'AUTH_FAILED' });
+  }), { type: 'fatal_error', code: 'AUTH_FAILED', secondaryCode: null });
+  assert.deepEqual(normalizeEngineEvent({
+    type: 'fatal_error',
+    code: 'AUTH_INDETERMINATE',
+    secondaryCode: 'AUTH_CLEANUP_UNCONFIRMED',
+  }), {
+    type: 'fatal_error',
+    code: 'AUTH_INDETERMINATE',
+    secondaryCode: 'AUTH_CLEANUP_UNCONFIRMED',
+  });
+  assert.equal(normalizeEngineEvent({
+    type: 'fatal_error', code: 'AUTH_REJECTED', secondaryCode: 'PRIVATE_DETAIL',
+  }), null);
   assert.equal(normalizeEngineEvent({ type: 'hello', apiVersion: 2, capabilities: [] }), null);
   assert.equal(normalizeEngineEvent({ type: 'listener_ready', port: 80 }), null);
   assert.equal(normalizeEngineEvent({ type: 'fatal_error', code: 'bad code' }), null);
@@ -27,6 +39,9 @@ test('normalizes only bounded API v1 machine events and drops extra data', () =>
     type: 'dns_mode', mode: 'gateway_profile',
   });
   assert.equal(normalizeEngineEvent({ type: 'dns_mode', mode: 'public_dns' }), null);
+  assert.deepEqual(normalizeEngineEvent({
+    type: 'state_changed', state: 'preparing_tunnel', generation: 9,
+  }), { type: 'state_changed', state: 'preparing_tunnel', generation: 9 });
 });
 
 test('parses fragmented and coalesced NDJSON without interpreting diagnostic text', () => {

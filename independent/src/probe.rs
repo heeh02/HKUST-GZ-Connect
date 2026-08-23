@@ -1,9 +1,11 @@
 use crate::adapter::{ControlLayout, OfficialPrefaceAdapter};
 use crate::auth::{AuthState, auth_summary, rsa_encrypt_hex, safe_int};
 use crate::config::{parse_gateway_configuration, parse_tunnel_bootstrap};
+pub use crate::credentials::{MAX_CREDENTIAL_BYTES, read_credentials};
+use crate::gateway_auth::AuthenticatedSessionId;
+use crate::gateway_http::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
 use crate::modern::{
-    ModernSessionId, parse_sha256_pin, probe_modern_empty_channels, probe_special_tls_contract,
-    request_modern_token,
+    parse_sha256_pin, probe_modern_empty_channels, probe_special_tls_contract, request_modern_token,
 };
 use crate::resource_catalogue::parse_resource_catalogue;
 use crate::tunnel::{
@@ -11,56 +13,20 @@ use crate::tunnel::{
     SERVER_SYNC_LEN, ServerMessage, ServerReply, SessionContext, TunnelHandshake, TunnelKind,
     WINDOWS_CLIENT_MESSAGE_LEN, WINDOWS_SERVER_MESSAGE_LEN,
 };
-use crate::watch::{endpoint_url, is_sensitive_field, utc_now};
-use crate::xml::{MAX_XML_BYTES, first_descendant_text, parse_xml};
+use crate::watch::{is_sensitive_field, utc_now};
+use crate::xml::{first_descendant_text, parse_xml};
 use crate::{Error, Result};
-use reqwest::blocking::Client;
-use reqwest::header::{ACCEPT, CONTENT_TYPE, SET_COOKIE, USER_AGENT};
-use reqwest::redirect::Policy;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
-pub const MAX_CREDENTIAL_BYTES: usize = 16 * 1024;
-pub const DEFAULT_TIMEOUT_SECONDS: u64 = 20;
 const TUNNEL_PROBE_TIMEOUT_SECONDS: u64 = 10;
 const SERVER_RESET_BACKOFF_SECONDS: u64 = 3;
-
-pub fn read_credentials<R: Read>(mut stream: R) -> Result<(String, String)> {
-    let mut payload = Zeroizing::new(Vec::new());
-    stream
-        .by_ref()
-        .take((MAX_CREDENTIAL_BYTES + 1) as u64)
-        .read_to_end(&mut payload)?;
-    if payload.len() > MAX_CREDENTIAL_BYTES {
-        return Err(Error("credential input exceeds the size limit".into()));
-    }
-    // Keep the complete stdin allocation zeroizing across success, oversize,
-    // UTF-8, and shape failures. Callers separately zeroize the two returned
-    // line copies.
-    let text = std::str::from_utf8(payload.as_slice())
-        .map_err(|_| Error("credential input must be UTF-8".into()))?;
-    let lines = text.lines().collect::<Vec<_>>();
-    if lines.len() != 2 {
-        return Err(Error(
-            "credential input must contain exactly username and password lines".into(),
-        ));
-    }
-    if lines[0].is_empty()
-        || lines[1].is_empty()
-        || lines[0].contains('\0')
-        || lines[1].contains('\0')
-    {
-        return Err(Error("credential input is empty or invalid".into()));
-    }
-    Ok((lines[0].to_owned(), lines[1].to_owned()))
-}
 
 #[derive(Default)]
 struct Structure {
@@ -127,161 +93,6 @@ pub fn structural_summary(data: &[u8], source: &str) -> Value {
         "schema_paths": structure.paths,
         "attribute_keys": structure.attributes,
     })
-}
-
-#[derive(Default)]
-struct CookieStats {
-    count: usize,
-    secure_count: usize,
-}
-
-pub struct GatewaySession {
-    base_url: String,
-    user_agent: String,
-    client: Client,
-    cookie_stats: Arc<Mutex<CookieStats>>,
-}
-
-impl GatewaySession {
-    pub fn new(base_url: String, user_agent: String, timeout: u64) -> Result<Self> {
-        let parsed = Url::parse(&base_url).map_err(|_| Error("invalid base_url".into()))?;
-        if parsed.scheme() != "https" {
-            return Err(Error("gateway base URL must use HTTPS".into()));
-        }
-        if user_agent.is_empty()
-            || user_agent.len() > 128
-            || !user_agent
-                .bytes()
-                .all(|byte| byte.is_ascii_graphic() || byte == b' ')
-        {
-            return Err(Error("gateway user agent has an invalid shape".into()));
-        }
-        let client = Client::builder()
-            .timeout(Duration::from_secs(timeout))
-            .redirect(Policy::none())
-            .https_only(true)
-            .cookie_store(true)
-            .build()
-            .map_err(|error| Error(format!("cannot build HTTPS session: {error}")))?;
-        Ok(Self {
-            base_url,
-            user_agent,
-            client,
-            cookie_stats: Arc::new(Mutex::new(CookieStats::default())),
-        })
-    }
-
-    pub fn request(
-        &self,
-        path: &str,
-        method: reqwest::Method,
-        form: Option<&BTreeMap<String, String>>,
-    ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
-        self.request_inner(path, method, form, None)
-    }
-
-    /// Sends one request with a deadline independent of the session default.
-    ///
-    /// Logout uses this path so graceful shutdown cannot consume the desktop's
-    /// entire process-stop grace period.  The request still uses the same
-    /// `Client`, and therefore the authenticated cookie jar and TLS policy.
-    pub fn request_with_timeout(
-        &self,
-        path: &str,
-        method: reqwest::Method,
-        form: Option<&BTreeMap<String, String>>,
-        timeout: Duration,
-    ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
-        if timeout.is_zero() {
-            return Err(Error("gateway request timeout must be nonzero".into()));
-        }
-        self.request_inner(path, method, form, Some(timeout))
-    }
-
-    fn request_inner(
-        &self,
-        path: &str,
-        method: reqwest::Method,
-        form: Option<&BTreeMap<String, String>>,
-        timeout: Option<Duration>,
-    ) -> Result<(Vec<u8>, BTreeMap<String, String>, u16)> {
-        let url = endpoint_url(&self.base_url, path)?;
-        let mut request = self
-            .client
-            .request(method, &url)
-            .header(USER_AGENT, &self.user_agent)
-            .header(ACCEPT, "application/xml,text/xml,*/*;q=0.1");
-        if let Some(timeout) = timeout {
-            request = request.timeout(timeout);
-        }
-        if let Some(form) = form {
-            request = request
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .form(form);
-        }
-        let mut response = request
-            .send()
-            .map_err(|_| Error("gateway request failed".into()))?;
-        if response.status().is_redirection()
-            || response.status().is_client_error()
-            || response.status().is_server_error()
-        {
-            return Err(Error(format!(
-                "gateway returned HTTP {}",
-                response.status().as_u16()
-            )));
-        }
-        if response.url().scheme() != "https" {
-            return Err(Error("gateway attempted a non-HTTPS response".into()));
-        }
-        {
-            let mut stats = self
-                .cookie_stats
-                .lock()
-                .map_err(|_| Error("cookie state unavailable".into()))?;
-            for value in response.headers().get_all(SET_COOKIE) {
-                if let Ok(value) = value.to_str() {
-                    stats.count += 1;
-                    if value
-                        .split(';')
-                        .any(|part| part.trim().eq_ignore_ascii_case("secure"))
-                    {
-                        stats.secure_count += 1;
-                    }
-                }
-            }
-        }
-        let status = response.status().as_u16();
-        let headers = response
-            .headers()
-            .iter()
-            .filter(|(name, _)| matches!(name.as_str(), "content-type" | "last-modified"))
-            .filter_map(|(name, value)| {
-                value
-                    .to_str()
-                    .ok()
-                    .map(|value| (name.as_str().to_owned(), value.trim().to_owned()))
-            })
-            .collect();
-        let mut body = Vec::new();
-        response
-            .by_ref()
-            .take((MAX_XML_BYTES + 1) as u64)
-            .read_to_end(&mut body)?;
-        if body.len() > MAX_XML_BYTES {
-            return Err(Error("gateway response exceeds the size limit".into()));
-        }
-        Ok((body, headers, status))
-    }
-
-    pub fn cookie_summary(&self) -> Value {
-        let stats = self.cookie_stats.lock().expect("cookie lock");
-        json!({
-            "count": stats.count,
-            "secure_count": stats.secure_count,
-            "session_cookie_present": stats.count > 0,
-        })
-    }
 }
 
 fn required_endpoint<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
@@ -787,14 +598,16 @@ pub fn run_probe_with_tunnel(
     evidence["session"] = session.cookie_summary();
     if authenticated {
         if modern_tunnel_probe {
-            evidence["stages"]["modern_tunnel"] = match ModernSessionId::from_login_xml(&login_data)
-                .and_then(|session_id| {
-                    request_modern_token(
-                        base_url,
-                        &session_id,
-                        Duration::from_secs(TUNNEL_PROBE_TIMEOUT_SECONDS),
-                    )
-                }) {
+            evidence["stages"]["modern_tunnel"] = match AuthenticatedSessionId::from_login_xml(
+                &login_data,
+            )
+            .and_then(|session_id| {
+                request_modern_token(
+                    base_url,
+                    &session_id,
+                    Duration::from_secs(TUNNEL_PROBE_TIMEOUT_SECONDS),
+                )
+            }) {
                 Ok(acquisition) => {
                     match probe_special_tls_contract(
                         base_url,

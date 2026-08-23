@@ -516,7 +516,7 @@ function createFakeBrowser(extra = {}) {
     [DIRECT_PARTITION, makeSession('direct')],
   ]);
   class FakeWebContents extends EventEmitter {
-    setWindowOpenHandler() {}
+    setWindowOpenHandler(handler) { this.popupHandler = handler; }
     executeJavaScript(script) {
       if (typeof script === 'string' && script.includes('campusBrowserUI')) {
         scripts.push(script);
@@ -870,6 +870,7 @@ test('site passwords are offered only after a successful later navigation', asyn
   contents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://portal.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
   });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -908,6 +909,7 @@ test('same-document SPA login uses the existing explicit credential prompt', asy
   contents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://sso.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
     transition: 'same-document',
   });
   await new Promise((resolve) => setImmediate(resolve));
@@ -917,6 +919,105 @@ test('same-document SPA login uses the existing explicit credential prompt', asy
   assert.deepEqual(saved, [[
     'https://sso.example.edu', 'student001', 'local-secret',
   ]]);
+});
+
+test('popup MFA shares only flow ownership and blocks the originating tab', async () => {
+  const prompts = [];
+  const saved = [];
+  const { browser } = createFakeBrowser({
+    credentialVault: {
+      get: async () => null,
+      save: async (...credential) => saved.push(credential),
+    },
+    dialog: {
+      showMessageBox: async (_window, options) => {
+        prompts.push(options);
+        return { response: 0 };
+      },
+    },
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const owner = browser.activeTab();
+  const ownerContents = owner.view.webContents;
+  ownerContents.emit('ipc-message', {}, 'campus-credential-candidate', {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'local-secret',
+  });
+  ownerContents.url = 'https://sso.example.edu/waiting';
+  ownerContents.emit('did-navigate', {}, ownerContents.url, 200);
+
+  assert.deepEqual(ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' }), {
+    action: 'deny',
+  });
+  ownerContents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://sso.example.edu', hasLoginForm: false, hasChallengeForm: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.length, 0, 'the popup reservation blocks a racing opener result');
+
+  const popup = browser.activeTab();
+  assert.notEqual(popup.id, owner.id);
+  assert.equal(popup.pendingCredential, null, 'the popup never receives a password copy');
+  assert.equal(
+    popup.view.options.webPreferences.session,
+    owner.view.options.webPreferences.session,
+    'SSO and SameSite behavior use the same persistent Electron Session',
+  );
+  const popupContents = popup.view.webContents;
+  popupContents.emit('did-navigate', {}, popupContents.url, 200);
+  popupContents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://mfa.example.edu', hasLoginForm: false, hasChallengeForm: true,
+  });
+  ownerContents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://sso.example.edu', hasLoginForm: false, hasChallengeForm: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.length, 0, 'the opener remains blocked while challenge is active');
+
+  popupContents.emit('ipc-message', {}, 'campus-credential-page-state', {
+    origin: 'https://mfa.example.edu', hasLoginForm: false, hasChallengeForm: false,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(prompts.length, 1);
+  assert.deepEqual(saved, [[
+    'https://sso.example.edu', 'student001', 'local-secret',
+  ]]);
+});
+
+test('popup creation failure releases its reservation and rolls back the partial tab', async () => {
+  const errors = [];
+  const { browser } = createFakeBrowser({
+    credentialVault: { get: async () => null, save: async () => {} },
+    onError: (message) => errors.push(message),
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const owner = browser.activeTab();
+  const ownerContents = owner.view.webContents;
+  ownerContents.emit('ipc-message', {}, 'campus-credential-candidate', {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'local-secret',
+  });
+  assert.ok(owner.pendingCredential);
+
+  browser.window.contentView.addChildView = () => {
+    throw new Error('synthetic native view failure');
+  };
+  assert.deepEqual(ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' }), {
+    action: 'deny',
+  });
+  await nextImmediate();
+  await nextImmediate();
+
+  assert.equal(browser.tabs.length, 1);
+  assert.equal(browser.activeTab(), owner);
+  assert.equal(owner.pendingCredential.password, 'local-secret');
+  const flow = browser.credentialController.flowFor(owner);
+  assert.equal(flow.reservations, 0);
+  assert.equal(flow.popups.size, 0);
+  assert.deepEqual(errors, ['新标签页创建失败，请重试']);
 });
 
 test('a post-navigation login form is treated as failure and never saved', async () => {
@@ -947,6 +1048,7 @@ test('a post-navigation login form is treated as failure and never saved', async
   contents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://sso.example.edu',
     hasLoginForm: true,
+    hasChallengeForm: false,
   });
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -975,6 +1077,7 @@ test('an HTTP authentication failure never offers the submitted password', async
   contents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://sso.example.edu',
     hasLoginForm: false,
+    hasChallengeForm: false,
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(prompts, 0);

@@ -5,7 +5,7 @@
 //! verification material and are never exposed through command arguments,
 //! events, or diagnostics.
 
-use crate::probe::{MAX_CREDENTIAL_BYTES, read_credentials};
+use crate::credentials::{MAX_CREDENTIAL_BYTES, read_credentials};
 use crate::{Error, Result};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;

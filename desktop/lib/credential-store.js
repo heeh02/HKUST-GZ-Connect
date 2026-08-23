@@ -29,13 +29,18 @@ function protectedStorageAvailable(safeStorage, platform) {
   return platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text';
 }
 
-function atomicWritePrivateFile(file, contents, fileSystem = fs) {
+function atomicWritePrivateFile(file, contents, fileSystem = fs, {
+  protectTemporary = null,
+  verifyCommitted = null,
+  removeCommittedOnFailure = false,
+} = {}) {
   const directory = path.dirname(file);
   const temporary = path.join(
     directory,
     `.${path.basename(file)}.${process.pid}.${Date.now()}.${temporarySequence++}.tmp`,
   );
   let descriptor = null;
+  let committed = false;
   try {
     fileSystem.mkdirSync(directory, { recursive: true, mode: 0o700 });
     descriptor = fileSystem.openSync(temporary, 'wx', 0o600);
@@ -43,9 +48,16 @@ function atomicWritePrivateFile(file, contents, fileSystem = fs) {
     if (typeof fileSystem.fsyncSync === 'function') fileSystem.fsyncSync(descriptor);
     fileSystem.closeSync(descriptor);
     descriptor = null;
+    if (protectTemporary && protectTemporary(temporary) !== true) {
+      throw new Error('could not protect temporary private file');
+    }
     // Same-directory rename is the commit point. Until it succeeds the old
     // encrypted blob is untouched.
     fileSystem.renameSync(temporary, file);
+    committed = true;
+    if (verifyCommitted && verifyCommitted(file) !== true) {
+      throw new Error('could not verify committed private file');
+    }
     if (!fsyncDirectory(directory, fileSystem)) {
       throw new Error('could not durably commit encrypted credential');
     }
@@ -55,6 +67,9 @@ function atomicWritePrivateFile(file, contents, fileSystem = fs) {
       try { fileSystem.closeSync(descriptor); } catch {}
     }
     try { fileSystem.unlinkSync(temporary); } catch {}
+    if (committed && removeCommittedOnFailure) {
+      try { fileSystem.unlinkSync(file); } catch {}
+    }
     return false;
   }
 }
@@ -81,17 +96,57 @@ function savePassword(file, password, safeStorage, platform, fileSystem = fs) {
   return atomicWritePrivateFile(file, encrypted, fileSystem);
 }
 
-function loadPassword(file, safeStorage, platform) {
+function loadPasswordResult(file, safeStorage, platform) {
   try {
-    if (!protectedStorageAvailable(safeStorage, platform)) return '';
-    const { data } = readPrivateFileBounded(file, {
+    if (!protectedStorageAvailable(safeStorage, platform)) {
+      return Object.freeze({ status: 'unavailable', password: '' });
+    }
+  } catch {
+    return Object.freeze({ status: 'unavailable', password: '' });
+  }
+  let data;
+  try {
+    ({ data } = readPrivateFileBounded(file, {
       maxBytes: MAX_ENCRYPTED_PASSWORD_BYTES,
       platform,
-    });
-    return safeStorage.decryptString(data);
-  } catch {
-    return '';
+    }));
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return Object.freeze({ status: 'missing', password: '' });
+    }
+    if (error?.privateFileInvalid === true) {
+      return Object.freeze({ status: 'corrupt', password: '' });
+    }
+    return Object.freeze({ status: 'unavailable', password: '' });
   }
+  try {
+    const password = safeStorage.decryptString(data);
+    if (typeof password !== 'string' || !password.length) {
+      return Object.freeze({ status: 'corrupt', password: '' });
+    }
+    return Object.freeze({ status: 'decrypted', password });
+  } catch {
+    // Electron does not expose whether decrypt failed because the OS key store
+    // was denied/unavailable or because the ciphertext is damaged. Preserve a
+    // distinct actionable result instead of misreporting "no password".
+    return Object.freeze({ status: 'decrypt_failed', password: '' });
+  } finally {
+    data.fill(0);
+  }
+}
+
+function loadPassword(file, safeStorage, platform) {
+  const result = loadPasswordResult(file, safeStorage, platform);
+  return result.status === 'decrypted' ? result.password : '';
+}
+
+function credentialLoadErrorKey(status) {
+  return {
+    corrupt: 'error.credentialStoreCorrupt',
+    decrypt_failed: 'error.credentialDecryptFailed',
+    unavailable: 'error.credentialStoreUnavailable',
+    recovery_blocked: 'error.credentialStoreUnavailable',
+  }[status] || 'error.credentialStoreUnavailable';
 }
 
 function snapshotPasswordFile(file, fileSystem = fs) {
@@ -147,8 +202,10 @@ module.exports = {
   MAX_ENCRYPTED_PASSWORD_BYTES,
   atomicWritePrivateFile,
   clearPasswordSnapshot,
+  credentialLoadErrorKey,
   hasStoredPassword,
   loadPassword,
+  loadPasswordResult,
   protectedStorageAvailable,
   restorePasswordSnapshot,
   savePassword,

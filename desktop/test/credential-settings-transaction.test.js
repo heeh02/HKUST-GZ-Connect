@@ -101,7 +101,9 @@ test('a retained durable commit marker never replays obsolete rollback data', (t
   assert.equal(fs.readFileSync(paths.credential, 'utf8'), 'new-credential');
 });
 
-test('a readable commit marker resolves a post-rename directory-fsync error as success', (t) => {
+test('a readable commit marker resolves a post-rename directory-fsync error as success', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const { journal, paths } = fixture(t);
   fs.writeFileSync(paths.settings, 'old-settings', { mode: 0o600 });
   fs.writeFileSync(paths.credential, Buffer.from('old-credential'), { mode: 0o600 });

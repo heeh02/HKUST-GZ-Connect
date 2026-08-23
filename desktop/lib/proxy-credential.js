@@ -26,6 +26,28 @@ function injectedSecret(value) {
   return secret;
 }
 
+function cleanupProxyAccessForEngineClose({
+  generation,
+  supervisorGenerationCurrent,
+  connectionGenerationCurrent,
+  clearCredential,
+  removeSidecar,
+} = {}) {
+  if (!Number.isSafeInteger(generation) || generation <= 0 ||
+      typeof clearCredential !== 'function' || typeof removeSidecar !== 'function') {
+    throw new TypeError('generation-bound proxy cleanup is invalid');
+  }
+  // The in-memory credential owns one generation, so its destroy operation is
+  // safe even for a delayed close. The sidecar is shared by successive
+  // generations and must survive every stale close.
+  clearCredential(generation);
+  if (supervisorGenerationCurrent !== true || connectionGenerationCurrent !== true) {
+    return false;
+  }
+  removeSidecar();
+  return true;
+}
+
 class EphemeralProxyCredential {
   #username;
   #password;
@@ -117,4 +139,5 @@ module.exports = {
   EphemeralProxyCredential,
   LOOPBACK_PROXY_HOST,
   RANDOM_SECRET_BYTES,
+  cleanupProxyAccessForEngineClose,
 };

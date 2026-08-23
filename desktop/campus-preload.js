@@ -6,6 +6,11 @@ const MAX_USERNAME_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 4096;
 const SPA_CREDENTIAL_SETTLE_MS = 2000;
 const PASSWORD_CHANGE_HINT = /(?:^|[^a-z])(?:new|confirm|repeat|retype|change|reset)(?:$|[^a-z])|(?:new|confirm|repeat|retype|change|reset)password|password(?:new|confirm|repeat|retype|change|reset)|新密码|确认密码|重复密码/i;
+const CHALLENGE_FIELD_HINT = /(?:^|[^a-z0-9])(?:otp|totp|mfa|2fa|passcode|verification|verify|one\s*time\s*code|security\s*code|auth(?:entication)?\s*code)(?:$|[^a-z0-9])|验证码|校验码|动态码|认证码|一次性(?:密码|口令|验证码)/i;
+const GENERIC_CODE_FIELD_HINT = /(?:^|[^a-z0-9])code(?:$|[^a-z0-9])/i;
+const USERNAME_FIELD_HINT = /(?:^|[^a-z0-9])(?:user|username|account|student|login|email)(?:$|[^a-z0-9])|账号|用户名|学号|邮箱/i;
+const CHALLENGE_CONTEXT_HINT = /(?:otp|totp|mfa|2fa|multi[- ]?factor|two[- ]?factor|second[- ]?factor|one[- ]?time(?:\s+(?:password|passcode|code))?|verification\s+(?:code|step)|security\s+code|auth(?:entication)?\s+code|approve\s+(?:the\s+)?(?:sign[- ]?in|login)|check\s+(?:your\s+)?device|push\s+notification)|验证码|校验码|动态码|二次认证|双重认证|多因素认证|批准登录|确认登录|检查.{0,12}设备/i;
+const MAX_CLASSIFIER_HINT_LENGTH = 4096;
 
 function visibleInput(input) {
   return input && !input.disabled && input.type !== 'hidden';
@@ -13,6 +18,96 @@ function visibleInput(input) {
 
 function visiblePasswordInputs(form) {
   return [...form.querySelectorAll('input[type="password"]')].filter(visibleInput);
+}
+
+function normalizedHint(values) {
+  return values
+    .map((value) => String(value || '').slice(0, MAX_CLASSIFIER_HINT_LENGTH)
+      .replace(/([a-z])([A-Z])/g, '$1 $2').trim())
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, MAX_CLASSIFIER_HINT_LENGTH);
+}
+
+function attributeValue(element, name, property = name) {
+  return element?.getAttribute?.(name) ?? element?.[property] ?? '';
+}
+
+function challengeInputHint(input) {
+  return normalizedHint([
+    input?.name,
+    input?.id,
+    input?.autocomplete,
+    input?.placeholder,
+    attributeValue(input, 'aria-label', 'ariaLabel'),
+    attributeValue(input, 'inputmode', 'inputMode'),
+  ]);
+}
+
+function isChallengeInput(input) {
+  if (!visibleInput(input)) return false;
+  const autocomplete = String(input.autocomplete || '').toLowerCase().split(/\s+/);
+  const hint = challengeInputHint(input);
+  if (autocomplete.includes('one-time-code') || CHALLENGE_FIELD_HINT.test(hint)) return true;
+  const type = String(input.type || 'text').toLowerCase();
+  return !autocomplete.includes('username') && type !== 'email' &&
+    !USERNAME_FIELD_HINT.test(hint) && GENERIC_CODE_FIELD_HINT.test(hint);
+}
+
+function autocompleteTokens(input) {
+  return String(input?.autocomplete || '').toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function hasUsernameEvidence(input) {
+  if (!visibleInput(input) || isChallengeInput(input)) return false;
+  const type = String(input.type || 'text').toLowerCase();
+  return autocompleteTokens(input).includes('username') || type === 'email' ||
+    USERNAME_FIELD_HINT.test(challengeInputHint(input));
+}
+
+function loginUsernameInput(form, passwordInput) {
+  return [...form.querySelectorAll('input')].find((input) => {
+    if (input === passwordInput) return false;
+    return hasUsernameEvidence(input);
+  }) || null;
+}
+
+function pageChallengeHint(pageDocument) {
+  return normalizedHint([
+    pageDocument?.title,
+    pageDocument?.body?.innerText,
+    pageDocument?.body?.textContent,
+  ]);
+}
+
+function isAuthenticationChallengeForm(form, pageDocument = globalThis.document) {
+  if (!form) return false;
+  const inputs = [...form.querySelectorAll('input')].filter(visibleInput);
+  if (inputs.some(isChallengeInput)) return true;
+  const formHint = normalizedHint([
+    form.action,
+    form.id,
+    form.name,
+    form.className,
+    attributeValue(form, 'aria-label', 'ariaLabel'),
+    form.textContent,
+  ]);
+  if (CHALLENGE_CONTEXT_HINT.test(formHint)) return true;
+
+  // Some IdPs render an OTP as a plain password field. Page-level challenge
+  // evidence is used only when the form has one password and no username-like
+  // field, so a normal account/password page keeps its existing autofill path.
+  const passwords = visiblePasswordInputs(form);
+  return passwords.length === 1 && !loginUsernameInput(form, passwords[0]) &&
+    CHALLENGE_CONTEXT_HINT.test(pageChallengeHint(pageDocument));
+}
+
+function pageHasAuthenticationChallenge(pageDocument = globalThis.document) {
+  if (!pageDocument) return false;
+  const forms = [...(pageDocument.forms || [])];
+  if (forms.some((form) => isAuthenticationChallengeForm(form, pageDocument))) return true;
+  const pageInputs = [...(pageDocument.querySelectorAll?.('input') || [])];
+  return pageInputs.some(isChallengeInput) || CHALLENGE_CONTEXT_HINT.test(pageChallengeHint(pageDocument));
 }
 
 function passwordInputHint(input) {
@@ -39,26 +134,31 @@ function isPasswordChangeForm(form) {
     PASSWORD_CHANGE_HINT.test(formHint);
 }
 
-function loginPasswordInput(form, { requireValue = true } = {}) {
-  if (!form || isPasswordChangeForm(form)) return null;
+function loginPasswordInput(form, {
+  requireValue = true,
+  pageDocument = globalThis.document,
+} = {}) {
+  if (!form || isPasswordChangeForm(form) ||
+      isAuthenticationChallengeForm(form, pageDocument)) return null;
   const passwordInput = visiblePasswordInputs(form)[0] || null;
   if (!passwordInput) return null;
+  // A single secret-shaped field is ambiguous without independent login
+  // evidence. This check intentionally precedes every value read so an OTP or
+  // future secondary secret cannot enter capture, autofill, logs or telemetry.
+  if (!loginUsernameInput(form, passwordInput) &&
+      !autocompleteTokens(passwordInput).includes('current-password')) return null;
   if (requireValue && (!passwordInput.value ||
       String(passwordInput.value).length > MAX_PASSWORD_LENGTH)) return null;
   return passwordInput;
 }
 
-function credentialFromForm(form, pageLocation = globalThis.location) {
-  const passwordInput = loginPasswordInput(form);
+function credentialFromForm(form, pageLocation = globalThis.location,
+  pageDocument = globalThis.document) {
+  const passwordInput = loginPasswordInput(form, { pageDocument });
   if (!passwordInput || !passwordInput.value ||
       passwordInput.value.length > MAX_PASSWORD_LENGTH) return null;
 
-  const usernameInput = [...form.querySelectorAll('input')].find((input) => {
-    if (!visibleInput(input) || input === passwordInput) return false;
-    const type = String(input.type || 'text').toLowerCase();
-    return input.autocomplete === 'username' || type === 'email' ||
-      ['text', 'tel'].includes(type);
-  });
+  const usernameInput = loginUsernameInput(form, passwordInput);
   const username = String(usernameInput?.value || '');
   if (username.length > MAX_USERNAME_LENGTH || pageLocation?.protocol !== 'https:') return null;
   return {
@@ -71,12 +171,17 @@ function credentialFromForm(form, pageLocation = globalThis.location) {
 function pageCredentialState(pageDocument = globalThis.document,
   pageLocation = globalThis.location) {
   if (!pageDocument || pageLocation?.protocol !== 'https:') return null;
+  const forms = [...(pageDocument.forms || [])];
   return {
     origin: pageLocation.origin,
     // Any password form (including reset/change) means the authentication flow
     // is not yet at a stable post-login page, so confirmation must stay blocked.
-    hasLoginForm: [...pageDocument.forms].some((form) =>
-      visiblePasswordInputs(form).length > 0),
+    hasLoginForm: forms.some((form) =>
+      !isAuthenticationChallengeForm(form, pageDocument) && visiblePasswordInputs(form).length > 0),
+    // Challenge detection never reads field values. Its only purpose is to
+    // block password autofill/capture and post-login confirmation until the
+    // second-factor surface has disappeared.
+    hasChallengeForm: pageHasAuthenticationChallenge(pageDocument),
   };
 }
 
@@ -111,7 +216,7 @@ function createSpaCredentialMonitor({
   const evaluate = () => {
     if (!armedOrigin || emitted) return false;
     const state = matchingState();
-    if (!state || state.hasLoginForm) {
+    if (!state || state.hasLoginForm || state.hasChallengeForm) {
       cancelTimer();
       return false;
     }
@@ -119,7 +224,7 @@ function createSpaCredentialMonitor({
     timer = setTimer(() => {
       timer = null;
       const settled = matchingState();
-      if (!settled || settled.hasLoginForm || emitted) return;
+      if (!settled || settled.hasLoginForm || settled.hasChallengeForm || emitted) return;
       emitted = true;
       armedOrigin = '';
       if (typeof onState === 'function') {
@@ -136,8 +241,12 @@ function createSpaCredentialMonitor({
     observer = new MutationObserverClass(evaluate);
     observer.observe(target, {
       attributes: true,
-      attributeFilter: ['disabled', 'type'],
+      attributeFilter: [
+        'action', 'aria-label', 'autocomplete', 'class', 'disabled', 'id',
+        'inputmode', 'name', 'placeholder', 'type',
+      ],
       childList: true,
+      characterData: true,
       subtree: true,
     });
     return true;
@@ -172,7 +281,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
     });
     document.addEventListener('submit', (event) => {
       if (!(event.target instanceof HTMLFormElement)) return;
-      const credential = credentialFromForm(event.target);
+      const credential = credentialFromForm(event.target, globalThis.location, document);
       if (credential) {
         ipcRenderer.send('campus-credential-candidate', credential);
         spaCredentialMonitor.arm(credential.origin);
@@ -184,7 +293,13 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
     // state to reject failed logins (the login form is still present) or offer
     // the candidate once the destination page no longer contains that form.
     const state = pageCredentialState();
-    if (state) ipcRenderer.send('campus-credential-page-state', state);
+    if (state) {
+      // A challenge can itself be an SPA. Arm a value-free observer on that
+      // exact origin so its later disappearance is reported; the main process
+      // independently decides whether a bounded password candidate exists.
+      if (state.hasChallengeForm) spaCredentialMonitor.arm(state.origin);
+      ipcRenderer.send('campus-credential-page-state', state);
+    }
     window.addEventListener('pagehide', () => spaCredentialMonitor.stop(), { once: true });
   });
 
@@ -193,14 +308,12 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
         location.protocol !== 'https:') return;
     const forms = [...document.forms];
     for (const form of forms) {
-      const passwordInput = loginPasswordInput(form, { requireValue: false });
-      if (!passwordInput) continue;
-      const usernameInput = [...form.querySelectorAll('input')].find((input) => {
-        if (!visibleInput(input) || input === passwordInput) return false;
-        const type = String(input.type || 'text').toLowerCase();
-        return input.autocomplete === 'username' || type === 'email' ||
-          ['text', 'tel'].includes(type);
+      const passwordInput = loginPasswordInput(form, {
+        requireValue: false,
+        pageDocument: document,
       });
+      if (!passwordInput) continue;
+      const usernameInput = loginUsernameInput(form, passwordInput);
       if (usernameInput) {
         usernameInput.value = String(credential.username || '');
         usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -218,8 +331,11 @@ if (typeof module !== 'undefined') {
   module.exports = {
     createSpaCredentialMonitor,
     credentialFromForm,
+    isAuthenticationChallengeForm,
+    isChallengeInput,
     isPasswordChangeForm,
     loginPasswordInput,
+    pageHasAuthenticationChallenge,
     pageCredentialState,
     SPA_CREDENTIAL_SETTLE_MS,
     visibleInput,
