@@ -1,6 +1,7 @@
 'use strict';
 
 const { planReconnect } = require('./reconnect-policy');
+const { ConnectionWaitRegistry } = require('./connection-wait-registry');
 
 const CONNECTION_PHASE = Object.freeze({
   IDLE: 'idle',
@@ -321,14 +322,11 @@ class ConnectionStateMachine {
     this.#desiredConnected = false;
     return Object.freeze({ action: 'exhausted' });
   }
-
-  shouldStopWaiting({ hasActive = false, lastError = null } = {}) {
-    return this.#userDisconnected || (!this.isConnecting() && !hasActive && Boolean(lastError));
-  }
 }
 
 module.exports = {
   CONNECTION_PHASE,
+  ConnectionWaitRegistry,
   ConnectionStateMachine,
   connectionPresentation,
   projectConnectionStatus,

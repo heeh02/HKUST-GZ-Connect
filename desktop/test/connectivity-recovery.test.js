@@ -168,6 +168,34 @@ test('explicit disconnect or quit intent never auto-recovers', async () => {
   assert.deepEqual(state.reconnects, []);
 });
 
+test('a current ordinary recovery rejected by policy is explicitly settled', async () => {
+  const declined = [];
+  const { recovery, timers } = harness({
+    shouldReconnect: async () => false,
+    onRecoveryDeclined: (intent, reason) => declined.push([intent, reason]),
+  });
+  recovery.suspend();
+  recovery.resume();
+  const [timer] = timers.ids();
+  assert.equal(await timers.fire(timer), false);
+  assert.deepEqual(declined, [[1, 'resume']]);
+  assert.equal(recovery.snapshot().pending, false);
+});
+
+test('stale or cancelled recovery never settles a replacement intent', async () => {
+  const declined = [];
+  const { recovery, state, timers } = harness({
+    shouldReconnect: async () => false,
+    onRecoveryDeclined: (intent, reason) => declined.push([intent, reason]),
+  });
+  recovery.networkOffline();
+  recovery.networkOnline();
+  const [timer] = timers.ids();
+  state.intent = 2;
+  assert.equal(await timers.fire(timer), false);
+  assert.deepEqual(declined, []);
+});
+
 test('an availability change while shouldReconnect is pending invalidates its decision', async () => {
   const timers = new FakeTimers();
   let resolveDecision;
@@ -216,4 +244,59 @@ test('constructor rejects incomplete or unsafe scheduler contracts', () => {
     reconnect() {},
     debounceMs: -1,
   }), /debounce/);
+});
+
+test('initial network availability carries one startup-only recovery reason', async () => {
+  const timers = new FakeTimers();
+  const checks = [];
+  const reconnects = [];
+  const recovery = new ConnectivityRecovery({
+    invalidate() {},
+    getLifecycleIntent: () => 9,
+    shouldReconnect: async (intent, reason) => {
+      checks.push([intent, reason]);
+      return reason === 'initial-network-online';
+    },
+    reconnect: async (intent, reason) => { reconnects.push([intent, reason]); },
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+    debounceMs: 10,
+  });
+
+  recovery.networkOffline(9);
+  assert.equal(recovery.initialNetworkOnline(9), true);
+  const [startupTimer] = timers.ids();
+  assert.equal(await timers.fire(startupTimer), true);
+  assert.deepEqual(checks, [[9, 'initial-network-online']]);
+  assert.deepEqual(reconnects, [[9, 'initial-network-online']]);
+
+  recovery.networkOffline(9);
+  assert.equal(recovery.networkOnline(9), true);
+  const [ordinaryTimer] = timers.ids();
+  assert.equal(await timers.fire(ordinaryTimer), false);
+  assert.deepEqual(checks.at(-1), [9, 'network-online']);
+  assert.deepEqual(reconnects, [[9, 'initial-network-online']],
+    'the startup bypass must not enable later automatic reconnect');
+});
+
+test('startup-only recovery reason survives an overlapping suspend until resume', async () => {
+  const timers = new FakeTimers();
+  const reconnects = [];
+  const recovery = new ConnectivityRecovery({
+    invalidate() {},
+    getLifecycleIntent: () => 12,
+    shouldReconnect: async (_intent, reason) => reason === 'initial-network-online',
+    reconnect: async (intent, reason) => { reconnects.push([intent, reason]); },
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+    debounceMs: 10,
+  });
+  recovery.networkOffline(12);
+  recovery.suspend(12);
+  assert.equal(recovery.initialNetworkOnline(12), false,
+    'network availability alone cannot resume while the machine is suspended');
+  assert.equal(recovery.resume(12), true);
+  const [timer] = timers.ids();
+  assert.equal(await timers.fire(timer), true);
+  assert.deepEqual(reconnects, [[12, 'initial-network-online']]);
 });

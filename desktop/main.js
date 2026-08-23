@@ -56,7 +56,7 @@ const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
 const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/stop-policy');
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
 const { ConnectivityRecovery } = require('./lib/connectivity-recovery');
-const { NetworkStatusMonitor } = require('./lib/network-status-monitor');
+const { createNetworkStartupSystem } = require('./lib/network-status-monitor');
 const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/proxy-credential');
 const {
   ExternalProxyCredentialStore,
@@ -75,7 +75,7 @@ const { createT, effectiveLocale } = require('./lib/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
-const { ConnectionStateMachine, projectConnectionStatus } = require('./lib/connection-state-machine');
+const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone
 // permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing
@@ -159,6 +159,8 @@ let connectInFlight = null;
 let disconnectInFlight = null;
 let reconnectInFlight = null;
 const connectionState = new ConnectionStateMachine();
+const connectionWaitRegistry = new ConnectionWaitRegistry();
+connectionWaitRegistry.observe(connectionState.snapshot());
 const MAX_ATTEMPTS = 3;
 let connectedAt = null;
 let telemetryCoordinator = null;
@@ -408,6 +410,7 @@ function engineConfigPath() {
 }
 function emit() {
   state.pacUrl = pacUrl();
+  connectionWaitRegistry.observe(connectionState.snapshot());
   // locale rides along so a language change reaches the renderer without a
   // separate channel; update rides along so an automatic check that finds a
   // new release surfaces without waiting for a full refresh. get-state stays
@@ -452,6 +455,7 @@ function killStrayEngines(resolvedEnginePath) {
 function beginLifecycleIntent() {
   // A manual connect/disconnect/reconnect always supersedes any recovery that
   // was queued for a previous sleep or network outage.
+  networkStartupCoordinator?.cancel();
   connectivityRecovery.cancel();
   return connectionState.beginConnectIntent();
 }
@@ -482,12 +486,13 @@ function invalidateForConnectivity(reason, intent) {
   }).catch(() => {});
 }
 
-async function recoverConnectivity(intent) {
+async function recoverConnectivity(intent, reason) {
   let autoReconnect;
   try {
-    autoReconnect = loadSettingsOrReport().autoReconnect !== false;
+    autoReconnect = reason === 'initial-network-online' || loadSettingsOrReport().autoReconnect !== false;
   } catch {
     connectionState.failIntent(intent);
+    emit();
     return false;
   }
   if (!connectionState.canRecover(intent, {
@@ -521,47 +526,60 @@ const connectivityRecovery = new ConnectivityRecovery({
   getLifecycleIntent: () => connectionState.currentRecoveryIntent({
     isQuitting: desktopShell?.isQuitting === true,
   }),
-  shouldReconnect: async (intent) => {
+  shouldReconnect: async (intent, reason) => {
     try {
       return connectionState.canRecover(intent, {
         isQuitting: desktopShell?.isQuitting === true,
-        autoReconnect: loadSettingsOrReport().autoReconnect !== false,
+        autoReconnect: reason === 'initial-network-online' || loadSettingsOrReport().autoReconnect !== false,
       });
     } catch {
       connectionState.failIntent(intent);
+      emit();
       return false;
     }
   },
-  reconnect: recoverConnectivity,
+  reconnect: recoverConnectivity, onRecoveryDeclined: (intent, reason) => { if (reason !== 'initial-network-online' && connectionState.failIntent(intent)) emit(); },
 });
-
-const networkStatusMonitor = new NetworkStatusMonitor({
-  isOnline: () => electronNet.isOnline(),
-  onOffline: () => connectivityRecovery.networkOffline(),
-  onOnline: () => connectivityRecovery.networkOnline(),
+const { monitor: networkStatusMonitor, startup: networkStartupCoordinator } = createNetworkStartupSystem({
+  appIsPackaged: app.isPackaged, environment: process.env, dataDirectory: DATA, fileSystem: fs,
+  isOnline: () => electronNet.isOnline(), onOffline: () => connectivityRecovery.networkOffline(),
+  onOnline: () => connectivityRecovery.networkOnline(), shouldAutoConnect: () => { const s = loadSettingsOrReport(); return s.autoConnect !== false && Boolean(s.username) && hasStoredCredential(); },
+  pauseOffline: () => { connectivityRecovery.cancel(); const intent = connectionState.beginConnectIntent(); return connectivityRecovery.networkOffline(intent) ? intent : null; },
+  resumeInitialOffline: (intent) => connectivityRecovery.initialNetworkOnline(intent), connect: () => connect(), isQuitting: () => desktopShell?.isQuitting === true,
 });
-
+function rejectConnectionWhileQuitting(intent = connectionState.snapshot().intent) {
+  if (desktopShell?.isQuitting !== true) return null;
+  connectionState.failIntent(intent); emit();
+  return { ok: false, stale: true, quitting: true, intent };
+}
 async function connect(isRetry = false, expectedIntent = null) {
-  const intent = expectedIntent === null
-    ? (isRetry ? connectionState.snapshot().intent : beginLifecycleIntent())
-    : expectedIntent;
-  if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
-
-  // A connect requested while an earlier stop is draining waits for close;
-  // it never starts a second process into the exit/close interval.
+  let rejected = rejectConnectionWhileQuitting(expectedIntent ?? undefined); if (rejected) return rejected;
+  let intent = expectedIntent;
+  if (intent === null && !isRetry) {
+    if (disconnectInFlight) await disconnectInFlight;
+    rejected = rejectConnectionWhileQuitting(); if (rejected) return rejected;
+    const current = connectionState.snapshot();
+    if (current.desiredConnected) {
+      if (connectInFlight?.intent === current.intent) return connectInFlight.promise;
+      return { ok: true, existing: engineSupervisor.hasActive, pending: !engineSupervisor.hasActive, intent: current.intent };
+    }
+    intent = beginLifecycleIntent();
+  } else if (intent === null) intent = connectionState.snapshot().intent;
+  if (!connectionState.canContinue(intent)) return { ok: false, stale: true, intent };
+  // Wait for an earlier stop to drain; never start a process into its exit/close interval.
   if (disconnectInFlight) await disconnectInFlight;
-  if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
-  if (engineSupervisor.hasActive) return { ok: true, existing: true };
+  rejected = rejectConnectionWhileQuitting(intent); if (rejected) return rejected;
+  if (!connectionState.canContinue(intent)) return { ok: false, stale: true, intent };
+  if (engineSupervisor.hasActive) return { ok: true, existing: true, intent };
   if (connectInFlight) {
-    await connectInFlight;
-    if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
-    if (engineSupervisor.hasActive) return { ok: true, existing: true };
+    await connectInFlight.promise; rejected = rejectConnectionWhileQuitting(intent);
+    if (rejected) return rejected;
+    if (!connectionState.canContinue(intent)) return { ok: false, stale: true, intent }; if (engineSupervisor.hasActive) return { ok: true, existing: true, intent };
   }
-
-  const operation = connectOnce(isRetry, intent);
-  connectInFlight = operation;
+  const operation = (async () => ({ ...await connectOnce(isRetry, intent), intent }))();
+  const record = { intent, promise: operation }; connectInFlight = record;
   try { return await operation; }
-  finally { if (connectInFlight === operation) connectInFlight = null; }
+  finally { if (connectInFlight === record) connectInFlight = null; }
 }
 
 function handleEngineClose({ code, generation }, diagnosticTail,
@@ -1030,6 +1048,7 @@ function ensureEngineStopped() {
 }
 
 function initiateStop(wantsConnectedAfterStop) {
+  networkStartupCoordinator?.cancel();
   connectivityRecovery.cancel();
   const intent = connectionState.beginStop(wantsConnectedAfterStop);
   // Generation invalidation happens before waiting for close. Old probes,
@@ -1056,40 +1075,25 @@ async function disconnect() {
   return { ok: result.ok };
 }
 
-function waitForConnected(timeoutMs = 45000) {
-  const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve) => {
-    const poll = () => {
-      if (connectionState.isConnected()) return resolve(true);
-      if (connectionState.shouldStopWaiting({
-        hasActive: engineSupervisor.hasActive,
-        lastError: state.lastError,
-      })) {
-        return resolve(false);
-      }
-      if (Date.now() >= deadline) return resolve(false);
-      setTimeout(poll, 100);
-    };
-    poll();
-  });
+function waitForConnected(intent, timeoutMs = 45000) {
+  return connectionWaitRegistry.wait(intent, { timeoutMs });
 }
 
 async function reconnect(expectedGeneration = null) {
-  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) {
-    return { ok: false, stale: true };
-  }
+  let rejected = rejectConnectionWhileQuitting(); if (rejected) return rejected;
+  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) return { ok: false, stale: true };
   if (reconnectInFlight && connectionState.isCurrentIntent(reconnectInFlight.intent) &&
       connectionState.snapshot().desiredConnected) {
     return reconnectInFlight.promise;
   }
   if (reconnectInFlight) await reconnectInFlight.promise;
-  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) {
-    return { ok: false, stale: true };
-  }
+  rejected = rejectConnectionWhileQuitting(); if (rejected) return rejected;
+  if (expectedGeneration !== null && !engineSupervisor.isCurrent(expectedGeneration)) return { ok: false, stale: true };
 
   const { intent, stopped } = initiateStop(true);
   const operation = (async () => {
     const stopResult = await stopped;
+    const quitResult = rejectConnectionWhileQuitting(intent); if (quitResult) return quitResult;
     connectionState.stopCompleted(intent, stopResult);
     if (!stopResult.ok || stopResult.cleanExit === false) {
       connectionState.failIntent(intent);
@@ -1191,7 +1195,7 @@ async function ensureCampusReady() {
   if (connectionState.isConnected()) return true;
   const result = await connect();
   if (!result?.ok && !connectionState.isConnecting()) return false;
-  return waitForConnected();
+  return waitForConnected(result.intent);
 }
 
 campusBrowserManager = new CampusBrowserManager({
@@ -1215,8 +1219,8 @@ campusBrowserManager = new CampusBrowserManager({
   resolveRoute: (url) => domainRoutePolicy.resolve(url),
   ensureConnected: async () => {
     if (!connectionState.isConnected()) {
-      await connect();
-      if (!await waitForConnected()) {
+      const result = await connect();
+      if (!await waitForConnected(result.intent)) {
         return { ok: false, error: state.lastError || t('error.connectTimeout') };
       }
     }
@@ -1376,9 +1380,9 @@ registerSettingsCredentialIpc({
 registerCoreControlIpc({
   register: trustedHandle,
   getState: controlStateSnapshot,
-  connect: () => connect(),
+  connect: async () => { const { intent: _intent, ...result } = await connect(); return result; },
   disconnect: () => disconnect(),
-  reconnect: () => reconnect(),
+  reconnect: async () => { const { intent: _intent, ...result } = await reconnect(); return result; },
   sshConfig: () => {
     try {
       const port = socksPort();
@@ -1464,6 +1468,7 @@ desktopShell = new DesktopShell({
   openCampusBrowser: () => connectAndOpenCampusBrowser(),
   rememberCloseAction,
   disposeLifecycle: () => {
+    networkStartupCoordinator.dispose(); connectionWaitRegistry.dispose();
     connectivityRecovery.dispose();
     networkStatusMonitor.dispose();
   },
@@ -1566,12 +1571,7 @@ app.whenReady().then(() => {
   desktopShell.createWindow();
   powerMonitor.on('suspend', () => connectivityRecovery.suspend());
   powerMonitor.on('resume', () => connectivityRecovery.resume());
-  networkStatusMonitor.start().catch(() => {});
-  let settings = null;
-  try { settings = loadSettingsOrReport(); } catch {}
-  if (settings && settings.autoConnect !== false && settings.username && hasStoredCredential()) {
-    setTimeout(() => { connect().catch(() => {}); }, 500);
-  }
+  networkStartupCoordinator.start().catch(() => {});
   // Dev checkouts and CI would only ever hit the rate-limited API for no
   // benefit, so the automatic check is packaged-builds only. The settings
   // page can always trigger a manual one. Automatic checks are throttled to

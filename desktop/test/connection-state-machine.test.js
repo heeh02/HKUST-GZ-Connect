@@ -380,15 +380,3 @@ test('only the current intent can be failed', () => {
   assert.equal(machine.failIntent(intent), true);
   assert.equal(machine.snapshot().desiredConnected, false);
 });
-
-test('wait termination derives connection progress from the FSM phase', () => {
-  const machine = new ConnectionStateMachine();
-  const intent = machine.beginConnectIntent();
-  assert.equal(machine.beginConnectAttempt(intent), true);
-  assert.equal(machine.shouldStopWaiting({ lastError: 'pending' }), false);
-  machine.failIntent(intent);
-  assert.equal(machine.shouldStopWaiting({ hasActive: true, lastError: 'x' }), false);
-  assert.equal(machine.shouldStopWaiting({ hasActive: false, lastError: 'x' }), true);
-  machine.beginStop(false);
-  assert.equal(machine.shouldStopWaiting({ connecting: true, hasActive: true }), true);
-});
