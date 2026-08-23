@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   PRIVATE_FILE_ENV,
+  POWERSHELL_ACL_TIMEOUT_MS,
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../lib/windows-private-file');
@@ -42,7 +43,7 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     assert.equal(call.options.env[PRIVATE_FILE_ENV], file);
     assert.equal(call.options.windowsHide, true);
     assert.equal(call.options.maxBuffer, 4096);
-    assert.equal(call.options.timeout, 5000);
+    assert.equal(call.options.timeout, POWERSHELL_ACL_TIMEOUT_MS);
   }
 
   assert.equal(verifyWindowsFileOwnerOnly(file, {
@@ -53,6 +54,10 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
   }), false);
   assert.equal(protectWindowsFileOwnerOnly('relative.txt', { execute, platform: 'win32' }), false);
   assert.equal(protectWindowsFileOwnerOnly(file, { execute, platform: 'darwin' }), false);
+});
+
+test('Windows ACL subprocess remains bounded but tolerates a cold PowerShell start', () => {
+  assert.equal(POWERSHELL_ACL_TIMEOUT_MS, 15_000);
 });
 
 test('real Windows ACL is current-user-only and inheritance-protected', {

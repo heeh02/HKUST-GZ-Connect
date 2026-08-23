@@ -5,6 +5,10 @@ const { execFileSync } = require('node:child_process');
 
 const PRIVATE_FILE_ENV = 'HKUSTGZ_PRIVATE_FILE';
 const POWERSHELL_ARGS = Object.freeze(['-NoLogo', '-NoProfile', '-NonInteractive', '-Command']);
+// Windows hosted runners and freshly booted user sessions can take more than
+// five seconds to cold-start Windows PowerShell. Keep the ACL operation
+// bounded, but do not reject a secure sidecar merely because startup is slow.
+const POWERSHELL_ACL_TIMEOUT_MS = 15_000;
 const COMMON_PREFIX = String.raw`
 $ErrorActionPreference = 'Stop'
 $privatePath = [Environment]::GetEnvironmentVariable('${PRIVATE_FILE_ENV}')
@@ -64,7 +68,7 @@ function runAclScript(filePath, script, {
       encoding: 'utf8',
       env: { ...environment, [PRIVATE_FILE_ENV]: filePath },
       maxBuffer: 4096,
-      timeout: 5000,
+      timeout: POWERSHELL_ACL_TIMEOUT_MS,
       windowsHide: true,
     });
     return String(output).trim() === 'owner_only';
@@ -83,6 +87,7 @@ function verifyWindowsFileOwnerOnly(filePath, options) {
 
 module.exports = {
   PRIVATE_FILE_ENV,
+  POWERSHELL_ACL_TIMEOUT_MS,
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 };
