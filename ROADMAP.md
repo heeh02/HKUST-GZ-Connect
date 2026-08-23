@@ -30,10 +30,10 @@ more conservative status until the discrepancy is reviewed.
 | Area | Implementation | Current evidence | Production result and remaining evidence |
 | --- | --- | --- | --- |
 | Independent password + modern L3 engine | `I3` | Current tree `E2`; earlier restricted canary is historical evidence | Rust owns auth, tunnel, userspace TCP/UDP and loopback proxying; repeat an authorized canary after Gateway/client changes |
-| Isolated Campus Browser | `I3` | `E2` synthetic Electron; current release campus-site canary pending | Multi-tab, direct/campus routing, local vault and fail-closed policy; repeat packaged cross-platform and campus-site canaries |
-| SOCKS/PAC/Clash/SSH frontends | `I3` | Current tree `E2`; Windows DACL/package jobs pending | New installs strict, legacy downgrade explicit, no global mutation; obtain exact-SHA Windows and package evidence |
+| Isolated Campus Browser | `I3` | `E3` package/synthetic Electron; current release campus-site canary pending | Multi-tab, direct/campus routing, local vault and fail-closed policy; repeat campus-site/partner SSO canaries |
+| SOCKS/PAC/Clash/SSH frontends | `I3` | Current tree `E3`; Windows sidecar DACL and three-platform package passed | New installs strict, legacy downgrade explicit, no global mutation; obtain exact-SHA real Clash/SSH evidence |
 | Authentication correctness | `I3` for password; `I2` generic challenge framework | Current `E2`; real Gateway MFA `E0` | Typed outcomes, stale-cancel fix and Engine budgets exist; real provider remains unsupported |
-| Lifecycle and recovery | `I3` locally converged | `E2`; real sleep/network canary pending | Auth/Transport cancellation, deterministic data-plane drain, Main E2E, and a 100-round real-Engine non-routing post-Transport soak exist; packaged cross-platform and real-network evidence remains missing |
+| Lifecycle and recovery | `I3` locally converged | `E3`; real sleep/network canary pending | Auth/Transport cancellation, deterministic data-plane drain, Main E2E, a 100-round real-Engine non-routing post-Transport soak and exact-SHA packages exist; real-network evidence remains missing |
 | Desktop performance | `I2/E2` measurement harness | Offline synthetic only | Establish supported-device and real campus-page baselines before enforcing product targets |
 | Split-horizon campus DNS | `I3` | Current `E2`; exact-release HPC/TC canary pending | Authenticated sources are preferred, reviewed profile fills absence, matching TC retries same resolver; public/system fallback disabled |
 

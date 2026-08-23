@@ -283,7 +283,11 @@ Infrastructure/Protocol Error
 - 本地 listener 只绑定 loopback；
 - 新安装默认严格本地 proxy 认证；兼容降级必须显式；
 - Renderer 不得取得 VPN/Proxy secret；
-- 私有文件原子写入、no-follow、owner-only；Windows 使用可验证 DACL；
+- POSIX私有文件采用原子写入、no-follow和owner-only mode；Windows明文proxy helper
+  sidecar必须关闭继承、设置current-user-only DACL并回读验证；其他profile-scoped私有文件
+  目前主要依赖用户profile ACL，不得表述为已有逐文件DACL验证；
+- macOS发布包中的Rust Engine/SSH helper只能链接`/usr/lib`或`/System/Library`系统库；
+  第三方C依赖必须静态链接，package verifier必须对两种架构执行真实`otool -L`门禁；
 - Campus Browser sandbox、context isolation、无 Node integration、拒绝设备权限和本机服务；
 - 不修改系统 DNS、默认 route 或全局 proxy；
 - 不提供 public DNS fallback；
@@ -342,11 +346,12 @@ Infrastructure/Protocol Error
 | Integration | auth + session + transport、Engine/Desktop private pipe |
 | Fault injection | reset、partial body、timeout、DNS failure、proxy unavailable、renderer/process loss |
 | Electron E2E | sandbox、IPC、Browser Session、popup/SPA、真实 Chromium proxy |
-| Package | 精确源码拓扑、native 架构、fixture 排除、启动 smoke |
+| Package | 精确源码拓扑、native 架构、fixture 排除、外部动态库闭包、启动 smoke |
 | Real canary | 学校 Gateway、校园 DNS、sleep/wake、network switch、目标资源 |
 
 历史 P0/P1 修复必须进入 regression suite。Synthetic 测试只证明其覆盖的边界，不能替代
-真实 Gateway、Windows DACL、签名或学校资源 canary。
+真实 Gateway、目标Windows文件类别的DACL、签名或学校资源 canary；当前真实DACL门只覆盖
+明文proxy helper sidecar。
 
 `independent`的非默认`engine-lifecycle-fixture`只用于真实`ec-engine`进程的有界重复
 post-Transport生命周期soak。它使用无外部路由的packet transport，强制DNS disabled，

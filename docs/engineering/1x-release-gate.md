@@ -1,17 +1,19 @@
 # 1.x Architecture Frozen and Release Gate
 
-状态：No-Go。勾选项只表示当前本地证据；未勾选项不得由“应该能工作”替代。
+状态：No-Go。勾选项只表示当前固定证据；未勾选项不得由“应该能工作”替代。
 
-本地实现证据基线：`b48a6e7eca9fbee4655e9019297f798d51d5baba`；文档提交不改变该实现树。
+实现与package候选证据基线：`db4ff473934461c28c0772c9d6f517874ccebc04`；后续纯文档
+提交不改变该实现树。若再修改production代码，必须重新固定SHA并重跑相应门禁。
 本轮产品版本仍为v1.2.3：新增内容属于补丁级稳定性、诊断、回归和交付门禁，不是新的
 production Gateway能力。
 
 ## 1. Source and governance
 
 - [x] 当前本地审计 HEAD和分支已记录。
-- [x] 实现快照`b48a6e7`的exact tree secret gate通过。
-- [ ] Review branch已push且远端 SHA与候选发布源码一致。
-- [ ] PR包含全部改动并完成review。
+- [x] 实现快照`db4ff47`的exact tree secret gate通过。
+- [x] Review branch已push；PR #5包含候选实现提交，package run的source SHA与其一致。
+- [x] PR #5包含全部候选改动，自动review意见已处理并resolve。
+- [ ] 最终维护者review与合并授权完成。
 - [ ] `main` required checks、latest commit、review和no-force-push已启用。
 - [ ] 合并commit、tag和release source SHA一致。
 
@@ -33,6 +35,7 @@ production Gateway能力。
 - [x] Auth/Transport阶段持续消费shutdown、EOF、signal和deadline，late result执行cleanup。
 - [x] 单次在途blocking操作在500 ms drain内协作结束；否则Engine在6秒Desktop control envelope内以cleanup-unconfirmed非零退出，late result不能promotion。
 - [x] user cancel保留cleanup-unconfirmed且不会自动立即重连。
+- [x] stale Engine close只清理旧generation内存凭据，不能删除新generation共享proxy sidecar。
 - [x] listener/outer serving scope在logout前关闭并drain。
 - [x] netstack/data-plane socket、runner和bridge thread有bounded shutdown/join。
 - [x] 100次deterministic supervisor start/invalidate/stop/close无lifecycle residue。
@@ -101,7 +104,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Rust Clippy `-D warnings`通过。
 - [x] 第一方Rust所有target以Cargo lint禁止`unsafe`代码。
 - [x] Rust tests：当前收束树全量通过；精确数量记录在最终验证快照。
-- [x] Desktop tests：524 total / 523 passed / 0 failed / 1 Windows-only skipped。
+- [x] 本地macOS Desktop tests：528 total / 527 passed / 0 failed / 1 Windows-only skipped。
 - [x] npm audit high：0 vulnerabilities。
 - [x] Architecture/cycle gate通过。
 - [x] 最终本地候选HEAD（含文档提交）的exact tree secret gate通过。
@@ -109,21 +112,41 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Desktop Main→synthetic Engine的retry/stale/listener/renderer-crash/stop/port-release场景通过。
 - [x] feature-gated真实`ec-engine`子进程通过post-Transport netstack/listener/stop/join/port-release回归；不证明真实Gateway认证、Modern L3或校园转发。
 - [ ] 30分钟persistent packaged Desktop/Browser RSS、FD/handle、task/thread净增长soak通过。
-- [ ] Windows runner真实DACL test通过。
-- [ ] 所有required CI jobs在候选SHA绿色。
+- [x] Windows runner的plaintext proxy helper sidecar current-user-only、inheritance-protected
+  DACL test通过。
+- [x] 候选SHA ordinary PR CI jobs全部绿色（runs `32624450530`、`32624450555`；
+  live compatibility在PR场景按设计skip）。
+- [ ] `main`已将相应jobs配置为required checks。
 
 ## 9. Package and platform
 
 - [x] package verifier拒绝test/e2e/fake gateway/test PKI/private key pattern。
 - [x] Native `engine/`目录使用exact platform manifest。
 - [x] 所有官方production/package构建显式关闭test feature；`afterPack`在签名前拒绝fixture marker，独立verifier在打包后再次拒绝。
-- [ ] macOS arm64 clean package verifier和launch smoke。
-- [ ] macOS x64 clean package verifier和launch smoke。
-- [ ] Windows x64 NSIS/unpacked verifier和launch smoke。
-- [ ] Linux x64 AppImage/unpacked verifier和launch smoke。
-- [ ] macOS存在签名时`codesign --verify --deep --strict`通过。
-- [ ] 所有产物来自同一clean checkout/exact SHA。
-- [ ] 旧`desktop/release`未被复用或上传。
+- [x] liblzma使用vendored static构建；macOS verifier对Engine与SSH helper执行system-only
+  `otool -L`门，拒绝Homebrew、`/usr/local`及其他host-only dylib。
+- [x] macOS arm64 clean package verifier和launch smoke。
+- [x] macOS x64 clean package verifier和launch smoke。
+- [x] Windows x64 NSIS/unpacked verifier和launch smoke。
+- [x] Linux x64 AppImage/unpacked verifier和launch smoke。
+- [x] macOS ad-hoc签名通过`codesign --verify --deep --strict`；这不等于Developer ID
+  或notarization。
+- [x] 三平台产物来自同一GitHub clean checkout/exact SHA `db4ff47`。
+- [x] GitHub runner从clean checkout生成并上传，没有复用本地`desktop/release`。
+
+### Fixed remote evidence
+
+| Evidence | Result |
+| --- | --- |
+| PR | #5；implementation/package SHA `db4ff473934461c28c0772c9d6f517874ccebc04`；后续仅文档提交不冒充artifact source |
+| Ordinary CI | `32624450530` |
+| Compatibility CI | `32624450555` |
+| Cross-platform package | `32624449027`，三平台jobs全部success |
+| mac artifact | `9489406006`；artifact ZIP digest `sha256:b5e840ce6a38e5d1d83d657c92ad9a3255cd616f5592f799a0acfd8d563ea016` |
+| mac arm64 DMG | `sha256:fddb4a1a8372c464d559422e8bd99204f1fff52de5de3e1b450ccba3707f909e`；Engine/helper仅`/usr/lib`系统依赖 |
+| mac x64 DMG | `sha256:b8190d9a2d346f46b67e76b263948f0c7a7d19b89757f1eaf8e206d37b78b898`；Engine/helper仅`/usr/lib`系统依赖 |
+| Windows artifact | `9489382549`；artifact ZIP digest `sha256:032fb600a604c8089dc6cd8f282fa11a7d7352f3559355aef0ede5af60e841ad` |
+| Linux artifact | `9489333058`；artifact ZIP digest `sha256:438a1367c793b3478b1a45fb0c78714d1d2717fe63e741731d2e14377658f2d0` |
 
 ## 10. Documentation and capability truth
 

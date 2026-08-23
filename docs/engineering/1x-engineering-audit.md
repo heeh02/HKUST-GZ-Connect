@@ -2,7 +2,7 @@
 
 日期：2026-08-23
 
-收束实现快照：`b48a6e7eca9fbee4655e9019297f798d51d5baba`。
+收束实现与package候选快照：`db4ff473934461c28c0772c9d6f517874ccebc04`。
 第2节保留的是审计开始时的历史基线；第7节记录整改后的当前结论，不能用旧计数覆盖新证据。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
@@ -23,10 +23,11 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 post-Transport子进程回归均已建立。后者是feature-gated、无外部路由的测试接缝，不证明
 真实Gateway认证、Modern L3或校园转发。
 
-尚不能宣布 Architecture Frozen 的原因现已收窄为外部证据：当前分支没有远端required
-checks、当前SHA三平台原生产物、Windows-only门或学校真实canary。因此仍是合并与发布
-No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本轮没有新增真实认证
-方式或用户功能。
+远端PR CI、Windows proxy-sidecar DACL与当前SHA三平台原生产物现已通过。尚不能宣布
+Architecture Frozen 的原因已收窄为学校真实canary、30分钟packaged资源soak、`main`
+branch protection/required checks、最终维护者review、merge/tag/release source reconciliation。
+因此仍是合并与发布No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；
+本轮没有新增真实认证方式或用户功能。
 
 ## 2. Baseline evidence
 
@@ -34,18 +35,18 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 | --- | --- |
 | Rust fmt | PASS |
 | Rust Clippy workspace/all targets/features | PASS，0 warnings |
-| Rust tests | 236 passed，0 failed，2 个显式 release 性能门 ignored |
-| Desktop tests | 497 total；496 passed，1 Windows-only skipped |
+| Rust tests | 261 passed，0 failed，2 个显式 release 性能门 ignored |
+| Desktop tests | 528 total；527 passed，1 Windows-only skipped（本地macOS） |
 | npm audit high | 0 vulnerabilities |
-| Desktop architecture | 191 files / 240 edges / 0 cycles / Main 1596 / Renderer 524 |
+| Desktop architecture | 194 files / 244 edges / 0 cycles / Main 1596 / Renderer 524 |
 | Exact Git tree secret gate | PASS |
 | Main/MFA/popup/strict proxy/auth-pipe Electron | PASS |
-| Remote CI for this branch | Missing |
-| Current v1.2.3 Windows/Linux artifacts | Missing |
+| Remote CI for this branch | PASS：`32624450530`、`32624450555` |
+| Current v1.2.3 macOS/Windows/Linux artifacts | PASS：`32624449027`，exact SHA `db4ff47` |
 | Real HKUST canary for this exact tree | Missing |
 
-本地 synthetic/offline 结果不等于真实 Gateway、Windows DACL、三平台 package 或学校资源
-已经通过。
+本地synthetic/offline与三平台package结果不等于真实Gateway、所有Windows私有文件类别或
+学校资源已经通过；Windows真实DACL证据只覆盖明文proxy helper sidecar。
 
 ## 3. Confirmed strengths and invariants
 
@@ -274,6 +275,33 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
   和真实 canary；此前不得 tag/release。
 - **Priority**：发布硬门。
 
+### A-20 — macOS arm64 Engine inherited a Homebrew-only liblzma path
+
+- **Evidence**：公开v1.2.2 arm64 DMG及修复前v1.2.3 run `32616355777`中的
+  `ec-engine-darwin-arm64`均由`otool -L`确认依赖
+  `/opt/homebrew/opt/xz/lib/liblzma.5.dylib`；x64不含该依赖。应用壳启动smoke没有启动
+  Engine，因此构建机自身存在Homebrew xz时会假绿。
+- **Severity**：P0 macOS availability / package correctness。
+- **Impact**：任何没有该绝对Homebrew路径的Apple Silicon Mac都会在进入Rust `main()`前
+  被`dyld`终止；自动重连、账号和Gateway状态都无法修复。反馈来自M5，但根因不限定M5。
+- **Root cause**：无条件`xz2`依赖允许`lzma-sys`优先使用host `pkg-config`，把构建机路径
+  写入Mach-O；原package verifier没有检查native动态库闭包。
+- **Fix**：`xz2/static`强制从vendored source静态构建liblzma；package verifier对arm64/x64
+  的Engine和SSH helper执行`otool -L`，只允许`/usr/lib`与`/System/Library`。
+- **Priority**：v1.2.3发布前；所有修复前macOS package证据作废并重跑。
+
+### A-21 — stale Engine close could remove the active proxy helper sidecar
+
+- **Evidence**：`handleEngineClose`原先在Supervisor/FSM generation guard之前无条件删除共享
+  sidecar；旧Engine延迟`close`可在新generation重建sidecar后将其删除。
+- **Severity**：P1 external proxy availability。
+- **Impact**：隧道和Campus Browser仍可能正常，但已复制的Clash/SSH配置会突然找不到本地
+  凭据文件，直到再次显式生成。
+- **Fix**：generation-scoped内存凭据仍按旧generation清理；共享sidecar只有Supervisor与
+  FSM generation均为current时才删除。行为测试覆盖两类stale close均0次unlink、current
+  close恰好1次unlink。
+- **Priority**：v1.2.3发布前。
+
 ## 5. Technical debt that is not a rewrite mandate
 
 - `desktop/main.js`、`ec-engine.rs`、`socks.rs`仍大，但已有边界和 ratchet；只沿实际生命周期/
@@ -292,7 +320,7 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 
 ## 7. Convergence disposition
 
-当前代码提交：`b48a6e7`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
+当前实现提交：`db4ff47`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
 环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
@@ -309,13 +337,15 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
 | A-10 Password→MFA total budget | Deferred activation gate | 当前production仍password-only；真实provider前必须完成，不冒充v1.2.3功能 |
 | A-11 credential availability | Fixed | missing/unavailable/corrupt/decrypt_failed typed结果和行动文案 |
 | A-12 control renderer recovery | Fixed | visible/hidden renderer crash destroy/recreate；旧sender失效 |
-| A-13 package native exactness | Fixed locally | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；官方构建显式no-default-features，afterPack/verifier双重marker拒绝；原生runner尚待远端 |
+| A-13 package native exactness | Fixed with remote evidence | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；官方构建显式no-default-features；run `32624449027`三平台verifier/smoke通过 |
 | A-14 DNS owner/CNAME validation | Fixed | QR/OPCODE/question/owner/bounded CNAME/TTL/TC同resolver验证 |
 | A-15 Chromium DIRECT rebinding | Accepted 1.x limitation | ADR-0002；2.0 ControlledDirectExit；未声称resolved-address隔离 |
 | A-16 route evaluator drift | Partially fixed | deterministic 1,024-case JS/PAC differential；versioned IR与100k corpus保留2.0 |
 | A-17 underlay change observation | Deferred evidence-triggered | `.no_proxy()`已关闭HTTP环境递归；explicit underlay保留2.0 |
 | A-18 documentation drift | Fixed | ROADMAP/compatibility/architecture使用Implementation+Evidence双轴 |
-| A-19 remote governance | Open release blocker | 2026-08-23只读刷新：远端不存在`codex/v1.2.3-hardening`、open PR为空、`main` protection API为404；最近CI只证明旧`0ae0d33`，不证明当前SHA |
+| A-19 remote governance | Partially closed | PR #5、ordinary CI、Windows sidecar DACL和三平台exact-SHA package已完成；`main` protection仍404，最终review/merge/tag/source reconciliation与学校canary仍开放 |
+| A-20 Homebrew liblzma leakage | Fixed with package gate | vendored static liblzma；真实`otool -L` system-only门；修复前v1.2.2与v1.2.3 arm64 package证据已作废；run `32624449027`上传后的arm64/x64 DMG均只依赖`/usr/lib/libiconv.2.dylib`与`/usr/lib/libSystem.B.dylib` |
+| A-21 stale close sidecar deletion | Fixed | generation-aware proxy cleanup；stale Supervisor/FSM均0次unlink，current close恰好1次；PR review thread已resolve |
 
 ### Current local verification
 
@@ -325,12 +355,15 @@ No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；本�
   不再通过进程级环境变量写入使用`unsafe`。
 - 真实Rust `ec-engine` non-routing post-Transport soak：100/100轮通过，总耗时12.7秒，
   最慢单轮361 ms；每轮child wait、reader join、SOCKS greeting、stop和exact port重绑通过。
-- Desktop：524 total，523 passed，0 failed，1个Windows-only DACL测试在macOS跳过。
+- Desktop：528 total，527 passed，0 failed，1个Windows-only DACL测试在macOS跳过；
+  最终Windows runner DACL job通过。
 - Desktop graph：194 files / 244 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
 - Offline performance：SOCKS 18/18，最大p95 1.293 ms；netstack 27/27，最大p95 6.020 ms；均不是Gateway吞吐证据。
 - 每批精确暂存及最终本地候选HEAD secret gate通过；未来remote merge/tag candidate
   仍须对其exact tree重新执行。
 
-当前未发现仍成立的本地代码级P0/P1。Architecture Frozen和Release仍为NO：远端CI、
-current-SHA原生包、Windows-only门、真实HPC/Gateway、sleep/wake和网络切换证据尚未取得。
+当前未发现仍成立的本地代码级P0/P1；远端CI、current-SHA原生包与Windows sidecar DACL
+也已通过。Architecture Frozen和Release仍为NO：真实HPC/Gateway、Clash/SSH、校园SSO、
+sleep/wake与网络切换、系统网络before/after、30分钟packaged soak、`main` protection、最终
+review/merge/tag/release truth仍未取得。

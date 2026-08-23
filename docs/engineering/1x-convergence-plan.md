@@ -10,10 +10,10 @@
 | C1 Gateway/DNS determinism | Implemented and offline-tested | Authorized Gateway/HPC canary |
 | C2 Single connection truth | FSM phase→UI projection；listener+Engine candidate双证据；fatal/stopping/exit同步撤销serving；错误/notice分域 | 真实sleep/network canary |
 | C3 Full-attempt cancellation | Auth/Transport coordinator consumes control/EOF/signal/deadline；500 ms bounded drain；late result不能promotion | Remote cleanup在超时路径明确为unconfirmed，不宣称保证logout |
-| C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join | Cross-platform package/real Gateway canary and long soak |
+| C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join；exact-SHA三平台package/smoke通过 | Real Gateway canary and long soak |
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
 | C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine 100轮post-Transport netstack/listener/stop/join/port-release soak | 真实Gateway lifecycle与30分钟persistent资源soak |
-| C7 Package exactness | Exact native manifest、strict mac verification、三平台 launch smoke workflow已实现 | GitHub原生runner尚未实际执行当前SHA |
+| C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `db4ff47`通过 | Developer ID/notarization与正式release source reconciliation |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
 
@@ -21,10 +21,10 @@
 
 这些不一定是 runtime bug，但不完成就不能发布：
 
-1. 用户授权后 push review branch并建立 PR；
-2. exact review SHA 的 ordinary CI、macOS Electron、Windows DACL、Rust全部通过；
-3. 同一 SHA 的 macOS arm64/x64、Windows x64、Linux x64 clean package通过；
-4. 三平台 unpacked launch smoke和 package exact manifest通过；
+1. [完成] 用户授权后push review branch并建立PR #5；
+2. [完成] exact review SHA的ordinary CI、macOS Electron、Windows sidecar DACL、Rust全部通过；
+3. [完成] 同一SHA的macOS arm64/x64、Windows x64、Linux x64 clean package通过；
+4. [完成] 三平台unpacked launch smoke、package exact manifest与macOS dylib closure通过；
 5. `main` required checks、review、latest-commit、no-force-push生效；
 6. 授权环境完成 password-only、HPC DNS、Clash/SSH、sleep/wake/network switch canary；
 7. capability ledger区分 implementation与 evidence；

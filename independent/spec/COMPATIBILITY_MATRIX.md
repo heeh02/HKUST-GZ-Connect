@@ -22,8 +22,8 @@ SHA.
 | Password Gateway auth | `I3` | `E2` | Production-wired; current-release canary pending |
 | Modern L3 IPv4 | `I3` | `E2` | Production-wired; current-release Gateway canary pending |
 | Campus DNS UDP/TCP | `I3` | `E2` | Same-resolver tunnel path; HPC/TC canary pending |
-| SOCKS5 and strict HTTP/WS | `I3` | `E2` | Local production path; exact-SHA package/platform evidence pending |
-| Campus Browser/domain routing | `I3` | `E2` | Synthetic Electron; real partner/campus SSO canary pending |
+| SOCKS5 and strict HTTP/WS | `I3` | `E3` | Exact-SHA three-platform package/test evidence; real Clash/SSH/HTTP/WS canary pending |
+| Campus Browser/domain routing | `I3` | `E3` | Packaged synthetic Electron; real partner/campus SSO canary pending |
 | Resource catalogue | `I2` | `E2` | Offline only; not advertised as retrieved/authorized |
 | Generic challenge framework | `I2` | `E2` | Architecture/test fixture only; no real Gateway MFA provider |
 | Real Gateway MFA methods | `I0` | `E0` | Unsupported until one method passes its activation gate |
