@@ -46,7 +46,10 @@ test('helper sidecar is owner-only, exactly three lines, and not rewritten when 
   const first = ensureProxyCredentialSidecar({ filePath, port: 6180, credential });
   assert.equal(first.changed, true);
   const stat = fs.statSync(filePath);
-  assert.equal(stat.mode & 0o077, 0);
+  // POSIX mode bits are not the Windows authorization boundary. On Windows
+  // the call above already performed and re-read the exact owner-only DACL;
+  // the dedicated real-ACL test checks that platform contract directly.
+  if (process.platform !== 'win32') assert.equal(stat.mode & 0o077, 0);
   assert.deepEqual(fs.readFileSync(filePath, 'utf8').split('\n'), [
     '127.0.0.1:6180',
     material.username,
