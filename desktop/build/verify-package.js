@@ -2,15 +2,103 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
+const {
+  normalizeGatewayOrigin,
+  validateSchoolProfileDocument,
+} = require('../lib/school-profile-schema');
+const { normalizeManifest } = require('../lib/school-profile-registry');
 
 const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[-_]?gateway|test[-_]?ca|pki)(?:\/|[-_.])|(?:^|\/)private[-_]?key(?:$|[-_.\/])|\.(?:pem|key|p12|pfx)$/iu;
 const TEST_ONLY_ENGINE_MARKER = 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1';
 const TEST_ONLY_ENGINE_MARKER_BYTES = Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii');
 const MARKER_SCAN_CHUNK_BYTES = 64 * 1024;
 const MAC_SYSTEM_DYLIB_PREFIXES = ['/usr/lib/', '/System/Library/'];
+const MAX_PACKAGED_PROFILE_BYTES = 256 * 1024;
+const MAX_PACKAGED_PROFILE_ASSET_BYTES = 4 * 1024 * 1024;
+
+function sha256(data) {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => (
+      `${JSON.stringify(key)}:${stableJson(value[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function extractBoundedArchiveFile(archive, relativePath, maxBytes) {
+  const data = asar.extractFile(archive, relativePath);
+  if (!Buffer.isBuffer(data) || data.length < 1 || data.length > maxBytes) {
+    throw new Error(`packaged profile asset has an invalid size: ${relativePath}`);
+  }
+  return data;
+}
+
+function parsePackagedJson(data, name) {
+  try { return JSON.parse(data.toString('utf8')); }
+  catch { throw new Error(`packaged ${name} is not valid JSON`); }
+}
+
+function assertPackagedSchoolProfile(archive, externalEngineConfig) {
+  const manifestData = extractBoundedArchiveFile(
+    archive,
+    'assets/profiles/manifest.json',
+    MAX_PACKAGED_PROFILE_BYTES,
+  );
+  const manifest = normalizeManifest(parsePackagedJson(manifestData, 'profile manifest'));
+  const entry = manifest.profiles[0];
+  const profileData = extractBoundedArchiveFile(
+    archive,
+    entry.document.path,
+    MAX_PACKAGED_PROFILE_BYTES,
+  );
+  if (sha256(profileData) !== entry.document.sha256) {
+    throw new Error('packaged school profile document hash mismatch');
+  }
+  const profileDocument = parsePackagedJson(profileData, 'school profile');
+  const profile = validateSchoolProfileDocument(profileDocument);
+  if (profile.profileId !== entry.profileId || profile.evidenceClass !== 'builtin-reviewed') {
+    throw new Error('packaged school profile identity mismatch');
+  }
+
+  const assets = new Map();
+  for (const asset of entry.assets) {
+    const data = extractBoundedArchiveFile(archive, asset.path, MAX_PACKAGED_PROFILE_ASSET_BYTES);
+    if (sha256(data) !== asset.sha256) {
+      throw new Error(`packaged school profile asset hash mismatch: ${asset.key}`);
+    }
+    assets.set(asset.key, { ...asset, data });
+  }
+  const engineAsset = assets.get(profile.gateway.engineConfigRef);
+  const brandingAsset = assets.get(profile.branding.bundledAssetKey);
+  const resourceAssets = [...assets.values()].filter((asset) => asset.kind === 'builtin-resources');
+  if (assets.size !== 3 || engineAsset?.kind !== 'engine-config' ||
+      brandingAsset?.kind !== 'branding' || resourceAssets.length !== 1) {
+    throw new Error('packaged school profile asset binding is incomplete');
+  }
+  const resources = parsePackagedJson(resourceAssets[0].data, 'profile resources');
+  if (stableJson(resources) !== stableJson(profileDocument.browser.builtinResources)) {
+    throw new Error('packaged profile resources differ from the reviewed profile');
+  }
+
+  const externalConfigData = fs.readFileSync(externalEngineConfig);
+  if (!externalConfigData.equals(engineAsset.data) || sha256(externalConfigData) !== engineAsset.sha256) {
+    throw new Error('packaged external Engine config differs from its profile binding');
+  }
+  const engineConfig = parsePackagedJson(externalConfigData, 'external Engine config');
+  if (normalizeGatewayOrigin(engineConfig.base_url).origin !== profile.gateway.origin.origin) {
+    throw new Error('packaged Engine config Gateway differs from its school profile');
+  }
+  return profile;
+}
 
 function resolveResourcesDirectory(input) {
   const resolved = path.resolve(input);
@@ -266,6 +354,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/desktop-shell.js',
     '/lib/windows-private-file.js',
     '/lib/campus-browser-manager.js',
+    '/lib/school-profile-schema.js',
+    '/lib/school-profile-registry.js',
+    '/lib/school-profile-runtime.js',
+    '/lib/school-profile-controller.js',
+    '/lib/control-state-snapshot.js',
     '/lib/connection-telemetry-coordinator.js',
     '/lib/engine-protocol-session.js',
     '/lib/auth-challenge-coordinator.js',
@@ -291,6 +384,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-browser.js',
     '/renderer/campus-browser.css',
     '/assets/campus-resources.json',
+    '/assets/profiles/manifest.json',
+    '/assets/profiles/hkustgz/school-profile.json',
+    '/assets/profiles/hkustgz/engine-config.json',
   ];
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
@@ -359,6 +455,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
   assertNoTestOnlyEngineMarker(engine);
+  assertPackagedSchoolProfile(archive, path.join(resources, 'engine', 'hkustgz.json'));
 
   if (platformName === 'windows') {
     for (const executable of [engine, proxyCommand]) {
@@ -411,6 +508,7 @@ module.exports = {
   assertCustomResourceManager,
   assertExactNativeResources,
   assertNoTestOnlyEngineMarker,
+  assertPackagedSchoolProfile,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   parseArguments,

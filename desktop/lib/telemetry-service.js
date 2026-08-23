@@ -48,7 +48,7 @@ class TelemetryService {
       apps: [],
       latencyMs: null,
       tunnelHealth: 'unknown',
-      failedHealthTargets: [],
+      failedHealthTargetCount: 0,
     };
   }
 
@@ -121,9 +121,9 @@ class TelemetryService {
         if (!this.current(runId, generation)) return;
         if (health && typeof health.kind === 'string') {
           this.snapshot.tunnelHealth = health.kind;
-          this.snapshot.failedHealthTargets = Array.isArray(health.failedTargets)
-            ? health.failedTargets.slice(0, 8)
-            : [];
+          this.snapshot.failedHealthTargetCount = Array.isArray(health.failedTargets)
+            ? Math.min(8, health.failedTargets.length)
+            : 0;
         }
         this.lastHealthAt = timestamp;
       }

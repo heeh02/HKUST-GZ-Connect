@@ -57,12 +57,13 @@ const POLICY = Object.freeze({
     Object.freeze({ url: 'https://exact.branch.routing.test/custom', route: ROUTE_DIRECT }),
     Object.freeze({ url: 'https://child.branch.routing.test/custom', route: ROUTE_CAMPUS }),
     Object.freeze({ url: 'https://custom.routing.test:4433/path?fixture=ignored', route: ROUTE_DIRECT }),
-    Object.freeze({ url: 'https://login.microsoftonline.com/custom', route: ROUTE_CAMPUS }),
+    Object.freeze({ url: 'https://login.partner.routing.test/custom', route: ROUTE_CAMPUS }),
   ]),
   schoolDomains: Object.freeze(['school.routing.test']),
+  directPartnerDomains: Object.freeze(['partner.routing.test']),
   serverResources: Object.freeze([
     Object.freeze({ url: 'https://custom.routing.test/server', route: ROUTE_CAMPUS }),
-    Object.freeze({ url: 'https://teams.office.com/server', route: ROUTE_CAMPUS }),
+    Object.freeze({ url: 'https://teams.partner.routing.test/server', route: ROUTE_CAMPUS }),
     Object.freeze({ url: 'https://server.routing.test/service', route: ROUTE_DIRECT }),
     Object.freeze({ url: 'https://server-campus.routing.test/service', route: ROUTE_CAMPUS }),
   ]),
@@ -158,19 +159,29 @@ test('RouteResolver and internal PAC agree across every precedence source and bo
       expectedSource: 'custom-resource',
     },
     {
-      url: 'https://login.microsoftonline.com/',
+      url: 'https://login.partner.routing.test/',
       expectedRoute: ROUTE_CAMPUS,
       expectedSource: 'custom-resource',
     },
     {
-      url: 'https://teams.office.com/',
+      url: 'https://teams.partner.routing.test/',
       expectedRoute: ROUTE_DIRECT,
+      expectedSource: 'builtin',
+    },
+    {
+      url: 'https://library.school.routing.test/',
+      expectedRoute: ROUTE_CAMPUS,
       expectedSource: 'builtin',
     },
     {
       url: 'https://library.hkust-gz.edu.cn/',
       expectedRoute: ROUTE_CAMPUS,
-      expectedSource: 'builtin',
+      expectedSource: 'default',
+    },
+    {
+      url: 'https://teams.office.com/',
+      expectedRoute: ROUTE_CAMPUS,
+      expectedSource: 'default',
     },
     {
       url: 'https://server.routing.test/',
@@ -225,7 +236,7 @@ test('RouteResolver and PAC agree for IDN, IP literals, lookalikes, and determin
       `${label}.deep.branch.routing.test`,
       `branch-${label}.routing.test`,
       `${label}.school.routing.test`,
-      `${label}.office.com`,
+      `${label}.partner.routing.test`,
       `${label}.unknown.invalid`,
       `${label}.routing.test.evil`,
     ][category];
@@ -237,7 +248,7 @@ test('higher-priority policy still overrides a contextual inherited fallback', (
   for (const fixture of [
     { url: 'https://exact.branch.routing.test/', expectedRoute: ROUTE_CAMPUS, expectedSource: 'user-exact' },
     { url: 'https://custom.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'custom-resource' },
-    { url: 'https://teams.office.com/', expectedRoute: ROUTE_DIRECT, expectedSource: 'builtin' },
+    { url: 'https://teams.partner.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'builtin' },
     { url: 'https://server.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'server-resource' },
     {
       url: 'https://server-campus.routing.test/',

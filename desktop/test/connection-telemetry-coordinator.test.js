@@ -43,10 +43,45 @@ test('start/stop bind all telemetry to one current Engine generation', () => {
   f.coordinator.start(7);
   assert.equal(f.coordinator.current(7), true);
   assert.deepEqual(f.coordinator.service.starts, [7]);
-  f.coordinator.service.options.emit({ connCount: 1, apps: [] }, 7);
+  f.coordinator.service.options.emit({
+    connCount: 1,
+    apps: [],
+    failedHealthTargetCount: 2,
+    failedHealthTargets: ['internal-health.school.example'],
+    tunnelHealth: 'internal-health.school.example',
+    privateProfileState: true,
+  }, 7);
   assert.equal(f.calls[0][1].connectedAt, 100);
+  assert.equal(f.calls[0][1].failedHealthTargetCount, 2);
+  assert.equal(f.calls[0][1].tunnelHealth, 'unknown');
+  assert.equal('failedHealthTargets' in f.calls[0][1], false);
+  assert.equal('privateProfileState' in f.calls[0][1], false);
   f.coordinator.stop();
   assert.equal(f.coordinator.current(7), false);
+});
+
+test('profile Gateway port and health targets drive telemetry without global defaults', async () => {
+  const calls = [];
+  const targets = [
+    { host: 'one.example.test', port: 444 },
+    { host: 'two.example.test', port: 445 },
+  ];
+  const f = fixture({
+    gatewayPort: 8443,
+    healthTargets: targets,
+    ping: async (host, port) => { calls.push(['ping', host, port]); return 7; },
+    runHealthRound: async (options) => {
+      calls.push(['health', options.targets]);
+      return { kind: 'healthy', failedTargets: [] };
+    },
+  });
+  f.coordinator.start(7);
+  await f.coordinator.service.options.collectLatency();
+  await f.coordinator.checkHealth(7);
+  assert.deepEqual(calls, [
+    ['ping', 'gateway.example.test', 8443],
+    ['health', targets],
+  ]);
 });
 
 test('healthy evidence resets failures while three total failures trigger one reconnect', async () => {

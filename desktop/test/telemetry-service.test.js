@@ -21,7 +21,10 @@ test('visible telemetry collects app usage but hidden telemetry stops process en
   const service = new TelemetryService({
     collectApps: async () => { appsCalls += 1; return { connCount: 2, apps: [{ name: 'SSH' }] }; },
     collectLatency: async () => 12,
-    collectHealth: async () => ({ kind: 'healthy', failedTargets: [] }),
+    collectHealth: async () => ({
+      kind: 'site-failure',
+      failedTargets: ['internal-health.school.example'],
+    }),
     emit: (snapshot) => emissions.push(snapshot),
     isVisible: () => visible,
     isGenerationCurrent: (generation) => generation === 7,
@@ -37,6 +40,9 @@ test('visible telemetry collects app usage but hidden telemetry stops process en
   await flush();
   assert.equal(appsCalls, 1);
   assert.equal(emissions.at(-1).connCount, 2);
+  assert.equal(emissions.at(-1).failedHealthTargetCount, 1);
+  assert.equal('failedHealthTargets' in emissions.at(-1), false);
+  assert.equal(JSON.stringify(emissions.at(-1)).includes('internal-health.school.example'), false);
   assert.equal(timers.at(-1).delay, VISIBLE_PUMP_MS);
 
   visible = false;

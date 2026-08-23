@@ -1,6 +1,6 @@
 'use strict';
 
-const { CampusBrowser } = require('./campus-browser');
+const { CampusBrowser, DEFAULT_CAMPUS_HOME } = require('./campus-browser');
 const { CampusCredentialVault } = require('./campus-credential-vault');
 const { normalizeOpenRequest } = require('./campus-open-policy');
 
@@ -18,6 +18,7 @@ class CampusBrowserManager {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
     resolveRoute,
@@ -40,14 +41,14 @@ class CampusBrowserManager {
       }
     }
     if (!session || !dialog || !safeStorage || !certificateTrust || !routingPolicy ||
-        ![credentialFile, toolbarFile, toolbarPreload, campusPreload]
+        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, homeUrl]
           .every((value) => typeof value === 'string' && value)) {
       throw new TypeError('Campus Browser manager environment is incomplete');
     }
     Object.assign(this, {
       BrowserWindow, WebContentsView, session, dialog, safeStorage, platform,
       credentialFile, certificateTrust, parentWindow, toolbarFile, toolbarPreload,
-      campusPreload, routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
+      campusPreload, homeUrl, routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       getSocksPort, getLocale, getTranslator, showRoutingRules, reportError,
       CampusBrowserClass, CredentialVaultClass,
     });
@@ -76,6 +77,7 @@ class CampusBrowserManager {
       toolbarFile: this.toolbarFile,
       toolbarPreload: this.toolbarPreload,
       campusPreload: this.campusPreload,
+      homeUrl: this.homeUrl,
       routingPolicy: this.routingPolicy,
       ensureCampusReady: this.ensureCampusReady,
       onManageRoutingRules: this.showRoutingRules,

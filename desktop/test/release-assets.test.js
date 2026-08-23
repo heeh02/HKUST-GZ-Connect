@@ -106,6 +106,15 @@ test('ordinary CI exposes a stable three-platform package-verifier gate', () => 
   );
 });
 
+test('package verification binds the reviewed school profile before signing', () => {
+  assert.match(packageVerifier, /assertPackagedSchoolProfile\(archive,/u);
+  assert.match(packageVerifier, /packaged external Engine config differs from its profile binding/u);
+  assert.match(packageVerifier, /assets\/profiles\/manifest\.json/u);
+  assert.match(packageVerifier, /lib\/school-profile-runtime\.js/u);
+  assert.match(packageVerifier, /lib\/school-profile-controller\.js/u);
+  assert.match(packageVerifier, /lib\/control-state-snapshot\.js/u);
+});
+
 test('every shipped Engine build excludes test-only Cargo features', () => {
   const releaseBuilds = workflow.match(/cargo build[^\n]+/gu) || [];
   const ordinaryCiBuilds = ciWorkflow.match(/cargo build[^\n]+/gu) || [];

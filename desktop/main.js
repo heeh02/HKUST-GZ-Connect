@@ -45,8 +45,9 @@ const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
 const { savePacFile } = require('./lib/pac-file');
 const { pacDataUrl } = require('./lib/browser-session-manager');
 const { CampusBrowserManager } = require('./lib/campus-browser-manager');
-const { loadCampusResources, mergeCampusResources } = require('./lib/campus-resources');
+const { createSchoolProfileController } = require('./lib/school-profile-controller');
 const {
+  createControlStateSnapshot,
   registerControlDataIpc,
   registerCoreControlIpc,
   registerSettingsCredentialIpc,
@@ -119,7 +120,6 @@ const CREDENTIAL_TRANSACTION = path.join(DATA, 'credential-settings-transaction.
 const PROXY_CREDENTIAL = path.join(DATA, 'proxy-credential.bin');
 const PROXY_HELPER_CREDENTIAL = path.join(DATA, 'proxy-helper-credential.txt');
 const syntheticEngineE2e = !app.isPackaged && process.env[SYNTHETIC_ENGINE_E2E_ENV] === '1';
-const GATEWAY_HOST = syntheticEngineE2e ? '127.0.0.1' : 'remote.hkust-gz.edu.cn';
 
 // The helper sidecar is a short-lived, owner-only plaintext projection of the
 // encrypted stable credential. It is valid only while this app owns (or is
@@ -130,6 +130,18 @@ try { fs.unlinkSync(PROXY_HELPER_CREDENTIAL); } catch (error) {
     // cannot be safely replaced. Compatibility mode remains usable.
   }
 }
+
+// Profile/config validation may fail closed. Load it only after stale plaintext
+// proxy-helper state has been removed, but still before any credential recovery
+// or secure-store access.
+const activeSchoolProfile = createSchoolProfileController({
+  packageRoot: __dirname,
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  desktopDir: __dirname,
+});
+const GATEWAY_HOST = syntheticEngineE2e ? '127.0.0.1' : activeSchoolProfile.gatewayHost;
+const GATEWAY_PORT = activeSchoolProfile.gatewayPort;
 
 const credentialTransactionPaths = Object.freeze({
   settings: SETTINGS,
@@ -210,6 +222,7 @@ let credentialRecoveryErrorText = null;
 function loadSettings() {
   return readSettings(SETTINGS, {
     onRecovery: (notice) => { settingsRecoveryNotice = notice; },
+    defaultRouteDomains: activeSchoolProfile.defaultRouteDomains,
   });
 }
 function reportSettingsReadFailure(cause, { emitState = true } = {}) {
@@ -261,7 +274,9 @@ function assertSettingsPersistenceAvailable() {
 }
 function saveSettings(settings) {
   assertSettingsPersistenceAvailable();
-  return writeSettings(SETTINGS, settings);
+  return writeSettings(SETTINGS, settings, {
+    defaultRouteDomains: activeSchoolProfile.defaultRouteDomains,
+  });
 }
 function savePassword(pw) {
   return writePassword(CRED, pw, safeStorage, process.platform);
@@ -368,13 +383,13 @@ function proxyHelperPath() {
   });
 }
 function campusResources(settings = loadSettingsOrReport()) {
-  return mergeCampusResources(loadCampusResources(), settings.customResources);
+  return activeSchoolProfile.mergeResources(settings.customResources);
 }
 function safeCampusResources(settings = null) {
   try { return campusResources(settings || loadSettingsOrReport()); }
   catch (error) {
     reportSettingsReadFailure(error);
-    return mergeCampusResources(loadCampusResources(), []);
+    return activeSchoolProfile.mergeResources();
   }
 }
 const certificateTrustStore = new CampusCertificateTrustStore({
@@ -385,6 +400,7 @@ const domainRoutePolicy = new DomainRoutePolicyStore({
   filePath: ROUTING_RULES,
   customResources: () => loadSettingsOrReport().customResources,
   schoolDomains: () => loadSettingsOrReport().routeDomains,
+  directPartnerDomains: () => activeSchoolProfile.directPartnerDomains,
   serverResources: () => serverCampusResources,
 });
 
@@ -400,12 +416,6 @@ function enginePath() {
     path.join(dir, plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
     path.join(__dirname, '..', 'independent', 'target', 'release', plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
   ];
-  return candidates.find((p) => fs.existsSync(p)) || candidates[0];
-}
-function engineConfigPath() {
-  const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'engine', 'hkustgz.json')]
-    : [path.join(__dirname, '..', 'independent', 'config', 'hkustgz.json')];
   return candidates.find((p) => fs.existsSync(p)) || candidates[0];
 }
 function emit() {
@@ -706,6 +716,7 @@ async function connectOnce(isRetry, intent) {
   let s;
   let pw;
   let credentialResult;
+  let engineConfig;
   state.lastError = null;
   state.clientIp = null;
   state.dnsMode = 'unknown';
@@ -738,6 +749,17 @@ async function connectOnce(isRetry, intent) {
   // the path through EngineSupervisor.start() and stdin synchronous. A settings
   // save during log I/O therefore either lands in this snapshot, or runs after
   // the child is active and follows the normal reconnect path.
+  try {
+    // Validate the immutable reviewed profile/config binding before touching
+    // the credential store. A missing or replaced package profile must never
+    // cause a password to be decrypted for an unverified target.
+    engineConfig = activeSchoolProfile.verifyEngineConfig().path;
+  } catch {
+    connectionState.failIntent(intent);
+    state.lastError = t('error.engineConfigMissing');
+    emit();
+    return { ok: false, profileConfigInvalid: true };
+  }
   try {
     s = loadSettings();
     credentialResult = loadPasswordResult();
@@ -778,14 +800,13 @@ async function connectOnce(isRetry, intent) {
   const bin = launch.command;
   if (!fs.existsSync(bin)) {
     connectionState.failIntent(intent);
-    state.lastError = t('error.engineMissing', { path: bin });
+    state.lastError = t('error.engineMissing');
     emit();
     return { ok: false };
   }
-  const engineConfig = engineConfigPath();
   if (!fs.existsSync(engineConfig)) {
     connectionState.failIntent(intent);
-    state.lastError = t('error.engineConfigMissing', { path: engineConfig });
+    state.lastError = t('error.engineConfigMissing');
     emit();
     return { ok: false };
   }
@@ -1214,6 +1235,7 @@ campusBrowserManager = new CampusBrowserManager({
   toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
   toolbarPreload: path.join(__dirname, 'lib', 'campus-toolbar-contract.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
+  homeUrl: activeSchoolProfile.browserHomeUrl,
   routingPolicy: browserRoutingPolicy,
   ensureCampusReady,
   resolveRoute: (url) => domainRoutePolicy.resolve(url),
@@ -1294,40 +1316,15 @@ function trustedHandle(channel, handler) {
   });
 }
 
-function controlStateSnapshot() {
-  let settings;
-  try {
-    settings = loadSettingsOrReport();
-  } catch (error) {
-    return {
-      ...statusSnapshot(),
-      settings: null,
-      hasPassword: false,
-      pacUrl: pacUrl(),
-      loggedIn: false,
-      locale,
-      platform: process.platform,
-      version: app.getVersion(),
-      update: updateInfo,
-      campusResources: safeCampusResources({ customResources: [] }),
-      authChallenge: authChallengeCoordinator.snapshot(),
-    };
-  }
-  const passwordPresent = hasStoredCredential();
-  return {
-    ...statusSnapshot(),
-    settings,
-    hasPassword: passwordPresent,
-    pacUrl: pacUrl(),
-    loggedIn: passwordPresent && !!settings.username,
-    locale,
-    platform: process.platform,
-    version: app.getVersion(),
-    update: updateInfo,
-    campusResources: campusResources(settings),
-    authChallenge: authChallengeCoordinator.snapshot(),
-  };
-}
+const controlStateSnapshot = createControlStateSnapshot({
+  getStatus: statusSnapshot, loadSettings: loadSettingsOrReport,
+  hasCredential: hasStoredCredential, getPacUrl: pacUrl, getLocale: () => locale,
+  platform: process.platform, getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
+  getResources: campusResources,
+  getFallbackResources: () => safeCampusResources({ customResources: [] }),
+  getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
+  getAuthChallenge: () => authChallengeCoordinator.snapshot(),
+});
 
 for (const [channel, handler] of Object.entries(authChallengeCoordinator.ipcHandlers())) {
   trustedHandle(channel, handler);
@@ -1488,6 +1485,8 @@ desktopShell = new DesktopShell({
 telemetryCoordinator = new ConnectionTelemetryCoordinator({
   appPid: process.pid,
   gatewayHost: GATEWAY_HOST,
+  gatewayPort: GATEWAY_PORT,
+  healthTargets: activeSchoolProfile.healthTargets,
   getSocksPort: socksPort,
   getEnginePid: () => engineSupervisor.currentChild?.pid ?? -1,
   getProxyCredentials: (generation) => (

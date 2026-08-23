@@ -6,6 +6,9 @@ const { runConcurrentHealthRound } = require('./health-supervisor');
 const { probeSocksConnect } = require('./socks-health');
 const { TelemetryService } = require('./telemetry-service');
 const { PROBE_TIMEOUT_MS, shouldRecover } = require('./tunnel-health');
+const RENDERER_HEALTH_STATES = new Set([
+  'unknown', 'healthy', 'site-failure', 'tunnel-failure', 'settings-unavailable', 'stale',
+]);
 
 function tcpPing(host, port) {
   return new Promise((resolve) => {
@@ -23,10 +26,35 @@ function tcpPing(host, port) {
   });
 }
 
+function validHealthTargets(value) {
+  return Array.isArray(value) && value.length >= 2 && value.every((target) => (
+    target && typeof target.host === 'string' && target.host &&
+    Number.isInteger(target.port) && target.port >= 1 && target.port <= 65535
+  ));
+}
+
+function rendererTelemetrySnapshot(snapshot, connectedAt) {
+  const failedHealthTargetCount = Number(snapshot?.failedHealthTargetCount);
+  return {
+    connectedAt,
+    connCount: Math.max(0, Number(snapshot?.connCount) || 0),
+    apps: Array.isArray(snapshot?.apps) ? snapshot.apps : [],
+    latencyMs: Number.isFinite(snapshot?.latencyMs) ? snapshot.latencyMs : null,
+    tunnelHealth: RENDERER_HEALTH_STATES.has(snapshot?.tunnelHealth)
+      ? snapshot.tunnelHealth
+      : 'unknown',
+    failedHealthTargetCount: Number.isInteger(failedHealthTargetCount)
+      ? Math.max(0, Math.min(8, failedHealthTargetCount))
+      : 0,
+  };
+}
+
 class ConnectionTelemetryCoordinator {
   constructor({
     appPid,
     gatewayHost,
+    gatewayPort = 443,
+    healthTargets = null,
     getSocksPort,
     getEnginePid,
     getProxyCredentials,
@@ -56,11 +84,17 @@ class ConnectionTelemetryCoordinator {
       }
     }
     if (!Number.isInteger(appPid) || appPid <= 0 || typeof gatewayHost !== 'string' ||
+        !Number.isInteger(gatewayPort) || gatewayPort < 1 || gatewayPort > 65535 ||
+        (healthTargets !== null && !validHealthTargets(healthTargets)) ||
         !enumerator || typeof enumerator.list !== 'function') {
       throw new TypeError('connection telemetry environment is incomplete');
     }
     Object.assign(this, {
-      appPid, gatewayHost, getSocksPort, getEnginePid, getProxyCredentials,
+      appPid, gatewayHost, gatewayPort,
+      healthTargets: healthTargets === null
+        ? null
+        : Object.freeze(healthTargets.map((target) => Object.freeze({ ...target }))),
+      getSocksPort, getEnginePid, getProxyCredentials,
       isConnected, isEngineCurrent, isVisible, getConnectedAt, send,
       getAutoReconnect, isDesiredConnected, reconnect, onRecovering,
       enumerator, runHealthRound, probe, ping,
@@ -74,11 +108,11 @@ class ConnectionTelemetryCoordinator {
         enginePid: this.getEnginePid(),
         appPid: this.appPid,
       }),
-      collectLatency: () => this.ping(this.gatewayHost, 443),
+      collectLatency: () => this.ping(this.gatewayHost, this.gatewayPort),
       collectHealth: (generation) => this.checkHealth(generation),
       emit: (snapshot, generation) => {
         if (this.current(generation)) {
-          this.send({ connectedAt: this.getConnectedAt(), ...snapshot });
+          this.send(rendererTelemetrySnapshot(snapshot, this.getConnectedAt()));
         }
       },
       isVisible: this.isVisible,
@@ -116,6 +150,7 @@ class ConnectionTelemetryCoordinator {
       probe: this.probe,
       proxyPort,
       proxyCredentials: this.getProxyCredentials(generation),
+      ...(this.healthTargets === null ? {} : { targets: this.healthTargets }),
       timeoutMs: PROBE_TIMEOUT_MS,
     });
     if (result.kind === 'stale') return result;
@@ -146,4 +181,4 @@ class ConnectionTelemetryCoordinator {
   }
 }
 
-module.exports = { ConnectionTelemetryCoordinator, tcpPing };
+module.exports = { ConnectionTelemetryCoordinator, rendererTelemetrySnapshot, tcpPing };

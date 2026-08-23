@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "profileId": "hkustgz",
+  "profileRevision": 1,
+  "profileCredentialBindingRevision": 1,
+  "evidenceClass": "builtin-reviewed",
+  "branding": {
+    "localizedSchoolName": {
+      "zh": "香港科技大学(广州)",
+      "en": "The Hong Kong University of Science and Technology (Guangzhou)"
+    },
+    "shortName": "HKUST(GZ)",
+    "bundledAssetKey": "hkustgz-logo"
+  },
+  "gateway": {
+    "origin": "https://remote.hkust-gz.edu.cn",
+    "protocolFamily": "easyconnect-password-modern-l3-v1",
+    "engineConfigRef": "hkustgz-engine-config"
+  },
+  "browser": {
+    "homeUrl": "https://www.hkust-gz.edu.cn/",
+    "campusDomains": [
+      "hkust-gz.edu.cn",
+      "hkust.edu.hk"
+    ],
+    "directPartnerDomains": [
+      "outlook.office.com",
+      "microsoftonline.com",
+      "microsoftonline-p.com",
+      "msauth.net",
+      "msftauth.net",
+      "office.com",
+      "office.net",
+      "hkust-gz.instructure.com",
+      "instructure.com",
+      "instructuremedia.com"
+    ],
+    "builtinResources": [
+      {
+        "id": "home",
+        "name": "学校主页",
+        "description": "新闻、院系与校园信息",
+        "url": "https://www.hkust-gz.edu.cn/"
+      },
+      {
+        "id": "one-stop",
+        "name": "一站式办事大厅",
+        "description": "师生事务与在线申请",
+        "url": "https://onestop-online.hkust-gz.edu.cn/"
+      },
+      {
+        "id": "library",
+        "name": "图书馆",
+        "description": "馆藏、数据库与学习资源",
+        "url": "https://library.hkust-gz.edu.cn/"
+      },
+      {
+        "id": "new-student",
+        "name": "迎新系统",
+        "description": "新生任务与入学指引",
+        "url": "https://nso.hkust-gz.edu.cn/"
+      },
+      {
+        "id": "outlook",
+        "name": "Outlook 邮箱",
+        "description": "Microsoft 365 邮件与日历 · 直连",
+        "url": "https://outlook.office.com/owa/",
+        "route": "direct"
+      },
+      {
+        "id": "canvas",
+        "name": "Canvas 教学平台",
+        "description": "课程、作业与教学资料 · 直连",
+        "url": "https://hkust-gz.instructure.com/",
+        "route": "direct"
+      }
+    ],
+    "healthTargets": [
+      {
+        "host": "www.hkust-gz.edu.cn",
+        "port": 443
+      },
+      {
+        "host": "library.hkust-gz.edu.cn",
+        "port": 443
+      }
+    ]
+  },
+  "policy": {
+    "reviewedPrivateGatewayAllowed": false,
+    "reviewedDnsFallback": [
+      "10.90.63.2",
+      "10.90.63.3"
+    ]
+  }
+}
