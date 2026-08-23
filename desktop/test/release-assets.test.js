@@ -10,6 +10,8 @@ const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json
 const workflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'build.yml'), 'utf8');
 const ciWorkflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 const localEngineBuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'build-engine.sh'), 'utf8');
+const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent', 'Cargo.toml'), 'utf8');
+const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
 
 test('cross-platform desktop checks explicitly run under Bash', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
@@ -119,4 +121,14 @@ test('release builds strictly verify macOS signatures and smoke-test unpacked ap
   assert.match(workflow, /softwareupdate --install-rosetta --agree-to-license/u);
   assert.match(workflow, /timeout --kill-after=2s 3s xvfb-run -a/u);
   assert.match(workflow, /HKUSTGZ_USER_DATA_DIR/u);
+});
+
+test('macOS native release binaries cannot depend on Homebrew libraries', () => {
+  assert.match(
+    engineManifest,
+    /xz2\s*=\s*\{[^\n]*features\s*=\s*\["static"\]/u,
+    'liblzma must be linked from vendored static source instead of host pkg-config',
+  );
+  assert.match(packageVerifier, /assertMacSystemOnlyDylibs\(executable\)/u);
+  assert.match(packageVerifier, /packaged macOS native executable depends on a non-system dylib/u);
 });

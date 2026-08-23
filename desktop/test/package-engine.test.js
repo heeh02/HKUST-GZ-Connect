@@ -13,12 +13,15 @@ const {
 } = require('../build/afterPack');
 const {
   TEST_ONLY_ENGINE_MARKER,
+  assertMacDylibDependenciesAllowed,
+  assertMacSystemOnlyDylibs,
   assertCustomResourceManager,
   assertExactNativeResources,
   assertLinuxElfArchitecture,
   assertNoTestOnlyEngineMarker,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
+  parseMachODylibDependencies,
   resolveResourcesDirectory,
 } = require('../build/verify-package');
 
@@ -143,6 +146,37 @@ test('package verification accepts x86_64 ELF executables and rejects another ar
   assert.throws(
     () => assertLinuxElfArchitecture(executable, 'arm64'),
     /not a arm64 Linux ELF executable/,
+  );
+});
+
+test('macOS package verification rejects Homebrew and other host-only dylibs', () => {
+  const dependencies = parseMachODylibDependencies(`fixture-engine:
+\t/opt/homebrew/opt/xz/lib/liblzma.5.dylib (compatibility version 14.0.0, current version 14.3.0)
+\t/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
+\t/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 61439.120.27)
+`);
+  assert.deepEqual(dependencies, [
+    '/opt/homebrew/opt/xz/lib/liblzma.5.dylib',
+    '/usr/lib/libiconv.2.dylib',
+    '/System/Library/Frameworks/Security.framework/Versions/A/Security',
+  ]);
+  assert.throws(
+    () => assertMacDylibDependenciesAllowed(dependencies),
+    /non-system dylib: \/opt\/homebrew\/opt\/xz\/lib\/liblzma\.5\.dylib/u,
+  );
+  assert.doesNotThrow(() => assertMacDylibDependenciesAllowed(dependencies.slice(1)));
+  assert.throws(
+    () => assertMacSystemOnlyDylibs('/definitely/missing/native-executable'),
+    /otool diagnostics failed|ENOENT/u,
+  );
+  for (const dependency of dependencies.slice(1)) {
+    assert.ok(
+      dependency.startsWith('/usr/lib/') || dependency.startsWith('/System/Library/'),
+    );
+  }
+  assert.equal(
+    dependencies[0].startsWith('/usr/lib/') || dependencies[0].startsWith('/System/Library/'),
+    false,
   );
 });
 

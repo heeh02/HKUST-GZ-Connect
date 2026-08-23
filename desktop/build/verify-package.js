@@ -10,6 +10,7 @@ const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[
 const TEST_ONLY_ENGINE_MARKER = 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1';
 const TEST_ONLY_ENGINE_MARKER_BYTES = Buffer.from(TEST_ONLY_ENGINE_MARKER, 'ascii');
 const MARKER_SCAN_CHUNK_BYTES = 64 * 1024;
+const MAC_SYSTEM_DYLIB_PREFIXES = ['/usr/lib/', '/System/Library/'];
 
 function resolveResourcesDirectory(input) {
   const resolved = path.resolve(input);
@@ -62,6 +63,37 @@ function assertLinuxElfArchitecture(executable, architectureName) {
       `packaged binary is not a ${architectureName} Linux ELF executable: ${executable}`,
     );
   }
+}
+
+function parseMachODylibDependencies(output) {
+  const lines = String(output || '').split(/\r?\n/u);
+  return lines.slice(1).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const metadata = line.indexOf(' (compatibility version ');
+    return metadata >= 0 ? line.slice(0, metadata) : line.split(/\s+/u)[0];
+  }).filter(Boolean);
+}
+
+function assertMacDylibDependenciesAllowed(dependencies) {
+  for (const dependency of dependencies) {
+    if (!MAC_SYSTEM_DYLIB_PREFIXES.some((prefix) => dependency.startsWith(prefix))) {
+      throw new Error(
+        `packaged macOS native executable depends on a non-system dylib: ${dependency}`,
+      );
+    }
+  }
+}
+
+function assertMacSystemOnlyDylibs(executable) {
+  const result = spawnSync('otool', ['-L', executable], { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `otool diagnostics failed for ${executable}: ${String(result.stderr || '').trim()}`,
+    );
+  }
+  const dependencies = parseMachODylibDependencies(result.stdout);
+  assertMacDylibDependenciesAllowed(dependencies);
+  return dependencies;
 }
 
 function assertNoTestOnlyEngineMarker(executable) {
@@ -347,6 +379,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     for (const executable of [engine, proxyCommand]) {
       assertLinuxElfArchitecture(executable, architectureName);
     }
+  } else if (platformName === 'darwin') {
+    for (const executable of [engine, proxyCommand]) {
+      assertMacSystemOnlyDylibs(executable);
+    }
   }
 
   const packagedManifest = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
@@ -369,6 +405,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 
 module.exports = {
   TEST_ONLY_ENGINE_MARKER,
+  assertMacDylibDependenciesAllowed,
+  assertMacSystemOnlyDylibs,
   assertLinuxElfArchitecture,
   assertCustomResourceManager,
   assertExactNativeResources,
@@ -376,6 +414,7 @@ module.exports = {
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   parseArguments,
+  parseMachODylibDependencies,
   readMacSignature,
   resolveMacAppPath,
   resolveResourcesDirectory,
