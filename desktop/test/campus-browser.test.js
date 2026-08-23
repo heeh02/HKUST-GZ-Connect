@@ -986,6 +986,40 @@ test('popup MFA shares only flow ownership and blocks the originating tab', asyn
   ]]);
 });
 
+test('popup creation failure releases its reservation and rolls back the partial tab', async () => {
+  const errors = [];
+  const { browser } = createFakeBrowser({
+    credentialVault: { get: async () => null, save: async () => {} },
+    onError: (message) => errors.push(message),
+  });
+  await browser.open('sso.example.edu/login', 1080);
+  const owner = browser.activeTab();
+  const ownerContents = owner.view.webContents;
+  ownerContents.emit('ipc-message', {}, 'campus-credential-candidate', {
+    origin: 'https://sso.example.edu',
+    username: 'student001',
+    password: 'local-secret',
+  });
+  assert.ok(owner.pendingCredential);
+
+  browser.window.contentView.addChildView = () => {
+    throw new Error('synthetic native view failure');
+  };
+  assert.deepEqual(ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' }), {
+    action: 'deny',
+  });
+  await nextImmediate();
+  await nextImmediate();
+
+  assert.equal(browser.tabs.length, 1);
+  assert.equal(browser.activeTab(), owner);
+  assert.equal(owner.pendingCredential.password, 'local-secret');
+  const flow = browser.credentialController.flowFor(owner);
+  assert.equal(flow.reservations, 0);
+  assert.equal(flow.popups.size, 0);
+  assert.deepEqual(errors, ['新标签页创建失败，请重试']);
+});
+
 test('a post-navigation login form is treated as failure and never saved', async () => {
   let promptCount = 0;
   let saveCount = 0;

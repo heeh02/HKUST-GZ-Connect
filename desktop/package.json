@@ -20,10 +20,10 @@
     "test:main-engine-lifecycle": "electron e2e/main-engine-lifecycle.electron.js",
     "test:strict-proxy-auth": "electron e2e/strict-proxy-auth.electron.js",
     "start": "electron .",
-    "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win --x64",
-    "dist:linux": "electron-builder --linux AppImage --x64"
+    "dist": "electron-builder --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",

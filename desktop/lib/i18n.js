@@ -107,6 +107,7 @@ const dictionaries = {
 
     'tab.new': '新标签页',
     'tab.limit': '最多同时打开 {count} 个标签页，请先关闭不再使用的页面',
+    'tab.createFailed': '新标签页创建失败，请重试',
     'browser.windowTitle': 'HKUST(GZ) 校园浏览器',
 
     'cert.unknown': '未知',
@@ -251,6 +252,7 @@ const dictionaries = {
 
     'tab.new': 'New Tab',
     'tab.limit': 'Up to {count} tabs can be open; close a tab you no longer need',
+    'tab.createFailed': 'Could not create a new tab; try again',
     'browser.windowTitle': 'HKUST(GZ) Campus Browser',
 
     'cert.unknown': 'Unknown',

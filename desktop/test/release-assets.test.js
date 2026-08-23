@@ -10,6 +10,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json
 const workflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'build.yml'), 'utf8');
 const ciWorkflow = fs.readFileSync(path.join(desktopRoot, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 const localEngineBuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'build-engine.sh'), 'utf8');
+const localMacRebuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'rebuild-mac.sh'), 'utf8');
 const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent', 'Cargo.toml'), 'utf8');
 const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
 
@@ -58,6 +59,20 @@ test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux Ap
   );
   assert.match(workflow, /no macOS DMG was produced/, 'a failed DMG build must fail the cloud job');
   assert.match(workflow, /no Linux AppImage was produced/, 'a failed AppImage build must fail the cloud job');
+});
+
+test('electron-builder never publishes implicitly from build jobs or local scripts', () => {
+  for (const scriptName of ['dist', 'dist:mac', 'dist:win', 'dist:linux']) {
+    assert.match(manifest.scripts[scriptName], /--publish never/u, scriptName);
+  }
+  const builderCommands = [workflow, localMacRebuild]
+    .flatMap((source) => source.match(/[^\n]*npx electron-builder[^\n]*/gu) || []);
+  assert.ok(builderCommands.length >= 2);
+  for (const command of builderCommands) {
+    assert.match(command, /--publish never/u, command);
+  }
+  assert.match(workflow, /release:[\s\S]*permissions:[\s\S]*contents: write/u);
+  assert.match(workflow, /release:[\s\S]*softprops\/action-gh-release@/u);
 });
 
 test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', () => {

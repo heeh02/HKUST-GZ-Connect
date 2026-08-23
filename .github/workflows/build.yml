@@ -169,7 +169,7 @@ jobs:
             local build_arch="$1"
             local built=0
             for i in 1 2 3; do
-              if npx electron-builder --mac dmg "--${build_arch}"; then
+              if npx electron-builder --mac dmg "--${build_arch}" --publish never; then
                 built=1
                 break
               fi
