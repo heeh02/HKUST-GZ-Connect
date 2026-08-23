@@ -13,7 +13,7 @@
 | C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join；exact-SHA三平台package/smoke通过 | Real Gateway canary and long soak |
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
 | C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine 100轮post-Transport netstack/listener/stop/join/port-release soak | 真实Gateway lifecycle与30分钟persistent资源soak |
-| C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `db4ff47`通过 | Developer ID/notarization与正式release source reconciliation |
+| C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `6efca3c`通过；所有builder显式`--publish never` | Developer ID/notarization与正式release source reconciliation |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
 

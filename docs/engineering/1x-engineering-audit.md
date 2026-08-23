@@ -2,7 +2,7 @@
 
 日期：2026-08-23
 
-收束实现与package候选快照：`db4ff473934461c28c0772c9d6f517874ccebc04`。
+收束实现与package候选快照：`6efca3c2b762a9b2b47f74b11b965b2c126e5c91`。
 第2节保留的是审计开始时的历史基线；第7节记录整改后的当前结论，不能用旧计数覆盖新证据。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
@@ -26,8 +26,9 @@ post-Transport子进程回归均已建立。后者是feature-gated、无外部�
 远端PR CI、Windows proxy-sidecar DACL与当前SHA三平台原生产物现已通过。尚不能宣布
 Architecture Frozen 的原因已收窄为学校真实canary、30分钟packaged资源soak、`main`
 branch protection/required checks、最终维护者review、merge/tag/release source reconciliation。
-因此仍是合并与发布No-Go，而不是已知本地production缺陷。v1.2.3仍是patch release；
-本轮没有新增真实认证方式或用户功能。
+因此Architecture Frozen仍未完成，但维护者已明确接受这些外部证据边界并授权v1.2.3
+候选进入merge/tag clean-build流程。它仍是patch release；本轮没有新增真实认证方式或
+用户功能。
 
 ## 2. Baseline evidence
 
@@ -36,13 +37,13 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 | Rust fmt | PASS |
 | Rust Clippy workspace/all targets/features | PASS，0 warnings |
 | Rust tests | 261 passed，0 failed，2 个显式 release 性能门 ignored |
-| Desktop tests | 528 total；527 passed，1 Windows-only skipped（本地macOS） |
+| Desktop tests | 530 total；529 passed，1 Windows-only skipped（本地macOS） |
 | npm audit high | 0 vulnerabilities |
 | Desktop architecture | 194 files / 244 edges / 0 cycles / Main 1596 / Renderer 524 |
 | Exact Git tree secret gate | PASS |
 | Main/MFA/popup/strict proxy/auth-pipe Electron | PASS |
-| Remote CI for this branch | PASS：`32624450530`、`32624450555` |
-| Current v1.2.3 macOS/Windows/Linux artifacts | PASS：`32624449027`，exact SHA `db4ff47` |
+| Remote CI for this branch | PASS：`32628684472`、`32628684427` |
+| Current v1.2.3 macOS/Windows/Linux artifacts | PASS：`32628682638`，exact SHA `6efca3c` |
 | Real HKUST canary for this exact tree | Missing |
 
 本地synthetic/offline与三平台package结果不等于真实Gateway、所有Windows私有文件类别或
@@ -302,6 +303,26 @@ branch protection/required checks、最终维护者review、merge/tag/release so
   close恰好1次unlink。
 - **Priority**：v1.2.3发布前。
 
+### A-22 — popup tab creation lacked a terminal exception boundary
+
+- **Evidence**：popup被`setImmediate`延迟创建；原实现直接调用`createTab`。Electron原生
+  View构造、挂载或窗口关闭竞态抛出时可成为Main未捕获异常，并保留credential reservation。
+- **Severity**：P2 Desktop stability / credential-flow liveness。
+- **Fix**：popup外层使用`try/finally`；`createTab`事务拥有固定window、partial View/Tab、
+  credential flow与previous active tab，任何失败均回滚并返回固定用户提示。故障注入验证
+  `addChildView`抛出后仅保留原tab、reservation/popups均为0、候选密码仍只在owner。
+- **Priority**：v1.2.3发布前。
+
+### A-23 — electron-builder could enter implicit on-tag publishing
+
+- **Evidence**：electron-builder 26在tag环境可能把未指定publish policy的命令解释为
+  `onTag`，与仓库设计的tag-only release job形成双publisher路径。
+- **Severity**：P1 release correctness / authority boundary。
+- **Fix**：package scripts、mac matrix直接命令和local rebuild全部显式`--publish never`；
+  contract test锁定。run `32628682638`全日志无implicit publishing或上传尝试，唯一
+  `contents: write`仍只在tag条件release job。
+- **Priority**：合并/tag前。
+
 ## 5. Technical debt that is not a rewrite mandate
 
 - `desktop/main.js`、`ec-engine.rs`、`socks.rs`仍大，但已有边界和 ratchet；只沿实际生命周期/
@@ -320,7 +341,7 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 
 ## 7. Convergence disposition
 
-当前实现提交：`db4ff47`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
+当前实现提交：`6efca3c`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
 环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
@@ -337,15 +358,17 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 | A-10 Password→MFA total budget | Deferred activation gate | 当前production仍password-only；真实provider前必须完成，不冒充v1.2.3功能 |
 | A-11 credential availability | Fixed | missing/unavailable/corrupt/decrypt_failed typed结果和行动文案 |
 | A-12 control renderer recovery | Fixed | visible/hidden renderer crash destroy/recreate；旧sender失效 |
-| A-13 package native exactness | Fixed with remote evidence | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；官方构建显式no-default-features；run `32624449027`三平台verifier/smoke通过 |
+| A-13 package native exactness | Fixed with remote evidence | exact per-platform native allowlist；wrong arch/extra/symlink/test/PKI拒绝；官方构建显式no-default-features；run `32628682638`三平台verifier/smoke通过 |
 | A-14 DNS owner/CNAME validation | Fixed | QR/OPCODE/question/owner/bounded CNAME/TTL/TC同resolver验证 |
 | A-15 Chromium DIRECT rebinding | Accepted 1.x limitation | ADR-0002；2.0 ControlledDirectExit；未声称resolved-address隔离 |
 | A-16 route evaluator drift | Partially fixed | deterministic 1,024-case JS/PAC differential；versioned IR与100k corpus保留2.0 |
 | A-17 underlay change observation | Deferred evidence-triggered | `.no_proxy()`已关闭HTTP环境递归；explicit underlay保留2.0 |
 | A-18 documentation drift | Fixed | ROADMAP/compatibility/architecture使用Implementation+Evidence双轴 |
 | A-19 remote governance | Partially closed | PR #5、ordinary CI、Windows sidecar DACL和三平台exact-SHA package已完成；`main` protection仍404，最终review/merge/tag/source reconciliation与学校canary仍开放 |
-| A-20 Homebrew liblzma leakage | Fixed with package gate | vendored static liblzma；真实`otool -L` system-only门；修复前v1.2.2与v1.2.3 arm64 package证据已作废；run `32624449027`上传后的arm64/x64 DMG均只依赖`/usr/lib/libiconv.2.dylib`与`/usr/lib/libSystem.B.dylib` |
+| A-20 Homebrew liblzma leakage | Fixed with package gate | vendored static liblzma；真实`otool -L` system-only门；修复前v1.2.2与v1.2.3 arm64 package证据已作废；run `32628682638`双架构package gate通过 |
 | A-21 stale close sidecar deletion | Fixed | generation-aware proxy cleanup；stale Supervisor/FSM均0次unlink，current close恰好1次；PR review thread已resolve |
+| A-22 popup creation exception | Fixed | 事务式View/Tab/credential-flow回滚；native addChild故障注入和真实popup MFA E2E通过 |
+| A-23 implicit builder publish | Fixed | 所有builder显式`--publish never`；唯一tag release job持有write；manual run无隐式上传 |
 
 ### Current local verification
 
@@ -355,7 +378,7 @@ branch protection/required checks、最终维护者review、merge/tag/release so
   不再通过进程级环境变量写入使用`unsafe`。
 - 真实Rust `ec-engine` non-routing post-Transport soak：100/100轮通过，总耗时12.7秒，
   最慢单轮361 ms；每轮child wait、reader join、SOCKS greeting、stop和exact port重绑通过。
-- Desktop：528 total，527 passed，0 failed，1个Windows-only DACL测试在macOS跳过；
+- Desktop：530 total，529 passed，0 failed，1个Windows-only DACL测试在macOS跳过；
   最终Windows runner DACL job通过。
 - Desktop graph：194 files / 244 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
@@ -364,6 +387,7 @@ branch protection/required checks、最终维护者review、merge/tag/release so
   仍须对其exact tree重新执行。
 
 当前未发现仍成立的本地代码级P0/P1；远端CI、current-SHA原生包与Windows sidecar DACL
-也已通过。Architecture Frozen和Release仍为NO：真实HPC/Gateway、Clash/SSH、校园SSO、
-sleep/wake与网络切换、系统网络before/after、30分钟packaged soak、`main` protection、最终
-review/merge/tag/release truth仍未取得。
+也已通过。Architecture Frozen仍为NO；真实HPC/Gateway、Clash/SSH、校园SSO、sleep/wake、
+网络切换、系统网络before/after、30分钟packaged soak与`main` protection继续作为未验证
+边界披露。维护者已授权v1.2.3 Release Candidate GO；正式发布仍以merge commit精确tag、
+tag run三平台及唯一release job成功、资产/说明复核为条件。

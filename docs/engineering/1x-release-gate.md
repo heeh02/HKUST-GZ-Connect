@@ -1,8 +1,9 @@
 # 1.x Architecture Frozen and Release Gate
 
-状态：No-Go。勾选项只表示当前固定证据；未勾选项不得由“应该能工作”替代。
+状态：代码/package候选GO，正式发布以合并commit的tag build成功为条件。勾选项只表示
+当前固定证据；未勾选项作为明确披露的证据边界，不得由“应该能工作”替代。
 
-实现与package候选证据基线：`db4ff473934461c28c0772c9d6f517874ccebc04`；后续纯文档
+实现与package候选证据基线：`6efca3c2b762a9b2b47f74b11b965b2c126e5c91`；后续纯文档
 提交不改变该实现树。若再修改production代码，必须重新固定SHA并重跑相应门禁。
 本轮产品版本仍为v1.2.3：新增内容属于补丁级稳定性、诊断、回归和交付门禁，不是新的
 production Gateway能力。
@@ -10,10 +11,10 @@ production Gateway能力。
 ## 1. Source and governance
 
 - [x] 当前本地审计 HEAD和分支已记录。
-- [x] 实现快照`db4ff47`的exact tree secret gate通过。
+- [x] 实现快照`6efca3c`的exact tree secret gate通过。
 - [x] Review branch已push；PR #5包含候选实现提交，package run的source SHA与其一致。
 - [x] PR #5包含全部候选改动，自动review意见已处理并resolve。
-- [ ] 最终维护者review与合并授权完成。
+- [x] 最终维护者review完成，并已明确授权合并与发布v1.2.3。
 - [ ] `main` required checks、latest commit、review和no-force-push已启用。
 - [ ] 合并commit、tag和release source SHA一致。
 
@@ -95,6 +96,8 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] 20-tab synthetic soak和routing restart通过。
 - [x] Main+synthetic Engine完整connect/listener/stop/retry E2E。
 - [x] Control renderer crash后窗口可重建且健康Engine不被误停。
+- [x] popup原生View/窗口竞态失败会事务回滚Tab、View与credential reservation，且不会
+  形成Main未捕获异常。
 - [ ] Campus site、Outlook/Canvas direct→SAML return真实canary。
 - [x] 1.x Chromium `DIRECT` resolved-address限制已由ADR-0002正式接受；2.0 ControlledDirectExit负责消除。
 
@@ -104,7 +107,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] Rust Clippy `-D warnings`通过。
 - [x] 第一方Rust所有target以Cargo lint禁止`unsafe`代码。
 - [x] Rust tests：当前收束树全量通过；精确数量记录在最终验证快照。
-- [x] 本地macOS Desktop tests：528 total / 527 passed / 0 failed / 1 Windows-only skipped。
+- [x] 本地macOS Desktop tests：530 total / 529 passed / 0 failed / 1 Windows-only skipped。
 - [x] npm audit high：0 vulnerabilities。
 - [x] Architecture/cycle gate通过。
 - [x] 最终本地候选HEAD（含文档提交）的exact tree secret gate通过。
@@ -114,7 +117,7 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [ ] 30分钟persistent packaged Desktop/Browser RSS、FD/handle、task/thread净增长soak通过。
 - [x] Windows runner的plaintext proxy helper sidecar current-user-only、inheritance-protected
   DACL test通过。
-- [x] 候选SHA ordinary PR CI jobs全部绿色（runs `32624450530`、`32624450555`；
+- [x] 候选SHA ordinary PR CI jobs全部绿色（runs `32628684472`、`32628684427`；
   live compatibility在PR场景按设计skip）。
 - [ ] `main`已将相应jobs配置为required checks。
 
@@ -125,28 +128,28 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 - [x] 所有官方production/package构建显式关闭test feature；`afterPack`在签名前拒绝fixture marker，独立verifier在打包后再次拒绝。
 - [x] liblzma使用vendored static构建；macOS verifier对Engine与SSH helper执行system-only
   `otool -L`门，拒绝Homebrew、`/usr/local`及其他host-only dylib。
+- [x] 所有electron-builder入口显式`--publish never`；唯一写权限publisher是tag-only
+  release job，manual build没有隐式发布警告或上传尝试。
 - [x] macOS arm64 clean package verifier和launch smoke。
 - [x] macOS x64 clean package verifier和launch smoke。
 - [x] Windows x64 NSIS/unpacked verifier和launch smoke。
 - [x] Linux x64 AppImage/unpacked verifier和launch smoke。
 - [x] macOS ad-hoc签名通过`codesign --verify --deep --strict`；这不等于Developer ID
   或notarization。
-- [x] 三平台产物来自同一GitHub clean checkout/exact SHA `db4ff47`。
+- [x] 三平台产物来自同一GitHub clean checkout/exact SHA `6efca3c`。
 - [x] GitHub runner从clean checkout生成并上传，没有复用本地`desktop/release`。
 
 ### Fixed remote evidence
 
 | Evidence | Result |
 | --- | --- |
-| PR | #5；implementation/package SHA `db4ff473934461c28c0772c9d6f517874ccebc04`；后续仅文档提交不冒充artifact source |
-| Ordinary CI | `32624450530` |
-| Compatibility CI | `32624450555` |
-| Cross-platform package | `32624449027`，三平台jobs全部success |
-| mac artifact | `9489406006`；artifact ZIP digest `sha256:b5e840ce6a38e5d1d83d657c92ad9a3255cd616f5592f799a0acfd8d563ea016` |
-| mac arm64 DMG | `sha256:fddb4a1a8372c464d559422e8bd99204f1fff52de5de3e1b450ccba3707f909e`；Engine/helper仅`/usr/lib`系统依赖 |
-| mac x64 DMG | `sha256:b8190d9a2d346f46b67e76b263948f0c7a7d19b89757f1eaf8e206d37b78b898`；Engine/helper仅`/usr/lib`系统依赖 |
-| Windows artifact | `9489382549`；artifact ZIP digest `sha256:032fb600a604c8089dc6cd8f282fa11a7d7352f3559355aef0ede5af60e841ad` |
-| Linux artifact | `9489333058`；artifact ZIP digest `sha256:438a1367c793b3478b1a45fb0c78714d1d2717fe63e741731d2e14377658f2d0` |
+| PR | #5；implementation/package SHA `6efca3c2b762a9b2b47f74b11b965b2c126e5c91`；后续仅文档提交不冒充artifact source |
+| Ordinary CI | `32628684472` |
+| Compatibility CI | `32628684427` |
+| Cross-platform package | `32628682638`，三平台jobs全部success，release job按manual场景skip |
+| mac artifact | `9490520137`；artifact ZIP digest `sha256:989b3725a883069ead91c7294b9d13016679d8e72793576f182c784d9c370b64`；双架构adhoc/verifier/codesign/smoke通过 |
+| Windows artifact | `9490498992`；artifact ZIP digest `sha256:7dc9243ae52dbb241af2175b427c51813db4382f2c60fc6c9ad0dd29988e32ec` |
+| Linux artifact | `9490456479`；artifact ZIP digest `sha256:389e0183fd3ae1210ac0b48b4b42837ffb8996eb77b0dc13d8345673f19d961f` |
 
 ## 10. Documentation and capability truth
 
@@ -161,16 +164,17 @@ v1.2.3的GO/NO-GO，也不能因为已有generic fixture而提前勾选：
 
 ## 11. Release decision
 
-只有所有适用P0/P1和平台/真实环境硬门完成，才可写：
+代码、package和发布链审查已经通过。维护者于2026-08-23明确接受以下未验证边界作为
+v1.2.3发布风险，而不是把它们改写为已验证：真实Gateway/HPC/Clash/SSH/SAML canary、
+30分钟packaged soak、`main` branch protection、Developer ID/notarization与Windows
+Authenticode。Release notes必须逐项披露。
 
-```text
-1.x Architecture Frozen: YES
-Release: GO
-```
+正式发布仍必须满足：PR以merge commit进入`main`；`v1.2.3`精确指向该merge commit；
+同一tag run三平台build/verifier/smoke及唯一release job全部成功；Release资产和说明复核完成。
 
 当前结论：
 
 ```text
 1.x Architecture Frozen: NO
-Release: NO-GO
+v1.2.3 Release Candidate: GO (conditional on tagged clean build)
 ```
