@@ -7,7 +7,7 @@ This manifest records identities only. No proprietary artifact is stored in the 
 | Field | Value |
 | --- | --- |
 | Evidence identity | `installed-mutated` |
-| Local source | `/Applications/EasyConnect.app` |
+| Source class | Locally installed macOS application bundle; restricted locator held outside Git |
 | Bundle identifier | `com.sangfor.Easyconnect` |
 | Display version/build | `7.6.7` / `6` |
 | Main architecture | x86_64 |
@@ -22,7 +22,9 @@ This manifest records identities only. No proprietary artifact is stored in the 
 
 The installed bundle contains runtime-created socket entries, so strict bundle verification no longer proves
 the pristine installer contents. No socket content, user setting, log, credential or session was read. Do not
-extract this sample for implementation evidence; obtain a pristine installer first.
+use this sample for official parity or version-baseline evidence; obtain a pristine installer first. The
+authorized feature/topology summary is
+[`macos-7.6.7-static-observation.md`](macos-7.6.7-static-observation.md).
 
 ## EC-LINUX-PUBLIC-7.6.7.3
 

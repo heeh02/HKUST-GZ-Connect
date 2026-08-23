@@ -70,4 +70,6 @@ attestation/private keys or activity outside the authorized matrix.
 
 The installed macOS application is an `installed-mutated` sample because runtime-created socket entries are
 present inside the bundle. It is useful for topology clues but must not be treated as a pristine official
-file baseline. Acquire a signed, hash-fixed installer before extraction or version-differential work.
+file baseline. Its authorized static topology observation is recorded in
+[`macos-7.6.7-static-observation.md`](macos-7.6.7-static-observation.md). Acquire a signed, hash-fixed
+installer before version-differential or official-parity work.

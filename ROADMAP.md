@@ -165,6 +165,10 @@ working user feature.
 [`docs/plans/2.0-preparation-execution-plan.md`](docs/plans/2.0-preparation-execution-plan.md)。
 该计划当前只授权研究和架构准备，不授权production功能或Release。
 
+2.0产品目标扩展为多学校profile：登录页提供reviewed学校preset及`Other`自定义HTTPS
+Gateway。自定义Gateway先进行无凭据兼容性探测和身份确认，再进入profile隔离的账号登录；
+不得通过猜协议并自动提交密码实现“通用兼容”。
+
 The trigger for implementation is evidence that the school has enabled a
 specific capability on a controlled test profile. Work should then cover only
 that capability, compare it with the supported official client, and pass the
