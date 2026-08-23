@@ -153,19 +153,37 @@ Control v3、synthetic provider和Campus Browser网页MFA安全只证明架构�
 [`docs/architecture/mfa-architecture.md`](docs/architecture/mfa-architecture.md)。在真实证据
 出现前，1.3保持`Deferred / evidence-triggered`，项目不猜测endpoint、验证码形状或渠道映射。
 
-## Future 2.0.0 EasyConnect compatibility contingency plan
+## Campus Connect 2.0 product roadmap
 
-This section is deliberately inactive in the 1.x maintenance line. It records
-what the code can and cannot do today so the school has a reviewed starting
-point if an optional EasyConnect feature is enabled later. It is not a 2.0.0
-release commitment, and none of the Partial entries below is advertised as a
-working user feature.
+The 1.x line remains maintenance-only. 2.0 preparation is now an active,
+incremental product program, but the capability rows below remain evidence
+gated and none of the Partial entries is advertised as a working user feature.
 
-The trigger for implementation is evidence that the school has enabled a
-specific capability on a controlled test profile. Work should then cover only
-that capability, compare it with the supported official client, and pass the
-promotion checklist below before its evidence level changes or it is marked
-Supported.
+2.0准备阶段的证据、clean-room、架构接缝与分阶段PR计划见
+[`docs/plans/2.0-preparation-execution-plan.md`](docs/plans/2.0-preparation-execution-plan.md)。
+该计划当前只授权研究和架构准备，不授权production功能或Release。
+
+2.0产品目标是 **Campus Workspace + Secure Access Runtime**：普通用户从资源搜索、收藏、最近
+访问和通知进入，连接按资源需要自动触发；高级用户展开SSH、代理、转发、Underlay和Headless。
+数据层从一开始区分`SchoolProfile → CampusAccount → WorkspaceScope`。
+
+普通学校选择器只展示reviewed profiles。`Other`自定义HTTPS Gateway放在高级设置，并在第二个
+reviewed school完成后才开放；它仍需无凭据探测、身份确认和独立profile/account workspace，
+不得通过猜协议并自动提交密码实现“通用兼容”。
+
+产品、账户和资源定义见
+[`docs/product/2.0-product-definition.md`](docs/product/2.0-product-definition.md)、
+[`docs/adr/0004-profile-account-workspace-scope.md`](docs/adr/0004-profile-account-workspace-scope.md)和
+[`docs/architecture/resource-domain-model.md`](docs/architecture/resource-domain-model.md)。
+
+Profile/account isolation, RoutingPolicyIR and the local Resource Workspace may progress from current-source and
+synthetic evidence without claiming a new Gateway capability. The trigger for each proprietary authentication,
+resource-catalogue or transport capability remains evidence that a controlled school profile enables it. That
+work covers one capability, compares with the supported official client and passes the promotion checklist before
+its evidence level changes or it is marked Supported.
+
+The table below tracks evidence-gated Gateway capabilities; it does not replace the P1–P8 product/foundation
+order in the Revision 4 execution plan.
 
 | Order | Capability | Implementation / evidence | What exists now | Required next evidence/work |
 | ---: | --- | --- | --- | --- |
