@@ -13,6 +13,7 @@ const localEngineBuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'buil
 const localMacRebuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'rebuild-mac.sh'), 'utf8');
 const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent', 'Cargo.toml'), 'utf8');
 const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
+const repositoryAttributes = fs.readFileSync(path.join(desktopRoot, '..', '.gitattributes'), 'utf8');
 
 test('cross-platform desktop checks explicitly run under Bash', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
@@ -113,6 +114,16 @@ test('package verification binds the reviewed school profile before signing', ()
   assert.match(packageVerifier, /lib\/school-profile-runtime\.js/u);
   assert.match(packageVerifier, /lib\/school-profile-controller\.js/u);
   assert.match(packageVerifier, /lib\/control-state-snapshot\.js/u);
+});
+
+test('every byte-bound profile asset has deterministic LF checkout semantics', () => {
+  for (const rule of [
+    'desktop/assets/profiles/manifest.json text eol=lf',
+    'desktop/assets/profiles/hkustgz/*.json text eol=lf',
+    'desktop/assets/campus-resources.json text eol=lf',
+    'desktop/assets/logo.svg text eol=lf',
+    'independent/config/hkustgz.json text eol=lf',
+  ]) assert.ok(repositoryAttributes.split(/\r?\n/u).includes(rule), rule);
 });
 
 test('every shipped Engine build excludes test-only Cargo features', () => {
