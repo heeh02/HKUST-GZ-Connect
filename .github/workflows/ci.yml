@@ -8,16 +8,128 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  secret-scan:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Reject committed secret patterns in the exact tree
+        run: node desktop/scripts/check-sensitive-patterns.js --tree "$GITHUB_SHA"
+
+  package-verifier-platform:
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install pinned Rust toolchain
+        working-directory: independent
+        run: rustup show active-toolchain
+      - name: Install packaging dependencies
+        run: npm ci
+
+      - name: Build and stage shipped macOS/Linux native binaries
+        if: matrix.platform != 'windows'
+        run: ./scripts/build-engine.sh
+
+      - name: Build and stage shipped Windows native binaries
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        working-directory: independent
+        run: |
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
+          New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
+          Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
+          Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
+          Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
+
+      - name: Build unpacked Linux application
+        if: matrix.platform == 'linux'
+        run: node node_modules/electron-builder/out/cli/cli.js --linux dir --x64 --publish never
+      - name: Verify the exact Linux package
+        if: matrix.platform == 'linux'
+        run: node build/verify-package.js release/linux-unpacked/resources linux x64
+
+      - name: Build unpacked Windows application
+        if: matrix.platform == 'windows'
+        run: node node_modules/electron-builder/out/cli/cli.js --win dir --x64 --publish never
+      - name: Verify the exact Windows package
+        if: matrix.platform == 'windows'
+        run: node build/verify-package.js release/win-unpacked/resources win32 x64
+
+      - name: Build and verify the exact macOS package
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          case "$(uname -m)" in
+            arm64)
+              package_arch=arm64
+              output_dir=mac-arm64
+              verifier_arch=arm64
+              ;;
+            x86_64)
+              package_arch=x64
+              output_dir=mac
+              verifier_arch=x64
+              ;;
+            *)
+              echo "unsupported macOS runner architecture" >&2
+              exit 1
+              ;;
+          esac
+          node node_modules/electron-builder/out/cli/cli.js \
+            --mac dir "--${package_arch}" --publish never
+          node build/verify-package.js \
+            "release/${output_dir}/hkustgzconnect.app/Contents/Resources" darwin "${verifier_arch}"
+
+  package-verifier:
+    if: always()
+    needs: package-verifier-platform
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every platform package verifier
+        env:
+          MATRIX_RESULT: ${{ needs.package-verifier-platform.result }}
+        run: test "$MATRIX_RESULT" = success
+
   desktop:
     timeout-minutes: 15
     runs-on: ubuntu-latest
@@ -26,6 +138,8 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
@@ -41,8 +155,6 @@ jobs:
         run: npm test
       - name: Enforce desktop architecture growth boundaries
         run: npm run check:architecture
-      - name: Reject committed secret patterns
-        run: npm run check:secrets -- --tree "$GITHUB_SHA"
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Check syntax of every entry point
@@ -66,6 +178,8 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
@@ -104,6 +218,8 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
@@ -124,6 +240,8 @@ jobs:
         working-directory: independent
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
