@@ -51,7 +51,8 @@ sample or zju-connect source, and aligns with this project's isolation and ordin
 - request gate during Engine/policy transitions;
 - no Clash requirement for ordinary users.
 
-This should become a profile-scoped Campus Workspace, not be removed in favor of a generic proxy-only UI.
+This should become an account-workspace-scoped Campus Workspace, not be removed in favor of a generic
+proxy-only UI.
 
 ### Desktop lifecycle and integration
 
@@ -138,10 +139,18 @@ effective capability states. Profile metadata cannot promote unsupported code.
 A packaged reviewed registry plus local custom profiles. Active context owns profile epoch, stores, Browser
 partition, routing, health, resources, branding and selected Engine config.
 
-## 5. Safe custom-domain experience
+### CampusAccount and WorkspaceScope
 
-The user requirement “Other → enter domain” is supported through a credential-free probe, not automatic
-password trials:
+The deployment profile is not the user identity. Even while the first UI exposes only one `primary` account,
+P1 must define the account/workspace keys and P3 must migrate directly into
+`profiles/<profileKey>/accounts/<accountKey>/`. Browser partition, VPN/site credentials, pins, favorites/recent,
+user rules/resources and active session are workspace-owned. See
+[`ADR-0004`](../adr/0004-profile-account-workspace-scope.md).
+
+## 5. Safe custom-domain experience (advanced P11)
+
+The user requirement “Other → enter domain” is supported only after a second reviewed school proves isolation,
+through a credential-free probe rather than automatic password trials:
 
 1. normalize HTTPS domain/port;
 2. validate every bounded CNAME/A/AAAA result and reject mixed/unsafe address sets;
@@ -161,8 +170,9 @@ or system mutation.
 
 ## 6. Data migration and isolation
 
-Move global settings/proxy/update state into `global/` and profile data into an opaque profile-key directory.
-HKUST becomes the default profile and retains the existing Browser partition alias.
+Move global settings/proxy/update state into `global/` and account-owned data directly into an opaque
+profile/account/workspace directory. HKUST/primary becomes the default context and alone retains the existing
+Browser partition alias.
 
 The migration requires a journal and fault injection around every write, fsync, rename and unlink. It must be
 idempotent and yield all-old or all-new state, with no credential loss, username/password mismatch or revoked
@@ -171,40 +181,44 @@ pin resurrection.
 Every continuation binds:
 
 ```text
-connection intent + profile epoch + Engine generation
+connection intent + profile epoch + account epoch + Engine generation
 ```
 
 Profile switching has a durable journal and one activation commit point. It gates Browser traffic, cancels old
 continuations, confirms Engine cleanup, clears sidecar/server state and validates new stores/partition before
-committing `activeProfileId`. Cleanup or recovery uncertainty starts no Engine.
+committing `activeProfileId + activeAccountKey` at one durable commit point. Cleanup or recovery uncertainty
+starts no Engine and opens no account workspace.
 
-## 7. Test requirements before a second real school
+## 7. Test requirements before a second reviewed school
 
-- two synthetic Gateway/profile fixtures;
+- two profile × two account synthetic fixtures;
 - A password never reaches B Gateway;
 - A Browser Cookie/storage/site credential/pin/rule/resource is invisible in B;
 - A late Engine/health/retry/MFA/route callback cannot update B;
-- 100 profile switches leave zero PID/port/timer/view/sidecar residue;
-- custom discovery sends no credential and rejects invalid TLS/origin/protocol;
-- DNS rebinding/mixed-result/peer-mismatch and confirmation-replay tests;
-- probe Cookies/session state never enter authentication;
+- 100 profile/account switches leave zero PID/port/timer/view/sidecar residue;
 - profile/config/binding validation happens before credential decryption;
 - migration fault matrix proves all-old/all-new and restart idempotence;
 - profile-aware JS/PAC/Rust routing differential corpus;
 - exact packaged profile/config/asset manifest on three platforms;
 - HKUST password/Modern L3/Campus Workspace regression remains unchanged.
 
+Before P11 custom onboarding, add zero-credential discovery, invalid TLS/origin/protocol,
+DNS-rebinding/mixed-result/peer-mismatch, confirmation replay and probe Cookie/session non-promotion tests.
+
 ## 8. Recommended foundation order
 
-1. ADR/schema for SchoolProfile, GatewayOrigin, ProtocolFamily and capability truth;
+1. ADR/schema for SchoolProfile, GatewayOrigin, ProtocolFamily, CampusAccount, WorkspaceScope and capability truth;
 2. packaged registry with one HKUST compatibility profile;
 3. provider composition bound to profile identity;
-4. profile-scoped storage and journaled migration;
-5. ActiveProfileCoordinator and Browser partition isolation;
-6. safe Gateway dialer and one-shot confirmation transaction;
-7. school picker and credential-free custom Gateway probe;
-8. profile-scoped RoutingPolicyIR;
-9. only then add a second real school or production Router/Exit capability.
+4. profile/account/workspace storage and journaled migration;
+5. ActiveProfile/ActiveAccount coordinator and Browser partition isolation;
+6. behavior-preserving HKUST Gateway connector;
+7. account-scoped RoutingPolicyIR and Router/Campus Exit foundation;
+8. ResourceDescriptor and Campus Workspace Beta;
+9. first evidence-gated HKUST capability;
+10. second reviewed school;
+11. only then Advanced custom Gateway onboarding.
 
 The exact security decisions are recorded in
-[`ADR-0003`](../adr/0003-multi-school-profile-and-custom-gateway.md).
+[`ADR-0003`](../adr/0003-multi-school-profile-and-custom-gateway.md) and
+[`ADR-0004`](../adr/0004-profile-account-workspace-scope.md).

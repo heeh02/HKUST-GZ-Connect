@@ -28,6 +28,25 @@ upstream implementation as proof that the same capability exists on the school p
 
 ## Implementation map
 
+### 2026-08-24 current-main configuration delta
+
+The protocol/network audit remains fixed at `2c71a34c17ea7ecf04c5fe862c4c315344128653`. Current upstream `main`
+is `4b2bcaa0acc34a33de672c26e3b2cb83bd583b15`, exactly one commit ahead in this review. The reviewed delta is a
+startup/configuration refactor, not evidence of a new protocol or school capability:
+
+- configuration is merged as built-in defaults `<` TOML `<` `ZJU_CONNECT_*` environment `<` explicitly supplied
+  CLI flags;
+- explicit false CLI values can override file/environment true values;
+- collection values share one parser across sources and unknown keys are rejected;
+- remote-DNS names were generalized while legacy ZJU-named aliases remain compatible;
+- upstream documentation recommends environment variables for password, TOTP secret and certificate password.
+
+2.0 independently borrows only the typed precedence/explicit-override idea for the future Headless product.
+Desktop credentials do not move to environment variables. Headless secrets prefer OS secure storage, stdin/FD,
+Docker secret or an owner-only control pipe; ordinary argv, TOML and default environment remain prohibited secret
+sources. The EasyConnect/aTrust/DNS/routing/TUN/underlay conclusions below remain anchored to the fixed protocol
+audit because the one-commit delta does not modify those implementations.
+
 ### Composition and configuration
 
 - `configs/config.go` defines CLI/TOML fields and defaults;

@@ -14,7 +14,11 @@ risks: one school's password, Cookies, certificate pins or routes could be used 
 
 1. a reviewed HKUST(GZ) preset;
 2. future reviewed school presets;
-3. `Other`, where the user enters a Gateway domain/port locally.
+3. later, an Advanced `Other` flow where the user enters a Gateway domain/port locally.
+
+The ordinary selector initially shows reviewed profiles only. The P5 connector foundation is implemented first,
+a second reviewed school proves profile/account isolation in P10, and only P11 may expose `Other` as experimental
+and unverified.
 
 Entering a domain must be simple, but it must not cause the application to guess protocol endpoints and submit
 credentials automatically.
@@ -23,6 +27,10 @@ credentials automatically.
 
 Adopt one active `SchoolProfile` at a time. Each profile owns an exact `GatewayOrigin`, closed
 `ProtocolFamily`, Browser/routing policy and an isolated data namespace.
+
+User identity and Browser/workspace data are further scoped by `CampusAccount` and `WorkspaceScope` under
+[`ADR-0004`](0004-profile-account-workspace-scope.md). This ADR owns deployment/Gateway trust; ADR-0004 owns
+same-school account separation.
 
 ### Product identity versus school branding
 
@@ -134,17 +142,17 @@ PublicProbeSpec
   maximum candidate attempts
 ```
 
-The first release compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
+P11 compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
 its path, method, headers, parser or candidate list. Future families add a separately reviewed compiled spec and
 synthetic fixture. A probe result identifies only a candidate public authentication surface; the
 `ProtocolFamily` factory independently constructs credential-bearing endpoints after confirmation.
 
-## Custom Gateway onboarding
+## Advanced custom Gateway onboarding (P11)
 
 Proposed login surface:
 
 ```text
-Campus Connect
+Campus Connect · Advanced settings
 
 School / Organization   [ HKUST(GZ) ▾ ]
 
@@ -184,7 +192,7 @@ enter school label (optional) + Gateway domain/port
   → show normalized origin, reported version and candidate family
   → explicit user confirmation
   → consume a Main-owned confirmation nonce
-  → create a custom-local profile with a new opaque ID and isolated stores
+  → create a custom-local profile + primary account workspace with new opaque IDs and isolated stores
   → only then show username/password
 ```
 
@@ -219,12 +227,12 @@ credential-forwarding oracle.
 Before reading or decrypting a VPN credential, Main must complete this exact order:
 
 ```text
-snapshot active profile + profile epoch
+snapshot active profile/account + active-context epoch
   → registry lookup and schema/hash validation
   → canonical GatewayOrigin and destination policy
   → closed ProtocolFamily factory selection
   → build/validate Engine launch config
-  → prove config origin/family/profile revision matches the credential binding
+  → prove config origin/family/profile/account credential revisions match the credential binding
   → revalidate custom Gateway address policy
   → only now decrypt the bound credential
   → synchronously spawn the matching Engine generation
@@ -279,27 +287,38 @@ userData/
     update-state.json
 
   profiles/<opaqueProfileKey>/
-    settings.json
-    vpn-credentials.bin
-    credential-transaction.json
-    campus-credentials.json
-    campus-certificate-trust.json
-    routing-rules.json
-    routing.pac
-    browser-routing.pac
-    engine.log
+    profile-settings.json
+    profile-state.json
+    accounts/<opaqueAccountKey>/
+      account.json
+      vpn-credential.bin
+      credential-transaction.json
+      deletion-tombstone.json?
+      workspace/
+        workspace-state.json
+        campus-credentials.json
+        campus-certificate-trust.json
+        local-resources.json
+        favorites.json
+        recent-resources.json
+        routing-rules.json
+        routing.pac
+        browser-routing.pac
+        engine.log
 ```
 
 VPN credentials bind to:
 
 ```text
-profileId + GatewayOrigin + ProtocolFamily + opaque accountId
+profileId + profileCredentialBindingRevision + GatewayOrigin + ProtocolFamily
++ opaque accountKey + accountCredentialRevision
 ```
 
-Website credentials and certificate pins bind to profile plus exact HTTPS origin. Server resources bind to
-profile, authenticated-session generation and catalogue revision/expiry.
+Website credentials and certificate pins bind to profile + account + exact HTTPS origin. Server resources bind
+to profile and authenticated-session generation; user views/favorites/recent bind to account workspace.
 
-Only one profile/Engine may be active in the first multi-school release.
+Only one profile/account/Engine may be active in the first multi-school release. Account/workspace storage and
+switching follow ADR-0004.
 
 `SchoolProfileInternal` is never serialized wholesale to UI state or logs. Renderer state uses
 `SchoolProfileView`; default diagnostics use only an opaque profile correlation ID, evidence class, protocol
@@ -307,39 +326,40 @@ family and stable error code. Gateway hostnames, private DNS and health targets 
 
 ## Browser partition
 
-Each profile owns a persistent partition derived from a bounded opaque key. Raw profile IDs are not placed in
-partition paths.
+Each account workspace owns a persistent partition derived from bounded opaque profile/account keys. Raw IDs are
+not placed in partition paths.
 
-HKUST retains the existing `persist:hkustgz-campus-browser` partition as a compatibility alias, preserving
-Cookies/localStorage/SSO without copying Browser data. New profiles never see this partition.
+HKUST `primary` retains the existing `persist:hkustgz-campus-browser` partition as a compatibility alias,
+preserving Cookies/localStorage/SSO without copying Browser data. No other profile/account sees this partition.
 
-Within one profile, Campus and Direct continue to share one partition for Cookie/POST/SAML continuity. Across
-profiles, Cookies, storage, password vault and certificate trust are strictly isolated.
+Within one account workspace, Campus and Direct continue to share one partition for Cookie/POST/SAML continuity.
+Across profiles or accounts, Cookies, storage, password vault and certificate trust are strictly isolated.
 
-## Active profile switch transaction
+## Active context switch transaction
 
 ```text
-increment profile epoch
+increment active context epoch
   → close Browser request gate
   → cancel auth/certificate/credential/navigation continuations
-  → close old profile tabs/views/connections
+  → close old account workspace tabs/views/connections
   → stop old Engine and confirm cleanup
   → destroy proxy sidecar/generation secrets
-  → clear old server resources/notices
-  → activate new profile stores/routing/branding/partition
-  → optionally connect new profile
+  → clear old account server resources/notices
+  → validate destination profile + primary account + workspace
+  → atomically commit exact profile/account pair
+  → optionally connect the destination account
 ```
 
-Every continuation binds connection intent + profile epoch + Engine generation. Old Engine closes, health
-probes, retries, route transactions and MFA responses cannot affect the new profile.
+Every continuation binds connection intent + active-context epoch + Engine generation and is checked against the
+exact profile/account pair. Old Engine closes, health probes, retries, route transactions and MFA responses
+cannot affect the new context.
 
 If old Engine cleanup is unconfirmed, switching fails closed and no new Engine starts on the same port.
 
-Profile activation is also a persistent transaction. Its owner-only switch journal records old/new opaque
-profile IDs and revisions, the stop result, store-validation result and final commit marker. `activeProfileId`
-is committed only after old Engine cleanup is confirmed and every new store/config/partition reference is
-validated. A crash recovery chooses a proven all-old or all-new active context; uncertainty starts with no
-active Engine and requires user recovery. An in-memory profile epoch alone is never crash authority.
+Activation uses ADR-0004's owner-only switch journal. It records old/new opaque profile and account identities,
+revisions/epochs, stop result, store validation and final commit marker. Active profile and account become
+authoritative together only after cleanup and destination validation. Crash uncertainty starts no Engine or
+Browser workspace; an in-memory profile/account epoch is never crash authority.
 
 If cleanup fails after the epoch advances, the old Browser remains gated and the new profile is not activated.
 The coordinator does not decrement the epoch or silently resume the old profile; the user may retry cleanup or
@@ -347,16 +367,17 @@ quit.
 
 ## Legacy HKUST migration
 
-The first migration creates a built-in `hkustgz` profile while preserving current behavior and data.
+The first migration creates built-in `hkustgz` plus its `primary` account/workspace while preserving current
+behavior and data. ADR-0004 is authoritative for account paths and credential envelopes.
 
 Order:
 
 1. finish existing credential/settings journal recovery;
 2. create a new migration journal with old/new paths and digests;
-3. write global and HKUST profile settings;
-4. decrypt old VPN credential only in memory and re-encrypt into the profile vault;
-5. move routing, website passwords, certificate trust and custom resources into HKUST only;
-6. retain the legacy Browser partition alias;
+3. write global settings, HKUST profile metadata and the primary account reference;
+4. decrypt old VPN credential only in memory and re-encrypt into the primary account envelope;
+5. move routing, website passwords, certificate trust and custom resources into the primary workspace;
+6. retain the legacy Browser partition alias for that primary workspace only;
 7. fsync and commit the migration marker;
 8. retain the old encrypted VPN credential for exactly one release as the sole legacy rollback secret; mark it
    imported so the new path cannot import it twice;
@@ -376,7 +397,8 @@ resurrecting one the user revoked. "All-old/all-new" is evaluated after journal 
 filesystem renames.
 
 The retained VPN blob has an owner-only `LegacyCredentialRollbackState` of `active | retired`, bound to exact
-`hkustgz` profile ID, original Gateway origin, initial protocol family and credential digest. It is never an
+`hkustgz` profile ID, migrated primary account key, original Gateway origin, initial protocol family and
+credential digest. It is never an
 ordinary auto-connect fallback. Only an explicit one-release rollback adapter may read it while state is
 `active` and every binding still matches.
 
@@ -438,18 +460,22 @@ credentials. Rollback never submits a credential to a changed Gateway or merges 
 
 ## Evidence and acceptance
 
-Before adding a second real school:
+Before adding a second reviewed school:
 
-- two synthetic profiles prove password/Cookie/pin/rule/resource/event isolation;
-- 100 profile switches leave no PID/port/timer/view/credential residue;
+- two profiles × two accounts prove password/Cookie/pin/rule/resource/event isolation;
+- 100 profile/account switches leave no PID/port/timer/view/credential residue;
 - every migration write/fsync/rename failure yields all-old or all-new state;
 - legacy credential retirement is coupled to logout/password replacement/account clear and never reappears on
   restart or ordinary auto-connect;
 - HKUST password/Modern L3/Campus Browser behavior remains unchanged;
+- three-platform package verifier validates the exact profile manifest;
+- the new school completes official parity and staff canary.
+
+Before P11 exposes Advanced custom onboarding:
+
+- the second reviewed school has passed the preceding gate;
 - custom Gateway probe sends no credentials and rejects invalid TLS/origin/protocol;
 - custom discovery/auth rejects rebinding, mixed/unsafe answers and confirmation replay; probe Cookies are never
   observed in authentication;
 - public probe never advertises L3/DNS/resource support before authenticated runtime confirmation;
-- no custom new-tab or health request reaches HKUST or an arbitrary public hostname by default;
-- three-platform package verifier validates the exact profile manifest;
-- the new school completes official parity and staff canary.
+- no custom new-tab or health request reaches a reviewed school or arbitrary public hostname by default.
