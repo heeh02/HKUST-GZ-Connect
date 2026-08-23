@@ -66,6 +66,12 @@ where
         self.cancellation.is_cancelled()
     }
 
+    /// Reports only task completion; callers must still await [`Self::wait`]
+    /// to collect the owned result and observe worker failure.
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
+    }
+
     pub async fn wait(&mut self) -> Result<std::result::Result<S, E>> {
         (&mut self.task).await.map_err(|_| {
             Error::classified(

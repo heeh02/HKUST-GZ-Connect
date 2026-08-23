@@ -1810,10 +1810,14 @@ mod tests {
 
     #[tokio::test]
     async fn accepted_shutdown_survives_an_operation_phase_transition() {
-        let mut first = BlockingOperation::spawn(|_| {
-            std::thread::sleep(Duration::from_millis(20));
-            Ok::<_, ()>("authenticated")
-        });
+        let mut first = BlockingOperation::spawn(|_| Ok::<_, ()>("authenticated"));
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !first.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the synthetic first phase must finish before driving the control race");
         let (sender, receiver) = tokio::sync::mpsc::channel(1);
         sender
             .send(ControlInput::V2(ControlExchange {
