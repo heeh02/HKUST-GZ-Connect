@@ -34,8 +34,20 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+function archiveEntryPath(relativePath, pathImplementation = path) {
+  if (typeof relativePath !== 'string' || !relativePath ||
+      !pathImplementation || typeof pathImplementation.join !== 'function') {
+    throw new TypeError('archive entry path is invalid');
+  }
+  return pathImplementation.join(...relativePath.split('/'));
+}
+
+function extractArchiveFile(archive, relativePath) {
+  return asar.extractFile(archive, archiveEntryPath(relativePath));
+}
+
 function extractBoundedArchiveFile(archive, relativePath, maxBytes) {
-  const data = asar.extractFile(archive, relativePath);
+  const data = extractArchiveFile(archive, relativePath);
   if (!Buffer.isBuffer(data) || data.length < 1 || data.length > maxBytes) {
     throw new Error(`packaged profile asset has an invalid size: ${relativePath}`);
   }
@@ -393,15 +405,15 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   }
   assertNoTestOnlyPackageEntries(entries);
 
-  const packagedIndex = asar.extractFile(archive, 'renderer/index.html').toString('utf8');
-  const packagedRenderer = asar.extractFile(archive, 'renderer/app.js').toString('utf8');
-  const packagedPreload = asar.extractFile(archive, 'preload.js').toString('utf8');
-  const packagedMain = asar.extractFile(archive, 'main.js').toString('utf8');
-  const packagedControlDataIpc = asar.extractFile(archive, 'lib/control-data-ipc.js')
+  const packagedIndex = extractArchiveFile(archive, 'renderer/index.html').toString('utf8');
+  const packagedRenderer = extractArchiveFile(archive, 'renderer/app.js').toString('utf8');
+  const packagedPreload = extractArchiveFile(archive, 'preload.js').toString('utf8');
+  const packagedMain = extractArchiveFile(archive, 'main.js').toString('utf8');
+  const packagedControlDataIpc = extractArchiveFile(archive, 'lib/control-data-ipc.js')
     .toString('utf8');
-  const packagedResourceIpc = asar.extractFile(archive, 'lib/campus-resource-ipc.js')
+  const packagedResourceIpc = extractArchiveFile(archive, 'lib/campus-resource-ipc.js')
     .toString('utf8');
-  const packagedResourceManager = asar.extractFile(archive, 'renderer/resource-manager.js')
+  const packagedResourceManager = extractArchiveFile(archive, 'renderer/resource-manager.js')
     .toString('utf8');
   for (const helper of ['login-flow', 'resource-view']) {
     if (!packagedIndex.includes(`../lib/${helper}.js`)) {
@@ -482,7 +494,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
 
-  const packagedManifest = JSON.parse(asar.extractFile(archive, 'package.json').toString('utf8'));
+  const packagedManifest = JSON.parse(extractArchiveFile(archive, 'package.json').toString('utf8'));
   const sourceManifest = require(path.join(__dirname, '..', 'package.json'));
   if (packagedManifest.version !== sourceManifest.version) {
     throw new Error(
@@ -502,6 +514,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 
 module.exports = {
   TEST_ONLY_ENGINE_MARKER,
+  archiveEntryPath,
   assertMacDylibDependenciesAllowed,
   assertMacSystemOnlyDylibs,
   assertLinuxElfArchitecture,

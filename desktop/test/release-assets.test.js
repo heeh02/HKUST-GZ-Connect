@@ -107,11 +107,6 @@ test('ordinary CI exposes a stable three-platform package-verifier gate', () => 
 });
 
 test('package verification binds the reviewed school profile before signing', () => {
-  for (const profileFile of [
-    'assets/profiles/manifest.json',
-    'assets/profiles/hkustgz/engine-config.json',
-    'assets/profiles/hkustgz/school-profile.json',
-  ]) assert.ok(manifest.build.files.includes(profileFile), profileFile);
   assert.match(packageVerifier, /assertPackagedSchoolProfile\(archive,/u);
   assert.match(packageVerifier, /packaged external Engine config differs from its profile binding/u);
   assert.match(packageVerifier, /assets\/profiles\/manifest\.json/u);

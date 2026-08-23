@@ -52,9 +52,6 @@
       "lib/**/*",
       "renderer/**/*",
       "assets/**/*",
-      "assets/profiles/manifest.json",
-      "assets/profiles/hkustgz/engine-config.json",
-      "assets/profiles/hkustgz/school-profile.json",
       "build/icon.ico",
       "build/icon.png"
     ],
