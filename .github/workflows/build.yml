@@ -82,6 +82,7 @@ jobs:
         run: |
           npm run test:main-integration
           npm run test:main-engine-lifecycle
+          npm run test:main-network-startup
           ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
           npm run test:campus-mfa-safety
           npm run test:campus-popup-mfa-safety

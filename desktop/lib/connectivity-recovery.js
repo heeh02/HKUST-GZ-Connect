@@ -12,12 +12,14 @@ class ConnectivityRecovery {
     getLifecycleIntent,
     shouldReconnect,
     reconnect,
+    onRecoveryDeclined = () => {},
     setTimeout: setTimer = globalThis.setTimeout,
     clearTimeout: clearTimer = globalThis.clearTimeout,
     debounceMs = RECOVERY_DEBOUNCE_MS,
   } = {}) {
     if (typeof invalidate !== 'function' || typeof getLifecycleIntent !== 'function' ||
         typeof shouldReconnect !== 'function' || typeof reconnect !== 'function' ||
+        typeof onRecoveryDeclined !== 'function' ||
         typeof setTimer !== 'function' || typeof clearTimer !== 'function') {
       throw new TypeError('connectivity recovery callbacks are required');
     }
@@ -28,6 +30,7 @@ class ConnectivityRecovery {
     this.getLifecycleIntent = getLifecycleIntent;
     this.shouldReconnect = shouldReconnect;
     this.reconnect = reconnect;
+    this.onRecoveryDeclined = onRecoveryDeclined;
     this.setTimer = setTimer;
     this.clearTimerFn = clearTimer;
     this.debounceMs = debounceMs;
@@ -38,6 +41,7 @@ class ConnectivityRecovery {
     this.pendingIntent = null;
     this.timerRecord = null;
     this.recoveryRecord = null;
+    this.initialRecoveryIntent = null;
     this.epoch = 0;
     this.disposed = false;
   }
@@ -68,6 +72,7 @@ class ConnectivityRecovery {
     this.epoch += 1;
     this.cancelTimer();
     const sameOutage = this.pending && Object.is(this.pendingIntent, intent);
+    if (!sameOutage) this.initialRecoveryIntent = null;
     this.pending = true;
     this.pendingIntent = intent;
     if (!sameOutage) {
@@ -100,6 +105,17 @@ class ConnectivityRecovery {
     return this.scheduleIfReady('network-online', explicitIntent);
   }
 
+  initialNetworkOnline(explicitIntent) {
+    if (this.disposed) return false;
+    this.offline = false;
+    const intent = this.currentIntent(explicitIntent);
+    if (!this.pending || !Object.is(this.pendingIntent, intent) || !this.isCurrentIntent(intent)) {
+      return false;
+    }
+    this.initialRecoveryIntent = intent;
+    return this.scheduleIfReady('initial-network-online', intent);
+  }
+
   scheduleIfReady(reason, explicitIntent) {
     if (this.disposed || !this.pending || this.suspended || this.offline) return false;
     const intent = this.currentIntent(explicitIntent);
@@ -110,10 +126,13 @@ class ConnectivityRecovery {
     if (this.timerRecord && Object.is(this.timerRecord.intent, intent)) return true;
 
     this.epoch += 1;
+    const effectiveReason = Object.is(this.initialRecoveryIntent, intent)
+      ? 'initial-network-online'
+      : reason;
     const record = {
       epoch: this.epoch,
       intent,
-      reason,
+      reason: effectiveReason,
       timer: null,
     };
     record.timer = this.setTimer(() => {
@@ -135,18 +154,24 @@ class ConnectivityRecovery {
     }
 
     let allowed = false;
-    try { allowed = await this.shouldReconnect(record.intent); } catch { allowed = false; }
-    if (!allowed || this.disposed || record.epoch !== this.epoch || !this.pending ||
-        this.suspended || this.offline || !Object.is(this.pendingIntent, record.intent) ||
-        !this.isCurrentIntent(record.intent)) {
+    try { allowed = await this.shouldReconnect(record.intent, record.reason); }
+    catch { allowed = false; }
+    const remainsEligible = !this.disposed && record.epoch === this.epoch && this.pending &&
+        !this.suspended && !this.offline && Object.is(this.pendingIntent, record.intent) &&
+        this.isCurrentIntent(record.intent);
+    if (!allowed || !remainsEligible) {
+      const declined = !allowed && remainsEligible;
       if (record.epoch === this.epoch) this.cancelPending();
+      if (declined) {
+        try { this.onRecoveryDeclined(record.intent, record.reason); } catch {}
+      }
       return false;
     }
-
     // Consume the outage before invoking reconnect so duplicate resume/online
     // events cannot start a second recovery while the first is in flight.
     this.pending = false;
     this.pendingIntent = null;
+    this.initialRecoveryIntent = null;
     const recovery = { epoch: record.epoch, intent: record.intent, reason: record.reason };
     this.recoveryRecord = recovery;
     try {
@@ -164,6 +189,7 @@ class ConnectivityRecovery {
     this.cancelTimer();
     this.pending = false;
     this.pendingIntent = null;
+    this.initialRecoveryIntent = null;
   }
 
   // Main calls cancel on explicit disconnect and before quit. It deliberately

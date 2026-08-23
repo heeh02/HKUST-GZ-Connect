@@ -27,6 +27,8 @@ if (!Number.isSafeInteger(generation) || generation <= 0 ||
 
 const attemptFile = path.join(userData, 'synthetic-engine-attempt.txt');
 const observationFile = path.join(userData, 'synthetic-engine-observations.jsonl');
+const stableFirstAttempt = process.env.HKUSTGZ_SYNTHETIC_ENGINE_STABLE_E2E === '1';
+const dropAfterConnected = process.env.HKUSTGZ_SYNTHETIC_ENGINE_DROP_AFTER_CONNECTED_E2E === '1';
 let attempt = 1;
 try { attempt = Number(fs.readFileSync(attemptFile, 'utf8')) + 1; } catch {}
 fs.writeFileSync(attemptFile, String(attempt));
@@ -83,7 +85,7 @@ input.on('line', (line) => {
     credentialLines += 1;
     if (credentialLines !== 2) return;
     observe('credentials_received');
-    if (attempt === 1) {
+    if (attempt === 1 && !stableFirstAttempt) {
       state('connecting');
       state('authenticating');
       state('preparing_tunnel');
@@ -115,6 +117,16 @@ input.on('line', (line) => {
         setTimeout(() => {
           state('connected');
           observe('connected_candidate_sent');
+          if (dropAfterConnected) {
+            setTimeout(() => {
+              send({ type: 'network_unhealthy', reason: 'data_plane_disconnected' });
+              state('stopping');
+              listener.close(() => send(
+                { type: 'stopped', reason: 'network_unhealthy', generation },
+                () => process.exit(23),
+              ));
+            }, 750);
+          }
         }, 300);
       });
     }, 600);

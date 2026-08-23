@@ -1,7 +1,9 @@
 # 1.x Convergence Plan
 
-目标：把当前 1.2.3 review branch 收束成 Architecture Frozen 基线。每批只解决一个主行为，
-保持 password-only、SOCKS/HTTP、DNS、Campus Browser 和无系统网络污染不变量。
+目标：以已发布的v1.2.3为1.x收束基线，继续关闭Architecture Frozen的真实环境与治理证据。
+每批只解决一个主行为，保持password-only、SOCKS/HTTP、DNS、Campus Browser和无系统
+网络污染不变量。PR #5已merge为`5d8323d`，main CI `32630023985`和tag build/release
+`32630322732`均成功；发布完成不等于Architecture Frozen已经完成。
 
 ## Current implementation snapshot
 
@@ -13,22 +15,27 @@
 | C4 Serving shutdown | Outer service drain + three-socket shutdown + runner/bridge bounded join；exact-SHA三平台package/smoke通过 | Real Gateway canary and long soak |
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
 | C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine 100轮post-Transport netstack/listener/stop/join/port-release soak | 真实Gateway lifecycle与30分钟persistent资源soak |
-| C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `6efca3c`通过；所有builder显式`--publish never` | Developer ID/notarization与正式release source reconciliation |
+| C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `6efca3c`通过；所有builder显式`--publish never` | Developer ID/notarization；后续版本继续执行exact-tag source reconciliation |
+| C8 Initially-offline startup | Post-release tree等待首个网络sample；离线只保留一个paused intent，online后按autoConnect exactly once恢复 | 合并前Desktop/Electron、exact-tree secret与remote CI；真机cold-offline canary |
+| C9 UDP association ownership | Post-release tree把upload/download relay纳入父future结构化取消作用域 | 合并前Rust全量回归；真实UDP socket/port回收增强测试 |
+| C10 Browser connection wait ownership | Post-release tree使用intent-bound事件驱动registry替代100 ms轮询 | 合并前并发open/coalescing、quit/timeout和Main lifecycle回归 |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
 
-## P0 — Release/governance blockers
+## P0 — Architecture Frozen governance and evidence blockers
 
-这些不一定是 runtime bug，但不完成就不能发布：
+这些不一定是runtime bug。v1.2.3维护者已明确接受其中的外部证据边界并完成发布；但在
+它们关闭前，不能宣称`1.x Architecture Frozen`：
 
 1. [完成] 用户授权后push review branch并建立PR #5；
 2. [完成] exact review SHA的ordinary CI、macOS Electron、Windows sidecar DACL、Rust全部通过；
 3. [完成] 同一SHA的macOS arm64/x64、Windows x64、Linux x64 clean package通过；
 4. [完成] 三平台unpacked launch smoke、package exact manifest与macOS dylib closure通过；
-5. `main` required checks、review、latest-commit、no-force-push生效；
-6. 授权环境完成 password-only、HPC DNS、Clash/SSH、sleep/wake/network switch canary；
-7. capability ledger区分 implementation与 evidence；
-8. 上述完成前不 tag、不 release、不复用旧 `desktop/release`。
+5. [完成] 最终review、merge、main exact-commit CI、tag source reconciliation与唯一publisher通过；
+6. [未完成] `main` required checks和no-force-push branch rule生效；
+7. [未完成] 授权环境完成password-only、HPC DNS、Clash/SSH、sleep/wake/network switch canary；
+8. [完成] capability ledger区分implementation与evidence；
+9. [永久规则] 任何后续release都必须从其exact tag clean build，不复用旧`desktop/release`。
 
 ## P1 — Architecture Frozen blockers
 

@@ -147,3 +147,16 @@ test('macOS native release binaries cannot depend on Homebrew libraries', () => 
   assert.match(packageVerifier, /assertMacSystemOnlyDylibs\(executable\)/u);
   assert.match(packageVerifier, /packaged macOS native executable depends on a non-system dylib/u);
 });
+
+test('initially-offline Main recovery is a named ordinary and tag-build Electron gate', () => {
+  assert.equal(
+    manifest.scripts['test:main-network-startup'],
+    'electron e2e/main-network-startup.electron.js',
+  );
+  assert.match(ciWorkflow, /npm run test:main-network-startup/u);
+  const macIntegration = workflow.slice(
+    workflow.indexOf('- name: Exercise real Electron integration and browser soak'),
+    workflow.indexOf('- name: Build independent engines (mac)'),
+  );
+  assert.match(macIntegration, /npm run test:main-network-startup/u);
+});

@@ -3,6 +3,7 @@ use crate::engine::netstack::VirtualNetstack;
 use crate::engine::proxy::{NameResolver, resolve_authority, resolve_host, validate_domain};
 use crate::engine::socks_auth::ProxyAuthentication;
 use crate::{Error, Result};
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -256,21 +257,35 @@ impl SocksServer {
         let client_endpoint = Arc::new(RwLock::new(None::<SocketAddr>));
         send_reply(&mut control, 0, Some(local_address)).await?;
 
-        let mut upload = tokio::spawn(relay_udp_upload(
+        let upload = relay_udp_upload(
             Arc::clone(&local),
             Arc::clone(&tunnel),
             Arc::clone(&client_endpoint),
             Arc::clone(&self.resolver),
-        ));
-        let mut download = tokio::spawn(relay_udp_download(local, tunnel, client_endpoint));
-        let result = tokio::select! {
-            result = wait_for_control_close(&mut control) => result,
-            result = &mut upload => relay_task_result(result, "upload"),
-            result = &mut download => relay_task_result(result, "download"),
-        };
-        upload.abort();
-        download.abort();
-        result
+        );
+        let download = relay_udp_download(local, tunnel, client_endpoint);
+        supervise_udp_associate(&mut control, upload, download).await
+    }
+}
+
+async fn supervise_udp_associate<U, D>(
+    control: &mut TcpStream,
+    upload: U,
+    download: D,
+) -> Result<()>
+where
+    U: Future<Output = Result<()>>,
+    D: Future<Output = Result<()>>,
+{
+    // Keep both relay directions inside this parent future. Dropping or
+    // aborting the connection task therefore drops their pending socket I/O
+    // immediately instead of detaching independently spawned Tokio tasks.
+    tokio::pin!(upload);
+    tokio::pin!(download);
+    tokio::select! {
+        result = wait_for_control_close(control) => result,
+        result = &mut upload => relay_future_result(result, "upload"),
+        result = &mut download => relay_future_result(result, "download"),
     }
 }
 
@@ -341,16 +356,12 @@ async fn wait_for_control_close(control: &mut TcpStream) -> Result<()> {
     }
 }
 
-fn relay_task_result(
-    result: std::result::Result<Result<()>, tokio::task::JoinError>,
-    direction: &str,
-) -> Result<()> {
+fn relay_future_result(result: Result<()>, direction: &str) -> Result<()> {
     match result {
-        Ok(Ok(())) => Err(Error(format!(
+        Ok(()) => Err(Error(format!(
             "SOCKS5 UDP {direction} relay stopped unexpectedly"
         ))),
-        Ok(Err(error)) => Err(error),
-        Err(_) => Err(Error(format!("SOCKS5 UDP {direction} relay task failed"))),
+        Err(error) => Err(error),
     }
 }
 
@@ -870,6 +881,50 @@ mod tests {
         let client = TcpStream::connect(address).await.unwrap();
         let (server, _) = listener.accept().await.unwrap();
         (client, server)
+    }
+
+    #[tokio::test]
+    async fn active_udp_associate_parent_abort_drops_both_relay_directions() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct RelayDrop(Arc<AtomicUsize>);
+        impl Drop for RelayDrop {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        async fn pending_relay(
+            started: tokio::sync::oneshot::Sender<()>,
+            dropped: Arc<AtomicUsize>,
+        ) -> Result<()> {
+            let _drop = RelayDrop(dropped);
+            let _ = started.send(());
+            std::future::pending().await
+        }
+
+        let (control_peer, mut control) = connected_pair().await;
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let (upload_started, upload_ready) = tokio::sync::oneshot::channel();
+        let (download_started, download_ready) = tokio::sync::oneshot::channel();
+        let upload = pending_relay(upload_started, Arc::clone(&dropped));
+        let download = pending_relay(download_started, Arc::clone(&dropped));
+
+        let associate =
+            tokio::spawn(
+                async move { supervise_udp_associate(&mut control, upload, download).await },
+            );
+        tokio::time::timeout(Duration::from_secs(1), async {
+            upload_ready.await.unwrap();
+            download_ready.await.unwrap();
+        })
+        .await
+        .expect("both UDP relay directions must become active");
+
+        associate.abort();
+        assert!(associate.await.unwrap_err().is_cancelled());
+        assert_eq!(dropped.load(Ordering::SeqCst), 2);
+        drop(control_peer);
     }
 
     fn rfc1929_packet(username: &[u8], password: &[u8]) -> Vec<u8> {

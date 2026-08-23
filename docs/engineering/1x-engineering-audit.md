@@ -5,6 +5,17 @@
 收束实现与package候选快照：`6efca3c2b762a9b2b47f74b11b965b2c126e5c91`。
 第2节保留的是审计开始时的历史基线；第7节记录整改后的当前结论，不能用旧计数覆盖新证据。
 
+正式交付事实：PR #5以merge commit
+`5d8323d37de7c279ae70b3ec646f93791d6a3581`进入`main`；`v1.2.3`精确指向该commit。
+main push CI run `32630023985`和tag build/release run `32630322732`均成功，四个正式资产
+已由唯一release job发布。实现快照`6efca3c`之后只增加发布策略和文档收口，不新增
+Gateway production capability；正式包的源码身份以tag commit `5d8323d`为准。
+
+Post-release convergence说明：A-24～A-29来自`5d8323d`之后的独立复核。正在整改的
+startup recovery、UDP relay ownership和connection waiter当前只属于未提交、未发布的本地
+工作树；它们不属于`6efca3c`实现快照或已发布v1.2.3。在获得exact commit、secret/static/
+test gates、review和远端CI前，本文只把它们标为本地post-release证据。
+
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
 （`codex/v1.2.3-hardening`）。审计开始时 `origin/main` 为
 `0ae0d33de0c3056f3f95f4a70154b74f7518f715`，本地分支尚无远端 PR。
@@ -23,12 +34,11 @@ stale cancel、Engine-owned challenge budgets、浏览器 OTP 防误存、严格
 post-Transport子进程回归均已建立。后者是feature-gated、无外部路由的测试接缝，不证明
 真实Gateway认证、Modern L3或校园转发。
 
-远端PR CI、Windows proxy-sidecar DACL与当前SHA三平台原生产物现已通过。尚不能宣布
-Architecture Frozen 的原因已收窄为学校真实canary、30分钟packaged资源soak、`main`
-branch protection/required checks、最终维护者review、merge/tag/release source reconciliation。
-因此Architecture Frozen仍未完成，但维护者已明确接受这些外部证据边界并授权v1.2.3
-候选进入merge/tag clean-build流程。它仍是patch release；本轮没有新增真实认证方式或
-用户功能。
+远端PR CI、Windows proxy-sidecar DACL、main push CI以及同一tag的三平台原生产物和
+唯一release job现已通过，merge/tag/release source reconciliation已经闭环。尚不能宣布
+Architecture Frozen 的原因已收窄为学校真实canary、30分钟packaged资源soak以及`main`
+branch protection/required checks。维护者明确接受这些边界作为v1.2.3发布风险后，版本已
+正式发布。它仍是patch release；本轮没有新增真实认证方式或用户功能。
 
 ## 2. Baseline evidence
 
@@ -44,6 +54,8 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 | Main/MFA/popup/strict proxy/auth-pipe Electron | PASS |
 | Remote CI for this branch | PASS：`32628684472`、`32628684427` |
 | Current v1.2.3 macOS/Windows/Linux artifacts | PASS：`32628682638`，exact SHA `6efca3c` |
+| Main post-merge CI | PASS：`32630023985`，exact SHA `5d8323d` |
+| Tagged build and release | PASS：`32630322732`；tag `v1.2.3` -> `5d8323d`；4 assets |
 | Real HKUST canary for this exact tree | Missing |
 
 本地synthetic/offline与三平台package结果不等于真实Gateway、所有Windows私有文件类别或
@@ -298,7 +310,8 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 - **Severity**：P1 external proxy availability。
 - **Impact**：隧道和Campus Browser仍可能正常，但已复制的Clash/SSH配置会突然找不到本地
   凭据文件，直到再次显式生成。
-- **Fix**：generation-scoped内存凭据仍按旧generation清理；共享sidecar只有Supervisor与
+- **Root cause**：共享sidecar没有与拥有它的Engine generation一起参与close判定。
+- **Recommended fix / implemented fix**：generation-scoped内存凭据仍按旧generation清理；共享sidecar只有Supervisor与
   FSM generation均为current时才删除。行为测试覆盖两类stale close均0次unlink、current
   close恰好1次unlink。
 - **Priority**：v1.2.3发布前。
@@ -308,7 +321,9 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 - **Evidence**：popup被`setImmediate`延迟创建；原实现直接调用`createTab`。Electron原生
   View构造、挂载或窗口关闭竞态抛出时可成为Main未捕获异常，并保留credential reservation。
 - **Severity**：P2 Desktop stability / credential-flow liveness。
-- **Fix**：popup外层使用`try/finally`；`createTab`事务拥有固定window、partial View/Tab、
+- **Impact**：Main可能退出，且popup credential reservation无法归还，阻塞同一登录flow。
+- **Root cause**：异步原生View创建没有一个拥有所有partial resource的事务边界。
+- **Recommended fix / implemented fix**：popup外层使用`try/finally`；`createTab`事务拥有固定window、partial View/Tab、
   credential flow与previous active tab，任何失败均回滚并返回固定用户提示。故障注入验证
   `addChildView`抛出后仅保留原tab、reservation/popups均为0、候选密码仍只在owner。
 - **Priority**：v1.2.3发布前。
@@ -318,10 +333,107 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 - **Evidence**：electron-builder 26在tag环境可能把未指定publish policy的命令解释为
   `onTag`，与仓库设计的tag-only release job形成双publisher路径。
 - **Severity**：P1 release correctness / authority boundary。
-- **Fix**：package scripts、mac matrix直接命令和local rebuild全部显式`--publish never`；
+- **Impact**：同一tag可能有两个上传者，造成重复资产、权限扩大或不同源码/产物竞争。
+- **Root cause**：构建命令依赖electron-builder的隐式tag发布默认值。
+- **Recommended fix / implemented fix**：package scripts、mac matrix直接命令和local rebuild全部显式`--publish never`；
   contract test锁定。run `32628682638`全日志无implicit publishing或上传尝试，唯一
   `contents: write`仍只在tag条件release job。
 - **Priority**：合并/tag前。
+
+### A-24 — initially-offline startup could exhaust retries before the network returned
+
+- **Evidence**：`NetworkStatusMonitor`原先把首个`false`只保存为静默baseline，而Main在
+  启动500 ms后独立auto-connect；初始Engine失败并耗尽retry后，后续`false→true`没有一个
+  pending outage可恢复。
+- **Severity**：P1 availability / lifecycle correctness。
+- **Impact**：用户在无网状态启动应用，随后恢复Wi-Fi，界面仍不会按已保存的auto-connect
+  意图连接，必须手动操作或重启。
+- **Root cause**：网络baseline学习和startup auto-connect由两个无序owner分别启动。
+- **Recommended fix / implemented fix**：`NetworkStartupCoordinator`等待首个sample；初始离线
+  时只建立一个`connectivity-paused` intent，不spawn Engine；online后exactly once恢复同一
+  intent。startup-only恢复服从`autoConnect`，但不会绕过之后普通故障的`autoReconnect`
+  设置；手动intent和quit使旧continuation失效。
+- **Priority**：Architecture Frozen前。unit与真实Main synthetic Electron回归覆盖
+  `offline → paused/0 attempts → online/1 attempt`及后续drop不自动重连。
+
+### A-25 — UDP ASSOCIATE relay tasks could detach from their parent connection
+
+- **Evidence**：`SocksServer::handle_udp_associate`原先分别`tokio::spawn`上传和下载relay；
+  外层connection task被abort时，两个`JoinHandle`直接drop会让relay继续运行到runtime退出。
+- **Severity**：P2 resource lifecycle。
+- **Impact**：正常serving shutdown缺少UDP relay完成证据，未来进程内重连或长寿命runtime
+  可能暂时保留socket/task。
+- **Root cause**：子任务没有abort-on-drop owner，也不在父future的结构化并发作用域内。
+- **Recommended fix / implemented fix**：父future直接pin并`select!`两个方向及control close；
+  父任务drop/abort或任一方向结束时其余pending I/O同步drop。回归测试在两个方向都active后
+  abort父任务，并验证两个drop guard都执行。
+- **Priority**：Architecture Frozen前的P2收束。
+
+### A-26 — Browser connection waiters were polling and not bound to an intent
+
+- **Evidence**：审计时`main.js::waitForConnected`每次调用建立100 ms轮询，最长45秒；它只看
+  当前全局connected/error，没有捕获发起请求时的connection intent/generation。
+- **Severity**：P2 lifecycle / navigation correctness。
+- **Impact**：旧“打开校园网站”请求可在用户断开并开始新intent后被新连接错误满足；并发
+  请求产生多组不能主动取消的timer。
+- **Root cause**：等待语义没有生命周期owner，FSM transition也没有发布等待完成事件。
+- **Recommended fix / implemented fix**：使用intent-bound、事件驱动的
+  `ConnectionWaitRegistry`；同intent共享一个promise/timer，disconnect/stale/fail/quit/timeout
+  立即false。所有`desiredConnected`进展（含retry-wait、connectivity-paused、stopping）
+  coalesce到当前intent，不重置backoff/attempt budget；注册表有32个pending-intent硬上限。
+- **Priority**：P2；post-release tree的unit、source contract和三个并发Browser open跨retry
+  Main E2E已覆盖，exact commit/remote CI仍待建立。
+
+### A-27 — terminal connection outcome is not fully owned by the FSM
+
+- **Evidence**：`ConnectionStateMachine::snapshot`拥有phase/intent/generation，但稳定terminal
+  outcome仍部分保存在Main的`state.lastError`；Browser/settings/recovery notice虽已分域，
+  connection failure投影仍跨两个owner组合。
+- **Severity**：P2 maintainability / diagnostics。
+- **Impact**：未来增加认证或underlay状态时，等待条件、retry和用户文案可能再次从可变字符串
+  推导生命周期。
+- **Root cause**：FSM先收束phase，尚未收束`{code, secondaryCode, intent, generation}`结果。
+- **Recommended fix**：FSM持有稳定、无本地化文本的`lastOutcome`；projection层再映射用户文案，
+  Browser/settings/log notice继续独立。
+- **Priority**：后续1.x渐进式P2，不做一次性Main重写。
+
+### A-28 — legacy error and architecture ratchets remain intentionally incomplete
+
+- **Evidence**：Rust仍保留`ErrorKind::Unclassified`和旧`Error(String)`路径；pre-hello/legacy
+  Desktop fallback仍解析stderr。Desktop architecture gate检查cycle和顶层layer，但允许任意
+  `lib/* → lib/*`，而`ec-engine.rs`、`socks.rs`和`dns.rs`仍较大。
+- **Severity**：P2 maintainability；当前结构化production fatal path已有稳定code。
+- **Impact**：触达旧路径时，英文或底层库变化仍可能降低诊断稳定性；CI尚不能阻止所有领域
+  内反向依赖。
+- **Root cause**：为避免高风险机械重写，迁移采用只降不升ratchet。
+- **Recommended fix**：API hello后禁止stderr参与控制决策，旧模块按触达补typed source；为
+  `desktop/lib`建立小型ownership map/edge allowlist，只沿真实生命周期拆分大文件。
+- **Priority**：P2持续维护，不是回滚当前基线的理由。
+
+### A-29 — online-to-online interface changes have no direct generation signal
+
+- **Evidence**：当前`NetworkStatusMonitor`只比较`net.isOnline()`布尔值；Wi-Fi/AP、Ethernet或
+  default-route变化但机器始终online时，不会直接使Engine generation失效。
+- **Severity**：P2 availability；尚无本校稳定复现。
+- **Impact**：只能等待SOCKS health连续失败后被动恢复，切换延迟和失败原因不够可解释。
+- **Root cause**：1.x没有受控的underlay identity/default-route fingerprint adapter。
+- **Recommended fix**：先以平台只读adapter产生有界route/source-interface fingerprint，变化时
+  走现有generation invalidation；自动出口探测仍留在2.0并受独立证据门约束。
+- **Priority**：P2 evidence-triggered；需要synthetic transition与真机切换canary。
+
+### A-30 — late connection requests could race application quit
+
+- **Evidence**：`DesktopShell::requestQuit`先标记`isQuitting`并开始异步disconnect；审计时
+  `connect/reconnect`入口及其await后的continuation只检查intent，没有统一检查quit状态。
+- **Severity**：P1 process lifecycle。
+- **Impact**：控制Renderer在quit窗口内的晚到请求可能在旧Engine停完后创建新intent并spawn
+  Engine，而cleanup不会再执行第二轮stop，造成退出后子进程残留风险。
+- **Root cause**：quit owner只取消已有资源，没有成为所有未来connection entry的否决条件。
+- **Recommended fix / implemented fix**：`connect/reconnect`入口及每个异步stop/wait边界调用同一
+  fail-closed quit gate；它终止当前desired intent并立即发布snapshot，且内部intent继续不越过
+  Renderer IPC。contract与Main lifecycle回归锁定no new intent/attempt语义。
+- **Priority**：Architecture Frozen前；post-release convergence tree已实现，exact commit/
+  remote CI仍待建立。
 
 ## 5. Technical debt that is not a rewrite mandate
 
@@ -341,8 +453,9 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 
 ## 7. Convergence disposition
 
-当前实现提交：`6efca3c`。本表只关闭有当前代码和测试证据的问题；远端、平台和学校
-环境证据仍保持开放。
+已发布v1.2.3实现提交：`6efca3c`；正式交付/tag提交：`5d8323d`。A-01～A-23按该固定
+发布证据处置；A-24～A-29是单独的post-release本地工作树审计，不得反向归入v1.2.3。
+本表只关闭有对应层级代码和测试证据的问题；远端、平台和学校环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
 | --- | --- | --- |
@@ -364,13 +477,20 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 | A-16 route evaluator drift | Partially fixed | deterministic 1,024-case JS/PAC differential；versioned IR与100k corpus保留2.0 |
 | A-17 underlay change observation | Deferred evidence-triggered | `.no_proxy()`已关闭HTTP环境递归；explicit underlay保留2.0 |
 | A-18 documentation drift | Fixed | ROADMAP/compatibility/architecture使用Implementation+Evidence双轴 |
-| A-19 remote governance | Partially closed | PR #5、ordinary CI、Windows sidecar DACL和三平台exact-SHA package已完成；`main` protection仍404，最终review/merge/tag/source reconciliation与学校canary仍开放 |
+| A-19 remote governance | Closed for v1.2.3 delivery; Architecture Frozen governance remains open | PR #5、final review、merge、main CI、exact tag、三平台tag build和唯一release job已完成；`main` protection仍关闭，学校canary仍开放 |
 | A-20 Homebrew liblzma leakage | Fixed with package gate | vendored static liblzma；真实`otool -L` system-only门；修复前v1.2.2与v1.2.3 arm64 package证据已作废；run `32628682638`双架构package gate通过 |
 | A-21 stale close sidecar deletion | Fixed | generation-aware proxy cleanup；stale Supervisor/FSM均0次unlink，current close恰好1次；PR review thread已resolve |
 | A-22 popup creation exception | Fixed | 事务式View/Tab/credential-flow回滚；native addChild故障注入和真实popup MFA E2E通过 |
 | A-23 implicit builder publish | Fixed | 所有builder显式`--publish never`；唯一tag release job持有write；manual run无隐式上传 |
+| A-24 initially-offline startup | Fixed in post-release convergence tree | 首个网络sample决定pause或延迟auto-connect；`autoReconnect=false`的Main E2E仍只执行一次startup连接，随后drop不重连 |
+| A-25 detached UDP relay | Fixed in post-release convergence tree | upload/download直接由parent future监督；active parent abort测试验证两个方向同步drop |
+| A-26 unowned Browser connection wait | Fixed in post-release convergence tree | 同intent共享一个有界wait promise/timer；stale/disconnect/quit/timeout回归替代轮询，并发Browser open复用当前intent |
+| A-27 FSM terminal outcome split | Open P2 | phase已权威；稳定lastOutcome仍需从Main字符串状态迁入FSM |
+| A-28 legacy errors/domain edge ratchet | Accepted incremental P2 | 新结构化路径受门禁；旧`Unclassified`、stderr fallback和`lib/*`edge按触达继续收束 |
+| A-29 online-to-online interface change | Deferred evidence-triggered | 当前仍由health failure被动恢复；显式fingerprint与真机canary后再启用 |
+| A-30 late connection during quit | Fixed in post-release convergence tree | connect/reconnect入口和每个await后统一quit gate；desired intent终止，不能spawn新Engine或建立waiter |
 
-### Current local verification
+### Released v1.2.3 verification
 
 - Rust production feature set：261 passed，0 failed，2个显式release性能门默认ignored；
   lifecycle test feature：263 passed，0 failed，2 ignored；fmt和Clippy `-D warnings`通过。
@@ -384,10 +504,32 @@ branch protection/required checks、最终维护者review、merge/tag/release so
 - Electron：Main integration/lifecycle、toolbar、auth control、same-window/popup MFA、strict proxy、layout、20-tab、routing restart、idle全部通过。
 - Offline performance：SOCKS 18/18，最大p95 1.293 ms；netstack 27/27，最大p95 6.020 ms；均不是Gateway吞吐证据。
 - 每批精确暂存及最终本地候选HEAD secret gate通过；未来remote merge/tag candidate
-  仍须对其exact tree重新执行。
+  已在PR、main和tag流水线对对应exact tree重新执行。
+- main push CI `32630023985`在merge commit `5d8323d`通过；tag run `32630322732`的
+  macOS arm64/x64、Windows x64、Linux x64 build/verifier/smoke和唯一release job全部通过。
+- 正式Release为`v1.2.3`，包含两个DMG、一个EXE和一个AppImage；资产digest记录在
+  [`1x-release-gate.md`](1x-release-gate.md)。
 
-当前未发现仍成立的本地代码级P0/P1；远端CI、current-SHA原生包与Windows sidecar DACL
-也已通过。Architecture Frozen仍为NO；真实HPC/Gateway、Clash/SSH、校园SSO、sleep/wake、
-网络切换、系统网络before/after、30分钟packaged soak与`main` protection继续作为未验证
-边界披露。维护者已授权v1.2.3 Release Candidate GO；正式发布仍以merge commit精确tag、
-tag run三平台及唯一release job成功、资产/说明复核为条件。
+### Unpublished post-release convergence verification
+
+以下结果只适用于当前本地工作树，不归入v1.2.3；exact commit、远端CI和package证据仍待
+提交后建立：
+
+- Rust no-default production suite：262 passed，0 failed，2个显式性能门ignored；fmt、
+  all-target Clippy `-D warnings`通过。
+- Feature-gated真实`ec-engine` non-routing post-Transport lifecycle：100/100轮通过，新增
+  UDP parent-abort回归包含在上述262项production suite内。
+- Desktop：549 total，548 passed，0 failed，1个Windows-only DACL测试在macOS跳过；
+  `npm audit --audit-level=high`为0 vulnerabilities。
+- Desktop graph：198 files / 250 edges / 0 cycles；Main 1596行/35直接依赖；Renderer 524行。
+- Main integration、同intent retry + 两个并发Campus Browser waiter、initially-offline startup
+  （`autoConnect=true`、`autoReconnect=false`）Electron E2E均通过。
+- 新startup E2E已经进入ordinary CI和tag build contract；synthetic network/Engine fixture仅限
+  non-packaged测试，且不在package files中。
+- JS syntax与`git diff --check`通过；exact staged/tree secret gate、独立最终review、远端CI
+  和任何新package尚待后续提交边界完成。
+
+当前未发现仍成立的本地代码级P0/P1；远端CI、正式tag原生包与Windows sidecar DACL
+也已通过，v1.2.3已经发布。Architecture Frozen仍为NO；真实HPC/Gateway、Clash/SSH、
+校园SSO、sleep/wake、网络切换、系统网络before/after、30分钟packaged soak与`main`
+protection继续作为工程证据边界保留，不因发布完成而改写为已验证。

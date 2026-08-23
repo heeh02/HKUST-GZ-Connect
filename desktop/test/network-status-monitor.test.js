@@ -2,9 +2,12 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { ConnectionStateMachine } = require('../lib/connection-state-machine');
 const {
   DEFAULT_NETWORK_POLL_MS,
+  NetworkStartupCoordinator,
   NetworkStatusMonitor,
+  createNetworkStartupSystem,
 } = require('../lib/network-status-monitor');
 
 function deferred() {
@@ -122,6 +125,30 @@ test('sync errors and non-boolean samples are ignored without changing the basel
   assert.deepEqual(fixture.events, ['online']);
 });
 
+test('baseline wait is event-driven, bounded, and cancellable', async () => {
+  const fixture = monitorFor([undefined, true]);
+  await fixture.monitor.start();
+  const waiting = fixture.monitor.waitForBaseline({ timeoutMs: 12_000 });
+  assert.equal(fixture.timers.ids().length, 2,
+    'one monitor poll and one baseline deadline are owned');
+  const pollTimer = fixture.timers.ids().find((id) => (
+    fixture.timers.record(id).delayMs === DEFAULT_NETWORK_POLL_MS
+  ));
+  await fixture.timers.fire(pollTimer);
+  assert.equal(await waiting.promise, true);
+  assert.equal(fixture.timers.ids().length, 1,
+    'the baseline deadline is cleared and only the next monitor poll remains');
+
+  fixture.monitor.stop();
+  const cancelledFixture = monitorFor([undefined]);
+  await cancelledFixture.monitor.start();
+  const cancelled = cancelledFixture.monitor.waitForBaseline({ timeoutMs: 12_000 });
+  cancelled.cancel();
+  assert.equal(await cancelled.promise, null);
+  assert.equal(cancelledFixture.timers.ids().length, 1,
+    'cancel removes its deadline without stopping the monitor itself');
+});
+
 test('every recursive timer uses the reviewed default interval and is unrefed', async () => {
   const fixture = monitorFor([true, true]);
   await fixture.monitor.start();
@@ -236,4 +263,204 @@ test('constructor bounds the polling interval and dispose prevents restart', asy
   fixture.monitor.dispose();
   assert.equal(await fixture.monitor.start(), false);
   assert.equal(fixture.reads, 0);
+});
+
+test('initial offline startup pauses one desired intent and connects exactly once after online', async () => {
+  const timers = new FakeTimers();
+  const monitor = {
+    start: async () => true,
+    snapshot: () => ({ baseline: false }),
+  };
+  const events = [];
+  const connection = new ConnectionStateMachine();
+  let startupIntent = null;
+  let quitting = false;
+  const startup = new NetworkStartupCoordinator({
+    monitor,
+    shouldAutoConnect: () => true,
+    pauseOffline: () => {
+      startupIntent = connection.beginConnectIntent();
+      events.push('paused');
+      return connection.pauseForConnectivity(startupIntent);
+    },
+    resumeOffline: async () => {
+      assert.equal(connection.resumeConnectivity(startupIntent), true);
+      events.push('connected');
+    },
+    connect: async () => { events.push('unexpected-direct-connect'); },
+    isQuitting: () => quitting,
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+  });
+
+  assert.equal(await startup.start(), true);
+  assert.deepEqual(events, ['paused']);
+  assert.deepEqual(timers.ids(), [], 'offline startup must not schedule an Engine start');
+  assert.equal(startup.snapshot().pausedOffline, true);
+  assert.equal(connection.snapshot().desiredConnected, true);
+  assert.equal(connection.snapshot().phase, 'connectivity-paused');
+
+  assert.equal(await startup.networkOnline(), true);
+  assert.deepEqual(events, ['paused', 'connected']);
+  assert.equal(connection.snapshot().phase, 'starting');
+  assert.equal(await startup.networkOnline(), false, 'the initial outage is consumed exactly once');
+  assert.deepEqual(timers.ids(), []);
+
+  quitting = true;
+  startup.dispose();
+});
+
+test('manual cancellation or quit makes an initial network continuation inert', async () => {
+  for (const action of ['cancel', 'quit']) {
+    const timers = new FakeTimers();
+    const baseline = deferred();
+    let connects = 0;
+    let pauses = 0;
+    let quitting = false;
+    const startup = new NetworkStartupCoordinator({
+      monitor: {
+        start: () => baseline.promise,
+        snapshot: () => ({ baseline: false }),
+      },
+      shouldAutoConnect: () => true,
+      pauseOffline: () => { pauses += 1; return true; },
+      resumeOffline: async () => { connects += 1; },
+      connect: async () => { connects += 1; },
+      isQuitting: () => quitting,
+      setTimeout: timers.setTimeout.bind(timers),
+      clearTimeout: timers.clearTimeout.bind(timers),
+    });
+    const started = startup.start();
+    if (action === 'cancel') startup.cancel();
+    else quitting = true;
+    baseline.resolve(true);
+    assert.equal(await started, false);
+    assert.equal(pauses, 0);
+    assert.equal(connects, 0);
+    assert.deepEqual(timers.ids(), []);
+  }
+});
+
+test('initial online startup preserves one delayed auto-connect and cancellation revokes it', async () => {
+  for (const cancelBeforeFire of [false, true]) {
+    const timers = new FakeTimers();
+    let connects = 0;
+    const startup = new NetworkStartupCoordinator({
+      monitor: {
+        start: async () => true,
+        snapshot: () => ({ baseline: true }),
+      },
+      shouldAutoConnect: () => true,
+      pauseOffline: () => { throw new Error('online startup cannot pause'); },
+      resumeOffline: () => { throw new Error('online startup cannot resume'); },
+      connect: async () => { connects += 1; },
+      isQuitting: () => false,
+      setTimeout: timers.setTimeout.bind(timers),
+      clearTimeout: timers.clearTimeout.bind(timers),
+    });
+    assert.equal(await startup.start(), true);
+    const [timer] = timers.ids();
+    assert.ok(timer);
+    const queued = timers.callback(timer);
+    if (cancelBeforeFire) startup.cancel();
+    await queued();
+    assert.equal(connects, cancelBeforeFire ? 0 : 1);
+    assert.equal(await startup.start(), true, 'startup remains single-flight');
+    assert.equal(connects, cancelBeforeFire ? 0 : 1);
+  }
+});
+
+test('startup-only and ordinary online transitions use distinct recovery callbacks', async () => {
+  for (const initialOffline of [false, true]) {
+    let initialResumes = 0;
+    let runtimeResumes = 0;
+    const system = createNetworkStartupSystem({
+      appIsPackaged: true,
+      environment: {},
+      dataDirectory: '/tmp',
+      isOnline: () => !initialOffline,
+      onOffline() {},
+      onOnline: () => { runtimeResumes += 1; return true; },
+      shouldAutoConnect: () => initialOffline,
+      pauseOffline: () => 19,
+      resumeInitialOffline: (intent) => {
+        assert.equal(intent, 19);
+        initialResumes += 1;
+        return true;
+      },
+      connect() {},
+      isQuitting: () => false,
+    });
+    await system.startup.start();
+    await system.monitor.onOnline();
+    assert.equal(initialResumes, initialOffline ? 1 : 0);
+    assert.equal(runtimeResumes, initialOffline ? 0 : 1);
+    system.startup.dispose();
+    system.monitor.dispose();
+  }
+});
+
+test('unknown initial network samples wait for one bounded valid baseline', async () => {
+  const baseline = deferred();
+  const timers = new FakeTimers();
+  let connects = 0;
+  let waits = 0;
+  let waitCancelled = 0;
+  const startup = new NetworkStartupCoordinator({
+    monitor: {
+      start: async () => true,
+      snapshot: () => ({ baseline: null }),
+      waitForBaseline: () => {
+        waits += 1;
+        return { promise: baseline.promise, cancel: () => { waitCancelled += 1; } };
+      },
+    },
+    shouldAutoConnect: () => true,
+    pauseOffline: () => 1,
+    resumeOffline: () => true,
+    connect: async () => { connects += 1; },
+    isQuitting: () => false,
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+  });
+  const started = startup.start();
+  await Promise.resolve();
+  assert.equal(waits, 1);
+  assert.deepEqual(timers.ids(), [], 'unknown is not treated as an online sample');
+  baseline.resolve(true);
+  assert.equal(await started, true);
+  assert.equal(waitCancelled, 1);
+  const [timer] = timers.ids();
+  await timers.fire(timer);
+  assert.equal(connects, 1);
+});
+
+test('auto-connect becoming ineligible during baseline wait creates no intent or timer', async () => {
+  const baseline = deferred();
+  const timers = new FakeTimers();
+  let eligible = true;
+  let pauses = 0;
+  let connects = 0;
+  const startup = new NetworkStartupCoordinator({
+    monitor: {
+      start: async () => true,
+      snapshot: () => ({ baseline: null }),
+      waitForBaseline: () => ({ promise: baseline.promise, cancel() {} }),
+    },
+    shouldAutoConnect: () => eligible,
+    pauseOffline: () => { pauses += 1; return 1; },
+    resumeOffline: () => true,
+    connect: () => { connects += 1; },
+    isQuitting: () => false,
+    setTimeout: timers.setTimeout.bind(timers),
+    clearTimeout: timers.clearTimeout.bind(timers),
+  });
+  const started = startup.start();
+  await Promise.resolve();
+  eligible = false;
+  baseline.resolve(false);
+  assert.equal(await started, false);
+  assert.equal(pauses, 0);
+  assert.equal(connects, 0);
+  assert.deepEqual(timers.ids(), []);
 });

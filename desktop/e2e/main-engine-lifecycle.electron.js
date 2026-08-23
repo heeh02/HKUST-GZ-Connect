@@ -102,15 +102,26 @@ async function run() {
   })`);
   assert.equal(savedPolicy.ok, true);
 
-  const started = await invoke(control, 'window.api.connect()');
-  assert.equal(started.ok, true);
+  const opening = invoke(control, `window.api.openCampusBrowser({
+    url: 'https://waiter.example.invalid/',
+    route: 'campus',
+  })`);
+  const secondOpening = invoke(control, `window.api.openCampusBrowser({
+    url: 'https://second-waiter.example.invalid/',
+    route: 'campus',
+  })`);
   const phases = new Set();
   await waitFor(async () => {
     const state = await invoke(control, 'window.api.getState()');
     phases.add(state.phase);
-    return attemptCount() >= 2;
-  }, 'automatic retry', 12_000);
+    return state.phase === 'retry-wait';
+  }, 'retry wait', 12_000);
   assert.ok(phases.has('retry-wait'), 'the first synthetic failure must enter retry-wait');
+  const thirdOpening = invoke(control, `window.api.openCampusBrowser({
+    url: 'https://mid-retry-waiter.example.invalid/',
+    route: 'campus',
+  })`);
+  await waitFor(() => attemptCount() >= 2, 'automatic retry', 12_000);
 
   const beforeValidGeneration = Date.now() + 250;
   while (Date.now() < beforeValidGeneration) {
@@ -138,6 +149,20 @@ async function run() {
   assert.ok(connected.clientIp);
   assert.equal(await loopbackConnects(port), true,
     'listener_ready must correspond to a real owned loopback listener');
+  const opened = await opening;
+  const secondOpened = await secondOpening;
+  const thirdOpened = await thirdOpening;
+  assert.equal(opened.ok, true,
+    'one intent-bound Main waiter must remain pending through same-intent retry');
+  assert.equal(secondOpened.ok, true,
+    'concurrent opens must coalesce onto the same active connection intent');
+  assert.equal(thirdOpened.ok, true,
+    'a mid-retry open must retain the existing intent and retry budget');
+  const activeConnect = await invoke(control, 'window.api.connect()');
+  assert.equal(activeConnect.ok, true);
+  assert.equal(activeConnect.existing, true,
+    'an already-active desired connection must be reused without a new intent');
+  assert.equal(attemptCount(), 2);
 
   const oldContentsId = control.webContents.id;
   control.webContents.forcefullyCrashRenderer();

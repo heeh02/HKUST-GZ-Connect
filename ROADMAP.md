@@ -27,6 +27,12 @@ more conservative status until the discrepancy is reviewed.
 
 ## Release 1.2.3 baseline
 
+正式交付：PR #5 merge commit与tag source均为
+`5d8323d37de7c279ae70b3ec646f93791d6a3581`；main CI run `32630023985`和
+tag build/release run `32630322732`均成功。Release包含macOS arm64/x64 DMG、Windows
+x64 EXE和Linux x64 AppImage。学校真实canary与Architecture Frozen开放项继续按
+[`docs/engineering/1x-release-gate.md`](docs/engineering/1x-release-gate.md)追踪。
+
 | Area | Implementation | Current evidence | Production result and remaining evidence |
 | --- | --- | --- | --- |
 | Independent password + modern L3 engine | `I3` | Current tree `E2`; earlier restricted canary is historical evidence | Rust owns auth, tunnel, userspace TCP/UDP and loopback proxying; repeat an authorized canary after Gateway/client changes |
@@ -117,6 +123,35 @@ Each command emits one bounded line prefixed with
 OS, architecture, Electron version, power mode and whether the machine was on
 battery. These reports do not measure gateway latency, tunnel throughput, DNS
 latency or real campus-page rendering.
+
+## Future 1.3 Gateway MFA milestone
+
+1.3保留给学校Gateway首次真实启用MFA后的独立认证版本。当前generic challenge framework、
+Control v3、synthetic provider和Campus Browser网页MFA安全只证明架构可扩展，不构成1.3
+功能，也不会因为类型或UI已经存在而提前发布该版本。
+
+### Entry gate
+
+只有同时满足以下条件才启动1.3 production实现：
+
+1. 学校提供受控MFA profile、授权测试身份和可比较的官方客户端；
+2. 至少一种真实方法有脱敏的状态、字段、失败和cleanup证据；
+3. synthetic HTTPS Gateway可以覆盖Cookie/CSRF rotation、partial body、timeout/reset和logout；
+4. Password→Challenge共用一个AuthAttemptBudget，continuation不能绕过Engine预算；
+5. provider可以独立feature-disable，不修改Modern L3、DNS、SOCKS或Campus Browser核心。
+
+### Exit gate
+
+1. 只对已验证的具体方法达到至少`I3/E4`，其余方法继续fail-closed；
+2. success、reject、indeterminate、expiry、resend、cancel和cleanup-unconfirmed均有稳定结果；
+3. OTP、Cookie、TwfID、CSRF、continuation和transport token不进入Renderer持久状态、日志、
+   telemetry、clipboard或crash report；
+4. password-only路径完整回归，MFA关闭后不改变现有Transport/frontend；
+5. 同profile官方客户端parity、staff canary、rollback和跨平台package gate通过。
+
+详细状态机和activation contract见
+[`docs/architecture/mfa-architecture.md`](docs/architecture/mfa-architecture.md)。在真实证据
+出现前，1.3保持`Deferred / evidence-triggered`，项目不猜测endpoint、验证码形状或渠道映射。
 
 ## Future 2.0.0 EasyConnect compatibility contingency plan
 
