@@ -10,9 +10,10 @@
 本轮产品版本仍为v1.2.3：新增内容属于补丁级稳定性、诊断、回归和交付门禁，不是新的
 production Gateway能力。
 
-本文件的v1.2.3发布勾选只冻结tag `5d8323d`的证据。当前post-release convergence
-工作树中的startup recovery、UDP relay ownership和connection waiter修改不属于v1.2.3，
-在获得独立commit、exact-tree gates、review和远端CI以前也不是新的发布候选。
+本文件的v1.2.3发布勾选只冻结tag `5d8323d`的证据。post-release convergence commit
+`a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`中的startup recovery、UDP relay ownership、
+connection waiter和quit gate不属于v1.2.3；其本地exact-tree gates与review已通过，但在
+获得远端CI、merge和单独版本决策以前不是新的发布候选。
 
 ## 1. Source and governance
 

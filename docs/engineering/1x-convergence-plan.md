@@ -16,9 +16,10 @@
 | C5 Typed errors | Auth、credential、Data Plane retry已typed；legacy AUTH_FAILED不再归责密码；log I/O可见 | 其余旧Unclassified跨域继续下降 |
 | C6 Lifecycle regression | Real Electron Main全链E2E；feature-gated真实Rust Engine 100轮post-Transport netstack/listener/stop/join/port-release soak | 真实Gateway lifecycle与30分钟persistent资源soak |
 | C7 Package exactness | Exact native manifest、strict mac verification、macOS system-only dylib门、三平台launch smoke在exact SHA `6efca3c`通过；所有builder显式`--publish never` | Developer ID/notarization；后续版本继续执行exact-tag source reconciliation |
-| C8 Initially-offline startup | Post-release tree等待首个网络sample；离线只保留一个paused intent，online后按autoConnect exactly once恢复 | 合并前Desktop/Electron、exact-tree secret与remote CI；真机cold-offline canary |
-| C9 UDP association ownership | Post-release tree把upload/download relay纳入父future结构化取消作用域 | 合并前Rust全量回归；真实UDP socket/port回收增强测试 |
-| C10 Browser connection wait ownership | Post-release tree使用intent-bound事件驱动registry替代100 ms轮询 | 合并前并发open/coalescing、quit/timeout和Main lifecycle回归 |
+| C8 Initially-offline startup | commit `a6d4069`等待首个网络sample；离线只保留一个paused intent，online后按autoConnect exactly once恢复；ordinary policy拒绝后仍可手动连接 | 本地Desktop/Electron/exact-tree secret通过；remote CI与真机cold-offline canary待补 |
+| C9 UDP association ownership | commit `a6d4069`把upload/download relay纳入父future结构化取消作用域 | 本地Rust全量回归通过；remote CI及真实UDP socket/port回收增强测试待补 |
+| C10 Browser connection wait ownership | commit `a6d4069`使用intent-bound事件驱动registry替代100 ms轮询，并对retry/paused/quit建立明确收束 | 本地并发open/coalescing、quit/timeout和Main lifecycle回归通过；remote CI待补 |
+| C11 Quit connection gate | commit `a6d4069`在connect/reconnect入口及每个异步stop/wait边界检查quit owner，晚到请求只能fail-closed | 本地source contract、Main integration/lifecycle与三并发open回归通过；remote CI待补 |
 
 本表只描述本地实现，不替代下方P0远端和真实环境门。
 

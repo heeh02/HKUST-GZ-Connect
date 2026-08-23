@@ -8,13 +8,15 @@
 正式交付事实：PR #5以merge commit
 `5d8323d37de7c279ae70b3ec646f93791d6a3581`进入`main`；`v1.2.3`精确指向该commit。
 main push CI run `32630023985`和tag build/release run `32630322732`均成功，四个正式资产
-已由唯一release job发布。实现快照`6efca3c`之后只增加发布策略和文档收口，不新增
-Gateway production capability；正式包的源码身份以tag commit `5d8323d`为准。
+已由唯一release job发布。在v1.2.3 tag lineage中，从实现快照`6efca3c`到`5d8323d`
+只增加发布策略和文档收口，不新增Gateway production capability；正式包的源码身份以
+tag commit `5d8323d`为准。
 
-Post-release convergence说明：A-24～A-29来自`5d8323d`之后的独立复核。正在整改的
-startup recovery、UDP relay ownership和connection waiter当前只属于未提交、未发布的本地
-工作树；它们不属于`6efca3c`实现快照或已发布v1.2.3。在获得exact commit、secret/static/
-test gates、review和远端CI前，本文只把它们标为本地post-release证据。
+Post-release convergence说明：A-24～A-30来自`5d8323d`之后的独立复核。startup recovery、
+UDP relay ownership、connection waiter与quit gate的实现固定为
+`a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`；它们不属于`6efca3c`实现快照或已发布
+v1.2.3。该commit已完成本地secret/static/test gates与四轮独立review，但尚未获得远端CI、
+merge或package证据，因此仍只标为post-release branch evidence。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
 （`codex/v1.2.3-hardening`）。审计开始时 `origin/main` 为
@@ -382,7 +384,7 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
   立即false。所有`desiredConnected`进展（含retry-wait、connectivity-paused、stopping）
   coalesce到当前intent，不重置backoff/attempt budget；注册表有32个pending-intent硬上限。
 - **Priority**：P2；post-release tree的unit、source contract和三个并发Browser open跨retry
-  Main E2E已覆盖，exact commit/remote CI仍待建立。
+  Main E2E已覆盖，exact implementation commit与本地gates已建立；remote CI/merge待补。
 
 ### A-27 — terminal connection outcome is not fully owned by the FSM
 
@@ -432,8 +434,8 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
 - **Recommended fix / implemented fix**：`connect/reconnect`入口及每个异步stop/wait边界调用同一
   fail-closed quit gate；它终止当前desired intent并立即发布snapshot，且内部intent继续不越过
   Renderer IPC。contract与Main lifecycle回归锁定no new intent/attempt语义。
-- **Priority**：Architecture Frozen前；post-release convergence tree已实现，exact commit/
-  remote CI仍待建立。
+- **Priority**：Architecture Frozen前；post-release convergence tree已实现，exact
+  implementation commit与本地gates已建立；remote CI/merge待补。
 
 ## 5. Technical debt that is not a rewrite mandate
 
@@ -454,7 +456,7 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
 ## 7. Convergence disposition
 
 已发布v1.2.3实现提交：`6efca3c`；正式交付/tag提交：`5d8323d`。A-01～A-23按该固定
-发布证据处置；A-24～A-29是单独的post-release本地工作树审计，不得反向归入v1.2.3。
+发布证据处置；A-24～A-30是单独的post-release branch审计，不得反向归入v1.2.3。
 本表只关闭有对应层级代码和测试证据的问题；远端、平台和学校环境证据仍保持开放。
 
 | Finding | Disposition | Current evidence |
@@ -510,10 +512,11 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
 - 正式Release为`v1.2.3`，包含两个DMG、一个EXE和一个AppImage；资产digest记录在
   [`1x-release-gate.md`](1x-release-gate.md)。
 
-### Unpublished post-release convergence verification
+### Post-release convergence commit verification
 
-以下结果只适用于当前本地工作树，不归入v1.2.3；exact commit、远端CI和package证据仍待
-提交后建立：
+以下结果只适用于implementation commit
+`a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`，不归入v1.2.3；远端CI、merge和package
+证据仍未建立：
 
 - Rust no-default production suite：262 passed，0 failed，2个显式性能门ignored；fmt、
   all-target Clippy `-D warnings`通过。
@@ -526,8 +529,9 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
   （`autoConnect=true`、`autoReconnect=false`）Electron E2E均通过。
 - 新startup E2E已经进入ordinary CI和tag build contract；synthetic network/Engine fixture仅限
   non-packaged测试，且不在package files中。
-- JS syntax与`git diff --check`通过；exact staged/tree secret gate、独立最终review、远端CI
-  和任何新package尚待后续提交边界完成。
+- JS syntax、`git diff --check`与exact tree secret gate通过。四轮独立review分别覆盖Rust
+  UDP cancellation、Desktop startup/wait/quit竞态、交付文档和最终组合回归；最终结论为GO，
+  除A-27～A-29已记录债务外未发现新的合并阻断。远端CI、merge和任何新package仍待补。
 
 当前未发现仍成立的本地代码级P0/P1；远端CI、正式tag原生包与Windows sidecar DACL
 也已通过，v1.2.3已经发布。Architecture Frozen仍为NO；真实HPC/Gateway、Clash/SSH、
