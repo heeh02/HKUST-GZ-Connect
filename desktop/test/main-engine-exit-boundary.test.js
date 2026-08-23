@@ -39,6 +39,8 @@ test('fatal, stopping, and exit boundaries revoke in-flight serving promotion', 
   const close = source.slice(source.indexOf('function handleEngineClose('), revokeStart);
   assert.match(close, /closeSnapshot\.wasConnectedBeforeStop/);
   assert.match(close, /closeSnapshot\.connectedUptimeBeforeStop/);
+  assert.match(close, /cleanupProxyAccessForEngineClose\(\{[\s\S]*generation,[\s\S]*supervisorGenerationCurrent,[\s\S]*connectionGenerationCurrent: connectionState\.isCurrentGeneration\(generation\),[\s\S]*clearCredential: clearActiveProxyCredential,[\s\S]*removeSidecar: removeExternalProxySidecar/);
+  assert.match(close, /\}\)\) return;/);
 });
 
 test('an unclean stop releases the local process but blocks automatic reconnect', () => {

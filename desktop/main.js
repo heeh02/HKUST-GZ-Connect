@@ -57,7 +57,7 @@ const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/stop-policy');
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
 const { ConnectivityRecovery } = require('./lib/connectivity-recovery');
 const { NetworkStatusMonitor } = require('./lib/network-status-monitor');
-const { EphemeralProxyCredential } = require('./lib/proxy-credential');
+const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/proxy-credential');
 const {
   ExternalProxyCredentialStore,
 } = require('./lib/external-proxy-credential-store');
@@ -76,7 +76,6 @@ const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
 const { ConnectionStateMachine, projectConnectionStatus } = require('./lib/connection-state-machine');
-
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone
 // permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing
@@ -571,9 +570,10 @@ function handleEngineClose({ code, generation }, diagnosticTail,
   // newer listener that is now serving the browser.
   const supervisorGenerationCurrent = engineSupervisor.isCurrent(generation);
   clearActiveEngineControl(generation);
-  clearActiveProxyCredential(generation);
-  removeExternalProxySidecar();
-  if (!supervisorGenerationCurrent || !connectionState.isCurrentGeneration(generation)) return;
+  if (!cleanupProxyAccessForEngineClose({ generation, supervisorGenerationCurrent,
+    connectionGenerationCurrent: connectionState.isCurrentGeneration(generation),
+    clearCredential: clearActiveProxyCredential, removeSidecar: removeExternalProxySidecar,
+  })) return;
   // Unexpected process death releases the configured loopback port before the
   // close event reaches JavaScript. Repoint the persistent browser Session at
   // its fail-closed PAC immediately; a later generation may restore it only

@@ -3,7 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const util = require('node:util');
-const { EphemeralProxyCredential, RANDOM_SECRET_BYTES } = require('../lib/proxy-credential');
+const {
+  EphemeralProxyCredential,
+  RANDOM_SECRET_BYTES,
+  cleanupProxyAccessForEngineClose,
+} = require('../lib/proxy-credential');
 
 function deterministicCredential() {
   let value = 0;
@@ -84,4 +88,34 @@ test('a stable credential can be copied into a generation without sharing backin
     `${'A'.repeat(32)}\n${'B'.repeat(32)}\n`,
   );
   credential.destroy(20);
+});
+
+test('a stale Engine close cannot remove a newer generation proxy sidecar', () => {
+  for (const current of [
+    { supervisorGenerationCurrent: false, connectionGenerationCurrent: true },
+    { supervisorGenerationCurrent: true, connectionGenerationCurrent: false },
+  ]) {
+    const cleared = [];
+    let removals = 0;
+    assert.equal(cleanupProxyAccessForEngineClose({
+      generation: 31,
+      ...current,
+      clearCredential: (generation) => { cleared.push(generation); },
+      removeSidecar: () => { removals += 1; },
+    }), false);
+    assert.deepEqual(cleared, [31]);
+    assert.equal(removals, 0);
+  }
+
+  const cleared = [];
+  let removals = 0;
+  assert.equal(cleanupProxyAccessForEngineClose({
+    generation: 32,
+    supervisorGenerationCurrent: true,
+    connectionGenerationCurrent: true,
+    clearCredential: (generation) => { cleared.push(generation); },
+    removeSidecar: () => { removals += 1; },
+  }), true);
+  assert.deepEqual(cleared, [32]);
+  assert.equal(removals, 1);
 });
