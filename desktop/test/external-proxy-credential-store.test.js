@@ -10,6 +10,8 @@ const {
   ExternalProxyCredentialStore,
 } = require('../lib/external-proxy-credential-store');
 
+const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
+
 function temporaryFile() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-proxy-credential-'));
   return {
@@ -49,7 +51,7 @@ test('stable credential is generated once, encrypted, and reused after restart',
   const options = {
     filePath: temporary.file,
     safeStorage,
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
     randomBytes: (length) => Buffer.alloc(length, ++entropy),
   };
   const first = new ExternalProxyCredentialStore(options).loadOrCreate();
@@ -57,7 +59,9 @@ test('stable credential is generated once, encrypted, and reused after restart',
   first.destroy();
 
   assert.equal(safeStorage.calls.encrypt, 1);
-  assert.equal(fs.statSync(temporary.file).mode & 0o077, 0);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(temporary.file).mode & 0o077, 0);
+  }
   const encrypted = fs.readFileSync(temporary.file, 'utf8');
   assert.doesNotMatch(encrypted, new RegExp(firstMaterial.username));
   assert.doesNotMatch(encrypted, new RegExp(firstMaterial.password));
@@ -81,7 +85,7 @@ test('an unreadable existing credential fails without replacement or new entropy
   const store = new ExternalProxyCredentialStore({
     filePath: temporary.file,
     safeStorage,
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
     randomBytes: (length) => {
       generated += 1;
       return Buffer.alloc(length, 9);
@@ -99,7 +103,7 @@ test('unavailable secure storage creates no plaintext fallback', (t) => {
   const store = new ExternalProxyCredentialStore({
     filePath: temporary.file,
     safeStorage: fakeSafeStorage({ available: false }),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
   });
   assert.throws(() => store.loadOrCreate(), /secure storage is unavailable/);
   assert.equal(fs.existsSync(temporary.file), false);

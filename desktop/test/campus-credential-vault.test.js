@@ -11,6 +11,8 @@ const {
   normalizeCredentialOrigin,
 } = require('../lib/campus-credential-vault');
 
+const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
+
 function fakeSafeStorage() {
   return {
     isAsyncEncryptionAvailable: async () => true,
@@ -39,7 +41,7 @@ test('credential vault stores only encrypted local payloads and supports removal
   const vault = new CampusCredentialVault({
     filePath,
     safeStorage: fakeSafeStorage(),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
   });
   await vault.save('https://sso.example.edu/login', 'student001', 'local-secret');
   const disk = fs.readFileSync(filePath, 'utf8');
@@ -56,7 +58,7 @@ test('credential vault stores only encrypted local payloads and supports removal
   assert.equal(await vault.count(), 1);
   assert.equal(await vault.remove('https://sso.example.edu'), true);
   assert.equal(await vault.get('https://sso.example.edu'), null);
-  assert.equal(fs.statSync(filePath).mode & 0o077, 0);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(filePath).mode & 0o077, 0);
 });
 
 test('credential vault refuses Linux plaintext fallback', async () => {
@@ -77,14 +79,16 @@ test('credential vault rejects oversized, non-private, and non-canonical documen
   const vault = new CampusCredentialVault({
     filePath,
     safeStorage: fakeSafeStorage(),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
   });
   fs.writeFileSync(filePath, 'x'.repeat(MAX_VAULT_DOCUMENT_BYTES + 1), { mode: 0o600 });
   await assert.rejects(() => vault.count(), /vault file/);
   fs.writeFileSync(filePath, JSON.stringify({ version: 1, ciphertext: '!!!!' }), { mode: 0o600 });
   await assert.rejects(() => vault.count(), /unsupported/);
-  fs.chmodSync(filePath, 0o644);
-  await assert.rejects(() => vault.count(), /vault file/);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o644);
+    await assert.rejects(() => vault.count(), /vault file/);
+  }
 });
 
 test('credential vault never follows a symlink or overwrites on transient read failure', async (t) => {
@@ -97,7 +101,7 @@ test('credential vault never follows a symlink or overwrites on transient read f
   const vault = new CampusCredentialVault({
     filePath: link,
     safeStorage: fakeSafeStorage(),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
   });
   await assert.rejects(() => vault.count(), /vault file/);
   assert.match(fs.readFileSync(target, 'utf8'), /c2VjcmV0/);
@@ -136,14 +140,16 @@ test('credential vault rejects hard links without changing the shared file', asy
   const vault = new CampusCredentialVault({
     filePath: link,
     safeStorage: fakeSafeStorage(),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
   });
 
   await assert.rejects(() => vault.count(), /vault file/);
   assert.equal(fs.readFileSync(target, 'utf8'), before);
 });
 
-test('a post-rename directory-fsync failure keeps the committed encrypted vault visible', async (t) => {
+test('a post-rename directory-fsync failure keeps the committed encrypted vault visible', {
+  skip: process.platform === 'win32',
+}, async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-vault-fsync-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const filePath = path.join(directory, 'campus-credentials.json');
@@ -151,7 +157,7 @@ test('a post-rename directory-fsync failure keeps the committed encrypted vault 
   const vault = new CampusCredentialVault({
     filePath,
     safeStorage: fakeSafeStorage(),
-    platform: 'darwin',
+    platform: HOST_PRIVATE_FILE_PLATFORM,
     onDurabilityWarning: (error) => warnings.push(error),
   });
   const originalFsync = fs.fsyncSync;

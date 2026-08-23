@@ -16,7 +16,11 @@ const {
   snapshotPasswordFile,
 } = require('../lib/credential-store');
 
-test('password presence is a non-decrypting private-file check', (t) => {
+const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
+
+test('password presence is a non-decrypting private-file check', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-presence-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const missing = path.join(directory, 'missing.bin');
@@ -70,7 +74,9 @@ test('oversized and symbolic credential blobs are rejected before decryption', (
   assert.equal(loadPasswordResult(link, safeStorage, 'darwin').status, 'corrupt');
 });
 
-test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', (t) => {
+test('credential loading distinguishes missing, unavailable, corrupt and decrypt failure', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-result-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const missing = path.join(directory, 'missing.bin');
@@ -116,16 +122,18 @@ test('main VPN credential replacement is atomic and preserves the old blob on fa
   const failingFileSystem = Object.create(fs);
   failingFileSystem.renameSync = () => { throw new Error('simulated commit failure'); };
 
-  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin', failingFileSystem), false);
+  assert.equal(savePassword(
+    file, 'new-secret', safeStorage, HOST_PRIVATE_FILE_PLATFORM, failingFileSystem,
+  ), false);
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
   assert.deepEqual(
     fs.readdirSync(directory).filter((entry) => entry.endsWith('.tmp')),
     [],
   );
 
-  assert.equal(savePassword(file, 'new-secret', safeStorage, 'darwin'), true);
+  assert.equal(savePassword(file, 'new-secret', safeStorage, HOST_PRIVATE_FILE_PLATFORM), true);
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:new-secret');
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
 
 test('encryption failure never truncates an existing VPN credential', (t) => {
@@ -142,7 +150,9 @@ test('encryption failure never truncates an existing VPN credential', (t) => {
   assert.equal(fs.readFileSync(file, 'utf8'), 'encrypted:old-secret');
 });
 
-test('credential replacement reports a post-rename directory-fsync failure', (t) => {
+test('credential replacement reports a post-rename directory-fsync failure', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-fsync-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'credential.bin');

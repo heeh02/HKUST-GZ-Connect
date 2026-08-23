@@ -119,7 +119,7 @@ test('custom shortcut resources survive an owner-only settings round trip', (t) 
 
   saveSettings(file, { customResources: [resource] });
   assert.deepEqual(loadSettings(file).customResources, [resource]);
-  assert.equal((fs.statSync(file).mode & 0o777), 0o600);
+  if (process.platform !== 'win32') assert.equal((fs.statSync(file).mode & 0o777), 0o600);
 });
 
 test('port 6180 is written atomically and survives a reload', (t) => {
@@ -139,7 +139,9 @@ test('port 6180 is written atomically and survives a reload', (t) => {
   );
 });
 
-test('a post-rename settings directory-fsync failure exposes its commit point', (t) => {
+test('a post-rename settings directory-fsync failure exposes its commit point', {
+  skip: process.platform === 'win32',
+}, (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-settings-fsync-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'settings.json');
