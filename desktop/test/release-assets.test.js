@@ -79,7 +79,10 @@ test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', (
   assert.match(ciWorkflow, /test:main-engine-lifecycle/u);
   assert.match(workflow, /test:main-engine-lifecycle/u);
   assert.match(ciWorkflow, /test:campus-popup-mfa-safety/u);
-  assert.match(ciWorkflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
+  assert.match(
+    ciWorkflow,
+    /secret-scan:[\s\S]*check-sensitive-patterns\.js --tree "\$GITHUB_SHA"/u,
+  );
   assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
   assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
@@ -90,6 +93,16 @@ test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', (
   assert.match(
     ciWorkflow,
     /cargo test --locked --no-default-features --features engine-lifecycle-fixture --test engine_success_lifecycle/u,
+  );
+});
+
+test('ordinary CI exposes a stable three-platform package-verifier gate', () => {
+  assert.match(ciWorkflow, /package-verifier-platform:[\s\S]*macos-latest/u);
+  assert.match(ciWorkflow, /package-verifier-platform:[\s\S]*windows-latest/u);
+  assert.match(ciWorkflow, /package-verifier-platform:[\s\S]*ubuntu-latest/u);
+  assert.match(
+    ciWorkflow,
+    /package-verifier:[\s\S]*needs: package-verifier-platform[\s\S]*MATRIX_RESULT/u,
   );
 });
 
