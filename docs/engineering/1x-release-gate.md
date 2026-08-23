@@ -12,8 +12,9 @@ production Gateway能力。
 
 本文件的v1.2.3发布勾选只冻结tag `5d8323d`的证据。post-release convergence commit
 `a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`中的startup recovery、UDP relay ownership、
-connection waiter和quit gate不属于v1.2.3；其本地exact-tree gates与review已通过，但在
-获得远端CI、merge和单独版本决策以前不是新的发布候选。
+connection waiter和quit gate不属于v1.2.3；其本地exact-tree gates、review以及PR #6
+ordinary CI `32641232584`与compatibility offline run `32641232560`已通过，但在获得merge、
+cross-platform package和单独版本决策以前不是新的发布候选。
 
 ## 1. Source and governance
 

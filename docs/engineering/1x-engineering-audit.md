@@ -15,8 +15,10 @@ tag commit `5d8323d`为准。
 Post-release convergence说明：A-24～A-30来自`5d8323d`之后的独立复核。startup recovery、
 UDP relay ownership、connection waiter与quit gate的实现固定为
 `a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`；它们不属于`6efca3c`实现快照或已发布
-v1.2.3。该commit已完成本地secret/static/test gates与四轮独立review，但尚未获得远端CI、
-merge或package证据，因此仍只标为post-release branch evidence。
+v1.2.3。该commit已完成本地secret/static/test gates与四轮独立review；PR #6 code+docs head
+`2ffe928cd12ca564a5160a07372db5967cf67133`的ordinary CI run `32641232584`和compatibility
+run `32641232560`通过。merge和cross-platform package仍无证据，因此仍只标为
+post-release branch evidence。
 
 审计基线：`0470ca306f1658ec2444ed63ebe703b3b0ec7e59`
 （`codex/v1.2.3-hardening`）。审计开始时 `origin/main` 为
@@ -515,8 +517,8 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
 ### Post-release convergence commit verification
 
 以下结果只适用于implementation commit
-`a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`，不归入v1.2.3；远端CI、merge和package
-证据仍未建立：
+`a6d40691d6fb8fe18b4a2260ae6f5adea6b34a7c`，不归入v1.2.3；其远端PR CI已建立，merge和
+cross-platform package证据仍未建立：
 
 - Rust no-default production suite：262 passed，0 failed，2个显式性能门ignored；fmt、
   all-target Clippy `-D warnings`通过。
@@ -531,7 +533,11 @@ branch protection/required checks。维护者明确接受这些边界作为v1.2.
   non-packaged测试，且不在package files中。
 - JS syntax、`git diff --check`与exact tree secret gate通过。四轮独立review分别覆盖Rust
   UDP cancellation、Desktop startup/wait/quit竞态、交付文档和最终组合回归；最终结论为GO，
-  除A-27～A-29已记录债务外未发现新的合并阻断。远端CI、merge和任何新package仍待补。
+  除A-27～A-29已记录债务外未发现新的合并阻断。
+- PR #6 head `2ffe928`的CI run `32641232584`：Desktop、macOS Electron、Windows DACL、
+  Engine fmt/Clippy/tests、100轮lifecycle、性能门与原生binary build全部通过；compatibility run
+  `32641232560`的offline tests通过，真实Gateway job在PR场景按设计skip。
+- merge和任何新package仍待补；上述CI不把a6d改写为v1.2.3或已发布功能。
 
 当前未发现仍成立的本地代码级P0/P1；远端CI、正式tag原生包与Windows sidecar DACL
 也已通过，v1.2.3已经发布。Architecture Frozen仍为NO；真实HPC/Gateway、Clash/SSH、
