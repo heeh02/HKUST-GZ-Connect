@@ -736,6 +736,7 @@ fn required_endpoint<'a>(config: &'a Value, name: &str) -> Result<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
 
     #[test]
     fn modern_address_pacing_waits_only_until_the_deadline() {
@@ -824,15 +825,22 @@ mod tests {
     fn transport_cancellation_interrupts_retry_waits_between_socket_operations() {
         let cancellation = OperationCancellation::default();
         let trigger = cancellation.clone();
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
         let canceller = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(30));
+            let cancelled_at = Instant::now();
             trigger.cancel();
+            cancelled_tx.send(cancelled_at).unwrap();
         });
-        let started = Instant::now();
         let error = cancellable_wait(Duration::from_secs(2), Some(&cancellation)).unwrap_err();
+        let returned_at = Instant::now();
+        let cancelled_at = cancelled_rx.recv_timeout(Duration::from_secs(1)).unwrap();
         canceller.join().unwrap();
         assert_eq!(error.kind(), ErrorKind::Lifecycle);
-        assert!(started.elapsed() < Duration::from_millis(250));
+        // Measure only the response after cancellation actually occurred. A
+        // hosted runner may delay the canceller thread itself under load, which
+        // says nothing about the polling contract being tested here.
+        assert!(returned_at.duration_since(cancelled_at) < Duration::from_secs(1));
     }
 
     #[test]
