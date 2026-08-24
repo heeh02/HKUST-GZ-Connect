@@ -250,6 +250,8 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'profile-workspace-runtime-authority',
     'profile-workspace-settings-bundle',
     'profile-workspace-settings-store',
+    'profile-workspace-credential-store',
+    'profile-workspace-credential-transaction',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
     'vpn-credential-envelope-store',

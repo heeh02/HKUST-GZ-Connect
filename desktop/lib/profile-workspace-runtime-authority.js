@@ -107,7 +107,18 @@ function bindingFrom(profile, profileState, account) {
   });
 }
 
-function loadActiveProfileWorkspaceAuthority({
+function authorityDependencies({ userData, profile: rawProfile, fileSystem, platform, windowsAcl }) {
+  if (!fileSystem || typeof fileSystem.openSync !== 'function' ||
+      !['darwin', 'linux', 'win32'].includes(platform) ||
+      (platform === 'win32' && typeof windowsAcl?.verify !== 'function')) {
+    throw new TypeError('active workspace authority dependencies are invalid');
+  }
+  const root = validateUserDataRoot(userData);
+  const profile = validateSchoolProfileDocument(rawProfile);
+  return { root, profile, fileSystem, platform, windowsAcl };
+}
+
+function loadActiveProfileAccountAuthority({
   userData,
   profile: rawProfile,
   fileSystem = fs,
@@ -117,14 +128,14 @@ function loadActiveProfileWorkspaceAuthority({
     verify: verifyWindowsFileOwnerOnly,
   },
 } = {}) {
-  if (!fileSystem || typeof fileSystem.openSync !== 'function' ||
-      !['darwin', 'linux', 'win32'].includes(platform) ||
-      (platform === 'win32' && typeof windowsAcl?.verify !== 'function')) {
-    throw new TypeError('active workspace authority dependencies are invalid');
-  }
-  const root = validateUserDataRoot(userData);
-  const profile = validateSchoolProfileDocument(rawProfile);
-  const deps = { root, fileSystem, platform, windowsAcl };
+  const deps = authorityDependencies({
+    userData,
+    profile: rawProfile,
+    fileSystem,
+    platform,
+    windowsAcl,
+  });
+  const { root, profile } = deps;
   const globalSettings = readDocument(
     path.join(root, 'global', 'settings.json'),
     validateGlobalSettingsDocument,
@@ -184,26 +195,10 @@ function loadActiveProfileWorkspaceAuthority({
     workspaceKey: account.workspaceKey,
     adoptLegacyHkustBrowserPartition: true,
   });
-  const workspaceSettings = readDocument(
-    layout.workspace.settings,
-    validateWorkspaceSettingsDocument,
-    deps,
-  );
   const workspaceState = readDocument(
     layout.workspace.state,
     (value) => validateWorkspaceScopeDocument(value, { account }),
     deps,
-  );
-  const localResources = readDocument(
-    layout.workspace.localResources,
-    validateLocalResourcesDocument,
-    deps,
-  );
-  const observedCredential = credentialReceipt(layout.account.vpnCredential, deps);
-  equal(
-    observedCredential.present,
-    account.activeCredentialVersion !== null,
-    'credential presence',
   );
 
   return Object.freeze({
@@ -214,10 +209,49 @@ function loadActiveProfileWorkspaceAuthority({
     profileSettings,
     profileState,
     account,
-    workspaceSettings,
     workspaceState,
-    localResources,
     credentialBinding: bindingFrom(profile, profileState, account),
+  });
+}
+
+function loadActiveProfileWorkspaceAuthority(options = {}) {
+  const fileSystem = options.fileSystem || fs;
+  const platform = options.platform || process.platform;
+  const windowsAcl = options.windowsAcl || {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  };
+  const accountAuthority = loadActiveProfileAccountAuthority({
+    ...options,
+    fileSystem,
+    platform,
+    windowsAcl,
+  });
+  const { layout } = accountAuthority;
+  const root = validateUserDataRoot(options.userData);
+  const deps = { root, fileSystem, platform, windowsAcl };
+  const workspaceSettings = readDocument(
+    layout.workspace.settings,
+    validateWorkspaceSettingsDocument,
+    deps,
+  );
+  const localResources = readDocument(
+    layout.workspace.localResources,
+    validateLocalResourcesDocument,
+    deps,
+  );
+  const observedCredential = credentialReceipt(layout.account.vpnCredential, deps);
+  equal(
+    observedCredential.present,
+    accountAuthority.account.activeCredentialVersion !== null,
+    'credential presence',
+  );
+
+  return Object.freeze({
+    ...accountAuthority,
+    layout,
+    workspaceSettings,
+    localResources,
     hasCredential: observedCredential.present,
   });
 }
@@ -225,5 +259,6 @@ function loadActiveProfileWorkspaceAuthority({
 module.exports = {
   MAX_RUNTIME_CREDENTIAL_BYTES,
   MAX_RUNTIME_DOCUMENT_BYTES,
+  loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
 };
