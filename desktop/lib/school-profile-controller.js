@@ -59,6 +59,7 @@ function createSchoolProfileController(options = {}) {
     browserHomeUrl: profile.browser.homeUrl,
     healthTargets: profile.browser.healthTargets,
     builtInResourceCount: builtInResources.length,
+    withProfileDocument: (callback) => context.registry.withDefaultProfileDocument(callback),
     verifyEngineConfig: context.verifyEngineConfig,
     verifyEngineLaunchBinding() {
       const verified = context.verifyEngineConfig();

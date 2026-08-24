@@ -134,3 +134,18 @@ test('presentation uses an explicit locale and bounded resource count', () => {
   assert.equal(presentation.campusAccount.hasCredential, true);
   assert.equal(presentation.workspace.resourceCount, 7);
 });
+
+test('controller exposes the reviewed raw Profile only through a synchronous callback', () => {
+  const profile = controller();
+  const result = profile.withProfileDocument((document) => ({
+    profileId: document.profileId,
+    gatewayOrigin: document.gateway.origin,
+    frozen: Object.isFrozen(document),
+  }));
+  assert.deepEqual(result, {
+    profileId: 'hkustgz',
+    gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
+    frozen: true,
+  });
+  assert.throws(() => profile.withProfileDocument(async () => null), /synchronous/u);
+});

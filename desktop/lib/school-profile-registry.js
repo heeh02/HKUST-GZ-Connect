@@ -412,6 +412,23 @@ class SchoolProfileRegistry {
     return this.getProfile(this.defaultProfileId);
   }
 
+  withProfileDocument(profileId, callback) {
+    this.ensureLoaded();
+    if (typeof callback !== 'function') throw new TypeError('profile document callback is required');
+    const record = this.records.get(String(profileId || ''));
+    if (!record) throw new Error('school profile is not present in the packaged manifest');
+    const result = callback(record.sourceDocument);
+    if (result && typeof result.then === 'function') {
+      throw new TypeError('profile document callback must be synchronous');
+    }
+    return result;
+  }
+
+  withDefaultProfileDocument(callback) {
+    this.ensureLoaded();
+    return this.withProfileDocument(this.defaultProfileId, callback);
+  }
+
   getBuiltinResources(profileId) {
     this.ensureLoaded();
     const record = this.records.get(String(profileId || ''));
