@@ -125,6 +125,22 @@ Desktop 负责用户意图、Engine 进程、浏览器、设置、安全存储�
 稳定的 Engine event/error code，不持有 Gateway Cookie、TwfID、CSRF、Modern token、
 transport token 或原始认证响应。
 
+### 4.6 Profile / Account / Workspace storage
+
+持久用户状态按 `SchoolProfile -> CampusAccount -> WorkspaceScope` 归属。路径只能由安装本地生成的
+opaque `profileKey` / `accountKey` 派生；Profile ID、Gateway、用户名、标签和 Renderer handle
+不得成为路径组件。Browser partition 只能由 `workspaceKey` 的稳定摘要派生；现有
+`persist:hkustgz-campus-browser` 仅允许经 HKUST primary 的 P3 迁移 journal 显式收养。
+
+迁移必须先建立 owner-only、no-follow、single-link 的 journal，并保持单调
+`prepared -> committed -> cleared`。journal 只能保存身份/版本绑定和有界 SHA-256 收据，不保存
+用户名、密码、Cookie、token 或旧文件内容。`prepared` 不得覆盖或删除；commit 必须保持同一
+Profile/origin/family/key/source binding 并采用同目录临时文件、文件 fsync、原子 rename、目录
+fsync。Windows 文件还必须在提交前后通过 current-user-only DACL 保护与验证。
+
+P3 完整激活前，flat 1.x `userData` 仍是唯一生产权威；基础 layout/journal 模块不得由
+`desktop/main.js` 导入。详细合同见 [`ADR-0007`](docs/adr/0007-p3-storage-foundation.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态
