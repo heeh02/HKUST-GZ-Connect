@@ -141,6 +141,12 @@ fsync。Windows 文件还必须在提交前后通过 current-user-only DACL 保�
 P3 完整激活前，flat 1.x `userData` 仍是唯一生产权威；基础 layout/journal 模块不得由
 `desktop/main.js` 导入。详细合同见 [`ADR-0007`](docs/adr/0007-p3-storage-foundation.md)。
 
+旧 flat 状态的迁移收据必须由同一个 no-follow descriptor 完成 `fstat -> bounded hash -> fstat`，
+同时比较 inode、size、mtime、ctime；收据只含 `present / bytes / sha256`。VPN username 与 password
+必须作为一个加密 envelope 提交，并绑定 profile/account credential revision、Gateway origin、
+ProtocolFamily 和 credential version。解密结果由 Main-only zeroizing owner 管理，不进入 Renderer、
+日志或 migration journal。详细合同见 [`ADR-0008`](docs/adr/0008-p3-receipts-and-vpn-envelope.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态

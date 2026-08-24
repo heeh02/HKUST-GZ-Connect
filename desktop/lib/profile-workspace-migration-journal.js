@@ -82,7 +82,7 @@ function normalizeReceipt(value, name) {
   }
   if (!source.present) {
     if (source.bytes !== 0 || source.sha256 !== null) throw new TypeError(`${name} is invalid`);
-  } else if (source.bytes < 1 || typeof source.sha256 !== 'string' ||
+  } else if (typeof source.sha256 !== 'string' ||
       !HEX_DIGEST.test(source.sha256)) {
     throw new TypeError(`${name} is invalid`);
   }

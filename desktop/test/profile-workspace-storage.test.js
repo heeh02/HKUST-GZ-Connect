@@ -195,6 +195,9 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'profile-workspace-layout',
     'profile-workspace-migration-journal',
     'profile-workspace-migration-store',
+    'legacy-flat-source-receipts',
+    'vpn-credential-envelope',
+    'vpn-credential-envelope-store',
   ]) {
     assert.equal(main.includes(moduleName), false);
   }

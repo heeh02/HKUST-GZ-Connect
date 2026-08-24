@@ -1,0 +1,127 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const {
+  createLegacyFlatSourcePaths,
+} = require('./profile-workspace-layout');
+const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
+const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
+
+const READ_CHUNK_BYTES = 64 * 1024;
+const LEGACY_SOURCE_MAX_BYTES = Object.freeze({
+  settings: 512 * 1024,
+  settingsBackup: 512 * 1024,
+  vpnCredential: 64 * 1024,
+  routingRules: 512 * 1024,
+  externalPac: 1024 * 1024,
+  browserPac: 1024 * 1024,
+  siteCredentials: 2 * 1024 * 1024,
+  certificateTrust: 2 * 1024 * 1024,
+  engineLog: 16 * 1024 * 1024,
+});
+
+function absentReceipt() {
+  return Object.freeze({ present: false, bytes: 0, sha256: null });
+}
+
+function invalidSource(message, cause = null) {
+  return cause == null ? new Error(message) : new Error(message, { cause });
+}
+
+function sameFileVersion(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
+    left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+}
+
+function collectOne(file, maxBytes, { fileSystem, platform, windowsAcl }) {
+  let before;
+  try {
+    before = fileSystem.lstatSync(file);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return absentReceipt();
+    throw invalidSource('legacy source could not be inspected', error);
+  }
+  if (!before.isFile() || before.isSymbolicLink() || before.size < 0 || before.size > maxBytes ||
+      (platform !== 'win32' && (before.nlink !== 1 || (before.mode & 0o077) !== 0))) {
+    throw invalidSource('legacy source is not a bounded owner-only regular file');
+  }
+  if (platform === 'win32' && !windowsAcl.verify(file)) {
+    throw invalidSource('legacy source Windows ACL is not current-user-only');
+  }
+
+  const constants = fileSystem.constants || fs.constants;
+  let descriptor = null;
+  let buffer = null;
+  try {
+    try {
+      descriptor = fileSystem.openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+    } catch (error) {
+      throw invalidSource('legacy source could not be opened after observed presence', error);
+    }
+    const opened = fileSystem.fstatSync(descriptor);
+    if (!opened.isFile() || !sameFileVersion(opened, before) || opened.size > maxBytes ||
+        (platform !== 'win32' && opened.nlink !== 1)) {
+      throw invalidSource('legacy source changed while opening');
+    }
+
+    const hash = crypto.createHash('sha256');
+    buffer = Buffer.alloc(Math.min(READ_CHUNK_BYTES, Math.max(1, opened.size)));
+    let offset = 0;
+    while (offset < opened.size) {
+      const requested = Math.min(buffer.length, opened.size - offset);
+      const count = fileSystem.readSync(descriptor, buffer, 0, requested, offset);
+      if (!count) throw invalidSource('legacy source read was incomplete');
+      hash.update(buffer.subarray(0, count));
+      buffer.fill(0, 0, count);
+      offset += count;
+    }
+    const after = fileSystem.fstatSync(descriptor);
+    if (!after.isFile() || !sameFileVersion(after, opened) ||
+        (platform !== 'win32' && after.nlink !== 1)) {
+      throw invalidSource('legacy source changed while reading');
+    }
+    return Object.freeze({
+      present: true,
+      bytes: opened.size,
+      sha256: hash.digest('hex'),
+    });
+  } finally {
+    buffer?.fill(0);
+    if (descriptor !== null) {
+      try { fileSystem.closeSync(descriptor); } catch {}
+    }
+  }
+}
+
+function collectLegacyFlatSourceReceipts({
+  userData,
+  fileSystem = fs,
+  platform = process.platform,
+  windowsAcl = { verify: verifyWindowsFileOwnerOnly },
+} = {}) {
+  if (!fileSystem || typeof fileSystem.lstatSync !== 'function' ||
+      !['darwin', 'linux', 'win32'].includes(platform) ||
+      (platform === 'win32' && typeof windowsAcl?.verify !== 'function')) {
+    throw new TypeError('legacy receipt dependencies are invalid');
+  }
+  const sources = createLegacyFlatSourcePaths(userData);
+  const keys = Object.keys(sources);
+  if (keys.length !== LEGACY_SOURCE_IDS.length ||
+      LEGACY_SOURCE_IDS.some((id) => !Object.hasOwn(sources, id))) {
+    throw new Error('legacy source layout does not match the journal schema');
+  }
+  return Object.freeze(Object.fromEntries(LEGACY_SOURCE_IDS.map((id) => [
+    id,
+    collectOne(sources[id], LEGACY_SOURCE_MAX_BYTES[id], {
+      fileSystem,
+      platform,
+      windowsAcl,
+    }),
+  ])));
+}
+
+module.exports = {
+  LEGACY_SOURCE_MAX_BYTES,
+  collectLegacyFlatSourceReceipts,
+};

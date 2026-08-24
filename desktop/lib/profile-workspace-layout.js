@@ -33,6 +33,21 @@ function browserPartition(workspaceKey) {
   return `persist:campus-workspace-${digest}`;
 }
 
+function createLegacyFlatSourcePaths(userData) {
+  const root = normalizedUserData(userData);
+  return deepFreeze({
+    settings: path.join(root, 'settings.json'),
+    settingsBackup: path.join(root, 'settings.json.bak'),
+    vpnCredential: path.join(root, 'cred.bin'),
+    routingRules: path.join(root, 'routing-rules.json'),
+    externalPac: path.join(root, 'routing.pac'),
+    browserPac: path.join(root, 'campus-browser-routing.pac'),
+    siteCredentials: path.join(root, 'campus-credentials.json'),
+    certificateTrust: path.join(root, 'campus-certificate-trust.json'),
+    engineLog: path.join(root, 'engine.log'),
+  });
+}
+
 function createProfileAccountWorkspaceLayout({
   userData,
   profileKey,
@@ -104,5 +119,6 @@ function createProfileAccountWorkspaceLayout({
 
 module.exports = {
   LEGACY_HKUST_BROWSER_PARTITION,
+  createLegacyFlatSourcePaths,
   createProfileAccountWorkspaceLayout,
 };
