@@ -12,6 +12,7 @@ function fixture(overrides = {}) {
     getStatus: () => ({ connected: true }),
     loadSettings: () => ({ username: 'student', port: 6180 }),
     hasCredential: () => true,
+    hasAccountIdentity: (settings) => Boolean(settings.username),
     getPacUrl: () => 'file:///routing.pac',
     getLocale: () => 'zh-CN',
     platform: 'darwin',
@@ -77,6 +78,15 @@ test('get-state carries only the already-sanitized additive capability snapshot'
   const { snapshot } = fixture({ getCapabilitySnapshot: () => capabilitySnapshot });
   assert.equal(snapshot().capabilitySnapshot, capabilitySnapshot);
   assert.equal(JSON.stringify(snapshot()).includes('accountKey'), false);
+});
+
+test('persistent Account identity can stay logged in without a plaintext settings username', () => {
+  const { snapshot } = fixture({
+    loadSettings: () => ({ username: '', port: 6180 }),
+    hasAccountIdentity: () => true,
+  });
+  assert.equal(snapshot().loggedIn, true);
+  assert.equal(snapshot().settings.username, '');
 });
 
 test('legacy custom URL conflicts cannot make get-state fail', () => {

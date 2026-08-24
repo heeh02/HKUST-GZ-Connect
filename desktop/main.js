@@ -1318,9 +1318,9 @@ function trustedHandle(channel, handler) {
 
 const controlStateSnapshot = createControlStateSnapshot({
   getStatus: statusSnapshot, loadSettings: loadSettingsOrReport,
-  hasCredential: hasStoredCredential, getPacUrl: pacUrl, getLocale: () => locale,
-  platform: process.platform, getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
-  getResources: campusResources,
+  hasCredential: hasStoredCredential, hasAccountIdentity: (settings) => Boolean(settings.username),
+  getPacUrl: pacUrl, getLocale: () => locale, platform: process.platform,
+  getVersion: () => app.getVersion(), getUpdate: () => updateInfo, getResources: campusResources,
   getFallbackResources: () => safeCampusResources({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),

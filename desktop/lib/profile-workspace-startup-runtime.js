@@ -108,6 +108,7 @@ class ProfileWorkspaceStartupRuntime {
         paths: createProfileWorkspaceRuntimeStoragePaths(services.authority),
         settingsStore: services.settingsStore,
         credentialStore: services.credentialStore,
+        reloadAuthority: () => this.#workspaceAuthority(),
       });
     } finally {
       this.running = false;
