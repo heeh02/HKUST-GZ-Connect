@@ -18,7 +18,7 @@ test('strict and compatibility generations share one stable credential with dist
   assert.match(connectOnce, /proxyCredentialMode === 'optional'[^\n]+--socks-auth-optional-stdin/);
   assert.match(
     connectOnce,
-    /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{s\.username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}/,
+    /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}/,
   );
   assert.match(connectOnce, /'--control-api-v2-stdin'/);
 });

@@ -12,6 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, safeStorage } = require('electron');
 const { savePassword } = require('../lib/credential-store');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/app-data-dir');
 const { saveSettings } = require('../lib/settings-store');
 
 const TEST_TIMEOUT_MS = 20_000;
@@ -79,6 +80,16 @@ async function prepareProfile() {
     process.platform,
   ), true, 'the Electron credential backend must be available for the startup fixture');
   fs.writeFileSync(networkStateFile, 'offline\n', { mode: 0o600 });
+  const schoolProfile = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    'utf8',
+  ));
+  const persistence = new ProfileWorkspaceStartupRuntime({
+    userData: profile,
+    profile: schoolProfile,
+    safeStorage,
+  }).initialize();
+  assert.equal(persistence.mode, 'profile-workspace');
   return port;
 }
 
@@ -124,8 +135,8 @@ run().then(
   (error) => {
     clearTimeout(hardTimeout);
     process.stderr.write(`${error.stack || error}\n`);
-    app.exitCode = 1;
-    app.quit();
+    process.exitCode = 1;
+    app.exit(1);
   },
 );
 

@@ -10,6 +10,10 @@ const { normalizeSettings } = require('../lib/settings-store');
 function owner(username = 'synthetic-user', password = 'synthetic-password') {
   let destroyed = false;
   return {
+    withUsername(callback) {
+      if (destroyed) throw new Error('destroyed');
+      return callback(username);
+    },
     withStrings(callback) {
       if (destroyed) throw new Error('destroyed');
       return callback(username, password);
@@ -125,7 +129,7 @@ test('Profile Workspace mode routes settings and credentials only through scoped
   });
   assert.equal(persistence.initialize().ready, true);
   assert.equal(persistence.hasAccountIdentity(), true);
-  assert.equal(persistence.loadSettings().username, '');
+  assert.equal(persistence.loadSettings().username, 'workspace-user');
   assert.equal(persistence.saveCredential('next-password', 'next-user'), true);
   assert.deepEqual(replaced, { username: 'next-user', password: 'next-password' });
   assert.equal(persistence.loadSettings().username, 'next-user');

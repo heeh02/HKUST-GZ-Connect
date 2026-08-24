@@ -146,6 +146,12 @@ class DecryptedVpnCredential {
     return callback(this.#username.toString('utf8'), this.#password.toString('utf8'));
   }
 
+  withUsername(callback) {
+    if (this.#destroyed) throw new Error('VPN credential owner is destroyed');
+    if (typeof callback !== 'function') throw new TypeError('VPN username callback is required');
+    return callback(this.#username.toString('utf8'));
+  }
+
   destroy() {
     if (this.#destroyed) return false;
     this.#destroyed = true;

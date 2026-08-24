@@ -20,7 +20,7 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { createLegacyRuntimeStoragePaths, resolveUserDataOverride } = require('./lib/app-data-dir');
+const { createLegacyRuntimeStoragePaths, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -107,7 +107,18 @@ app.setName('HKUST(GZ) Connect');
 
 // ---------- paths & state ----------
 const DATA = app.getPath('userData');
-const runtimeStoragePaths = createLegacyRuntimeStoragePaths(DATA);
+const legacyRuntimeStoragePaths = createLegacyRuntimeStoragePaths(DATA);
+try { fs.unlinkSync(legacyRuntimeStoragePaths.proxyHelperCredential); } catch (error) {
+  if (error?.code !== 'ENOENT') { /* strict access fails closed if replacement is unsafe */ }
+}
+const activeSchoolProfile = createSchoolProfileController({
+  packageRoot: __dirname, isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath, desktopDir: __dirname,
+});
+const preReadyStorage = activeSchoolProfile.withProfileDocument((profile) => (
+  selectProfileWorkspacePreReadyStorage({ userData: DATA, profile })
+));
+const runtimeStoragePaths = preReadyStorage.paths;
 const SETTINGS = runtimeStoragePaths.settings;
 const CRED = runtimeStoragePaths.vpnCredential;
 const LOG = runtimeStoragePaths.engineLog;
@@ -131,16 +142,6 @@ try { fs.unlinkSync(PROXY_HELPER_CREDENTIAL); } catch (error) {
     // cannot be safely replaced. Compatibility mode remains usable.
   }
 }
-
-// Profile/config validation may fail closed. Load it only after stale plaintext
-// proxy-helper state has been removed, but still before any credential recovery
-// or secure-store access.
-const activeSchoolProfile = createSchoolProfileController({
-  packageRoot: __dirname,
-  isPackaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
-  desktopDir: __dirname,
-});
 const GATEWAY_HOST = syntheticEngineE2e ? '127.0.0.1' : activeSchoolProfile.gatewayHost;
 const GATEWAY_PORT = activeSchoolProfile.gatewayPort;
 
@@ -152,10 +153,9 @@ const credentialTransactionPaths = Object.freeze({
 // This must run before any loadSettings(), credential read, or blanket chmod.
 // In particular, chmodding an attacker-replaced broad-permission journal
 // first would erase the evidence that makes recovery fail closed.
-let credentialTransactionRecovery = recoverCredentialSettingsTransaction(
-  CREDENTIAL_TRANSACTION,
-  credentialTransactionPaths,
-);
+let credentialTransactionRecovery = preReadyStorage.mode === 'legacy-flat'
+  ? recoverCredentialSettingsTransaction(CREDENTIAL_TRANSACTION, credentialTransactionPaths)
+  : { ok: true, status: 'none' };
 let credentialTransactionBlocked = credentialTransactionRecovery.status === 'blocked';
 
 for (const privateFile of [
@@ -200,7 +200,10 @@ const authChallengeCoordinator = new AuthChallengeCoordinator({
 const engineControlRegistry = new EngineControlRegistry({ authChallenges: authChallengeCoordinator });
 const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
 const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
-const logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure, onRecovered: () => { if (state.diagnosticNotice) { state.diagnosticNotice = null; emit(); } } });
+let logWriter = null;
+function initializeLogWriter() {
+  logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure, onRecovered: () => { if (state.diagnosticNotice) { state.diagnosticNotice = null; emit(); } } });
+}
 const externalProxyCredentialStore = new ExternalProxyCredentialStore({
   filePath: PROXY_CREDENTIAL,
   safeStorage,
@@ -220,12 +223,45 @@ let credentialRecoveryNoticeText = null;
 let credentialRecoveryErrorText = null;
 
 // ---------- settings & credentials ----------
-function loadSettings() {
+function loadLegacySettings() {
   return readSettings(SETTINGS, {
     onRecovery: (notice) => { settingsRecoveryNotice = notice; },
     defaultRouteDomains: activeSchoolProfile.defaultRouteDomains,
   });
 }
+function saveLegacySettings(settings) {
+  return writeSettings(SETTINGS, settings, {
+    defaultRouteDomains: activeSchoolProfile.defaultRouteDomains,
+  });
+}
+function openLegacyCredential() {
+  const settings = loadLegacySettings();
+  const result = readPasswordResult(CRED, safeStorage, process.platform);
+  if (result.status === 'missing') return null;
+  if (result.status !== 'decrypted') {
+    const error = new Error('legacy credential is unavailable');
+    error.credentialStatus = result.status;
+    throw error;
+  }
+  return new LegacyMigrationCredentialOwner(settings.username, result.password);
+}
+const persistenceRuntime = new DesktopPersistenceRuntime({
+  preReadySelection: preReadyStorage,
+  initializeAfterReady: () => activeSchoolProfile.withProfileDocument((profile) => (
+    new ProfileWorkspaceStartupRuntime({
+      userData: DATA, profile, safeStorage, platform: process.platform,
+    }).initialize()
+  )),
+  legacy: {
+    loadSettings: loadLegacySettings,
+    saveSettings: saveLegacySettings,
+    saveCredential: (password) => writePassword(CRED, password, safeStorage, process.platform),
+    clearCredential: () => restorePasswordSnapshot(CRED, { existed: false, data: null }),
+    openCredential: openLegacyCredential,
+    hasCredential: () => hasStoredPassword(CRED, process.platform),
+  },
+});
+function loadSettings() { return persistenceRuntime.loadSettings(); }
 function reportSettingsReadFailure(cause, { emitState = true } = {}) {
   if (cause?.code === 'SETTINGS_READ_FAILED') return cause;
   const message = t('error.settingsReadFailed');
@@ -275,21 +311,11 @@ function assertSettingsPersistenceAvailable() {
 }
 function saveSettings(settings) {
   assertSettingsPersistenceAvailable();
-  return writeSettings(SETTINGS, settings, {
-    defaultRouteDomains: activeSchoolProfile.defaultRouteDomains,
-  });
+  return persistenceRuntime.saveSettings(settings);
 }
-function savePassword(pw) {
-  return writePassword(CRED, pw, safeStorage, process.platform);
-}
-function loadPasswordResult() {
-  if (credentialTransactionBlocked) {
-    return Object.freeze({ status: 'recovery_blocked', password: '' });
-  }
-  return readPasswordResult(CRED, safeStorage, process.platform);
-}
+function savePassword(pw, username) { return persistenceRuntime.saveCredential(pw, username); }
 function hasStoredCredential() {
-  return !credentialTransactionBlocked && hasStoredPassword(CRED, process.platform);
+  return !credentialTransactionBlocked && persistenceRuntime.hasCredential();
 }
 function syncRecoveryNotice(emitState = true) {
   state.notice = [settingsRecoveryNoticeText, credentialRecoveryNoticeText]
@@ -327,10 +353,18 @@ function applyCredentialRecoveryOutcome(recovery, {
   return recovery;
 }
 function retryCredentialTransactionRecovery() {
+  if (preReadyStorage.mode === 'profile-workspace') {
+    return applyCredentialRecoveryOutcome({ ok: true, status: 'none' });
+  }
   return applyCredentialRecoveryOutcome(recoverCredentialSettingsTransaction(
     CREDENTIAL_TRANSACTION,
     credentialTransactionPaths,
   ));
+}
+function runPersistenceCredentialMutation(options) {
+  if (preReadyStorage.mode === 'legacy-flat') return runCredentialSettingsMutation(options);
+  try { return { ok: true, value: options.mutate() }; }
+  catch (error) { return { ok: false, phase: 'mutation', error, recovery: { ok: true, status: 'none' } }; }
 }
 function socksPort() { return Number(loadSettingsOrReport().port) || 1080; }
 function clearActiveProxyCredential(expectedGeneration = null) {
@@ -715,8 +749,8 @@ async function connectOnce(isRetry, intent) {
     }
   }
   let s;
+  let username = '';
   let pw;
-  let credentialResult;
   let engineConfigBinding;
   state.lastError = null;
   state.clientIp = null;
@@ -764,31 +798,36 @@ async function connectOnce(isRetry, intent) {
   const engineConfig = engineConfigBinding.path;
   try {
     s = loadSettings();
-    credentialResult = loadPasswordResult();
-    pw = credentialResult.password;
+    const credentialOwner = persistenceRuntime.openCredential();
+    if (credentialOwner) {
+      try {
+        credentialOwner.withStrings((account, password) => {
+          username = account;
+          pw = password;
+        });
+      } finally { credentialOwner.destroy(); }
+    }
   } catch (error) {
     connectionState.failIntent(intent);
+    if (error?.credentialStatus) {
+      state.lastError = t(credentialLoadErrorKey(error.credentialStatus));
+      emit();
+      return { ok: false, credentialStatus: error.credentialStatus };
+    }
     reportSettingsReadFailure(error, { emitState: false });
     emit();
     return { ok: false, settingsUnavailable: true };
   }
-  if (!s.username || credentialResult.status === 'missing') {
+  if (!username || !pw) {
     pw = '';
     connectionState.failIntent(intent);
     state.lastError = t('error.needCredentials');
     emit();
     return { ok: false };
   }
-  if (credentialResult.status !== 'decrypted') {
-    pw = '';
-    connectionState.failIntent(intent);
-    state.lastError = t(credentialLoadErrorKey(credentialResult.status));
-    emit();
-    return { ok: false, credentialStatus: credentialResult.status };
-  }
   try {
-    if (s.username.length > 256 || pw.length > 4096) throw new Error('credential too long');
-    parseCredentialField(s.username, '账号');
+    if (username.length > 256 || pw.length > 4096) throw new Error('credential too long');
+    parseCredentialField(username, '账号');
     parseCredentialField(pw, '密码');
   } catch {
     pw = '';
@@ -1024,8 +1063,9 @@ async function connectOnce(isRetry, intent) {
   // Keep the credential/control pipe open: EOF cancels active authentication;
   // after connection it closes only the Control v2/v3 stream.
   child.stdin.write(
-    `${engineConfigBinding.stdinFrame}\n${s.username}\n${pw}\n${proxyCredentialLines}`,
+    `${engineConfigBinding.stdinFrame}\n${username}\n${pw}\n${proxyCredentialLines}`,
   );
+  username = '';
   pw = '';
   proxyCredentialLines = '';
   engineRuntime.start(child.stdout);
@@ -1318,7 +1358,7 @@ function trustedHandle(channel, handler) {
 
 const controlStateSnapshot = createControlStateSnapshot({
   getStatus: statusSnapshot, loadSettings: loadSettingsOrReport,
-  hasCredential: hasStoredCredential, hasAccountIdentity: (settings) => Boolean(settings.username),
+  hasCredential: hasStoredCredential, hasAccountIdentity: () => persistenceRuntime.hasAccountIdentity(),
   getPacUrl: pacUrl, getLocale: () => locale, platform: process.platform,
   getVersion: () => app.getVersion(), getUpdate: () => updateInfo, getResources: campusResources,
   getFallbackResources: () => safeCampusResources({ customResources: [] }),
@@ -1350,8 +1390,8 @@ registerSettingsCredentialIpc({
   loadSettings: loadSettingsOrReport,
   saveSettings,
   savePassword,
-  removePassword: () => restorePasswordSnapshot(CRED, { existed: false, data: null }),
-  runCredentialMutation: runCredentialSettingsMutation,
+  removePassword: () => persistenceRuntime.clearCredential(),
+  runCredentialMutation: runPersistenceCredentialMutation,
   credentialJournalPath: CREDENTIAL_TRANSACTION,
   credentialPaths: credentialTransactionPaths,
   applyCredentialRecovery: applyCredentialRecoveryOutcome,
@@ -1471,7 +1511,7 @@ desktopShell = new DesktopShell({
     networkStatusMonitor.dispose();
   },
   cleanupQuit: async () => {
-    await logWriter.close().catch(reportLogFailure);
+    await logWriter?.close().catch(reportLogFailure);
     removeExternalProxySidecar();
     stableProxyCredential?.destroy();
     stableProxyCredential = null;
@@ -1536,6 +1576,14 @@ app.on('login', (event, webContents, _details, authInfo, callback) => {
   activeProxyCredential.answerProxyChallenge(authInfo, generation, callback);
 });
 app.whenReady().then(() => {
+  const persistence = persistenceRuntime.initialize();
+  if (persistence.relaunchRequired) {
+    relaunchAfterPersistenceMigration({ application: app, argv: process.argv,
+      isPackaged: app.isPackaged, developmentEntry: __dirname });
+    return;
+  }
+  initializeLogWriter();
+  writePersistenceE2EMarker({ application: app, environment: process.env, userData: DATA, mode: persistenceRuntime.mode });
   try {
     locale = currentLocale();
   } catch {

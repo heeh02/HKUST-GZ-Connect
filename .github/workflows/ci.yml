@@ -193,6 +193,8 @@ jobs:
         run: npm run test:main-engine-lifecycle
       - name: Exercise initially-offline Main startup recovery
         run: npm run test:main-network-startup
+      - name: Exercise two-process Profile Workspace migration
+        run: npm run test:persistence-migration
       - name: Exercise the School Profile registry inside a real ASAR
         run: npm run test:profile-asar
       - name: Exercise campus-browser toolbar IPC

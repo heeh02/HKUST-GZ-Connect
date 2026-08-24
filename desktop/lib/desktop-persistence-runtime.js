@@ -82,6 +82,15 @@ class DesktopPersistenceRuntime {
       }
       this.runtime = result;
       this.authority = result.authority || null;
+      if (result.mode === 'profile-workspace' && this.authority.hasCredential) {
+        const owner = result.credentialStore.open();
+        if (!owner || typeof owner.withUsername !== 'function') {
+          owner?.destroy?.();
+          throw new Error('Profile Workspace account credential is unavailable');
+        }
+        try { owner.withUsername((username) => { this.accountLabel = username; }); }
+        finally { owner.destroy(); }
+      }
       this.ready = true;
       return Object.freeze({ ready: true, relaunchRequired: false, mode: this.mode });
     } finally {

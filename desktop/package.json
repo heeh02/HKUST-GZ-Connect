@@ -19,6 +19,7 @@
     "test:main-integration": "electron e2e/main-integration.electron.js",
     "test:main-engine-lifecycle": "electron e2e/main-engine-lifecycle.electron.js",
     "test:main-network-startup": "electron e2e/main-network-startup.electron.js",
+    "test:persistence-migration": "electron e2e/persistence-migration.electron.js",
     "test:profile-asar": "electron e2e/school-profile-asar.electron.js",
     "test:strict-proxy-auth": "electron e2e/strict-proxy-auth.electron.js",
     "start": "electron .",

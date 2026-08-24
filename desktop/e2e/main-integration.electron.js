@@ -5,9 +5,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/app-data-dir');
+const { projectRuntimeSettings } = require('../lib/profile-workspace-settings-bundle');
+const { saveSettings } = require('../lib/settings-store');
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-main-e2e-'));
 process.env.HKUSTGZ_USER_DATA_DIR = profile;
+saveSettings(path.join(profile, 'settings.json'), {});
 
 const fingerprint = 'ab'.repeat(32);
 fs.writeFileSync(path.join(profile, 'campus-certificate-trust.json'), JSON.stringify({
@@ -19,6 +23,18 @@ fs.writeFileSync(path.join(profile, 'campus-certificate-trust.json'), JSON.strin
     updatedAt: 1_800_000_000_000,
   }],
 }), { mode: 0o600 });
+
+const persistence = new ProfileWorkspaceStartupRuntime({
+  userData: profile,
+  profile: JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    'utf8',
+  )),
+  // This fixture has no VPN credential. Startup still requires an explicit
+  // protected-storage owner, but no encryption operation is performed.
+  safeStorage: {},
+}).initialize();
+assert.equal(persistence.mode, 'profile-workspace');
 
 require('../main');
 
@@ -84,7 +100,7 @@ async function run() {
     url: 'https://103.189.154.10:4433',
     route: 'campus',
   })`);
-  assert.equal(savedResource.ok, true);
+  assert.equal(savedResource.ok, true, JSON.stringify(savedResource));
   assert.equal(savedResource.resource.url, 'https://103.189.154.10:4433/');
   assert.equal(savedResource.resources.filter((resource) => (
     resource.url === 'https://103.189.154.10:4433/'
@@ -121,14 +137,14 @@ async function run() {
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), false);
 
-  const settings = JSON.parse(fs.readFileSync(path.join(profile, 'settings.json'), 'utf8'));
+  const settings = projectRuntimeSettings(persistence.reloadAuthority());
   assert.equal(settings.username, '');
   assert.equal(settings.port, 6180);
   assert.equal(settings.strictProxyAuth, true);
-  const rules = JSON.parse(fs.readFileSync(path.join(profile, 'routing-rules.json'), 'utf8'));
+  const rules = JSON.parse(fs.readFileSync(persistence.paths.routingRules, 'utf8'));
   assert.equal(rules.version, 1);
   assert.equal(rules.rules[0].host, 'login.microsoftonline.com');
-  assert.ok(fs.readFileSync(path.join(profile, 'routing.pac'), 'utf8').includes('127.0.0.1:6180'));
+  assert.ok(fs.readFileSync(persistence.paths.externalPac, 'utf8').includes('127.0.0.1:6180'));
   process.stdout.write('main integration: PASS\n');
 }
 
@@ -136,8 +152,8 @@ run().then(
   () => app.quit(),
   (error) => {
     process.stderr.write(`${error.stack || error}\n`);
-    app.exitCode = 1;
-    app.quit();
+    process.exitCode = 1;
+    app.exit(1);
   },
 );
 

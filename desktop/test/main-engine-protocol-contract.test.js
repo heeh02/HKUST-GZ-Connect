@@ -40,7 +40,7 @@ test('desktop opts into the private Control v2 stream and retains signal fallbac
   assert.match(source, /'--profile-binding-v1-stdin'/);
   assert.match(source, /child\.stdin\.write\([\s\S]*engineConfigBinding\.stdinFrame/u);
   assert.doesNotMatch(source, /child\.stdin\.end\(/);
-  const credentials = source.indexOf('${engineConfigBinding.stdinFrame}\\n${s.username}\\n${pw}');
+  const credentials = source.indexOf('${engineConfigBinding.stdinFrame}\\n${username}\\n${pw}');
   const runtimeStart = source.indexOf('engineRuntime.start(child.stdout)');
   assert.ok(credentials > 0 && runtimeStart > credentials,
     'runtime/handshake starts only after the credential prefix');

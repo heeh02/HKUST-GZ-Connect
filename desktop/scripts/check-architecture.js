@@ -8,7 +8,7 @@ const path = require('node:path');
 // is extracted incrementally behind tests.
 const BASELINE = Object.freeze({
   mainDirectDependencies: 35,
-  mainLines: 1596,
+  mainLines: 1644,
   rendererLines: 558,
 });
 

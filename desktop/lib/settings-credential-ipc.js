@@ -119,7 +119,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
           journalPath: credentialJournalPath,
           paths: credentialPaths,
           mutate: () => {
-            if (!savePassword(patch.password)) {
+            if (!savePassword(patch.password, next.username)) {
               throw Object.assign(new Error('protected credential storage unavailable'), {
                 credentialStoreUnavailable: true,
               });

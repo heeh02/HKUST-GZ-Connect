@@ -57,11 +57,13 @@ test('username and password commit as one encrypted profile/account-bound envelo
   assert.equal(decrypted.withStrings((username, password) => (
     `${username}:${password}`
   )), 'legacy-user:private-password');
+  assert.equal(decrypted.withUsername((username) => username), 'legacy-user');
   assert.equal(JSON.stringify(decrypted), '"[redacted vpn credential]"');
   assert.equal(String(decrypted).includes('legacy-user'), false);
   assert.equal(decrypted.destroy(), true);
   assert.equal(decrypted.destroy(), false);
   assert.throws(() => decrypted.withStrings(() => true), /destroyed/u);
+  assert.throws(() => decrypted.withUsername(() => true), /destroyed/u);
 });
 
 test('binding mismatch fails before returning a credential owner', () => {
