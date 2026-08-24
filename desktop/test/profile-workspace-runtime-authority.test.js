@@ -105,6 +105,7 @@ function fixture(t, { withCredential = true } = {}) {
     workspaceKey: WORKSPACE_KEY,
     activeContextEpoch: 1,
   });
+  writeJson(layout.workspace.localResources, { schemaVersion: 1, resources: [] });
   if (withCredential) {
     fs.writeFileSync(layout.account.vpnCredential, Buffer.from('synthetic-encrypted-envelope'), {
       mode: 0o600,
@@ -123,6 +124,7 @@ test('authority loads one exact active Profile Account Workspace without decrypt
   assert.equal(authority.workspaceSettings.autoConnect, false);
   assert.equal(authority.account.accountKey, ACCOUNT_KEY);
   assert.equal(authority.workspaceState.workspaceKey, WORKSPACE_KEY);
+  assert.deepEqual(authority.localResources.resources, []);
   assert.equal(authority.hasCredential, true);
   assert.equal(authority.layout.browserPartition, 'persist:hkustgz-campus-browser');
   assert.deepEqual(authority.credentialBinding, {

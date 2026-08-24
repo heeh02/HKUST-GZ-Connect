@@ -74,6 +74,10 @@ test('profile/account/workspace paths use only opaque keys beneath one absolute 
   );
   assert.equal(layout.workspace.routingRules, path.join(layout.workspace.root, 'routing-rules.json'));
   assert.equal(layout.workspace.engineLog, path.join(layout.workspace.root, 'engine.log'));
+  assert.equal(
+    layout.global.settingsTransaction,
+    path.join(layout.global.root, 'profile-workspace-settings-transaction.json'),
+  );
   assert.match(layout.browserPartition, /^persist:campus-workspace-[a-f0-9]{32}$/u);
   assert.equal(Object.isFrozen(layout.workspace), true);
   for (const sensitive of ['hkustgz', 'remote.hkust-gz.edu.cn', 'student001']) {
@@ -244,6 +248,8 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'legacy-credential-rollback-store',
     'profile-workspace-documents',
     'profile-workspace-runtime-authority',
+    'profile-workspace-settings-bundle',
+    'profile-workspace-settings-store',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
     'vpn-credential-envelope-store',

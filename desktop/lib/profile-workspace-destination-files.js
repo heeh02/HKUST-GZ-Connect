@@ -26,6 +26,7 @@ function destinationPathMap(layout) {
     globalEngineOwner: layout.global.engineOwner,
     globalUpdateState: layout.global.updateState,
     globalActiveContextSwitch: layout.global.activeContextSwitch,
+    globalSettingsTransaction: layout.global.settingsTransaction,
     profileSettings: layout.profile.settings,
     profileState: layout.profile.state,
     account: layout.account.document,

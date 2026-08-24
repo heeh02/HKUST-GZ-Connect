@@ -1,5 +1,6 @@
 'use strict';
 
+const { validateCustomResourceDocument } = require('./campus-resource-contract');
 const { normalizeRouteDomains } = require('./pac');
 const {
   normalizeGatewayOrigin,
@@ -146,10 +147,26 @@ function validateWorkspaceSettingsDocument(value) {
   });
 }
 
+function validateLocalResourcesDocument(value) {
+  const source = exactKeys(value, ['schemaVersion', 'resources'], 'local resources');
+  const resources = validateCustomResourceDocument(source.resources).map((resource) => Object.freeze({
+    id: resource.id,
+    name: resource.name,
+    description: resource.description,
+    url: resource.url,
+    route: resource.route,
+  }));
+  return Object.freeze({
+    schemaVersion: documentVersion(source.schemaVersion, 'local resources'),
+    resources: Object.freeze(resources),
+  });
+}
+
 module.exports = {
   PROFILE_WORKSPACE_DOCUMENT_VERSION,
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,
+  validateLocalResourcesDocument,
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,

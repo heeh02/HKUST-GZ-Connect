@@ -12,6 +12,7 @@ const {
 const {
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,
+  validateLocalResourcesDocument,
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
@@ -193,6 +194,11 @@ function loadActiveProfileWorkspaceAuthority({
     (value) => validateWorkspaceScopeDocument(value, { account }),
     deps,
   );
+  const localResources = readDocument(
+    layout.workspace.localResources,
+    validateLocalResourcesDocument,
+    deps,
+  );
   const observedCredential = credentialReceipt(layout.account.vpnCredential, deps);
   equal(
     observedCredential.present,
@@ -210,6 +216,7 @@ function loadActiveProfileWorkspaceAuthority({
     account,
     workspaceSettings,
     workspaceState,
+    localResources,
     credentialBinding: bindingFrom(profile, profileState, account),
     hasCredential: observedCredential.present,
   });

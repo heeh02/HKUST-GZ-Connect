@@ -13,6 +13,7 @@ const {
 const {
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,
+  validateLocalResourcesDocument,
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
@@ -236,6 +237,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
       checkedAt: settings.updateCheckedAt,
     })),
     globalActiveContextSwitch: null,
+    globalSettingsTransaction: null,
     profileSettings: jsonBuffer(validateProfileSettingsDocument({
       schemaVersion: 1,
       profileId: journal.profileId,
@@ -271,7 +273,10 @@ function createHkustMigrationDestinationPlan(options = {}) {
     routingRules: copyOrNull(payloads.routingRules),
     externalPac: copyOrNull(payloads.externalPac),
     browserPac: copyOrNull(payloads.browserPac),
-    localResources: jsonBuffer({ schemaVersion: 1, resources: settings.customResources }),
+    localResources: jsonBuffer(validateLocalResourcesDocument({
+      schemaVersion: 1,
+      resources: settings.customResources,
+    })),
     favorites: jsonBuffer({ schemaVersion: 1, entries: [] }),
     recentResources: jsonBuffer({ schemaVersion: 1, entries: [] }),
     externalIntegrations: jsonBuffer({ schemaVersion: 1, entries: [] }),

@@ -39,6 +39,7 @@ const DESTINATION_RECEIPT_IDS = Object.freeze([
   'globalEngineOwner',
   'globalUpdateState',
   'globalActiveContextSwitch',
+  'globalSettingsTransaction',
   'profileSettings',
   'profileState',
   'account',

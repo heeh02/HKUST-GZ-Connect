@@ -126,6 +126,7 @@ test('planner produces every exact destination without plaintext identity leakag
   assert.equal(workspace.workspaceKey, value.journal.identity.workspaceKey);
   assert.equal(account.activeCredentialVersion, 1);
   assert.equal(parseJson(plan.files.localResources).resources.length, 1);
+  assert.equal(Object.hasOwn(parseJson(plan.files.localResources).resources[0], 'builtin'), false);
   assert.equal(parseJson(plan.files.favorites).entries.length, 0);
   assert.equal(parseJson(plan.files.recentResources).entries.length, 0);
   assert.equal(parseJson(plan.files.externalIntegrations).entries.length, 0);

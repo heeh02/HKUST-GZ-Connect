@@ -69,6 +69,7 @@ function createProfileAccountRoots(root, keys) {
       engineOwner: path.join(globalRoot, 'engine-owner.json'),
       updateState: path.join(globalRoot, 'update-state.json'),
       activeContextSwitch: path.join(globalRoot, 'active-context-switch.json'),
+      settingsTransaction: path.join(globalRoot, 'profile-workspace-settings-transaction.json'),
       migrationJournal: path.join(globalRoot, 'profile-account-workspace-migration.json'),
     },
     profile: {
