@@ -197,6 +197,8 @@ const authChallengeCoordinator = new AuthChallengeCoordinator({
 });
 const engineControlRegistry = new EngineControlRegistry({ authChallenges: authChallengeCoordinator });
 const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
+const activeEngineContextCurrent = (generation, token) => engineSupervisor.isCurrent(generation) &&
+  activeContextLease.isCurrent(token, { connectionIntent: connectionState.snapshot().intent, engineGeneration: generation });
 const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
 let logWriter = null;
 function initializeLogWriter() {
@@ -624,7 +626,6 @@ async function connect(isRetry = false, expectedIntent = null) {
   try { return await operation; }
   finally { if (connectInFlight === record) connectInFlight = null; }
 }
-
 function handleEngineClose({ code, generation }, diagnosticTail,
   structuredFatalCode = null, structuredStopReason = null, stoppedSocksPort = 1080,
   isCurrentContext = () => true) {
@@ -680,12 +681,10 @@ function handleEngineClose({ code, generation }, diagnosticTail,
     uptimeMs: uptime,
     failureKind,
   });
-
   if (decision.action === 'settled' || decision.action === 'terminal') {
     emit();
     return;
   }
-
   // Only a genuinely stable session earns a fresh retry budget. Merely
   // opening SOCKS and then losing the data plane must keep counting, or a
   // rejecting gateway can drive the app into an infinite login loop.
@@ -877,8 +876,7 @@ async function connectOnce(isRetry, intent) {
   let structuredFatalCode = null;
   let engineRuntime = null;
   let engineContextToken = null;
-  const isCurrentEngineContext = (generation) => engineSupervisor.isCurrent(generation) &&
-    activeContextLease.isCurrent(engineContextToken, { connectionIntent: connectionState.snapshot().intent, engineGeneration: generation });
+  const isCurrentEngineContext = (generation) => activeEngineContextCurrent(generation, engineContextToken);
   connectionState.invalidateEngineGeneration();
   const expectedEngineGeneration = engineSupervisor.currentGeneration + 1;
   const engineArgs = [
@@ -963,7 +961,7 @@ async function connectOnce(isRetry, intent) {
     state.lastError = null;
     if (!wasConnected) {
       connectedAt = Date.now();
-      telemetryCoordinator.start(engineGeneration);
+      telemetryCoordinator.start(engineGeneration, engineContextToken);
     }
     emit();
   };
@@ -1522,7 +1520,6 @@ desktopShell = new DesktopShell({
     emit();
   },
 });
-
 telemetryCoordinator = new ConnectionTelemetryCoordinator({
   appPid: process.pid,
   gatewayHost: GATEWAY_HOST,
@@ -1534,14 +1531,17 @@ telemetryCoordinator = new ConnectionTelemetryCoordinator({
     activeProxyCredential?.socksAuthentication(generation) || null
   ),
   isConnected: () => connectionState.isConnected(),
-  isEngineCurrent: (generation) => engineSupervisor.isCurrent(generation),
+  isEngineCurrent: activeEngineContextCurrent,
   isVisible: () => desktopShell.isVisible(),
   getConnectedAt: () => connectedAt,
   send: (snapshot) => desktopShell.send('telemetry', snapshot),
   getAutoReconnect: () => loadSettingsOrReport().autoReconnect,
   isDesiredConnected: () => connectionState.snapshot().desiredConnected,
-  reconnect: (generation) => reconnect(generation),
-  onRecovering: () => {
+  reconnect: (generation, token) => activeEngineContextCurrent(generation, token)
+    ? reconnect(generation)
+    : Promise.resolve({ ok: false, stale: true }),
+  onRecovering: (generation, token) => {
+    if (!activeEngineContextCurrent(generation, token)) return;
     state.lastError = t('error.tunnelRecovering');
     emit();
   },

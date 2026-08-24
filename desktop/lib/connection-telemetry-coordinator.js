@@ -100,6 +100,7 @@ class ConnectionTelemetryCoordinator {
       enumerator, runHealthRound, probe, ping,
     });
     this.generation = null;
+    this.contextToken = null;
     this.probeFailures = 0;
     this.recoveryInFlight = null;
     this.service = new TelemetryServiceClass({
@@ -122,17 +123,22 @@ class ConnectionTelemetryCoordinator {
 
   current(generation) {
     return this.generation === generation && this.isConnected() &&
-      this.isEngineCurrent(generation);
+      this.isEngineCurrent(generation, this.contextToken);
   }
 
-  start(generation) {
+  start(generation, contextToken) {
+    if (!contextToken || typeof contextToken !== 'object') {
+      throw new TypeError('telemetry active context token is required');
+    }
     this.stop();
     this.generation = generation;
+    this.contextToken = contextToken;
     this.service.start(generation);
   }
 
   stop() {
     this.generation = null;
+    this.contextToken = null;
     this.service.stop();
     this.probeFailures = 0;
     this.recoveryInFlight = null;
@@ -166,11 +172,15 @@ class ConnectionTelemetryCoordinator {
     if (!this.current(generation) || !this.isDesiredConnected()) {
       return { ...result, kind: 'stale' };
     }
-    const recovery = { generation };
+    const recovery = { generation, contextToken: this.contextToken };
     this.recoveryInFlight = recovery;
-    this.onRecovering();
+    if (!this.current(generation)) {
+      this.recoveryInFlight = null;
+      return { ...result, kind: 'stale' };
+    }
+    this.onRecovering(generation, recovery.contextToken);
     try {
-      await this.reconnect(generation);
+      await this.reconnect(generation, recovery.contextToken);
     } finally {
       if (this.recoveryInFlight === recovery) {
         this.probeFailures = 0;

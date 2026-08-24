@@ -25,7 +25,8 @@ test('Main creates one Profile-bound lease before persistence and connection ser
 
 test('Engine callbacks require context epoch connection intent and process generation', () => {
   const connect = section('async function connectOnce(', '\nfunction ensureEngineStopped()');
-  assert.match(connect, /activeContextLease\.isCurrent\(engineContextToken, \{ connectionIntent: connectionState\.snapshot\(\)\.intent, engineGeneration: generation \}\)/u);
+  assert.match(source, /activeContextLease\.isCurrent\(token, \{ connectionIntent: connectionState\.snapshot\(\)\.intent, engineGeneration: generation \}\)/u);
+  assert.match(connect, /activeEngineContextCurrent\(generation, engineContextToken\)/u);
   const capture = connect.indexOf('activeContextLease.capture({ connectionIntent: intent, engineGeneration })');
   const bind = connect.indexOf('connectionState.bindEngineGeneration(engineGeneration)');
   const runtime = connect.indexOf('new EngineConnectionRuntime({');
@@ -35,5 +36,8 @@ test('Engine callbacks require context epoch connection intent and process gener
   assert.match(connect, /handleEngineExitBoundary\(result, isCurrentEngineContext\)/u);
   assert.match(connect, /Number\(s\.port\), isCurrentEngineContext,/u);
   assert.match(connect, /revokeEngineServing\(engineGeneration, isCurrentEngineContext\)/u);
+  assert.match(connect, /telemetryCoordinator\.start\(engineGeneration, engineContextToken\)/u);
+  assert.match(source, /isEngineCurrent: activeEngineContextCurrent/u);
+  assert.match(source, /reconnect: \(generation, token\) => activeEngineContextCurrent\(generation, token\)/u);
   assert.doesNotMatch(connect, /activeContextEpoch:\s*1/u);
 });
