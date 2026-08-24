@@ -158,6 +158,12 @@ destination materializer 必须在第一次写入前预检全部 exact-schema ta
 下重新验证收据后逐文件 unlink/fsync，禁止递归删除，并把旧 `settings.json` 权威放在最后退休。
 具体非激活适配器合同见 [`ADR-0010`](docs/adr/0010-p3-destination-and-retirement.md)。
 
+HKUST destination planner 必须从 receipt-matched legacy settings/payload 与同一 username/password owner
+构造 exact destination plan。全局、Workspace 和更新状态分离；VPN 凭据作为绑定 envelope；旧 ciphertext
+只能进入 account-scoped 一代 rollback blob，并由 `active | retired` 元数据绑定 migration/Profile/
+Account/origin/family。目标 JSON 不得保存 username/password。合同见
+[`ADR-0011`](docs/adr/0011-p3-hkust-destination-plan.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态

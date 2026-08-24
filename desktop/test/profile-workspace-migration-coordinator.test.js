@@ -29,7 +29,11 @@ const {
   verifyDestinationFiles,
 } = require('../lib/profile-workspace-destination-files');
 const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
-const { encryptVpnCredentialEnvelope } = require('../lib/vpn-credential-envelope');
+const {
+  LEGACY_COPY_SOURCE_IDS,
+  createHkustMigrationDestinationPlan,
+} = require('../lib/hkust-migration-destination-plan');
+const { normalizeSettings } = require('../lib/settings-store');
 
 function receipt(seed) {
   return Object.freeze({
@@ -327,9 +331,24 @@ test('all P3 storage adapters complete one synthetic all-old to all-new filesyst
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-full-migration-'));
   t.after(() => fs.rmSync(userData, { recursive: true, force: true }));
   const legacyPaths = createLegacyFlatSourcePaths(userData);
-  for (const id of ['settings', 'settingsBackup', 'vpnCredential', 'routingRules',
-    'proxyCredential', 'engineLog', 'engineLogRotated', 'engineLogRetention']) {
-    fs.writeFileSync(legacyPaths[id], `legacy-${id}`, { mode: 0o600 });
+  const legacySettingsBytes = Buffer.from(JSON.stringify(normalizeSettings({
+    username: 'synthetic-user',
+    port: 6180,
+    autoReconnect: true,
+    maxAttempts: 3,
+    autoConnect: false,
+    strictProxyAuth: true,
+    routeDomains: ['hkust-gz.edu.cn'],
+    customResources: [],
+  })), 'utf8');
+  fs.writeFileSync(legacyPaths.settings, legacySettingsBytes, { mode: 0o600 });
+  fs.writeFileSync(legacyPaths.settingsBackup, legacySettingsBytes, { mode: 0o600 });
+  const legacyCredential = Buffer.from('legacy-encrypted-password');
+  fs.writeFileSync(legacyPaths.vpnCredential, legacyCredential, { mode: 0o600 });
+  const legacyPayloads = {};
+  for (const id of LEGACY_COPY_SOURCE_IDS) {
+    legacyPayloads[id] = Buffer.from(`legacy-${id}`, 'utf8');
+    fs.writeFileSync(legacyPaths[id], legacyPayloads[id], { mode: 0o600 });
   }
   const sourceReceipts = collectLegacyFlatSourceReceipts({ userData });
   const journalStore = new ProfileWorkspaceMigrationJournalStore({
@@ -364,35 +383,22 @@ test('all P3 storage adapters complete one synthetic all-old to all-new filesyst
     }),
     buildDestination: ({ journal, layout }) => {
       destinationLayout = layout;
-      const encrypted = encryptVpnCredentialEnvelope({
-        binding: {
-          profileId: journal.profileId,
-          profileCredentialBindingRevision: journal.profileCredentialBindingRevision,
-          accountKey: journal.identity.accountKey,
-          accountCredentialRevision: journal.accountCredentialRevision,
-          gatewayOrigin: journal.gatewayOrigin,
-          protocolFamily: journal.protocolFamily,
+      const plan = createHkustMigrationDestinationPlan({
+        journal,
+        settingsBytes: legacySettingsBytes,
+        legacyCredential,
+        payloads: legacyPayloads,
+        credentialOwner: {
+          withStrings(callback) { return callback('synthetic-user', 'synthetic-password'); },
         },
-        credentialVersion: 1,
-        username: 'synthetic-user',
-        password: 'synthetic-password',
-        updatedAt: 1_700_000_000_050,
-        safeStorage,
+        protectedStorage: safeStorage,
         platform: 'darwin',
+        now: () => 1_700_000_000_050,
       });
-      const absent = new Set([
-        'globalProxyHelperCredential', 'globalEngineOwner', 'globalActiveContextSwitch',
-        'credentialTransaction', 'deletionTombstone',
-      ]);
-      const files = Object.fromEntries(DESTINATION_RECEIPT_IDS.map((id) => [
-        id,
-        absent.has(id) ? null : Buffer.from(`destination-${id}`, 'utf8'),
-      ]));
-      files.vpnCredential = encrypted;
       try {
-        return materializeDestinationFiles({ layout, files });
+        return materializeDestinationFiles({ layout, files: plan.files });
       } finally {
-        encrypted.fill(0);
+        for (const buffer of Object.values(plan.files)) buffer?.fill?.(0);
       }
     },
     verifyDestination: ({ layout }) => verifyDestinationFiles({ layout }),
@@ -408,6 +414,10 @@ test('all P3 storage adapters complete one synthetic all-old to all-new filesyst
   });
   assert.equal(fs.existsSync(legacyPaths.settings), false);
   assert.equal(fs.existsSync(destinationPathMap(destinationLayout).vpnCredential), true);
+  assert.equal(
+    fs.existsSync(destinationPathMap(destinationLayout).legacyCredentialRollbackBlob),
+    true,
+  );
   assert.equal(journalStore.read(), null);
   assert.equal(coordinator.run().status, 'already_migrated');
 });
