@@ -417,10 +417,10 @@ when both accounts share a Gateway origin.
 
 Profile-reviewed builtin resources are immutable deployment input. Authenticated server resources bind account
 key + authenticated-session generation + catalogue revision/expiry. Local resources, favorites and recent
-entries belong to the workspace. Renderer sees sanitized resource views and non-authorizing opaque
-`resourceHandle` values, never raw authorization fields, Cookie-bearing URLs or hidden query parameters.
-`LaunchHandle` remains Main-owned and is prepared/consumed only after an explicit launch request; it never enters
-Renderer state.
+entries belong to the workspace. P8 uses only packaged/local lightweight `WebResource` values. The Renderer
+selects a stable bounded resource ID; Main resolves the active Profile/Account record and revalidates its URL and
+route on every open. There is no persistent or one-use launch-authorization object. Raw server authorization,
+Cookie-bearing URLs and hidden query parameters never enter Renderer state.
 
 Routing policy compilation combines profile reviewed defaults with only the active account's custom resources
 and user rules. `RoutingPolicyIR` and its decision envelope include profile/account revisions and active-context
