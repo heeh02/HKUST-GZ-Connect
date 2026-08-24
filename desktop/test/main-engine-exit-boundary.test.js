@@ -13,12 +13,13 @@ test('engine exit closes the browser request boundary before stdio close cleanup
   assert.ok(boundaryStart >= 0 && connectStart > boundaryStart);
   const boundary = source.slice(boundaryStart, connectStart);
   assert.match(boundary, /engineSupervisor\.isCurrent\(generation\)/);
+  assert.match(boundary, /isCurrentContext\(generation\)/);
   assert.match(boundary, /connectionState\.markEngineStopping\(generation, \{ uptimeMs \}\)/);
   assert.match(boundary, /clearActiveProxyCredential\(generation\)/);
   assert.match(boundary, /suspendOpenBrowserPolicy\(\)/);
 
   const startCall = source.slice(source.indexOf('const started = engineSupervisor.start({'));
-  assert.match(startCall, /onExit:\s*\(result\) => \{\s*engineRuntime\?\.beginExitDrain\(\);\s*handleEngineExitBoundary\(result\);\s*\},\s*onClose:/);
+  assert.match(startCall, /onExit:\s*\(result\) => \{\s*engineRuntime\?\.beginExitDrain\(\);\s*handleEngineExitBoundary\(result, isCurrentEngineContext\);\s*\},\s*onClose:/);
   assert.match(startCall, /const structuredStopReason = engineRuntime\?\.stoppedReason \|\| null;\s*engineRuntime\?\.dispose\(\)/);
 });
 
@@ -32,13 +33,14 @@ test('fatal, stopping, and exit boundaries revoke in-flight serving promotion', 
   assert.match(revoke, /clearConnectionPresentation\(\)/);
 
   const handlers = source.slice(source.indexOf('handlers: {', exitStart));
-  assert.match(handlers, /onStopping:.*revokeEngineServing\(engineGeneration\)/);
-  assert.match(handlers, /onListenerMismatch:[\s\S]*?revokeEngineServing\(engineGeneration\)[\s\S]*?engineSupervisor\.stop/);
-  assert.match(handlers, /onFatalError:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
-  assert.match(handlers, /onProtocolTimeout:[\s\S]*?revokeEngineServing\(engineGeneration\)/);
+  assert.match(handlers, /onStopping:.*revokeEngineServing\(engineGeneration, isCurrentEngineContext\)/);
+  assert.match(handlers, /onListenerMismatch:[\s\S]*?revokeEngineServing\(engineGeneration, isCurrentEngineContext\)[\s\S]*?engineSupervisor\.stop/);
+  assert.match(handlers, /onFatalError:[\s\S]*?revokeEngineServing\(engineGeneration, isCurrentEngineContext\)/);
+  assert.match(handlers, /onProtocolTimeout:[\s\S]*?revokeEngineServing\(engineGeneration, isCurrentEngineContext\)/);
   const close = source.slice(source.indexOf('function handleEngineClose('), revokeStart);
   assert.match(close, /closeSnapshot\.wasConnectedBeforeStop/);
   assert.match(close, /closeSnapshot\.connectedUptimeBeforeStop/);
+  assert.match(close, /engineSupervisor\.isCurrent\(generation\) && isCurrentContext\(generation\)/);
   assert.match(close, /cleanupProxyAccessForEngineClose\(\{[\s\S]*generation,[\s\S]*supervisorGenerationCurrent,[\s\S]*connectionGenerationCurrent: connectionState\.isCurrentGeneration\(generation\),[\s\S]*clearCredential: clearActiveProxyCredential,[\s\S]*removeSidecar: removeExternalProxySidecar/);
   assert.match(close, /\}\)\) return;/);
 });

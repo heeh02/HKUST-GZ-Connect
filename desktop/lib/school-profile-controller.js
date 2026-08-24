@@ -59,6 +59,12 @@ function createSchoolProfileController(options = {}) {
     browserHomeUrl: profile.browser.homeUrl,
     healthTargets: profile.browser.healthTargets,
     builtInResourceCount: builtInResources.length,
+    activeContextBinding: () => Object.freeze({
+      profileId: profile.profileId,
+      profileRevision: profile.profileRevision,
+      accountHandle,
+      activeContextEpoch,
+    }),
     withProfileDocument: (callback) => context.registry.withDefaultProfileDocument(callback),
     verifyEngineConfig: context.verifyEngineConfig,
     verifyEngineLaunchBinding() {

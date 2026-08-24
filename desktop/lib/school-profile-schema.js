@@ -567,6 +567,7 @@ module.exports = {
   createWorkspaceView,
   normalizeGatewayOrigin,
   validateOpaqueKey: opaqueKey,
+  validateAccountHandle: opaqueAccountHandle,
   validateProfileId,
   validateProtocolFamily,
   validateCampusAccountDocument,

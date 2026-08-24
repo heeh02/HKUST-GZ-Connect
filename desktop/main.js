@@ -76,7 +76,7 @@ const { createT, effectiveLocale } = require('./lib/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
-const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
+const { ActiveContextLease, ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone
 // permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing
@@ -104,7 +104,6 @@ if (!app.requestSingleInstanceLock()) {
   return;
 }
 app.setName('HKUST(GZ) Connect');
-
 // ---------- paths & state ----------
 const DATA = app.getPath('userData');
 const legacyRuntimeStoragePaths = createLegacyRuntimeStoragePaths(DATA);
@@ -115,6 +114,7 @@ const activeSchoolProfile = createSchoolProfileController({
   packageRoot: __dirname, isPackaged: app.isPackaged,
   resourcesPath: process.resourcesPath, desktopDir: __dirname,
 });
+const activeContextLease = new ActiveContextLease(activeSchoolProfile.activeContextBinding());
 const preReadyStorage = activeSchoolProfile.withProfileDocument((profile) => (
   selectProfileWorkspacePreReadyStorage({ userData: DATA, profile })
 ));
@@ -144,7 +144,6 @@ try { fs.unlinkSync(PROXY_HELPER_CREDENTIAL); } catch (error) {
 }
 const GATEWAY_HOST = syntheticEngineE2e ? '127.0.0.1' : activeSchoolProfile.gatewayHost;
 const GATEWAY_PORT = activeSchoolProfile.gatewayPort;
-
 const credentialTransactionPaths = Object.freeze({
   settings: SETTINGS,
   settingsBackup: `${SETTINGS}.bak`,
@@ -157,7 +156,6 @@ let credentialTransactionRecovery = preReadyStorage.mode === 'legacy-flat'
   ? recoverCredentialSettingsTransaction(CREDENTIAL_TRANSACTION, credentialTransactionPaths)
   : { ok: true, status: 'none' };
 let credentialTransactionBlocked = credentialTransactionRecovery.status === 'blocked';
-
 for (const privateFile of [
   SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_BROWSER_PAC_FILE, ROUTING_RULES,
   CAMPUS_CREDENTIALS, CAMPUS_CERTIFICATE_TRUST, ENGINE_OWNER,
@@ -628,10 +626,11 @@ async function connect(isRetry = false, expectedIntent = null) {
 }
 
 function handleEngineClose({ code, generation }, diagnosticTail,
-  structuredFatalCode = null, structuredStopReason = null, stoppedSocksPort = 1080) {
+  structuredFatalCode = null, structuredStopReason = null, stoppedSocksPort = 1080,
+  isCurrentContext = () => true) {
   // A delayed close from an already invalidated generation must not suspend a
   // newer listener that is now serving the browser.
-  const supervisorGenerationCurrent = engineSupervisor.isCurrent(generation);
+  const supervisorGenerationCurrent = engineSupervisor.isCurrent(generation) && isCurrentContext(generation);
   clearActiveEngineControl(generation);
   if (!cleanupProxyAccessForEngineClose({ generation, supervisorGenerationCurrent,
     connectionGenerationCurrent: connectionState.isCurrentGeneration(generation),
@@ -645,7 +644,6 @@ function handleEngineClose({ code, generation }, diagnosticTail,
     state.browserNotice = t('error.browserRoutingAfterSave', { message: error.message });
     emit();
   });
-
   const closeSnapshot = connectionState.snapshot(); const wasConnected = closeSnapshot.phase === 'connected' || closeSnapshot.wasConnectedBeforeStop;
   const uptime = Math.max(connectedAt ? Date.now() - connectedAt : 0, closeSnapshot.connectedUptimeBeforeStop);
   clearConnectionPresentation();
@@ -712,9 +710,9 @@ function handleEngineClose({ code, generation }, diagnosticTail,
   }
   emit();
 }
-function revokeEngineServing(generation) {
+function revokeEngineServing(generation, isCurrentContext = () => true) {
   const uptimeMs = connectedAt ? Date.now() - connectedAt : 0;
-  if (!engineSupervisor.isCurrent(generation) ||
+  if (!isCurrentContext(generation) || !engineSupervisor.isCurrent(generation) ||
       !connectionState.markEngineStopping(generation, { uptimeMs })) return false;
   // Its epoch and request gate synchronously defeat an awaiting activation.
   suspendOpenBrowserPolicy().catch((error) => {
@@ -723,10 +721,10 @@ function revokeEngineServing(generation) {
   });
   clearConnectionPresentation(); return true;
 }
-function handleEngineExitBoundary({ generation }) {
+function handleEngineExitBoundary({ generation }, isCurrentContext = () => true) {
   // `exit` can precede stdio close; revoke serving synchronously but retain the
   // generation so the terminal-only drain can classify fatal/stopped output.
-  if (!revokeEngineServing(generation)) return;
+  if (!revokeEngineServing(generation, isCurrentContext)) return;
   clearActiveEngineControl(generation);
   clearActiveProxyCredential(generation);
   removeExternalProxySidecar();
@@ -878,6 +876,9 @@ async function connectOnce(isRetry, intent) {
   let ownedEngine = null;
   let structuredFatalCode = null;
   let engineRuntime = null;
+  let engineContextToken = null;
+  const isCurrentEngineContext = (generation) => engineSupervisor.isCurrent(generation) &&
+    activeContextLease.isCurrent(engineContextToken, { connectionIntent: connectionState.snapshot().intent, engineGeneration: generation });
   connectionState.invalidateEngineGeneration();
   const expectedEngineGeneration = engineSupervisor.currentGeneration + 1;
   const engineArgs = [
@@ -895,12 +896,12 @@ async function connectOnce(isRetry, intent) {
     args: [...launch.argsPrefix, ...engineArgs],
     options: { stdio: ['pipe', 'pipe', 'pipe'], ...launch.options },
     onError: ({ error, generation }) => {
-      if (!engineSupervisor.isCurrent(generation)) return;
+      if (!isCurrentEngineContext(generation)) return;
       structuredFatalCode = 'EVENT_OUTPUT_FAILED';
       state.lastError = t('error.engineStart', { message: error.message });
       emit();
     },
-    onExit: (result) => { engineRuntime?.beginExitDrain(); handleEngineExitBoundary(result); },
+    onExit: (result) => { engineRuntime?.beginExitDrain(); handleEngineExitBoundary(result, isCurrentEngineContext); },
     onClose: (result) => {
       const structuredStopReason = engineRuntime?.stoppedReason || null;
       engineRuntime?.dispose();
@@ -910,7 +911,7 @@ async function connectOnce(isRetry, intent) {
         diagnosticTail,
         structuredFatalCode,
         structuredStopReason,
-        Number(s.port),
+        Number(s.port), isCurrentEngineContext,
       );
     },
   });
@@ -927,6 +928,7 @@ async function connectOnce(isRetry, intent) {
   const child = started.child;
   engineGeneration = started.generation;
   connectionState.bindEngineGeneration(engineGeneration);
+  engineContextToken = activeContextLease.capture({ connectionIntent: intent, engineGeneration });
   if (engineGeneration !== expectedEngineGeneration) {
     proxyCredential?.destroy();
     removeExternalProxySidecar();
@@ -954,10 +956,9 @@ async function connectOnce(isRetry, intent) {
     try { writeEngineOwnerRecord(ENGINE_OWNER, ownedEngine); } catch {}
   }
   let browserActivationInFlight = null;
-
   const finishConnected = () => {
     const wasConnected = connectionState.isConnected();
-    if (!engineSupervisor.isCurrent(engineGeneration) ||
+    if (!isCurrentEngineContext(engineGeneration) ||
         !connectionState.markConnected(engineGeneration)) return;
     state.lastError = null;
     if (!wasConnected) {
@@ -967,7 +968,7 @@ async function connectOnce(isRetry, intent) {
     emit();
   };
   const markConnected = () => {
-    if (!engineSupervisor.isCurrent(engineGeneration) ||
+    if (!isCurrentEngineContext(engineGeneration) ||
         !connectionState.isReadyToConnect(engineGeneration)) return;
     if (!campusBrowserManager.routingSuspended) {
       finishConnected();
@@ -981,7 +982,7 @@ async function connectOnce(isRetry, intent) {
       finishConnected();
     }).catch((error) => {
       if (browserActivationInFlight === activation) browserActivationInFlight = null;
-      if (!engineSupervisor.isCurrent(engineGeneration)) return;
+      if (!isCurrentEngineContext(engineGeneration)) return;
       // The engine is usable by authenticated external clients, while the
       // built-in browser deliberately remains behind its request gate.
       finishConnected();
@@ -989,10 +990,9 @@ async function connectOnce(isRetry, intent) {
       emit();
     });
   };
-
   const applyHumanDiagnostic = (chunk) => {
     diagnosticTail = (diagnosticTail + chunk).slice(-512);
-    if (!engineSupervisor.isCurrent(engineGeneration)) return;
+    if (!isCurrentEngineContext(engineGeneration)) return;
     const classifiedError = classifyEngineOutput(diagnosticTail, s.port, t);
     if (classifiedError) {
       state.lastError = classifiedError;
@@ -1004,14 +1004,14 @@ async function connectOnce(isRetry, intent) {
     expectedPort: Number(s.port),
     stdin: child.stdin,
     controlRegistry: engineControlRegistry,
-    isCurrent: (generation) => engineSupervisor.isCurrent(generation),
+    isCurrent: isCurrentEngineContext,
     handlers: {
       onDiagnostic: (event) => logWriter.append(formatEngineEventDiagnostic(event, { ...connectionState.snapshot(), generation: engineGeneration })),
       onConnecting: (engineState) => {
         if (!connectionState.markEnginePhase(engineGeneration, engineState)) return;
         emit();
       },
-      onStopping: () => { if (revokeEngineServing(engineGeneration)) emit(); },
+      onStopping: () => { if (revokeEngineServing(engineGeneration, isCurrentEngineContext)) emit(); },
       onConnectionCandidate: () => {
         connectionState.recordEngineConnectedCandidate(engineGeneration);
         markConnected();
@@ -1021,7 +1021,7 @@ async function connectOnce(isRetry, intent) {
         markConnected();
       },
       onListenerMismatch: () => {
-        revokeEngineServing(engineGeneration); structuredFatalCode = 'LOCAL_LISTENER_FAILED';
+        revokeEngineServing(engineGeneration, isCurrentEngineContext); structuredFatalCode = 'LOCAL_LISTENER_FAILED';
         state.lastError = classifyEngineCode(structuredFatalCode, s.port, t); emit();
         engineSupervisor.stop({ graceMs: 1000, forceWaitMs: STOP_FORCE_WAIT_MS }).catch(() => {});
       },
@@ -1035,14 +1035,14 @@ async function connectOnce(isRetry, intent) {
         emit();
       },
       onNetworkUnhealthy: () => {
-        revokeEngineServing(engineGeneration); state.lastError = t('error.tunnelRecovering'); emit();
+        revokeEngineServing(engineGeneration, isCurrentEngineContext); state.lastError = t('error.tunnelRecovering'); emit();
       },
       onFatalError: (code, secondaryCode) => {
-        revokeEngineServing(engineGeneration); structuredFatalCode = code;
+        revokeEngineServing(engineGeneration, isCurrentEngineContext); structuredFatalCode = code;
         state.lastError = classifyEngineCode(code, s.port, t, secondaryCode); emit();
       },
       onProtocolTimeout: () => {
-        revokeEngineServing(engineGeneration);
+        revokeEngineServing(engineGeneration, isCurrentEngineContext);
         structuredFatalCode = 'EVENT_OUTPUT_FAILED';
         state.lastError = classifyEngineCode(structuredFatalCode, s.port, t);
         emit();

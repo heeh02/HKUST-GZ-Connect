@@ -52,6 +52,12 @@ test('composes the reviewed HKUST deployment without persistent account scope', 
     presentation.campusAccount.accountHandle,
   );
   assert.equal(presentation.workspace.persistentScope, false);
+  assert.deepEqual(profile.activeContextBinding(), {
+    profileId: 'hkustgz',
+    profileRevision: 1,
+    accountHandle: presentation.campusAccount.accountHandle,
+    activeContextEpoch: 1,
+  });
   for (const forbidden of ['engineConfigRef', 'reviewedDnsFallback', 'accountKey', 'workspaceKey']) {
     assert.equal(JSON.stringify(presentation).includes(forbidden), false);
   }
