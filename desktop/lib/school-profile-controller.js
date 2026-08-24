@@ -23,7 +23,9 @@ function createSchoolProfileController(options = {}) {
   if (!Buffer.isBuffer(accountEntropy) || accountEntropy.length !== 18) {
     throw new TypeError('account handle entropy is invalid');
   }
-  const accountHandle = `account-${accountEntropy.toString('base64url')}`;
+  // Hex has a fixed alphanumeric alphabet. Base64URL can legitimately end in
+  // "-" or "_", which the bounded handle schema rejects at random.
+  const accountHandle = `account-${accountEntropy.toString('hex')}`;
   accountEntropy.fill(0);
   const activeContextEpoch = 1;
   let currentCapabilitySnapshot = null;

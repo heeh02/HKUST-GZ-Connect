@@ -109,7 +109,10 @@ test('provider capability reports become profile-bound key-free renderer snapsho
 test('process-lifetime account handles require exact entropy and erase the source buffer', () => {
   const entropy = Buffer.alloc(18, 7);
   const profile = controller({ randomBytes: () => entropy });
-  assert.match(profile.createPresentation().campusAccount.accountHandle, /^account-/u);
+  assert.equal(
+    profile.createPresentation().campusAccount.accountHandle,
+    `account-${'07'.repeat(18)}`,
+  );
   assert.deepEqual(entropy, Buffer.alloc(18));
   assert.throws(
     () => controller({ randomBytes: () => Buffer.alloc(17) }),
