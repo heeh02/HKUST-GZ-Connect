@@ -67,6 +67,10 @@ test('profile/account/workspace paths use only opaque keys beneath one absolute 
     layout.account.legacyCredentialRollbackState,
     path.join(layout.account.root, 'legacy-vpn-credential-rollback.json'),
   );
+  assert.equal(
+    layout.account.legacyCredentialRollbackRetirement,
+    path.join(layout.account.root, 'legacy-vpn-credential-rollback-retirement.json'),
+  );
   assert.equal(layout.workspace.routingRules, path.join(layout.workspace.root, 'routing-rules.json'));
   assert.equal(layout.workspace.engineLog, path.join(layout.workspace.root, 'engine.log'));
   assert.match(layout.browserPartition, /^persist:campus-workspace-[a-f0-9]{32}$/u);
@@ -218,6 +222,7 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'legacy-flat-source-retirement',
     'hkust-migration-destination-plan',
     'legacy-credential-rollback-state',
+    'legacy-credential-rollback-store',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
     'vpn-credential-envelope-store',

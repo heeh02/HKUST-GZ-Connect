@@ -32,6 +32,7 @@ function destinationPathMap(layout) {
     vpnCredential: layout.account.vpnCredential,
     legacyCredentialRollbackBlob: layout.account.legacyCredentialRollbackBlob,
     legacyCredentialRollbackState: layout.account.legacyCredentialRollbackState,
+    legacyCredentialRollbackRetirement: layout.account.legacyCredentialRollbackRetirement,
     credentialTransaction: layout.account.credentialTransaction,
     deletionTombstone: layout.account.deletionTombstone,
     workspaceSettings: layout.workspace.settings,

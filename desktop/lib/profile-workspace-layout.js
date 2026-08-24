@@ -102,6 +102,10 @@ function createProfileAccountWorkspaceLayout({
       vpnCredential: path.join(accountRoot, 'vpn-credential.bin'),
       legacyCredentialRollbackBlob: path.join(accountRoot, 'legacy-vpn-credential-rollback.bin'),
       legacyCredentialRollbackState: path.join(accountRoot, 'legacy-vpn-credential-rollback.json'),
+      legacyCredentialRollbackRetirement: path.join(
+        accountRoot,
+        'legacy-vpn-credential-rollback-retirement.json',
+      ),
       credentialTransaction: path.join(accountRoot, 'credential-transaction.json'),
       deletionTombstone: path.join(accountRoot, 'deletion-tombstone.json'),
     },

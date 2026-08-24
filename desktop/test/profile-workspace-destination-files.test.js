@@ -17,6 +17,7 @@ const ABSENT_IDS = new Set([
   'globalProxyHelperCredential',
   'globalEngineOwner',
   'globalActiveContextSwitch',
+  'legacyCredentialRollbackRetirement',
   'credentialTransaction',
   'deletionTombstone',
 ]);

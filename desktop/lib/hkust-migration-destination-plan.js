@@ -245,6 +245,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
     vpnCredential: encryptedCredential,
     legacyCredentialRollbackBlob: copyOrNull(source.legacyCredential),
     legacyCredentialRollbackState: jsonBuffer(rollbackState),
+    legacyCredentialRollbackRetirement: null,
     credentialTransaction: null,
     deletionTombstone: null,
     workspaceSettings: jsonBuffer({

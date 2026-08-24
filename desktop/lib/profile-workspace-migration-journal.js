@@ -45,6 +45,7 @@ const DESTINATION_RECEIPT_IDS = Object.freeze([
   'vpnCredential',
   'legacyCredentialRollbackBlob',
   'legacyCredentialRollbackState',
+  'legacyCredentialRollbackRetirement',
   'credentialTransaction',
   'deletionTombstone',
   'workspaceSettings',
