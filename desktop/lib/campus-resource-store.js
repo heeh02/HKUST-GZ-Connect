@@ -4,12 +4,19 @@ const crypto = require('crypto');
 const {
   normalizeCustomResources,
   normalizeResource,
-  MAX_RESOURCES,
+  MAX_CUSTOM_RESOURCES,
 } = require('./campus-resources');
 const { normalizeCampusUrl } = require('./campus-browser');
 const { isIsolatedNetworkHost } = require('./host-safety');
 
-const BUILTIN_IDS = new Set(['home', 'one-stop', 'library', 'new-student', 'outlook', 'canvas']);
+function builtinIdentity(resources) {
+  const builtins = (Array.isArray(resources) ? resources : [])
+    .filter((resource) => resource?.builtin === true)
+  return {
+    ids: new Set(builtins.map((resource) => resource.id)),
+    urls: new Set(builtins.map((resource) => resource.url)),
+  };
+}
 
 function generatedId(url, existing) {
   const digest = crypto.createHash('sha256').update(url).digest('hex').slice(0, 8);
@@ -19,11 +26,11 @@ function generatedId(url, existing) {
   return id;
 }
 
-function normalizedInput(payload, existing) {
+function normalizedInput(payload, existing, builtins) {
   const source = payload && typeof payload === 'object' ? payload : {};
   if (!String(source.name || '').trim()) throw new Error('网站名称不能为空');
   const id = String(source.id || '').trim() || generatedId(String(source.url || '').trim(), existing);
-  if (BUILTIN_IDS.has(id)) throw new Error('内置网站不能被覆盖');
+  if (builtins.ids.has(id)) throw new Error('内置网站不能被覆盖');
   if (!String(source.url || '').trim()) throw new Error('网站网址不能为空');
   let url;
   try {
@@ -36,12 +43,13 @@ function normalizedInput(payload, existing) {
   }
   const resource = normalizeResource({ ...source, id, url });
   if (!resource) throw new Error('网站名称、描述或网址无效');
+  if (builtins.urls.has(resource.url)) throw new Error('该网址已经是内置网站');
   return resource;
 }
 
-function upsertCustomResource(current, payload) {
+function upsertCustomResource(current, payload, { builtinResources = [] } = {}) {
   const resources = normalizeCustomResources(current);
-  const resource = normalizedInput(payload, resources);
+  const resource = normalizedInput(payload, resources, builtinIdentity(builtinResources));
   const index = resources.findIndex((item) => item.id === resource.id);
   const duplicate = resources.find((item, itemIndex) =>
     item.url === resource.url && itemIndex !== index);
@@ -49,13 +57,15 @@ function upsertCustomResource(current, payload) {
   const next = index === -1
     ? [...resources, resource]
     : resources.map((item, itemIndex) => (itemIndex === index ? resource : item));
-  if (next.length > MAX_RESOURCES) throw new Error(`自定义网站最多保存 ${MAX_RESOURCES} 个`);
+  if (next.length > MAX_CUSTOM_RESOURCES) {
+    throw new Error(`自定义网站最多保存 ${MAX_CUSTOM_RESOURCES} 个`);
+  }
   return { resource, resources: next };
 }
 
-function deleteCustomResource(current, id) {
+function deleteCustomResource(current, id, { builtinResources = [] } = {}) {
   const key = String(id || '').trim();
-  if (BUILTIN_IDS.has(key)) throw new Error('内置网站不能删除');
+  if (builtinIdentity(builtinResources).ids.has(key)) throw new Error('内置网站不能删除');
   const resources = normalizeCustomResources(current);
   if (!resources.some((resource) => resource.id === key)) throw new Error('自定义网站不存在');
   return resources.filter((resource) => resource.id !== key);

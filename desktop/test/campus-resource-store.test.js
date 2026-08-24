@@ -7,6 +7,11 @@ const {
   reorderCustomResources,
   upsertCustomResource,
 } = require('../lib/campus-resource-store');
+const BUILTINS = [{
+  id: 'home',
+  url: 'https://www.example.edu/',
+  builtin: true,
+}];
 
 test('adding a shortcut generates a stable local id and partner route', () => {
   const result = upsertCustomResource([], {
@@ -42,7 +47,9 @@ test('deleting and reordering only affect local shortcuts', () => {
   assert.deepEqual(reordered.map((item) => item.id), [first.resource.id, second.resource.id]);
   const removed = deleteCustomResource(reordered, first.resource.id);
   assert.deepEqual(removed.map((item) => item.id), [second.resource.id]);
-  assert.throws(() => deleteCustomResource(reordered, 'home'), /内置/);
+  assert.throws(() => deleteCustomResource(reordered, 'home', {
+    builtinResources: BUILTINS,
+  }), /内置/);
 });
 
 test('shortcut mutations reject invalid user input', () => {
@@ -52,6 +59,9 @@ test('shortcut mutations reject invalid user input', () => {
   assert.throws(() => upsertCustomResource([], {
     name: '本机服务', url: 'https://127.0.0.1:8443', route: 'direct',
   }), /不能设为直连/);
+  assert.throws(() => upsertCustomResource([], {
+    name: '重复内置网址', url: 'https://www.example.edu', route: 'campus',
+  }, { builtinResources: BUILTINS }), /内置网站/);
   assert.equal(upsertCustomResource([], {
     name: '校园 IP', url: 'https://103.189.154.10:4433', route: 'campus',
   }).resource.route, 'campus');

@@ -47,10 +47,7 @@ function reviewedProfile(overrides = {}) {
       homeUrl: 'https://www.hkust-gz.edu.cn/',
       campusDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
       directPartnerDomains: ['office.com', 'instructure.com'],
-      builtinResources: [{
-        id: 'home', name: '学校主页', description: '校园信息',
-        url: 'https://www.hkust-gz.edu.cn/',
-      }],
+      builtinResourcesRef: 'hkustgz-builtin-resources',
       healthTargets: [
         { host: 'www.hkust-gz.edu.cn', port: 443 },
         { host: 'library.hkust-gz.edu.cn', port: 443 },
@@ -68,9 +65,9 @@ test('normalizes one reviewed profile without I/O or runtime wiring', () => {
   const profile = validateSchoolProfileDocument(reviewedProfile());
   assert.equal(profile.gateway.origin.origin, 'https://remote.hkust-gz.edu.cn');
   assert.equal(profile.gateway.origin.port, 443);
-  assert.equal(profile.browser.builtinResources[0].route, 'campus');
+  assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
   assert.equal(Object.isFrozen(profile), true);
-  assert.equal(Object.isFrozen(profile.browser.builtinResources), true);
+  assert.equal(Object.isFrozen(profile.browser), true);
 });
 
 test('GatewayOrigin is HTTPS, root-only, credential-free and canonical', () => {
@@ -124,6 +121,15 @@ test('profile enforces bounds and exact nested schemas', () => {
     browser: { ...reviewedProfile().browser, campusDomains: Array(65).fill('example.edu') },
   })), /bounded/);
   assert.throws(() => validateSchoolProfileDocument(reviewedProfile({
+    browser: { ...reviewedProfile().browser, builtinResourcesRef: '../resources.json' },
+  })), /builtinResourcesRef/u);
+  assert.throws(() => validateSchoolProfileDocument(reviewedProfile({
+    browser: {
+      ...reviewedProfile().browser,
+      builtinResources: [],
+    },
+  })), /schema/u);
+  assert.throws(() => validateSchoolProfileDocument(reviewedProfile({
     browser: {
       ...reviewedProfile().browser,
       healthTargets: [{ host: 'www.example.edu', port: 443, secret: true }],
@@ -148,7 +154,7 @@ test('custom-local profile cannot inherit reviewed assets, DNS, routes or proact
     },
     browser: {
       homeUrl: null, campusDomains: [], directPartnerDomains: [],
-      builtinResources: [], healthTargets: [],
+      builtinResourcesRef: null, healthTargets: [],
     },
     policy: { reviewedPrivateGatewayAllowed: false, reviewedDnsFallback: [] },
   });

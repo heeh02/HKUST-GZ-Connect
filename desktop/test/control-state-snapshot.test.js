@@ -2,6 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { validateBuiltinResourceDocument } = require('../lib/campus-resource-contract');
+const { projectCampusResources } = require('../lib/campus-resources');
 const { createControlStateSnapshot } = require('../lib/control-state-snapshot');
 
 function fixture(overrides = {}) {
@@ -57,6 +59,31 @@ test('settings failure returns the bounded fallback without probing credentials'
   assert.deepEqual(value.campusResources, [{ id: 'home' }]);
   assert.equal(credentialReads, 0);
   assert.deepEqual(calls, [{ locale: 'zh-CN' }]);
+});
+
+test('legacy custom URL conflicts cannot make get-state fail', () => {
+  const builtins = validateBuiltinResourceDocument([{
+    id: 'home',
+    name: 'Home',
+    description: '',
+    url: 'https://www.example.edu/',
+    route: 'campus',
+  }]);
+  const customResources = [{
+    id: 'legacy-duplicate',
+    name: 'Legacy duplicate',
+    description: '',
+    url: 'https://www.example.edu/',
+    route: 'campus',
+  }];
+  const { snapshot } = fixture({
+    loadSettings: () => ({ username: 'student', port: 6180, customResources }),
+    getResources: (settings) => projectCampusResources(
+      builtins, settings.customResources,
+    ).resources,
+  });
+  assert.deepEqual(snapshot().campusResources.map(({ id }) => id), ['home']);
+  assert.equal(customResources.length, 1, 'the compatibility view must not rewrite settings');
 });
 
 test('rejects an incomplete composition at construction time', () => {

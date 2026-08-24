@@ -716,7 +716,7 @@ async function connectOnce(isRetry, intent) {
   let s;
   let pw;
   let credentialResult;
-  let engineConfig;
+  let engineConfigBinding;
   state.lastError = null;
   state.clientIp = null;
   state.dnsMode = 'unknown';
@@ -753,13 +753,14 @@ async function connectOnce(isRetry, intent) {
     // Validate the immutable reviewed profile/config binding before touching
     // the credential store. A missing or replaced package profile must never
     // cause a password to be decrypted for an unverified target.
-    engineConfig = activeSchoolProfile.verifyEngineConfig().path;
+    engineConfigBinding = activeSchoolProfile.verifyEngineLaunchBinding();
   } catch {
     connectionState.failIntent(intent);
     state.lastError = t('error.engineConfigMissing');
     emit();
     return { ok: false, profileConfigInvalid: true };
   }
+  const engineConfig = engineConfigBinding.path;
   try {
     s = loadSettings();
     credentialResult = loadPasswordResult();
@@ -804,12 +805,6 @@ async function connectOnce(isRetry, intent) {
     emit();
     return { ok: false };
   }
-  if (!fs.existsSync(engineConfig)) {
-    connectionState.failIntent(intent);
-    state.lastError = t('error.engineConfigMissing');
-    emit();
-    return { ok: false };
-  }
   clearActiveProxyCredential();
   let proxyCredential = null;
   let proxyCredentialMode = 'none';
@@ -847,6 +842,7 @@ async function connectOnce(isRetry, intent) {
   const expectedEngineGeneration = engineSupervisor.currentGeneration + 1;
   const engineArgs = [
     '--config', engineConfig,
+    '--profile-binding-v1-stdin',
     '--credentials-stdin',
     '--socks-bind', `127.0.0.1:${Number(s.port)}`,
     '--generation', String(expectedEngineGeneration),
@@ -1025,7 +1021,9 @@ async function connectOnce(isRetry, intent) {
     : '';
   // Keep the credential/control pipe open: EOF cancels active authentication;
   // after connection it closes only the Control v2/v3 stream.
-  child.stdin.write(`${s.username}\n${pw}\n${proxyCredentialLines}`);
+  child.stdin.write(
+    `${engineConfigBinding.stdinFrame}\n${s.username}\n${pw}\n${proxyCredentialLines}`,
+  );
   pw = '';
   proxyCredentialLines = '';
   engineRuntime.start(child.stdout);

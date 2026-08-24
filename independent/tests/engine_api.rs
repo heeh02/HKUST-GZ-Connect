@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -173,6 +174,109 @@ fn configuration_failures_do_not_copy_local_paths_to_diagnostics_or_events() {
     assert!(events(&output.stdout).iter().any(|event| {
         event["type"] == "fatal_error" && event["code"] == "CONFIGURATION_INVALID"
     }));
+}
+
+#[test]
+fn opted_in_config_binding_requires_one_private_stdin_frame() {
+    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join("hkustgz.json");
+    let output = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--profile-binding-v1-stdin",
+            "--credentials-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(events(&output.stdout).iter().any(|event| {
+        event["type"] == "fatal_error" && event["code"] == "CONFIGURATION_INVALID"
+    }));
+}
+
+#[test]
+fn engine_rechecks_config_digest_and_origin_before_reading_credentials() {
+    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join("hkustgz.json");
+    let payload = std::fs::read(&config).unwrap();
+    let digest = hex::encode(Sha256::digest(&payload));
+    for (expected_digest, expected_origin) in [
+        ("00".repeat(32), "https://remote.hkust-gz.edu.cn"),
+        (digest.clone(), "https://other.example.edu"),
+    ] {
+        let private_credential = "must-not-appear-in-config-binding-errors";
+        let binding = format!(
+            "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{expected_digest}\",\"gatewayOrigin\":\"{expected_origin}\",\"profileId\":\"hkustgz\",\"profileRevision\":1}}\n",
+        );
+        let mut child = engine()
+            .args([
+                "--config",
+                config.to_str().unwrap(),
+                "--profile-binding-v1-stdin",
+                "--credentials-stdin",
+                "--socks-bind",
+                "127.0.0.1:6180",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(format!("{binding}student\n{private_credential}\n").as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success());
+        assert!(events(&output.stdout).iter().any(|event| {
+            event["type"] == "fatal_error" && event["code"] == "CONFIGURATION_INVALID"
+        }));
+        assert!(!String::from_utf8_lossy(&output.stdout).contains(private_credential));
+        assert!(!String::from_utf8_lossy(&output.stderr).contains(private_credential));
+    }
+}
+
+#[test]
+fn matching_config_binding_reaches_the_credential_boundary() {
+    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join("hkustgz.json");
+    let digest = hex::encode(Sha256::digest(std::fs::read(&config).unwrap()));
+    let binding = format!(
+        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://remote.hkust-gz.edu.cn\",\"profileId\":\"hkustgz\",\"profileRevision\":1}}\n",
+    );
+    let output = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--profile-binding-v1-stdin",
+            "--credentials-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.take().unwrap().write_all(binding.as_bytes())?;
+            child.wait_with_output()
+        })
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        events(&output.stdout).iter().any(|event| {
+            event["type"] == "fatal_error" && event["code"] == "CREDENTIALS_INVALID"
+        })
+    );
 }
 
 #[test]

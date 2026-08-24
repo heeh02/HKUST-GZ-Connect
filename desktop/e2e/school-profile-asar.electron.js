@@ -20,10 +20,6 @@ async function run() {
     recursive: true,
   });
   fs.copyFileSync(path.join(desktopRoot, 'assets', 'logo.svg'), path.join(staging, 'assets', 'logo.svg'));
-  fs.copyFileSync(
-    path.join(desktopRoot, 'assets', 'campus-resources.json'),
-    path.join(staging, 'assets', 'campus-resources.json'),
-  );
   await asar.createPackage(staging, archive);
 
   const virtualProfile = path.join(

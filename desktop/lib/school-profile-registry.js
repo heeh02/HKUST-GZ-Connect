@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseBuiltinResourceDocument } = require('./campus-resource-contract');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,
@@ -82,16 +83,6 @@ function parseJson(data, name) {
   } catch {
     throw new TypeError(`${name} is not valid JSON`);
   }
-}
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => (
-      `${JSON.stringify(key)}:${stableJson(value[key])}`
-    )).join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function sha256(data) {
@@ -382,17 +373,11 @@ class SchoolProfileRegistry {
       if (!brandingAsset || brandingAsset.kind !== 'branding') {
         throw new Error(`profile branding reference is not declared: ${entry.profileId}`);
       }
-      const resourceAssets = [...assets.values()].filter((asset) => asset.kind === 'builtin-resources');
-      if (resourceAssets.length !== 1) {
-        throw new Error(`profile requires one builtin resource asset: ${entry.profileId}`);
+      const resourceAsset = assets.get(profile.browser.builtinResourcesRef);
+      if (!resourceAsset || resourceAsset.kind !== 'builtin-resources') {
+        throw new Error(`profile builtin resource reference is not declared: ${entry.profileId}`);
       }
-      const resourceDocument = parseJson(
-        resourceAssets[0].data,
-        `builtin resource asset ${entry.profileId}`,
-      );
-      if (stableJson(resourceDocument) !== stableJson(sourceDocument.browser?.builtinResources)) {
-        throw new Error(`profile builtin resources differ from their declared asset: ${entry.profileId}`);
-      }
+      const builtinResources = parseBuiltinResourceDocument(resourceAsset.data);
       if (assets.size !== 3) {
         throw new Error(`profile contains an unbound packaged asset: ${entry.profileId}`);
       }
@@ -401,6 +386,7 @@ class SchoolProfileRegistry {
         sourceDocument,
         document: Object.freeze({ ...entry.document }),
         assets,
+        builtinResources,
       }));
       if (entry.default) defaultProfileId = entry.profileId;
     }
@@ -424,6 +410,13 @@ class SchoolProfileRegistry {
   getDefaultProfile() {
     this.ensureLoaded();
     return this.getProfile(this.defaultProfileId);
+  }
+
+  getBuiltinResources(profileId) {
+    this.ensureLoaded();
+    const record = this.records.get(String(profileId || ''));
+    if (!record) throw new Error('school profile is not present in the packaged manifest');
+    return record.builtinResources;
   }
 
   createView(profileId, options) {

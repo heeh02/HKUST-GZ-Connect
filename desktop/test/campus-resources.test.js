@@ -1,13 +1,20 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const {
-  loadCampusResources,
   mergeCampusResources,
   normalizeCustomResources,
   normalizeResource,
+  projectCampusResources,
 } = require('../lib/campus-resources');
+const {
+  MAX_BUILTIN_RESOURCES,
+  parseBuiltinResourceDocument,
+  validateBuiltinResourceDocument,
+} = require('../lib/campus-resource-contract');
 const {
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
@@ -17,13 +24,46 @@ const {
 } = require('../lib/campus-route');
 
 test('bundled campus resources are unique reviewed HTTPS links', () => {
-  const resources = loadCampusResources();
+  const resources = parseBuiltinResourceDocument(fs.readFileSync(path.join(
+    __dirname,
+    '..',
+    'assets',
+    'profiles',
+    'hkustgz',
+    'builtin-resources.json',
+  )));
   assert.ok(resources.length >= 3);
   assert.equal(new Set(resources.map((resource) => resource.id)).size, resources.length);
   for (const resource of resources) {
     assert.match(resource.url, /^https:\/\/[^/]+/);
     assert.ok(resource.name.length > 0);
   }
+});
+
+test('reviewed resources fail closed instead of truncating or filtering', () => {
+  const resource = (index, overrides = {}) => ({
+    id: `resource-${index}`,
+    name: `Resource ${index}`,
+    description: '',
+    url: `https://resource-${index}.example.edu/`,
+    route: 'campus',
+    ...overrides,
+  });
+  assert.throws(
+    () => validateBuiltinResourceDocument(Array.from(
+      { length: MAX_BUILTIN_RESOURCES + 1 },
+      (_, index) => resource(index),
+    )),
+    /resource count/u,
+  );
+  for (const overrides of [
+    { name: 'n'.repeat(41) },
+    { description: 'd'.repeat(81) },
+    { route: 'unknown' },
+    { url: 'http://reviewed.example.edu/' },
+    { url: 'https://127.0.0.1/', route: 'direct' },
+    { script: true },
+  ]) assert.throws(() => validateBuiltinResourceDocument([resource(1, overrides)]));
 });
 
 test('invalid or executable resource entries are rejected', () => {
@@ -57,7 +97,10 @@ test('custom resources are bounded, normalized, and merged after built-ins', () 
   assert.equal(custom.length, 1);
   assert.equal(custom[0].route, ROUTE_DIRECT);
   const merged = mergeCampusResources([
-    { id: 'home', name: '学校主页', url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS },
+    {
+      id: 'home', name: '学校主页', description: '',
+      url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS, builtin: true,
+    },
   ], custom);
   assert.deepEqual(merged.map((resource) => resource.id), ['home', 'portal']);
   assert.equal(merged[0].builtin, true);
@@ -73,4 +116,57 @@ test('legacy direct private shortcuts are migrated to the campus tunnel', () => 
     route: 'direct',
   }]);
   assert.equal(resource.route, 'campus');
+});
+
+test('runtime projection retains lossless sources while preserving the 32-visible compatibility cap', () => {
+  const builtins = validateBuiltinResourceDocument(Array.from({ length: 32 }, (_, index) => ({
+    id: `builtin-${index}`,
+    name: `Builtin ${index}`,
+    description: '',
+    url: `https://builtin-${index}.example.edu/`,
+    route: 'campus',
+  })));
+  const custom = Array.from({ length: 32 }, (_, index) => ({
+    id: `custom-${index}`,
+    name: `Custom ${index}`,
+    description: '',
+    url: `https://custom-${index}.example.edu/`,
+    route: 'campus',
+  }));
+  const projection = projectCampusResources(builtins, custom);
+  assert.equal(projection.resources.length, 32);
+  assert.deepEqual(projection.receipt, {
+    sourceCount: 64,
+    visibleCount: 32,
+    conflictCount: 0,
+    hiddenCount: 32,
+  });
+  assert.equal(custom.length, 32, 'projection must not rewrite the custom source');
+});
+
+test('legacy cross-source duplicates keep builtin-first startup behavior and produce a receipt', () => {
+  const builtins = validateBuiltinResourceDocument([{
+    id: 'home',
+    name: 'Home',
+    description: '',
+    url: 'https://www.example.edu/',
+    route: 'campus',
+  }]);
+  const custom = [{
+    id: 'legacy-home-copy',
+    name: 'Old duplicate',
+    description: '',
+    url: 'https://www.example.edu/',
+    route: 'campus',
+  }];
+  const projection = projectCampusResources(builtins, custom);
+  assert.deepEqual(projection.resources.map(({ id }) => id), ['home']);
+  assert.deepEqual(projection.receipt, {
+    sourceCount: 2,
+    visibleCount: 1,
+    conflictCount: 1,
+    hiddenCount: 0,
+  });
+  assert.equal(custom.length, 1, 'legacy duplicate remains in settings so the user can delete it');
+  assert.deepEqual(mergeCampusResources(builtins, custom), projection.resources);
 });

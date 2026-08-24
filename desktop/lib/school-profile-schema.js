@@ -2,6 +2,7 @@
 
 const net = require('node:net');
 const { domainToASCII } = require('node:url');
+const { validateBuiltinResourcesRef } = require('./campus-resource-contract');
 
 const PROFILE_SCHEMA_VERSION = 1;
 const CAMPUS_ACCOUNT_SCHEMA_VERSION = 1;
@@ -17,7 +18,6 @@ const MAX_PROFILE_ID_LENGTH = 64;
 const MAX_DISPLAY_NAME_LENGTH = 96;
 const MAX_SHORT_NAME_LENGTH = 40;
 const MAX_DOMAIN_COUNT = 64;
-const MAX_RESOURCE_COUNT = 64;
 const MAX_HEALTH_TARGETS = 8;
 const MAX_CAPABILITIES = 64;
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
@@ -190,35 +190,6 @@ function normalizeDomains(value, name) {
   return Object.freeze(result);
 }
 
-function normalizeResource(value, index) {
-  const resource = exactKeys(value, ['id', 'name', 'description', 'url', 'route'],
-    ['id', 'name', 'description', 'url'], `builtinResources[${index}]`);
-  if (typeof resource.id !== 'string' || resource.id.length > 40 || !SAFE_ID.test(resource.id)) {
-    throw new TypeError('builtin resource id is invalid');
-  }
-  const route = resource.route == null ? 'campus' : resource.route;
-  if (!['campus', 'direct'].includes(route)) throw new TypeError('builtin resource route is invalid');
-  return Object.freeze({
-    id: resource.id,
-    name: boundedText(resource.name, 80, 'builtin resource name'),
-    description: boundedText(resource.description, 160, 'builtin resource description'),
-    url: normalizeHttpsUrl(resource.url, 'builtin resource URL'),
-    route,
-  });
-}
-
-function normalizeResources(value) {
-  if (!Array.isArray(value) || value.length > MAX_RESOURCE_COUNT) {
-    throw new TypeError('builtinResources must be a bounded array');
-  }
-  const result = value.map(normalizeResource);
-  if (new Set(result.map((entry) => entry.id)).size !== result.length ||
-      new Set(result.map((entry) => entry.url)).size !== result.length) {
-    throw new TypeError('builtinResources contains a duplicate');
-  }
-  return Object.freeze(result);
-}
-
 function normalizeHealthTargets(value) {
   if (!Array.isArray(value) || value.length > MAX_HEALTH_TARGETS) {
     throw new TypeError('healthTargets must be a bounded array');
@@ -281,13 +252,15 @@ function normalizeGateway(value) {
 
 function normalizeBrowser(value) {
   const browser = exactKeys(value,
-    ['homeUrl', 'campusDomains', 'directPartnerDomains', 'builtinResources', 'healthTargets'],
-    ['campusDomains', 'directPartnerDomains', 'builtinResources', 'healthTargets'], 'browser');
+    ['homeUrl', 'campusDomains', 'directPartnerDomains', 'builtinResourcesRef', 'healthTargets'],
+    ['campusDomains', 'directPartnerDomains', 'healthTargets'], 'browser');
   return Object.freeze({
     homeUrl: normalizeHttpsUrl(browser.homeUrl, 'homeUrl'),
     campusDomains: normalizeDomains(browser.campusDomains, 'campusDomains'),
     directPartnerDomains: normalizeDomains(browser.directPartnerDomains, 'directPartnerDomains'),
-    builtinResources: normalizeResources(browser.builtinResources),
+    builtinResourcesRef: browser.builtinResourcesRef == null
+      ? null
+      : validateBuiltinResourcesRef(browser.builtinResourcesRef),
     healthTargets: normalizeHealthTargets(browser.healthTargets),
   });
 }
@@ -340,7 +313,8 @@ function validateSchoolProfileDocument(value) {
     throw new TypeError('reviewed profiles require a packaged engine config');
   }
   if (normalized.evidenceClass === 'builtin-reviewed' &&
-      (!normalized.browser.homeUrl || !normalized.browser.campusDomains.length ||
+      (!normalized.browser.homeUrl || !normalized.browser.builtinResourcesRef ||
+       !normalized.browser.campusDomains.length ||
        normalized.browser.healthTargets.length < 2)) {
     throw new TypeError('reviewed profiles require Browser defaults and health targets');
   }
@@ -348,7 +322,7 @@ function validateSchoolProfileDocument(value) {
     normalized.gateway.engineConfigRef || normalized.branding.bundledAssetKey ||
     normalized.policy.reviewedPrivateGatewayAllowed || normalized.policy.reviewedDnsFallback.length ||
     normalized.browser.homeUrl || normalized.browser.campusDomains.length ||
-    normalized.browser.directPartnerDomains.length || normalized.browser.builtinResources.length ||
+    normalized.browser.directPartnerDomains.length || normalized.browser.builtinResourcesRef ||
     normalized.browser.healthTargets.length)) {
     throw new TypeError('custom-local profiles must start with minimal unreviewed policy');
   }

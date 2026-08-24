@@ -20,6 +20,25 @@ test('composes the reviewed HKUST deployment without persistent account scope', 
   assert.equal(profile.gatewayPort, 443);
   assert.deepEqual(profile.defaultRouteDomains, ['hkust-gz.edu.cn', 'hkust.edu.hk']);
   assert.equal(profile.mergeResources().length, profile.builtInResourceCount);
+  assert.deepEqual(profile.projectResources().receipt, {
+    sourceCount: profile.builtInResourceCount,
+    visibleCount: profile.builtInResourceCount,
+    conflictCount: 0,
+    hiddenCount: 0,
+  });
+  const binding = profile.verifyEngineLaunchBinding();
+  assert.equal(
+    binding.path,
+    path.join(desktopRoot, '..', 'independent', 'config', 'hkustgz.json'),
+  );
+  assert.deepEqual(JSON.parse(binding.stdinFrame), {
+    type: 'engine_config_binding',
+    apiVersion: 1,
+    configSha256: '2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a',
+    gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
+    profileId: 'hkustgz',
+    profileRevision: 1,
+  });
 
   const presentation = profile.createPresentation();
   assert.equal(presentation.schoolProfile.profileId, 'hkustgz');

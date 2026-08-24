@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { SchoolProfileRegistry } = require('../lib/school-profile-registry');
 const {
   createActiveSchoolProfileContext,
+  readRegularFileNoFollow,
   verifyEngineConfigBinding,
 } = require('../lib/school-profile-runtime');
 
@@ -34,6 +36,8 @@ test('active context binds the single reviewed profile to the exact source confi
   assert.equal(context.profile.profileId, 'hkustgz');
   assert.equal(context.gatewayHost, 'remote.hkust-gz.edu.cn');
   assert.equal(context.gatewayPort, 443);
+  assert.equal(context.builtinResources.length, 6);
+  assert.equal(Object.isFrozen(context.builtinResources), true);
   assert.equal(
     context.engineConfigPath,
     path.join(desktopRoot, '..', 'independent', 'config', 'hkustgz.json'),
@@ -84,6 +88,32 @@ test('tampered, malformed, wrong-origin and symlink configs fail closed', {
     resourcesPath: linked.directory,
     desktopDir: desktopRoot,
   }), /regular file/u);
+});
+
+test('a config path replaced by a FIFO cannot block before opened-handle validation', {
+  skip: process.platform === 'win32',
+}, (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-profile-fifo-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const fifo = path.join(directory, 'config.json');
+  const created = spawnSync('mkfifo', [fifo], { encoding: 'utf8' });
+  assert.equal(created.status, 0, created.stderr);
+  const actual = fs.lstatSync(fifo);
+  const racedFs = {
+    ...fs,
+    constants: fs.constants,
+    lstatSync: () => ({
+      isFile: () => true,
+      isSymbolicLink: () => false,
+      size: 1,
+      dev: actual.dev,
+      ino: actual.ino,
+    }),
+  };
+  assert.throws(
+    () => readRegularFileNoFollow(fifo, { fsImpl: racedFs }),
+    /regular file|changed while opening/u,
+  );
 });
 
 test('legacy account/workspace views remain non-persistent and key-free', () => {

@@ -72,7 +72,8 @@ test('package verifier rejects fake gateways, test PKI and private-key formats',
     );
   }
   assert.doesNotThrow(() => assertNoTestOnlyPackageEntries([
-    '/main.js', '/lib/auth-challenge-coordinator.js', '/assets/campus-resources.json',
+    '/main.js', '/lib/auth-challenge-coordinator.js',
+    '/assets/profiles/hkustgz/builtin-resources.json',
   ]));
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-native-resources-'));

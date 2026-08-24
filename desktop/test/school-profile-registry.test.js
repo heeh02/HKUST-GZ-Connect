@@ -19,7 +19,13 @@ const sourceEngineConfig = fs.readFileSync(
   path.join(desktopRoot, 'assets', 'profiles', 'hkustgz', 'engine-config.json'),
 );
 const sourceLogo = fs.readFileSync(path.join(desktopRoot, 'assets', 'logo.svg'));
-const sourceResources = fs.readFileSync(path.join(desktopRoot, 'assets', 'campus-resources.json'));
+const sourceResources = fs.readFileSync(path.join(
+  desktopRoot,
+  'assets',
+  'profiles',
+  'hkustgz',
+  'builtin-resources.json',
+));
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -39,16 +45,22 @@ function writeFile(root, relative, data) {
 function fixture(t, {
   mutateProfile = null,
   mutateManifest = null,
+  mutateResources = null,
 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-profile-registry-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const profile = clone(sourceProfile);
   mutateProfile?.(profile);
   const profileData = Buffer.from(`${JSON.stringify(profile, null, 2)}\n`);
+  const resources = JSON.parse(sourceResources.toString('utf8'));
+  mutateResources?.(resources);
+  const resourceData = mutateResources
+    ? Buffer.from(`${JSON.stringify(resources, null, 2)}\n`)
+    : sourceResources;
   writeFile(root, 'assets/profiles/hkustgz/school-profile.json', profileData);
   writeFile(root, 'assets/profiles/hkustgz/engine-config.json', sourceEngineConfig);
   writeFile(root, 'assets/logo.svg', sourceLogo);
-  writeFile(root, 'assets/campus-resources.json', sourceResources);
+  writeFile(root, 'assets/profiles/hkustgz/builtin-resources.json', resourceData);
   const manifest = {
     schemaVersion: 1,
     profiles: [{
@@ -74,8 +86,8 @@ function fixture(t, {
         {
           key: 'hkustgz-builtin-resources',
           kind: 'builtin-resources',
-          path: 'assets/campus-resources.json',
-          sha256: digest(sourceResources),
+          path: 'assets/profiles/hkustgz/builtin-resources.json',
+          sha256: digest(resourceData),
         },
       ],
     }],
@@ -98,7 +110,8 @@ test('loads the reviewed single-HKUST packaged registry and bounded views', () =
     { host: 'www.hkust-gz.edu.cn', port: 443 },
     { host: 'library.hkust-gz.edu.cn', port: 443 },
   ]);
-  assert.equal(profile.browser.builtinResources.length, 6);
+  assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
+  assert.equal(registry.getBuiltinResources('hkustgz').length, 6);
   assert.deepEqual(registry.listViews({ locale: 'en', compatibility: 'reviewed' }), [
     {
       schemaVersion: 1,
@@ -201,6 +214,14 @@ test('unknown protocol families and undeclared profile references fail closed', 
     () => new SchoolProfileRegistry({ packageRoot: unknownBranding.root }).load(),
     /branding reference is not declared/u,
   );
+
+  const unknownResources = fixture(t, {
+    mutateProfile: (profile) => { profile.browser.builtinResourcesRef = 'unknown-resources'; },
+  });
+  assert.throws(
+    () => new SchoolProfileRegistry({ packageRoot: unknownResources.root }).load(),
+    /resource reference is not declared/u,
+  );
 });
 
 test('document and asset hash changes fail closed', (t) => {
@@ -222,13 +243,13 @@ test('document and asset hash changes fail closed', (t) => {
   );
 });
 
-test('resource asset and normalized profile cannot drift independently', (t) => {
+test('resource asset is the only content source and invalid reviewed entries fail closed', (t) => {
   const changed = fixture(t, {
-    mutateProfile: (profile) => { profile.browser.builtinResources[0].name = 'Different'; },
+    mutateResources: (resources) => { resources[0].name = 'n'.repeat(41); },
   });
   assert.throws(
     () => new SchoolProfileRegistry({ packageRoot: changed.root }).load(),
-    /builtin resources differ/u,
+    /resource name/u,
   );
 });
 

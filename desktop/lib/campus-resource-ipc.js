@@ -25,7 +25,9 @@ function registerCampusResourceIpc({
       let result;
       await runTransaction(() => {
         const previous = loadSettings();
-        result = upsertCustomResource(previous.customResources, resource);
+        result = upsertCustomResource(previous.customResources, resource, {
+          builtinResources: safeResources(),
+        });
         return {
           commit: () => saveSettings({ ...previous, customResources: result.resources }),
           rollback: () => saveSettings(previous),
@@ -51,7 +53,9 @@ function registerCampusResourceIpc({
       const safeId = boundedString(id, { minLength: 1, maxLength: 40, trim: true });
       await runTransaction(() => {
         const previous = loadSettings();
-        const resources = deleteCustomResource(previous.customResources, safeId);
+        const resources = deleteCustomResource(previous.customResources, safeId, {
+          builtinResources: safeResources(),
+        });
         return {
           commit: () => saveSettings({ ...previous, customResources: resources }),
           rollback: () => saveSettings(previous),

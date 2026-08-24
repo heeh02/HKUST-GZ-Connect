@@ -26,7 +26,9 @@ function readRegularFileNoFollow(file, { fsImpl = fs, maxBytes = MAX_ENGINE_CONF
   }
   const descriptor = fsImpl.openSync(
     file,
-    Number(fsImpl.constants?.O_RDONLY || 0) | Number(fsImpl.constants?.O_NOFOLLOW || 0),
+    Number(fsImpl.constants?.O_RDONLY || 0) |
+      Number(fsImpl.constants?.O_NOFOLLOW || 0) |
+      Number(fsImpl.constants?.O_NONBLOCK || 0),
   );
   try {
     const opened = fsImpl.fstatSync(descriptor);
@@ -121,6 +123,7 @@ function createActiveSchoolProfileContext({
   return Object.freeze({
     registry: profiles,
     profile,
+    builtinResources: profiles.getBuiltinResources(profile.profileId),
     gatewayHost: profile.gateway.origin.hostname.replace(/^\[|\]$/gu, ''),
     gatewayPort: profile.gateway.origin.port,
     engineConfigPath: initialConfig.path,

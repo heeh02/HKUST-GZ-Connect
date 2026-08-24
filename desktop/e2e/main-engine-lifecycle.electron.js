@@ -181,7 +181,16 @@ async function run() {
 
   const events = observations();
   const attempts = events.filter((entry) => entry.type === 'credentials_received');
+  const bindings = events.filter((entry) => entry.type === 'config_binding_received');
   assert.equal(attempts.length, 2);
+  assert.equal(bindings.length, 2);
+  for (const attempt of [1, 2]) {
+    assert.ok(events.findIndex((entry) => (
+      entry.attempt === attempt && entry.type === 'config_binding_received'
+    )) < events.findIndex((entry) => (
+      entry.attempt === attempt && entry.type === 'credentials_received'
+    )));
+  }
   assert.notEqual(attempts[0].generation, attempts[1].generation);
   assert.ok(events.some((entry) => entry.type === 'stale_generation_sent'));
   assert.ok(events.some((entry) => entry.type === 'listener_ready_sent'));

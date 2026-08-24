@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
+const { parseBuiltinResourceDocument } = require('../lib/campus-resource-contract');
 const {
   normalizeGatewayOrigin,
   validateSchoolProfileDocument,
@@ -22,16 +23,6 @@ const MAX_PACKAGED_PROFILE_ASSET_BYTES = 4 * 1024 * 1024;
 
 function sha256(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-function stableJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => (
-      `${JSON.stringify(key)}:${stableJson(value[key])}`
-    )).join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function archiveEntryPath(relativePath, pathImplementation = path) {
@@ -91,15 +82,12 @@ function assertPackagedSchoolProfile(archive, externalEngineConfig) {
   }
   const engineAsset = assets.get(profile.gateway.engineConfigRef);
   const brandingAsset = assets.get(profile.branding.bundledAssetKey);
-  const resourceAssets = [...assets.values()].filter((asset) => asset.kind === 'builtin-resources');
+  const resourceAsset = assets.get(profile.browser.builtinResourcesRef);
   if (assets.size !== 3 || engineAsset?.kind !== 'engine-config' ||
-      brandingAsset?.kind !== 'branding' || resourceAssets.length !== 1) {
+      brandingAsset?.kind !== 'branding' || resourceAsset?.kind !== 'builtin-resources') {
     throw new Error('packaged school profile asset binding is incomplete');
   }
-  const resources = parsePackagedJson(resourceAssets[0].data, 'profile resources');
-  if (stableJson(resources) !== stableJson(profileDocument.browser.builtinResources)) {
-    throw new Error('packaged profile resources differ from the reviewed profile');
-  }
+  parseBuiltinResourceDocument(resourceAsset.data);
 
   const externalConfigData = fs.readFileSync(externalEngineConfig);
   if (!externalConfigData.equals(engineAsset.data) || sha256(externalConfigData) !== engineAsset.sha256) {
@@ -367,6 +355,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/windows-private-file.js',
     '/lib/campus-browser-manager.js',
     '/lib/school-profile-schema.js',
+    '/lib/campus-resource-contract.js',
     '/lib/school-profile-registry.js',
     '/lib/school-profile-runtime.js',
     '/lib/school-profile-controller.js',
@@ -395,13 +384,16 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-browser.html',
     '/renderer/campus-browser.js',
     '/renderer/campus-browser.css',
-    '/assets/campus-resources.json',
     '/assets/profiles/manifest.json',
     '/assets/profiles/hkustgz/school-profile.json',
     '/assets/profiles/hkustgz/engine-config.json',
+    '/assets/profiles/hkustgz/builtin-resources.json',
   ];
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
+  }
+  if (entries.has('/assets/campus-resources.json')) {
+    throw new Error('legacy duplicate campus resource asset entered the package');
   }
   assertNoTestOnlyPackageEntries(entries);
 
@@ -415,6 +407,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     .toString('utf8');
   const packagedResourceManager = extractArchiveFile(archive, 'renderer/resource-manager.js')
     .toString('utf8');
+  if (!packagedMain.includes("'--profile-binding-v1-stdin'") ||
+      packagedMain.includes("'--config-sha256'")) {
+    throw new Error('packaged Desktop does not enforce private Engine profile binding');
+  }
   for (const helper of ['login-flow', 'resource-view']) {
     if (!packagedIndex.includes(`../lib/${helper}.js`)) {
       throw new Error(`renderer does not load its shared helper: ${helper}`);

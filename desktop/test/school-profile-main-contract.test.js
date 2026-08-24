@@ -39,11 +39,14 @@ test('profile drives reviewed resources, routes, Browser home and health targets
 
 test('reviewed profile and config binding is validated before credential decryption', () => {
   const connect = section('async function connectOnce(', '\nfunction ensureEngineStopped(');
-  const profileConfig = connect.indexOf('engineConfig = activeSchoolProfile.verifyEngineConfig().path;');
+  const profileConfig = connect.indexOf('engineConfigBinding = activeSchoolProfile.verifyEngineLaunchBinding();');
   const credential = connect.indexOf('credentialResult = loadPasswordResult();');
   const spawn = connect.indexOf('const started = engineSupervisor.start(');
   assert.ok(profileConfig >= 0 && credential > profileConfig && spawn > credential);
-  assert.match(main, /engineConfig = activeSchoolProfile\.verifyEngineConfig\(\)\.path/u);
+  assert.match(main, /engineConfigBinding = activeSchoolProfile\.verifyEngineLaunchBinding\(\)/u);
+  assert.match(connect, /--profile-binding-v1-stdin/u);
+  const bindingWrite = connect.indexOf('${engineConfigBinding.stdinFrame}\\n${s.username}\\n${pw}');
+  assert.ok(bindingWrite > profileConfig && bindingWrite > credential && bindingWrite > spawn);
   assert.doesNotMatch(connect, /error\.engineConfigMissing'\s*,\s*\{\s*path/u);
   const privatePath = '/Users/private-person/Applications/config.json';
   assert.equal(createT('zh')('error.engineConfigMissing', { path: privatePath }).includes(privatePath), false);
