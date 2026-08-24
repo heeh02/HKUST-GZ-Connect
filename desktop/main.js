@@ -200,7 +200,8 @@ const engineControlRegistry = new EngineControlRegistry({ authChallenges: authCh
 const engineSupervisor = new EngineSupervisor({ spawnProcess: spawn });
 const activeEngineContextCurrent = (generation, token) => engineSupervisor.isCurrent(generation) &&
   activeContextLease.isCurrent(token, { connectionIntent: connectionState.snapshot().intent, engineGeneration: generation });
-const routingPolicyTransactions = new RoutingPolicyTransactionQueue();
+const routingPolicyTransactions = new RoutingPolicyTransactionQueue({ isContextCurrent: (token) => activeContextLease.isContextCurrent(token) });
+function runActiveContextTransaction(options) { return routingPolicyTransactions.run(activeContextLease.captureContext(), options); }
 let logWriter = null;
 function initializeLogWriter() {
   logWriter = new BufferedLogWriter(LOG, { onError: reportLogFailure, onRecovered: () => { if (state.diagnosticNotice) { state.diagnosticNotice = null; emit(); } } });
@@ -1212,9 +1213,8 @@ async function resumeOpenBrowserPolicyIfLive() {
   if (!connectionState.isConnected() || !engineSupervisor.hasActive) return null;
   return campusBrowserManager.resumeRoutingPolicy(socksPort());
 }
-
 function runDomainPolicyTransaction(buildOperations) {
-  return routingPolicyTransactions.run(() => {
+  return runActiveContextTransaction(() => {
     assertSettingsPersistenceAvailable();
     const { commit, rollback, resumeBrowser = true } = buildOperations();
     return {
@@ -1320,7 +1320,7 @@ async function runUpdateCheck() {
   if (result) {
     // The API answered, so the 24h throttle window starts here. Failures leave
     // the timestamp alone and are retried at the next launch.
-    await routingPolicyTransactions.run(() => {
+    await runActiveContextTransaction(() => {
       assertSettingsPersistenceAvailable();
       const settings = loadSettingsOrReport();
       return {
@@ -1396,7 +1396,7 @@ registerSettingsCredentialIpc({
   isCredentialBlocked: () => credentialTransactionBlocked,
   retryCredentialRecovery: retryCredentialTransactionRecovery,
   runPolicyTransaction: runDomainPolicyTransaction,
-  runSerialTransaction: (buildOperations) => routingPolicyTransactions.run(buildOperations),
+  runSerialTransaction: runActiveContextTransaction,
   assertPersistence: assertSettingsPersistenceAvailable,
   translate: (key) => t(key),
   onLanguageChanged: (language) => {
@@ -1475,7 +1475,7 @@ registerCoreControlIpc({
 });
 // ---------- window / tray composition ----------
 function rememberCloseAction(action) {
-  return routingPolicyTransactions.run(() => {
+  return runActiveContextTransaction(() => {
     assertSettingsPersistenceAvailable();
     const previous = loadSettingsOrReport();
     const next = { ...previous, closeAction: action };

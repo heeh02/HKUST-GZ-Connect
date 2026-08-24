@@ -41,3 +41,12 @@ test('Engine callbacks require context epoch connection intent and process gener
   assert.match(source, /reconnect: \(generation, token\) => activeEngineContextCurrent\(generation, token\)/u);
   assert.doesNotMatch(connect, /activeContextEpoch:\s*1/u);
 });
+
+test('all serialized settings routing and resource mutations capture active context', () => {
+  assert.match(source, /new RoutingPolicyTransactionQueue\(\{ isContextCurrent: \(token\) => activeContextLease\.isContextCurrent\(token\) \}\)/u);
+  assert.match(source, /routingPolicyTransactions\.run\(activeContextLease\.captureContext\(\), options\)/u);
+  assert.match(source, /function runDomainPolicyTransaction[\s\S]*return runActiveContextTransaction/u);
+  assert.match(source, /runSerialTransaction: runActiveContextTransaction/u);
+  const directRuns = source.match(/routingPolicyTransactions\.run\(/gu) || [];
+  assert.equal(directRuns.length, 1, 'every mutation must pass through the context-token helper');
+});

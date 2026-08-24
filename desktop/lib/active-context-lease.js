@@ -84,10 +84,19 @@ class ActiveContextLease {
 
   capture(lifecycleValue) {
     if (this.#current === null) throw new Error('active context is gated');
+    return this.#issue(lifecycle(lifecycleValue));
+  }
+
+  captureContext() {
+    if (this.#current === null) throw new Error('active context is gated');
+    return this.#issue(null);
+  }
+
+  #issue(lifecycleBinding) {
     const token = redactedToken();
     this.#tokens.set(token, Object.freeze({
       context: this.#current,
-      lifecycle: lifecycle(lifecycleValue),
+      lifecycle: lifecycleBinding,
     }));
     return token;
   }
@@ -95,6 +104,7 @@ class ActiveContextLease {
   isCurrent(token, lifecycleValue) {
     if (!this.isContextCurrent(token)) return false;
     const observed = this.#tokens.get(token);
+    if (observed.lifecycle === null) return false;
     let currentLifecycle;
     try { currentLifecycle = lifecycle(lifecycleValue); }
     catch { return false; }

@@ -29,6 +29,11 @@ test('token requires the exact active context intent and Engine generation', () 
   assert.equal(JSON.stringify(token), '"[active context token]"');
   assert.equal(String(token), '[active context token]');
   assert.equal(JSON.stringify(token).includes('school-a'), false);
+  const contextToken = lease.captureContext();
+  assert.equal(lease.isContextCurrent(contextToken), true);
+  assert.equal(lease.isCurrent(contextToken, {
+    connectionIntent: 3, engineGeneration: 7,
+  }), false);
 });
 
 test('gating invalidates every borrowed token until a higher epoch activates', () => {
