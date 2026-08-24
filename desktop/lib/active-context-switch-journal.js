@@ -111,14 +111,30 @@ function receipt(value, name) {
   return Object.freeze({ present: true, bytes: source.bytes, sha256: source.sha256 });
 }
 
-function activation(value) {
-  const source = exactKeys(value, ['before', 'after'], 'active context activation');
-  const before = receipt(source.before, 'active context activation before receipt');
-  const after = receipt(source.after, 'active context activation after receipt');
+function receiptTransition(value, name) {
+  const source = exactKeys(value, ['before', 'after'], name);
+  const before = receipt(source.before, `${name} before receipt`);
+  const after = receipt(source.after, `${name} after receipt`);
   if (before.bytes === after.bytes && before.sha256 === after.sha256) {
-    throw new TypeError('active context activation must change GlobalSettings');
+    throw new TypeError(`${name} must change its target`);
   }
   return Object.freeze({ before, after });
+}
+
+function activation(value) {
+  const source = exactKeys(value, [
+    'globalSettings', 'destinationWorkspace',
+  ], 'active context activation');
+  return Object.freeze({
+    globalSettings: receiptTransition(
+      source.globalSettings,
+      'active context GlobalSettings activation',
+    ),
+    destinationWorkspace: receiptTransition(
+      source.destinationWorkspace,
+      'active context destination Workspace activation',
+    ),
+  });
 }
 
 function expectedOutcomes(state, engineGeneration) {

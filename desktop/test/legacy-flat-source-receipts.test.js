@@ -38,6 +38,7 @@ test('legacy source paths are the exact current flat userData authorities', () =
     certificateTrust: path.join(userData, 'campus-certificate-trust.json'),
     engineOwner: path.join(userData, 'engine-owner.json'),
     credentialTransaction: path.join(userData, 'credential-settings-transaction.json'),
+    activeContextSwitch: path.join(userData, 'active-context-switch.json'),
     proxyCredential: path.join(userData, 'proxy-credential.bin'),
     proxyHelperCredential: path.join(userData, 'proxy-helper-credential.txt'),
     engineLog: path.join(userData, 'engine.log'),

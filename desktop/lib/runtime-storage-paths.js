@@ -20,6 +20,7 @@ const RUNTIME_PATH_KEYS = Object.freeze([
   'certificateTrust',
   'engineOwner',
   'credentialTransaction',
+  'activeContextSwitch',
   'proxyCredential',
   'proxyHelperCredential',
 ]);
@@ -61,6 +62,7 @@ function createLegacyRuntimeStoragePaths(userData) {
     certificateTrust: legacy.certificateTrust,
     engineOwner: legacy.engineOwner,
     credentialTransaction: legacy.credentialTransaction,
+    activeContextSwitch: legacy.activeContextSwitch,
     proxyCredential: legacy.proxyCredential,
     proxyHelperCredential: legacy.proxyHelperCredential,
   });
@@ -85,6 +87,7 @@ function createProfileWorkspaceRuntimeStoragePaths(authority) {
     certificateTrust: layout.workspace.certificateTrust,
     engineOwner: layout.global.engineOwner,
     credentialTransaction: layout.account.credentialTransaction,
+    activeContextSwitch: layout.global.activeContextSwitch,
     proxyCredential: layout.global.proxyCredential,
     proxyHelperCredential: layout.global.proxyHelperCredential,
   });

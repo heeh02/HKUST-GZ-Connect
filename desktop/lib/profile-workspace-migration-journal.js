@@ -21,6 +21,7 @@ const LEGACY_SOURCE_IDS = Object.freeze([
   'certificateTrust',
   'engineOwner',
   'credentialTransaction',
+  'activeContextSwitch',
   'proxyCredential',
   'proxyHelperCredential',
   'engineLog',
@@ -30,6 +31,7 @@ const LEGACY_SOURCE_IDS = Object.freeze([
 const REQUIRED_ABSENT_LEGACY_SOURCE_IDS = Object.freeze([
   'engineOwner',
   'credentialTransaction',
+  'activeContextSwitch',
   'proxyHelperCredential',
 ]);
 const DESTINATION_RECEIPT_IDS = Object.freeze([

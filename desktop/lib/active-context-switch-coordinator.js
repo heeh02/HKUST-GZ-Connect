@@ -21,6 +21,21 @@ function sameReceipt(value, expected) {
     value.bytes === expected.bytes && value.sha256 === expected.sha256);
 }
 
+const ACTIVATION_TARGETS = Object.freeze(['globalSettings', 'destinationWorkspace']);
+
+function activationStatus(value, activation) {
+  if (!value || typeof value !== 'object') return 'unknown';
+  const states = ACTIVATION_TARGETS.map((target) => {
+    if (sameReceipt(value[target], activation[target].before)) return 'before';
+    if (sameReceipt(value[target], activation[target].after)) return 'after';
+    return 'unknown';
+  });
+  if (states.includes('unknown')) return 'unknown';
+  if (states.every((state) => state === 'before')) return 'before';
+  if (states.every((state) => state === 'after')) return 'after';
+  return 'mixed';
+}
+
 function sameDocument(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -138,7 +153,7 @@ class ActiveContextSwitchCoordinator {
 
   async #resumePrepared(journal) {
     await this.#requireStep('browser-gate', this.gateBrowser, journal);
-    this.#requireActivationReceipt(journal.activation.before, 'source-authority');
+    this.#requireActivationState(journal, 'before', 'source-authority');
     await this.#requireStep('source-validation', this.validateSource, journal);
     await this.#requireStep('continuation-cancel', this.cancelContinuations, journal);
     await this.#requireStep('browser-close', this.closeBrowserWorkspace, journal);
@@ -167,8 +182,9 @@ class ActiveContextSwitchCoordinator {
   }
 
   async #activateReady(journal) {
-    const observed = this.#activationReceipt();
-    if (sameReceipt(observed, journal.activation.before)) {
+    const observed = this.#activationState(journal);
+    const status = activationStatus(observed, journal.activation);
+    if (status === 'before' || status === 'mixed') {
       try {
         if (await this.applyActivation(journal) !== true) {
           throw new Error('activation callback did not confirm its commit');
@@ -180,8 +196,8 @@ class ActiveContextSwitchCoordinator {
           error,
         );
       }
-      this.#requireActivationReceipt(journal.activation.after, 'activation');
-    } else if (!sameReceipt(observed, journal.activation.after)) {
+      this.#requireActivationState(journal, 'after', 'activation');
+    } else if (status !== 'after') {
       throw new ActiveContextSwitchError(
         'ACTIVE_CONTEXT_SWITCH_ACTIVATION_AMBIGUOUS',
         'activation',
@@ -209,7 +225,7 @@ class ActiveContextSwitchCoordinator {
   }
 
   async #finishCommitted(journal) {
-    this.#requireActivationReceipt(journal.activation.after, 'committed-authority');
+    this.#requireActivationState(journal, 'after', 'committed-authority');
     try {
       if (this.journalStore.clearCommitted() !== true) {
         throw new Error('committed journal was not cleared');
@@ -231,8 +247,8 @@ class ActiveContextSwitchCoordinator {
     });
   }
 
-  #activationReceipt() {
-    try { return this.readActivationReceipt(); }
+  #activationState(journal) {
+    try { return this.readActivationReceipt(journal); }
     catch (error) {
       throw new ActiveContextSwitchError(
         'ACTIVE_CONTEXT_SWITCH_AUTHORITY_UNREADABLE',
@@ -242,8 +258,8 @@ class ActiveContextSwitchCoordinator {
     }
   }
 
-  #requireActivationReceipt(expected, stage) {
-    if (!sameReceipt(this.#activationReceipt(), expected)) {
+  #requireActivationState(journal, expected, stage) {
+    if (activationStatus(this.#activationState(journal), journal.activation) !== expected) {
       throw new ActiveContextSwitchError(
         'ACTIVE_CONTEXT_SWITCH_AUTHORITY_MISMATCH',
         stage,

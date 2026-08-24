@@ -37,12 +37,36 @@ function receipt(seed) {
   return { present: true, bytes: seed + 100, sha256: seed.toString(16).padStart(64, '0') };
 }
 
+function activation(seed) {
+  return {
+    globalSettings: { before: receipt(seed), after: receipt(seed + 1) },
+    destinationWorkspace: { before: receipt(seed + 2), after: receipt(seed + 3) },
+  };
+}
+
+function activationState(value, state) {
+  return {
+    globalSettings: value.globalSettings[state],
+    destinationWorkspace: value.destinationWorkspace[state],
+  };
+}
+
+function activationFromStates(before, after) {
+  return {
+    globalSettings: { before: before.globalSettings, after: after.globalSettings },
+    destinationWorkspace: {
+      before: before.destinationWorkspace,
+      after: after.destinationWorkspace,
+    },
+  };
+}
+
 function switchRequest(overrides = {}) {
   return {
     from: context('school-a', '1', '2', '3', 3),
     to: context('school-b', '4', '5', '6', 1),
     engineGeneration: 8,
-    activation: { before: receipt(1), after: receipt(2) },
+    activation: activation(1),
     randomBytes: () => Buffer.alloc(16, 0xaa),
     now: () => 1_700_000_000_000,
     ...overrides,
@@ -55,7 +79,7 @@ function fixture(t, overrides = {}) {
   const store = new ActiveContextSwitchJournalStore({
     filePath: path.join(root, 'global', 'active-context-switch.json'),
   });
-  let currentReceipt = overrides.currentReceipt || receipt(1);
+  let currentReceipt = overrides.currentReceipt || activationState(activation(1), 'before');
   const calls = [];
   const outcomes = {
     gateBrowser: true,
@@ -82,7 +106,7 @@ function fixture(t, overrides = {}) {
       const value = outcomes.applyActivation;
       if (typeof value === 'function') return value(journal, (next) => { currentReceipt = next; });
       if (value === false) return false;
-      currentReceipt = journal.activation.after;
+      currentReceipt = activationState(journal.activation, 'after');
       return true;
     },
     gateBrowser: operation('gateBrowser'),
@@ -133,7 +157,7 @@ test('clean switch gates old context before one activation and clears its journa
     'applyActivation',
     'activateRuntime',
   ]);
-  assert.deepEqual(value.receipt(), receipt(2));
+  assert.deepEqual(value.receipt(), activationState(activation(1), 'after'));
   assert.equal(value.store.read(), null);
 });
 
@@ -143,7 +167,7 @@ test('failed cleanup leaves prepared authority gated and a later recovery resume
     error.code === 'ACTIVE_CONTEXT_SWITCH_ENGINE_STOP_FAILED'
   ));
   assert.equal(value.store.read().state, 'prepared');
-  assert.deepEqual(value.receipt(), receipt(1));
+  assert.deepEqual(value.receipt(), activationState(activation(1), 'before'));
   assert.equal(value.calls.some(([name]) => name === 'applyActivation'), false);
 
   value.outcomes.stopEngine = true;
@@ -155,7 +179,13 @@ test('failed cleanup leaves prepared authority gated and a later recovery resume
 
 test('ready journal recovers both before-activation and after-activation crash points', async (t) => {
   for (const alreadyApplied of [false, true]) {
-    const value = fixture(t, { currentReceipt: alreadyApplied ? receipt(2) : receipt(1) });
+    const requestedActivation = activation(1);
+    const value = fixture(t, {
+      currentReceipt: activationState(
+        requestedActivation,
+        alreadyApplied ? 'after' : 'before',
+      ),
+    });
     const prepared = createPreparedActiveContextSwitch(switchRequest());
     const ready = markActiveContextSwitchReady(prepared, { now: () => 1_700_000_000_100 });
     value.store.prepare(prepared);
@@ -171,11 +201,28 @@ test('ready journal recovers both before-activation and after-activation crash p
   }
 });
 
+test('mixed two-file activation is resumed as redo instead of becoming ambiguous', async (t) => {
+  const requestedActivation = activation(1);
+  const value = fixture(t, {
+    currentReceipt: {
+      globalSettings: requestedActivation.globalSettings.after,
+      destinationWorkspace: requestedActivation.destinationWorkspace.before,
+    },
+  });
+  const prepared = createPreparedActiveContextSwitch(switchRequest());
+  const ready = markActiveContextSwitchReady(prepared, { now: () => 1_700_000_000_100 });
+  value.store.prepare(prepared);
+  value.store.markReady(ready);
+  assert.equal((await value.coordinator.recover()).status, 'activated');
+  assert.equal(value.calls.filter(([name]) => name === 'applyActivation').length, 1);
+  assert.deepEqual(value.receipt(), activationState(requestedActivation, 'after'));
+});
+
 test('activation callback uncertainty remains ready and recovery proves the visible receipt', async (t) => {
   const value = fixture(t, {
     outcomes: {
       applyActivation(journal, setReceipt) {
-        setReceipt(journal.activation.after);
+        setReceipt(activationState(journal.activation, 'after'));
         throw new Error('synthetic crash after activation rename');
       },
     },
@@ -184,14 +231,14 @@ test('activation callback uncertainty remains ready and recovery proves the visi
     error.code === 'ACTIVE_CONTEXT_SWITCH_ACTIVATION_FAILED'
   ));
   assert.equal(value.store.read().state, 'ready');
-  assert.deepEqual(value.receipt(), receipt(2));
+  assert.deepEqual(value.receipt(), activationState(activation(1), 'after'));
   assert.equal(value.calls.some(([name]) => name === 'activateRuntime'), false);
   value.outcomes.applyActivation = true;
   assert.equal((await value.coordinator.recover()).status, 'activated');
 });
 
 test('committed recovery requires new authority before clearing and runtime activation', async (t) => {
-  const value = fixture(t, { currentReceipt: receipt(2) });
+  const value = fixture(t, { currentReceipt: activationState(activation(1), 'after') });
   const prepared = createPreparedActiveContextSwitch(switchRequest());
   const ready = markActiveContextSwitchReady(prepared, { now: () => 1_700_000_000_100 });
   const committed = commitActiveContextSwitch(ready, { now: () => 1_700_000_000_200 });
@@ -217,7 +264,9 @@ test('journal clear uncertainty keeps committed authority gated until recovery',
 });
 
 test('ambiguous authority gates Browser but never cleans or activates either context', async (t) => {
-  const value = fixture(t, { currentReceipt: receipt(99) });
+  const value = fixture(t, {
+    currentReceipt: { globalSettings: receipt(99), destinationWorkspace: receipt(100) },
+  });
   const prepared = createPreparedActiveContextSwitch(switchRequest());
   value.store.prepare(prepared);
   await assert.rejects(value.coordinator.recover(), (error) => (
@@ -249,8 +298,11 @@ test('100 alternating synthetic Profile switches retain one authority and no jou
     'school-a': active,
     'school-b': context('school-b', '4', '5', '6', 1),
   };
-  let receiptSeed = 1;
-  value.setReceipt(receipt(receiptSeed));
+  let receiptSeed = 10;
+  value.setReceipt({
+    globalSettings: receipt(receiptSeed++),
+    destinationWorkspace: receipt(receiptSeed++),
+  });
   value.outcomes.activateRuntime = (journal) => {
     active = { ...journal.to, activeContextEpoch: journal.nextActiveContextEpoch };
     stored[active.profileId] = active;
@@ -258,13 +310,16 @@ test('100 alternating synthetic Profile switches retain one authority and no jou
   };
   for (let index = 0; index < 100; index++) {
     const destinationId = active.profileId === 'school-a' ? 'school-b' : 'school-a';
-    const nextReceipt = receipt(++receiptSeed);
+    const nextReceipt = {
+      globalSettings: receipt(receiptSeed++),
+      destinationWorkspace: receipt(receiptSeed++),
+    };
     const result = await value.coordinator.begin({
       from: active,
       to: stored[destinationId],
       nextActiveContextEpoch: index + 2,
       engineGeneration: index % 2 === 0 ? index + 1 : null,
-      activation: { before: value.receipt(), after: nextReceipt },
+      activation: activationFromStates(value.receipt(), nextReceipt),
     });
     assert.equal(result.activeContextEpoch, index + 2);
     assert.equal(active.profileId, destinationId);

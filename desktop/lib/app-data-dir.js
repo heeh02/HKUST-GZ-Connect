@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const { assertActiveContextSwitchStartupClear } = require('./active-context-switch-startup');
 const { DesktopPersistenceRuntime } = require('./desktop-persistence-runtime');
 const { LegacyMigrationCredentialOwner } = require('./legacy-migration-inputs');
 const { selectProfileWorkspacePreReadyStorage } =
@@ -20,6 +21,7 @@ function resolveUserDataOverride(rawValue) {
 }
 
 module.exports = {
+  assertActiveContextSwitchStartupClear,
   createLegacyRuntimeStoragePaths,
   DesktopPersistenceRuntime,
   LegacyMigrationCredentialOwner,

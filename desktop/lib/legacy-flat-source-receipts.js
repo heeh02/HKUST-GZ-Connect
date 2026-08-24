@@ -21,6 +21,7 @@ const LEGACY_SOURCE_MAX_BYTES = Object.freeze({
   certificateTrust: 2 * 1024 * 1024,
   engineOwner: 64 * 1024,
   credentialTransaction: 2 * 1024 * 1024,
+  activeContextSwitch: 256 * 1024,
   proxyCredential: 64 * 1024,
   proxyHelperCredential: 1024,
   engineLog: 16 * 1024 * 1024,

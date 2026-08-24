@@ -35,6 +35,13 @@ function receipt(seed) {
   return { present: true, bytes: seed + 20, sha256: seed.toString(16).padStart(64, '0') };
 }
 
+function activation(seed) {
+  return {
+    globalSettings: { before: receipt(seed), after: receipt(seed + 1) },
+    destinationWorkspace: { before: receipt(seed + 2), after: receipt(seed + 3) },
+  };
+}
+
 function profileSwitch(overrides = {}) {
   return {
     from: context(),
@@ -43,7 +50,7 @@ function profileSwitch(overrides = {}) {
       activeContextEpoch: 3,
     }),
     engineGeneration: 7,
-    activation: { before: receipt(1), after: receipt(2) },
+    activation: activation(1),
     randomBytes: () => Buffer.alloc(16, 0xab),
     now: () => 1_800_000_000_000,
     ...overrides,
@@ -86,7 +93,7 @@ test('an Engine-free account switch records not_required and keeps Profile autho
     to: context({ accountSeed: '7', workspaceSeed: '8', activeContextEpoch: 2 }),
     nextActiveContextEpoch: 9,
     engineGeneration: null,
-    activation: { before: receipt(3), after: receipt(4) },
+    activation: activation(3),
     randomBytes: () => Buffer.alloc(16, 0xcd),
     now: () => 1_800_000_001_000,
   });
@@ -116,8 +123,11 @@ test('switch journal rejects no-op, key reuse, Profile drift and stale epochs', 
 
 test('activation receipts and exact journal schema fail closed', () => {
   assert.throws(() => createPreparedActiveContextSwitch(profileSwitch({
-    activation: { before: receipt(1), after: receipt(1) },
-  })), /must change GlobalSettings/u);
+    activation: {
+      ...activation(1),
+      globalSettings: { before: receipt(1), after: receipt(1) },
+    },
+  })), /must change its target/u);
   const prepared = createPreparedActiveContextSwitch(profileSwitch());
   assert.throws(() => validateActiveContextSwitchJournal({ ...prepared, extra: true }),
     /invalid schema/u);
@@ -125,7 +135,13 @@ test('activation receipts and exact journal schema fail closed', () => {
     ...prepared,
     activation: {
       ...prepared.activation,
-      after: { ...prepared.activation.after, sha256: 'A'.repeat(64) },
+      globalSettings: {
+        ...prepared.activation.globalSettings,
+        after: {
+          ...prepared.activation.globalSettings.after,
+          sha256: 'A'.repeat(64),
+        },
+      },
     },
   }), /receipt is invalid/u);
   assert.throws(() => validateActiveContextSwitchJournal({

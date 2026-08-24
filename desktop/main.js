@@ -20,7 +20,7 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { createLegacyRuntimeStoragePaths, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
+const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -129,6 +129,7 @@ const CAMPUS_CREDENTIALS = runtimeStoragePaths.siteCredentials;
 const CAMPUS_CERTIFICATE_TRUST = runtimeStoragePaths.certificateTrust;
 const ENGINE_OWNER = runtimeStoragePaths.engineOwner;
 const CREDENTIAL_TRANSACTION = runtimeStoragePaths.credentialTransaction;
+const ACTIVE_CONTEXT_SWITCH = runtimeStoragePaths.activeContextSwitch;
 const PROXY_CREDENTIAL = runtimeStoragePaths.proxyCredential;
 const PROXY_HELPER_CREDENTIAL = runtimeStoragePaths.proxyHelperCredential;
 const syntheticEngineE2e = !app.isPackaged && process.env[SYNTHETIC_ENGINE_E2E_ENV] === '1';
@@ -1204,11 +1205,9 @@ function browserPolicyProxyConfig(port) {
     proxyBypassRules: '<-loopback>',
   };
 }
-
 async function suspendOpenBrowserPolicy() {
   return campusBrowserManager.suspendRoutingPolicy();
 }
-
 async function resumeOpenBrowserPolicyIfLive() {
   if (!connectionState.isConnected() || !engineSupervisor.hasActive) return null;
   return campusBrowserManager.resumeRoutingPolicy(socksPort());
@@ -1576,6 +1575,7 @@ app.on('login', (event, webContents, _details, authInfo, callback) => {
   activeProxyCredential.answerProxyChallenge(authInfo, generation, callback);
 });
 app.whenReady().then(() => {
+  assertActiveContextSwitchStartupClear({ mode: preReadyStorage.mode, filePath: ACTIVE_CONTEXT_SWITCH });
   const persistence = persistenceRuntime.initialize();
   if (persistence.relaunchRequired) {
     relaunchAfterPersistenceMigration({ application: app, argv: process.argv,

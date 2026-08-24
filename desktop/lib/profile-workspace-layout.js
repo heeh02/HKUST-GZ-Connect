@@ -46,6 +46,7 @@ function createLegacyFlatSourcePaths(userData) {
     certificateTrust: path.join(root, 'campus-certificate-trust.json'),
     engineOwner: path.join(root, 'engine-owner.json'),
     credentialTransaction: path.join(root, 'credential-settings-transaction.json'),
+    activeContextSwitch: path.join(root, 'active-context-switch.json'),
     proxyCredential: path.join(root, 'proxy-credential.bin'),
     proxyHelperCredential: path.join(root, 'proxy-helper-credential.txt'),
     engineLog: path.join(root, 'engine.log'),

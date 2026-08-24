@@ -34,12 +34,19 @@ function receipt(seed) {
   return { present: true, bytes: seed + 50, sha256: seed.toString(16).padStart(64, '0') };
 }
 
+function activation(seed) {
+  return {
+    globalSettings: { before: receipt(seed), after: receipt(seed + 1) },
+    destinationWorkspace: { before: receipt(seed + 2), after: receipt(seed + 3) },
+  };
+}
+
 function prepared(seed = 1) {
   return createPreparedActiveContextSwitch({
     from: context('school-a', '1', '2', '3', 4),
     to: context('school-b', '4', '5', '6', 2),
     engineGeneration: 9,
-    activation: { before: receipt(seed), after: receipt(seed + 1) },
+    activation: activation(seed),
     randomBytes: () => Buffer.alloc(16, seed),
     now: () => 1_800_000_000_000 + seed,
   });

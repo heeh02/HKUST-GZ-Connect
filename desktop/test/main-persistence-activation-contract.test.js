@@ -27,12 +27,14 @@ test('pre-ready selection binds every service path before recovery or constructi
 
 test('after-ready migration uses the bounded relaunch owner before services can start', () => {
   const startup = section('app.whenReady().then(() => {', "app.on('window-all-closed'");
+  const switchGuard = startup.indexOf('assertActiveContextSwitchStartupClear(');
   const initialize = startup.indexOf('persistenceRuntime.initialize()');
   const relaunch = startup.indexOf('relaunchAfterPersistenceMigration(');
   const log = startup.indexOf('initializeLogWriter()');
   const tray = startup.indexOf('desktopShell.createTray()');
   const network = startup.indexOf('networkStartupCoordinator.start()');
-  assert.ok(initialize >= 0 && relaunch > initialize && log > relaunch && tray > log && network > tray);
+  assert.ok(switchGuard >= 0 && initialize > switchGuard && relaunch > initialize &&
+    log > relaunch && tray > log && network > tray);
   assert.match(startup, /if \(persistence\.relaunchRequired\) \{[\s\S]*relaunchAfterPersistenceMigration\(\{[\s\S]*developmentEntry: __dirname \}\);\s*return;/u);
   assert.match(source, /let logWriter = null;[\s\S]*function initializeLogWriter\(\)/u);
 });

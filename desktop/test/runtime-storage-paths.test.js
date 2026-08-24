@@ -21,6 +21,7 @@ test('legacy path seam is an exact behavior-preserving projection', () => {
   assert.equal(paths.vpnCredential, path.join(USER_DATA, 'cred.bin'));
   assert.equal(paths.externalPac, path.join(USER_DATA, 'routing.pac'));
   assert.equal(paths.browserPac, path.join(USER_DATA, 'campus-browser-routing.pac'));
+  assert.equal(paths.activeContextSwitch, path.join(USER_DATA, 'active-context-switch.json'));
   assert.deepEqual(
     Object.keys(paths).filter((key) => !['mode', 'root'].includes(key)),
     [...RUNTIME_PATH_KEYS],
@@ -43,6 +44,7 @@ test('Profile Workspace path seam assigns every service to its owner scope', () 
   assert.equal(paths.routingRules, layout.workspace.routingRules);
   assert.equal(paths.siteCredentials, layout.workspace.siteCredentials);
   assert.equal(paths.settingsBackup, layout.global.settingsTransaction);
+  assert.equal(paths.activeContextSwitch, layout.global.activeContextSwitch);
   for (const sensitive of ['student001', 'remote.hkust-gz.edu.cn']) {
     assert.equal(JSON.stringify(paths).includes(sensitive), false);
   }
