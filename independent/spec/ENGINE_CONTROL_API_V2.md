@@ -46,7 +46,7 @@ The first successful exchange negotiates version 2:
 
 ```json
 {"type":"hello","requestId":1,"versions":[2]}
-{"type":"control_hello","apiVersion":2,"requestId":1,"capabilities":["engine.shutdown","request.cancel","control.close"]}
+{"type":"control_hello","apiVersion":2,"requestId":1,"capabilities":["engine.shutdown","request.cancel","control.close","provider.capabilities"]}
 ```
 
 All later requests include `apiVersion: 2`. A missing handshake, duplicate ID,
@@ -82,3 +82,28 @@ closed enum in `ControlCapability`. They always fail explicitly, for example:
 This is not a WebVPN, resource, or MFA implementation. The schema has no
 arbitrary command payload and therefore cannot carry credentials, challenge
 answers, gateway tokens, or destination addresses.
+
+## Additive provider capability query
+
+An official Profile-bound Desktop may request the selected production provider layers:
+
+```json
+{"type":"request","apiVersion":2,"requestId":4,"command":{"name":"provider_capabilities"}}
+```
+
+The response is exact-schema and contains the Profile revision and Engine generation plus two maps with the same
+bounded capability keys:
+
+```json
+{"type":"provider_capabilities","apiVersion":2,"requestId":4,"profileId":"hkustgz","profileRevision":1,"engineGeneration":9,"compiled":{"auth.password":"supported","transport.l3":"supported"},"provider":{"auth.password":"supported","transport.l3":"supported"}}
+```
+
+The abbreviated example shows the shape; production reports every stable capability. A state is exactly one of
+`supported`, `unsupported`, or `unavailable`. The selected provider layer may only keep or tighten the compiled
+layer. The response never contains a username, account key, Gateway origin, endpoint, Cookie, token, DNS target,
+credential or transport material.
+
+If the Engine was not launched with a reviewed Profile binding, the request returns
+`capability_context_unavailable`. Desktop binds the report to its short-lived account handle and active-context
+epoch, adds Profile/ingress layers, and rejects a stale Profile or generation. Event API v1 hello and lifecycle
+events are unchanged.

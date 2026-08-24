@@ -472,7 +472,7 @@ function beginLifecycleIntent() {
 function clearConnectionPresentation() {
   connectedAt = null;
   state.clientIp = null;
-  state.dnsMode = 'unknown';
+  state.dnsMode = 'unknown'; activeSchoolProfile.clearCapabilitySnapshot();
   telemetryCoordinator?.stop();
 }
 
@@ -719,7 +719,7 @@ async function connectOnce(isRetry, intent) {
   let engineConfigBinding;
   state.lastError = null;
   state.clientIp = null;
-  state.dnsMode = 'unknown';
+  state.dnsMode = 'unknown'; activeSchoolProfile.clearCapabilitySnapshot();
   emit();
   if (!connectionState.canAttempt(intent)) {
     emit();
@@ -1009,6 +1009,7 @@ async function connectOnce(isRetry, intent) {
         engineSupervisor.stop({ graceMs: 1000, forceWaitMs: STOP_FORCE_WAIT_MS })
           .catch(() => {});
       },
+      onProviderCapabilities: (report) => activeSchoolProfile.observeCapabilityReport(report) && emit(),
     },
   });
   // An engine that dies before reading stdin (missing library, wrong
@@ -1322,6 +1323,7 @@ const controlStateSnapshot = createControlStateSnapshot({
   getFallbackResources: () => safeCampusResources({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
+  getCapabilitySnapshot: () => activeSchoolProfile.capabilitySnapshot(),
 });
 
 for (const [channel, handler] of Object.entries(authChallengeCoordinator.ipcHandlers())) {

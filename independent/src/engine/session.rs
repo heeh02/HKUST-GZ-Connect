@@ -16,6 +16,7 @@ use reqwest::Method;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
@@ -68,6 +69,7 @@ impl ModernL3Connection {
     }
 }
 
+#[derive(Clone)]
 pub struct ModernL3TransportBackend {
     base_url: String,
     gateway_host: String,
@@ -77,17 +79,34 @@ pub struct ModernL3TransportBackend {
     configured_certificate_pin: Option<[u8; 32]>,
 }
 
-pub struct ProductionPasswordAuthProvider<'a> {
-    config: &'a Value,
+#[derive(Clone)]
+pub struct ProductionPasswordAuthProvider {
+    config: Arc<Value>,
 }
 
-impl<'a> ProductionPasswordAuthProvider<'a> {
-    pub const fn new(config: &'a Value) -> Self {
-        Self { config }
+impl ProductionPasswordAuthProvider {
+    pub fn new(config: &Value) -> Self {
+        Self {
+            config: Arc::new(config.clone()),
+        }
+    }
+
+    pub fn authenticate_password_cancellable(
+        &self,
+        username: &str,
+        password: &str,
+        cancellation: &AuthenticationCancellation,
+    ) -> ProviderResult<AuthenticatedGatewaySession> {
+        AuthenticatedGatewaySession::authenticate_password_with_cancellation(
+            &self.config,
+            username,
+            password,
+            Some(cancellation),
+        )
     }
 }
 
-impl AuthProvider for ProductionPasswordAuthProvider<'_> {
+impl AuthProvider for ProductionPasswordAuthProvider {
     type Session = AuthenticatedGatewaySession;
     type Challenge = NoAuthChallenge;
 
@@ -101,7 +120,7 @@ impl AuthProvider for ProductionPasswordAuthProvider<'_> {
     ) -> ProviderResult<AuthOutcome<Self::Session, Self::Challenge>> {
         match request {
             AuthRequest::Password { username, password } => {
-                AuthenticatedGatewaySession::authenticate_password(self.config, username, password)
+                AuthenticatedGatewaySession::authenticate_password(&self.config, username, password)
                     .map(AuthOutcome::Authenticated)
                     .map_err(|error| error.with_failure_kind(ErrorKind::Authentication))
             }

@@ -50,6 +50,7 @@ class EngineConnectionRuntime {
       onFatalError: handlers.onFatalError || NOOP,
       onStopped: handlers.onStopped || NOOP,
       onProtocolTimeout: handlers.onProtocolTimeout || NOOP,
+      onProviderCapabilities: handlers.onProviderCapabilities || NOOP,
     };
     for (const handler of Object.values(this.handlers)) {
       if (typeof handler !== 'function') throw new TypeError('Engine runtime handler is invalid');
@@ -92,7 +93,14 @@ class EngineConnectionRuntime {
     // Control v2 negotiation starts during authentication. It remains
     // optional for the current password-only provider and must not turn a
     // failed graceful-control handshake into a connection failure.
-    this.control.handshake().catch(NOOP);
+    this.control.handshake()
+      .then(() => this.control.providerCapabilities())
+      .then((report) => {
+        if (!this.disposed && this.isCurrent(this.generation)) {
+          this.handlers.onProviderCapabilities(report);
+        }
+      })
+      .catch(NOOP);
     return true;
   }
 

@@ -1,16 +1,19 @@
 use ec_compat::ErrorKind;
 use ec_compat::engine::provider::{
     AuthMethod, AuthOutcome, AuthProvider, AuthRequest, AuthenticationCapabilities, Capability,
-    CapabilityAvailability, CapabilityModel, OfflineResourceDocumentProvider, ProviderError,
-    ProviderResult, ResourceCapabilities, ResourceProvider, TransportBackend,
+    CapabilityAvailability, CapabilityModel, OfflineResourceDocumentProvider, ProviderCoordinator,
+    ProviderError, ProviderResult, ResourceCapabilities, ResourceProvider, TransportBackend,
     TransportCapabilities, UnsupportedResourceProvider, UnsupportedWebVpnBackend,
     require_supported,
+};
+use ec_compat::engine::provider_composition::{
+    EASYCONNECT_PASSWORD_MODERN_L3_V1, ProductionProviderFamily, ProductionProviderSet,
 };
 use ec_compat::engine::session::{ModernL3TransportBackend, ProductionPasswordAuthProvider};
 use serde_json::json;
 
 #[derive(Eq, PartialEq)]
-struct MockSession;
+struct MockSession(bool);
 
 struct MockAuthProvider;
 
@@ -41,7 +44,7 @@ impl AuthProvider for MockAuthProvider {
             AuthRequest::ChallengeResponse {
                 method: AuthMethod::Sms,
                 ..
-            } => Ok(AuthOutcome::Authenticated(MockSession)),
+            } => Ok(AuthOutcome::Authenticated(MockSession(true))),
             _ => Err(ProviderError::unavailable(capability)),
         }
     }
@@ -67,7 +70,7 @@ impl ResourceProvider for MockResourceProvider {
 struct MockTransportBackend;
 
 impl TransportBackend for MockTransportBackend {
-    type Session = bool;
+    type Session = MockSession;
     type DataPlane = &'static str;
 
     fn capabilities(&self) -> TransportCapabilities {
@@ -78,7 +81,7 @@ impl TransportBackend for MockTransportBackend {
     }
 
     fn connect(&self, session: &Self::Session) -> ProviderResult<Self::DataPlane> {
-        if *session {
+        if session.0 {
             Ok("mock-l3")
         } else {
             Err(ProviderError::unavailable(Capability::TransportL3))
@@ -108,29 +111,45 @@ fn connect_transport<B: TransportBackend>(
 
 #[test]
 fn generic_consumers_can_swap_mock_providers_without_vendor_protocol_types() {
-    let challenge = match authenticate_password(&MockAuthProvider).unwrap() {
+    let compiled = CapabilityModel {
+        authentication: MockAuthProvider.capabilities(),
+        resources: MockResourceProvider.capabilities(),
+        transport: MockTransportBackend.capabilities(),
+    };
+    let coordinator = ProviderCoordinator::new(
+        MockAuthProvider,
+        MockResourceProvider,
+        MockTransportBackend,
+        compiled,
+    )
+    .unwrap();
+    let challenge = match authenticate_password(coordinator.authentication()).unwrap() {
         AuthOutcome::ChallengeRequired(challenge) => challenge,
         AuthOutcome::Authenticated(_) => panic!("mock should exercise the challenge contract"),
     };
     assert!(challenge == MockChallenge::Sms);
-    let session = MockAuthProvider
+    let session = coordinator
+        .authentication()
         .authenticate(AuthRequest::ChallengeResponse {
             method: AuthMethod::Sms,
             challenge_id: b"mock-challenge",
             response: b"mock-response",
         })
         .unwrap();
-    assert!(matches!(session, AuthOutcome::Authenticated(MockSession)));
+    assert!(matches!(
+        session,
+        AuthOutcome::Authenticated(MockSession(true))
+    ));
     assert_eq!(
-        load_resources(&MockResourceProvider).unwrap(),
+        load_resources(coordinator.resources()).unwrap(),
         ["sanitized-resource"]
     );
     assert_eq!(
-        connect_transport(&MockTransportBackend, &true).unwrap(),
+        connect_transport(coordinator.transport(), &MockSession(true)).unwrap(),
         "mock-l3"
     );
     assert!(matches!(
-        connect_transport(&MockTransportBackend, &false),
+        connect_transport(coordinator.transport(), &MockSession(false)),
         Err(ProviderError::Unavailable(Capability::TransportL3))
     ));
 }
@@ -160,6 +179,16 @@ fn current_production_adapters_advertise_only_password_and_l3() {
         CapabilityModel::production_password_l3()
             .availability(Capability::ResourceAuthorizationDecision),
         CapabilityAvailability::Unsupported
+    );
+    let family = ProductionProviderFamily::parse(EASYCONNECT_PASSWORD_MODERN_L3_V1).unwrap();
+    let providers = ProductionProviderSet::from_config(family, &transport_config).unwrap();
+    assert_eq!(
+        providers.capabilities(),
+        CapabilityModel::production_password_l3()
+    );
+    assert_eq!(
+        providers.capability_report().compiled(),
+        providers.capability_report().provider()
     );
 }
 

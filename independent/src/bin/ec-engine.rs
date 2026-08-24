@@ -15,11 +15,10 @@ use ec_compat::engine::event::{
 };
 use ec_compat::engine::ip_packet::stack_mtu;
 use ec_compat::engine::netstack::VirtualNetstack;
-use ec_compat::engine::provider::ProviderError;
+use ec_compat::engine::provider::{ProviderCapabilityReport, ProviderError};
+use ec_compat::engine::provider_composition::{ProductionProviderFamily, ProductionProviderSet};
 use ec_compat::engine::proxy::{NameResolver, RejectDomainResolver, SystemDnsResolver};
-use ec_compat::engine::session::{
-    AuthenticatedGatewaySession, ModernL3Connection, ModernL3TransportBackend,
-};
+use ec_compat::engine::session::{AuthenticatedGatewaySession, ModernL3Connection};
 use ec_compat::engine::socks::SocksServer;
 use ec_compat::engine::socks_auth::{
     EngineCredentials, ProxyAuthentication, ProxyAuthenticationMode, read_engine_credentials,
@@ -77,6 +76,14 @@ enum ControlInput {
 #[derive(Default)]
 struct PendingControlActions {
     shutdowns: std::collections::BTreeMap<u64, tokio::time::Instant>,
+}
+
+#[derive(Clone)]
+struct ProviderControlContext {
+    profile_id: String,
+    profile_revision: u64,
+    engine_generation: u64,
+    report: ProviderCapabilityReport,
 }
 
 impl PendingControlActions {
@@ -343,13 +350,15 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     })
 }
 
-fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlInput>> {
+fn start_control_reader(
+    provider_context: Option<ProviderControlContext>,
+) -> Result<tokio::sync::mpsc::Receiver<ControlInput>> {
     let (sender, receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
     std::thread::Builder::new()
         .name("ec-engine-control".into())
         .spawn(move || {
             let stdin = std::io::stdin();
-            if control_reader_loop(stdin.lock(), sender).is_err() {
+            if control_reader_loop(stdin.lock(), sender, provider_context).is_err() {
                 // Framing errors are intentionally generic: never echo a raw
                 // control line that might have been supplied by a faulty
                 // caller. EOF is a normal control-channel close and does not
@@ -364,9 +373,18 @@ fn start_control_reader() -> Result<tokio::sync::mpsc::Receiver<ControlInput>> {
 fn control_reader_loop<R: std::io::Read>(
     reader: R,
     sender: tokio::sync::mpsc::Sender<ControlInput>,
+    provider_context: Option<ProviderControlContext>,
 ) -> Result<()> {
     let mut reader = InheritedControlFrameReader::new(reader);
-    let mut session = ControlSession::new();
+    let mut session = match provider_context {
+        Some(context) => ControlSession::with_provider_capabilities(
+            context.profile_id,
+            context.profile_revision,
+            context.engine_generation,
+            context.report,
+        )?,
+        None => ControlSession::new(),
+    };
     while let Some(request) = reader.read_request()? {
         let (input, closes_channel) = match request {
             InheritedControlRequest::V2(request) => {
@@ -691,17 +709,16 @@ fn cancelled_connection_attempt_failure(message: &'static str) -> EngineFailure 
 }
 
 async fn authenticate_password_with_lifecycle<W: Write>(
-    config: &serde_json::Value,
+    providers: &ProductionProviderSet,
     gateway_username: zeroize::Zeroizing<String>,
     gateway_password: zeroize::Zeroizing<String>,
     control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
     pending_control_actions: &mut PendingControlActions,
     lifecycle: &mut EngineLifecycle<W>,
 ) -> EngineResult<Option<AuthenticatedGatewaySession>> {
-    let worker_config = config.clone();
+    let authentication_provider = providers.authentication_provider();
     let mut authentication = BlockingOperation::spawn(move |cancellation| {
-        AuthenticatedGatewaySession::authenticate_with_provider_error_cancellable(
-            &worker_config,
+        authentication_provider.authenticate_password_cancellable(
             &gateway_username,
             &gateway_password,
             &cancellation,
@@ -786,12 +803,13 @@ fn authentication_completion_cleanup_unconfirmed(
 }
 
 async fn prepare_transport_with_lifecycle<W: Write>(
-    backend: ModernL3TransportBackend,
+    providers: &ProductionProviderSet,
     session: AuthenticatedGatewaySession,
     control_receiver: &mut Option<tokio::sync::mpsc::Receiver<ControlInput>>,
     pending_control_actions: &mut PendingControlActions,
     lifecycle: &mut EngineLifecycle<W>,
 ) -> EngineResult<Option<(AuthenticatedGatewaySession, ModernL3Connection)>> {
+    let backend = providers.transport_backend();
     let mut transport = BlockingOperation::spawn(move |cancellation| {
         backend.connect_or_logout_cancellable(session, &cancellation)
     });
@@ -987,15 +1005,41 @@ async fn run_engine<W: Write>(
             error,
         )
     })?;
+    let provider_family = config_binding
+        .as_ref()
+        .map(|binding| binding.protocol_family())
+        .unwrap_or(ProductionProviderFamily::EasyConnectPasswordModernL3V1);
+    let provider_control_context = config_binding
+        .as_ref()
+        .map(|binding| {
+            provider_family
+                .capability_report()
+                .map(|report| ProviderControlContext {
+                    profile_id: binding.profile_id().to_owned(),
+                    profile_revision: binding.profile_revision(),
+                    engine_generation: arguments.generation,
+                    report,
+                })
+        })
+        .transpose()
+        .map_err(|_| {
+            failure(
+                EngineErrorCode::ConfigurationInvalid,
+                StopReason::StartupFailed,
+                Error("engine provider capability composition is invalid".into()),
+            )
+        })?;
     drop(inherited_stdin);
     let mut control_receiver = if arguments.control_api_v2_stdin {
-        Some(start_control_reader().map_err(|error| {
-            failure(
-                EngineErrorCode::LocalListenerFailed,
-                StopReason::StartupFailed,
-                error,
-            )
-        })?)
+        Some(
+            start_control_reader(provider_control_context).map_err(|error| {
+                failure(
+                    EngineErrorCode::LocalListenerFailed,
+                    StopReason::StartupFailed,
+                    error,
+                )
+            })?,
+        )
     } else {
         None
     };
@@ -1068,8 +1112,15 @@ async fn run_engine<W: Write>(
         )
         .await;
     }
+    let providers = ProductionProviderSet::from_config(provider_family, &config).map_err(|_| {
+        failure(
+            EngineErrorCode::ConfigurationInvalid,
+            StopReason::StartupFailed,
+            Error("engine provider composition is invalid".into()),
+        )
+    })?;
     let Some(session) = authenticate_password_with_lifecycle(
-        &config,
+        &providers,
         gateway_username,
         gateway_password,
         &mut control_receiver,
@@ -1088,19 +1139,8 @@ async fn run_engine<W: Write>(
         ));
     }
 
-    let transport_backend = match ModernL3TransportBackend::new(&config) {
-        Ok(backend) => backend,
-        Err(error) => {
-            let failure = failure(
-                data_plane_setup_error_code(&error),
-                StopReason::StartupFailed,
-                error,
-            );
-            return Err(failure_after_gateway_cleanup(session, failure));
-        }
-    };
     let Some((session, transport)) = prepare_transport_with_lifecycle(
-        transport_backend,
+        &providers,
         session,
         &mut control_receiver,
         &mut pending_control_actions,
@@ -1696,7 +1736,7 @@ mod tests {
     fn synthetic_control_reader_preserves_eof_and_typed_actions() {
         let wire = b"{\"type\":\"hello\",\"requestId\":1,\"versions\":[2]}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":2,\"command\":{\"name\":\"require_capability\",\"capability\":\"transport.web_vpn\"}}\n{\"type\":\"request\",\"apiVersion\":2,\"requestId\":3,\"command\":{\"name\":\"shutdown\"}}\n{\"type\":\"cancel\",\"apiVersion\":2,\"requestId\":4,\"requestToCancel\":3}\n{\"type\":\"close\",\"apiVersion\":2,\"requestId\":5}\n";
         let (sender, mut receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
-        control_reader_loop(wire.as_slice(), sender).unwrap();
+        control_reader_loop(wire.as_slice(), sender, None).unwrap();
 
         let hello = receiver.blocking_recv().unwrap();
         let ControlInput::V2(hello) = hello else {
@@ -1753,7 +1793,7 @@ mod tests {
     fn control_reader_multiplexes_v3_without_changing_v2_session_state() {
         let wire = b"{\"type\":\"auth_request\",\"apiVersion\":3,\"requestId\":7,\"generation\":9,\"transactionId\":\"04040404040404040404040404040404\",\"challengeEpoch\":1,\"command\":{\"name\":\"respond\",\"response\":\"private-fixture\"}}\n{\"type\":\"hello\",\"requestId\":8,\"versions\":[2]}\n{\"type\":\"close\",\"apiVersion\":2,\"requestId\":9}\n";
         let (sender, mut receiver) = tokio::sync::mpsc::channel(MAX_ACTIVE_REQUESTS);
-        control_reader_loop(wire.as_slice(), sender).unwrap();
+        control_reader_loop(wire.as_slice(), sender, None).unwrap();
 
         let ControlInput::V3(request) = receiver.blocking_recv().unwrap() else {
             panic!("expected v3 auth request");

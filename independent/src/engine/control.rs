@@ -11,6 +11,7 @@
 //! messages contain no free-form payload fields, so credentials, gateway
 //! tokens, URLs, and network destinations cannot be represented on this wire.
 
+use crate::engine::provider::{CapabilityAvailability, ProviderCapabilityReport};
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, VecDeque};
@@ -30,6 +31,8 @@ pub enum ControlCapability {
     RequestCancel,
     #[serde(rename = "control.close")]
     ControlClose,
+    #[serde(rename = "provider.capabilities")]
+    ProviderCapabilities,
     #[serde(rename = "auth.captcha")]
     AuthCaptcha,
     #[serde(rename = "auth.sms")]
@@ -54,16 +57,18 @@ pub enum ControlCapability {
     TransportWebVpn,
 }
 
-const CONTROL_CAPABILITIES: [ControlCapability; 3] = [
+const CONTROL_CAPABILITIES: [ControlCapability; 4] = [
     ControlCapability::EngineShutdown,
     ControlCapability::RequestCancel,
     ControlCapability::ControlClose,
+    ControlCapability::ProviderCapabilities,
 ];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(tag = "name", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlCommand {
     Shutdown,
+    ProviderCapabilities,
     RequireCapability { capability: ControlCapability },
 }
 
@@ -139,6 +144,7 @@ pub enum ControlProtocolError {
     TooManyActiveRequests,
     RequestNotFound,
     ConnectionClosed,
+    CapabilityContextUnavailable,
     UnsupportedCapability {
         capability: ControlCapability,
     },
@@ -153,7 +159,7 @@ pub enum ControlResponse {
         api_version: u8,
         #[serde(rename = "requestId")]
         request_id: u64,
-        capabilities: [ControlCapability; 3],
+        capabilities: [ControlCapability; 4],
     },
     #[serde(rename = "control_result")]
     Result {
@@ -162,6 +168,21 @@ pub enum ControlResponse {
         #[serde(rename = "requestId")]
         request_id: u64,
         status: ControlStatus,
+    },
+    #[serde(rename = "provider_capabilities")]
+    ProviderCapabilities {
+        #[serde(rename = "apiVersion")]
+        api_version: u8,
+        #[serde(rename = "requestId")]
+        request_id: u64,
+        #[serde(rename = "profileId")]
+        profile_id: String,
+        #[serde(rename = "profileRevision")]
+        profile_revision: u64,
+        #[serde(rename = "engineGeneration")]
+        engine_generation: u64,
+        compiled: std::collections::BTreeMap<String, CapabilityAvailability>,
+        provider: std::collections::BTreeMap<String, CapabilityAvailability>,
     },
     #[serde(rename = "control_error")]
     Error {
@@ -216,11 +237,44 @@ pub struct ControlSession {
     active_requests: BTreeSet<u64>,
     recent_request_ids: BTreeSet<u64>,
     request_order: VecDeque<u64>,
+    provider_context: Option<ProviderCapabilityContext>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ProviderCapabilityContext {
+    profile_id: String,
+    profile_revision: u64,
+    engine_generation: u64,
+    report: ProviderCapabilityReport,
 }
 
 impl ControlSession {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_provider_capabilities(
+        profile_id: String,
+        profile_revision: u64,
+        engine_generation: u64,
+        report: ProviderCapabilityReport,
+    ) -> Result<Self> {
+        if profile_id.is_empty()
+            || profile_id.len() > 64
+            || profile_revision == 0
+            || engine_generation == 0
+        {
+            return Err(Error("provider capability context is invalid".into()));
+        }
+        Ok(Self {
+            provider_context: Some(ProviderCapabilityContext {
+                profile_id,
+                profile_revision,
+                engine_generation,
+                report,
+            }),
+            ..Self::default()
+        })
     }
 
     pub fn handle(&mut self, request: ControlRequest) -> ControlExchange {
@@ -314,6 +368,23 @@ impl ControlSession {
                     self.result(request_id, ControlStatus::Accepted),
                     ControlAction::Shutdown { request_id },
                 )
+            }
+            ControlCommand::ProviderCapabilities => {
+                let Some(context) = &self.provider_context else {
+                    return self.error(
+                        request_id,
+                        ControlProtocolError::CapabilityContextUnavailable,
+                    );
+                };
+                ControlExchange::response(ControlResponse::ProviderCapabilities {
+                    api_version: ENGINE_CONTROL_API_VERSION,
+                    request_id,
+                    profile_id: context.profile_id.clone(),
+                    profile_revision: context.profile_revision,
+                    engine_generation: context.engine_generation,
+                    compiled: context.report.compiled().clone(),
+                    provider: context.report.provider().clone(),
+                })
             }
             ControlCommand::RequireCapability { capability } => {
                 if CONTROL_CAPABILITIES.contains(&capability) {
@@ -469,6 +540,7 @@ pub fn encode_control_response(response: &ControlResponse) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::provider::CapabilityModel;
     use serde_json::{Value, json};
     use std::io::Cursor;
 
@@ -489,12 +561,62 @@ mod tests {
                 "type": "control_hello",
                 "apiVersion": 2,
                 "requestId": 7,
-                "capabilities": ["engine.shutdown", "request.cancel", "control.close"],
+                "capabilities": [
+                    "engine.shutdown",
+                    "request.cancel",
+                    "control.close",
+                    "provider.capabilities"
+                ],
             })
         );
         assert!(
             encode_control_response(&exchange.response).unwrap().len() <= MAX_CONTROL_FRAME_BYTES
         );
+    }
+
+    #[test]
+    fn provider_capabilities_are_additive_profile_and_generation_bound() {
+        let report = ProviderCapabilityReport::new(
+            CapabilityModel::production_password_l3(),
+            CapabilityModel::production_password_l3(),
+        )
+        .unwrap();
+        let mut session =
+            ControlSession::with_provider_capabilities("hkustgz".into(), 1, 9, report).unwrap();
+        session.handle(hello(1));
+        let exchange = session.handle(ControlRequest::Request {
+            api_version: 2,
+            request_id: 2,
+            command: ControlCommand::ProviderCapabilities,
+        });
+        assert_eq!(exchange.action, None);
+        assert!(
+            encode_control_response(&exchange.response).unwrap().len() <= MAX_CONTROL_FRAME_BYTES
+        );
+        let value = serde_json::to_value(exchange.response).unwrap();
+        assert_eq!(value["type"], "provider_capabilities");
+        assert_eq!(value["profileId"], "hkustgz");
+        assert_eq!(value["profileRevision"], 1);
+        assert_eq!(value["engineGeneration"], 9);
+        assert_eq!(value["compiled"]["auth.password"], "supported");
+        assert_eq!(value["provider"]["transport.l3"], "supported");
+        assert_eq!(value["provider"]["auth.sms"], "unsupported");
+
+        let mut unbound = ControlSession::new();
+        unbound.handle(hello(10));
+        assert!(matches!(
+            unbound
+                .handle(ControlRequest::Request {
+                    api_version: 2,
+                    request_id: 11,
+                    command: ControlCommand::ProviderCapabilities,
+                })
+                .response,
+            ControlResponse::Error {
+                error: ControlProtocolError::CapabilityContextUnavailable,
+                ..
+            }
+        ));
     }
 
     #[test]

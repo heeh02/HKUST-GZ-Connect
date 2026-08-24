@@ -7,9 +7,21 @@ const DEFAULT_CONTROL_REQUEST_TIMEOUT_MS = 2_000;
 
 const CAPABILITY_TOKEN = /^[a-z][a-z0-9_.-]{0,95}$/u;
 const ERROR_CODE = /^[a-z][a-z0-9_]{0,63}$/u;
+const PROFILE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+const CAPABILITY_STATES = new Set(['supported', 'unsupported', 'unavailable']);
 
 function validRequestId(value) {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function normalizeCapabilityLayer(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) return null;
+  const entries = Object.entries(value);
+  if (!entries.length || entries.length > 64 || entries.some(([capability, state]) => (
+    !CAPABILITY_TOKEN.test(capability) || !CAPABILITY_STATES.has(state)
+  ))) return null;
+  return Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right)));
 }
 
 function normalizeControlResponse(value) {
@@ -36,6 +48,30 @@ function normalizeControlResponse(value) {
       apiVersion: ENGINE_CONTROL_API_VERSION,
       requestId: value.requestId,
       status: value.status,
+    };
+  }
+  if (value.type === 'provider_capabilities') {
+    const keys = Object.keys(value).sort();
+    if (JSON.stringify(keys) !== JSON.stringify([
+      'apiVersion', 'compiled', 'engineGeneration', 'profileId', 'profileRevision',
+      'provider', 'requestId', 'type',
+    ])) return null;
+    if (typeof value.profileId !== 'string' || !PROFILE_ID.test(value.profileId) ||
+        !Number.isSafeInteger(value.profileRevision) || value.profileRevision <= 0 ||
+        !Number.isSafeInteger(value.engineGeneration) || value.engineGeneration <= 0) return null;
+    const compiled = normalizeCapabilityLayer(value.compiled);
+    const provider = normalizeCapabilityLayer(value.provider);
+    if (!compiled || !provider ||
+        JSON.stringify(Object.keys(compiled)) !== JSON.stringify(Object.keys(provider))) return null;
+    return {
+      type: 'provider_capabilities',
+      apiVersion: ENGINE_CONTROL_API_VERSION,
+      requestId: value.requestId,
+      profileId: value.profileId,
+      profileRevision: value.profileRevision,
+      engineGeneration: value.engineGeneration,
+      compiled,
+      provider,
     };
   }
   if (value.type === 'control_error') {
@@ -159,6 +195,18 @@ class EngineControlClient {
       }
       return response;
     });
+  }
+
+  providerCapabilities() {
+    if (!this.negotiated) {
+      return Promise.reject(new Error('engine control handshake is incomplete'));
+    }
+    return this.#request('provider_capabilities', (requestId) => ({
+      type: 'request',
+      apiVersion: ENGINE_CONTROL_API_VERSION,
+      requestId,
+      command: { name: 'provider_capabilities' },
+    }));
   }
 
   feed(value) {

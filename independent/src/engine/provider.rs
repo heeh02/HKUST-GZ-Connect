@@ -8,12 +8,15 @@
 use crate::resource_catalogue::{ResourceCatalogue, parse_resource_catalogue};
 use crate::xml::MAX_XML_BYTES;
 use crate::{Error, ErrorKind, Result};
+use serde::Serialize;
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use zeroize::Zeroizing;
 
 pub use crate::engine::auth_transaction::AuthProgress;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityAvailability {
     /// The provider has an implemented path for this capability.
     Supported,
@@ -208,6 +211,118 @@ impl CapabilityModel {
     }
 }
 
+/// Stable, secret-free capability layers reported by a composed provider set.
+///
+/// The compiled layer is the binary's upper bound. The selected provider may
+/// only keep or reduce availability; a configuration/profile can never make a
+/// missing implementation appear supported.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProviderCapabilityReport {
+    compiled: BTreeMap<String, CapabilityAvailability>,
+    provider: BTreeMap<String, CapabilityAvailability>,
+}
+
+impl ProviderCapabilityReport {
+    pub fn new(compiled: CapabilityModel, provider: CapabilityModel) -> Result<Self> {
+        for capability in Capability::ALL {
+            if availability_rank(provider.availability(capability))
+                > availability_rank(compiled.availability(capability))
+            {
+                return Err(Error::classified(
+                    ErrorKind::Configuration,
+                    "selected provider exceeds the compiled capability boundary",
+                ));
+            }
+        }
+        Ok(Self {
+            compiled: capability_states(compiled),
+            provider: capability_states(provider),
+        })
+    }
+
+    pub fn compiled(&self) -> &BTreeMap<String, CapabilityAvailability> {
+        &self.compiled
+    }
+
+    pub fn provider(&self) -> &BTreeMap<String, CapabilityAvailability> {
+        &self.provider
+    }
+}
+
+fn capability_states(model: CapabilityModel) -> BTreeMap<String, CapabilityAvailability> {
+    Capability::ALL
+        .into_iter()
+        .map(|capability| (capability.name().to_owned(), model.availability(capability)))
+        .collect()
+}
+
+const fn availability_rank(availability: CapabilityAvailability) -> u8 {
+    match availability {
+        CapabilityAvailability::Unsupported => 0,
+        CapabilityAvailability::Unavailable => 1,
+        CapabilityAvailability::Supported => 2,
+    }
+}
+
+/// Compile-time provider composition used by both production and synthetic
+/// tests. It owns no protocol routing or plugin discovery; it only proves that
+/// auth/resource/transport adapters form one capability-bounded set.
+pub struct ProviderCoordinator<A, R, T> {
+    authentication: A,
+    resources: R,
+    transport: T,
+    model: CapabilityModel,
+    report: ProviderCapabilityReport,
+}
+
+impl<A, R, T> ProviderCoordinator<A, R, T>
+where
+    A: AuthProvider,
+    R: ResourceProvider,
+    T: TransportBackend<Session = A::Session>,
+{
+    pub fn new(
+        authentication: A,
+        resources: R,
+        transport: T,
+        compiled: CapabilityModel,
+    ) -> Result<Self> {
+        let model = CapabilityModel {
+            authentication: authentication.capabilities(),
+            resources: resources.capabilities(),
+            transport: transport.capabilities(),
+        };
+        let report = ProviderCapabilityReport::new(compiled, model)?;
+        Ok(Self {
+            authentication,
+            resources,
+            transport,
+            model,
+            report,
+        })
+    }
+
+    pub const fn model(&self) -> CapabilityModel {
+        self.model
+    }
+
+    pub fn report(&self) -> &ProviderCapabilityReport {
+        &self.report
+    }
+
+    pub fn authentication(&self) -> &A {
+        &self.authentication
+    }
+
+    pub fn resources(&self) -> &R {
+        &self.resources
+    }
+
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthMethod {
     Password,
@@ -389,6 +504,7 @@ pub trait TransportBackend: Send + Sync {
 /// The parser exists, but the production engine has no reviewed authenticated
 /// resource-fetch/provider contract. Returning a catalogue would be a false
 /// claim of feature support.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct UnsupportedResourceProvider;
 
 impl ResourceProvider for UnsupportedResourceProvider {
@@ -446,6 +562,7 @@ impl ResourceProvider for OfflineResourceDocumentProvider {
 
 /// Explicit placeholder for the observed WebVPN configuration family. It is a
 /// hard failure until sanitized fixtures and an approved implementation exist.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct UnsupportedWebVpnBackend;
 
 impl TransportBackend for UnsupportedWebVpnBackend {
@@ -509,6 +626,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn selected_provider_can_only_tighten_the_compiled_capability_ceiling() {
+        let compiled = CapabilityModel::production_password_l3();
+        let mut authentication = AuthenticationCapabilities::password_only();
+        authentication.sms = CapabilityAvailability::Supported;
+        let elevated = CapabilityModel {
+            authentication,
+            resources: ResourceCapabilities::unsupported(),
+            transport: TransportCapabilities::modern_l3_only(),
+        };
+        assert!(ProviderCapabilityReport::new(compiled, elevated).is_err());
+
+        let tightened = CapabilityModel {
+            authentication: AuthenticationCapabilities::password_only(),
+            resources: ResourceCapabilities::unsupported(),
+            transport: TransportCapabilities {
+                l3: CapabilityAvailability::Unavailable,
+                web_vpn: CapabilityAvailability::Unsupported,
+            },
+        };
+        let report = ProviderCapabilityReport::new(compiled, tightened).unwrap();
+        assert_eq!(
+            report.provider()[Capability::TransportL3.name()],
+            CapabilityAvailability::Unavailable
+        );
     }
 
     #[test]

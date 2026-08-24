@@ -12,6 +12,7 @@ editing the SOCKS frontend, desktop UI, or unrelated protocol generations.
 | `gateway_auth.rs` | Redacted/zeroizing artifacts of completed Gateway authentication | Modern token, Data Plane, DNS or proxy policy |
 | `credentials.rs` | Bounded two-line gateway credential stdin contract | Gateway HTTP, provider policy or protocol formats |
 | `engine/provider.rs` | Stable AuthProvider/ResourceProvider/TransportBackend traits, capability states, typed unsupported/unavailable errors | Vendor wire formats, UI state, credentials at rest |
+| `engine/provider_composition.rs` | Closed production protocol-family factory and one capability-bounded provider coordinator | Dynamic plugins, user-selected implementation names, vendor endpoint guessing or UI state |
 | `engine/auth_transaction.rs` | Engine-owned generation/transaction/epoch/request binding, sanitized challenge view, zeroizing response, resend/cancel/abort invariants | Vendor endpoint, OTP shape, Renderer state or Data Plane |
 | `engine/auth_control.rs` | Bounded zeroizing secret-bearing Control API v3 codec/session for synthetic/future interactive providers | Public listener, vendor endpoint or password-only capability claims |
 | `engine/control_mux.rs` | Ordered v2/v3 decoding on the inherited private pipe; generic secret-free framing errors | Provider state, public listener or cross-schema coercion |
@@ -113,8 +114,10 @@ The local engine APIs also have separate directions:
   a 2048-byte frame limit, version negotiation and request IDs. It opens no
   listener and cannot represent credentials, tokens, URLs or destinations.
   Its handshake is answered during authentication, before L3/listener setup.
-  Its currently advertised capabilities are shutdown, cancellation and
-  control-channel close. The process assembler applies accepted actions;
+  Its currently advertised capabilities are shutdown, cancellation,
+  control-channel close and the additive secret-free provider-capability query.
+  That query is bound to the reviewed Profile revision and Engine generation;
+  Event API v1 remains unchanged. The process assembler applies accepted actions;
   `engine/control.rs` itself never terminates a process.
 - **Interactive Auth Control API v3** is a separate, secret-bearing bounded
   schema over the same inherited private pipe. It supports sanitized challenge

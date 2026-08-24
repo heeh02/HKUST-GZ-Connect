@@ -1,3 +1,4 @@
+use crate::engine::provider_composition::ProductionProviderFamily;
 use crate::{Error, ErrorKind, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -21,6 +22,7 @@ struct ConfigBindingFrame {
     gateway_origin: String,
     profile_id: String,
     profile_revision: u64,
+    protocol_family: String,
 }
 
 pub struct ExpectedConfigBinding {
@@ -28,6 +30,7 @@ pub struct ExpectedConfigBinding {
     gateway_origin: String,
     profile_id: String,
     profile_revision: u64,
+    protocol_family: ProductionProviderFamily,
 }
 
 impl ExpectedConfigBinding {
@@ -36,6 +39,7 @@ impl ExpectedConfigBinding {
         gateway_origin: &str,
         profile_id: &str,
         profile_revision: u64,
+        protocol_family: &str,
     ) -> Result<Self> {
         let digest = hex::decode(sha256)
             .ok()
@@ -53,11 +57,14 @@ impl ExpectedConfigBinding {
         {
             return Err(config_binding_error());
         }
+        let protocol_family =
+            ProductionProviderFamily::parse(protocol_family).map_err(|_| config_binding_error())?;
         Ok(Self {
             sha256: digest,
             gateway_origin,
             profile_id: profile_id.to_owned(),
             profile_revision,
+            protocol_family,
         })
     }
 
@@ -67,6 +74,10 @@ impl ExpectedConfigBinding {
 
     pub const fn profile_revision(&self) -> u64 {
         self.profile_revision
+    }
+
+    pub const fn protocol_family(&self) -> ProductionProviderFamily {
+        self.protocol_family
     }
 }
 
@@ -114,6 +125,7 @@ pub fn read_expected_config_binding<R: Read>(mut stream: R) -> Result<ExpectedCo
         &frame.gateway_origin,
         &frame.profile_id,
         frame.profile_revision,
+        &frame.protocol_family,
     )
 }
 
@@ -223,6 +235,7 @@ pub fn load_engine_config(path: &Path, binding: Option<&ExpectedConfigBinding>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::provider_composition::EASYCONNECT_PASSWORD_MODERN_L3_V1;
     use std::io::Write;
 
     fn fixture() -> (std::path::PathBuf, Vec<u8>) {
@@ -247,13 +260,14 @@ mod tests {
             "https://vpn.example.edu",
             "school-a",
             7,
+            "easyconnect-password-modern-l3-v1",
         )
         .unwrap()
     }
 
     fn binding_frame(payload: &[u8]) -> Vec<u8> {
         format!(
-            "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{}\",\"gatewayOrigin\":\"https://vpn.example.edu\",\"profileId\":\"school-a\",\"profileRevision\":7}}\ncredential-line\n",
+            "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{}\",\"gatewayOrigin\":\"https://vpn.example.edu\",\"profileId\":\"school-a\",\"profileRevision\":7,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\ncredential-line\n",
             hex::encode(Sha256::digest(payload)),
         )
         .into_bytes()
@@ -267,6 +281,10 @@ mod tests {
         assert_eq!(value["base_url"], "https://vpn.example.edu");
         assert_eq!(expected.profile_id(), "school-a");
         assert_eq!(expected.profile_revision(), 7);
+        assert_eq!(
+            expected.protocol_family().name(),
+            EASYCONNECT_PASSWORD_MODERN_L3_V1
+        );
         std::fs::remove_file(path).unwrap();
     }
 
@@ -295,22 +313,44 @@ mod tests {
     fn digest_origin_profile_and_shape_mismatches_fail_closed_without_echoing_values() {
         let (path, payload) = fixture();
         for result in [
-            ExpectedConfigBinding::new(&"00".repeat(32), "https://vpn.example.edu", "school-a", 7)
-                .and_then(|binding| load_engine_config(&path, Some(&binding))),
+            ExpectedConfigBinding::new(
+                &"00".repeat(32),
+                "https://vpn.example.edu",
+                "school-a",
+                7,
+                EASYCONNECT_PASSWORD_MODERN_L3_V1,
+            )
+            .and_then(|binding| load_engine_config(&path, Some(&binding))),
             ExpectedConfigBinding::new(
                 &hex::encode(Sha256::digest(&payload)),
                 "https://other.example.edu",
                 "school-a",
                 7,
+                EASYCONNECT_PASSWORD_MODERN_L3_V1,
             )
             .and_then(|binding| load_engine_config(&path, Some(&binding))),
-            ExpectedConfigBinding::new("private-digest", "https://vpn.example.edu", "school-a", 7)
-                .and_then(|binding| load_engine_config(&path, Some(&binding))),
+            ExpectedConfigBinding::new(
+                &hex::encode(Sha256::digest(&payload)),
+                "https://vpn.example.edu",
+                "school-a",
+                7,
+                "dynamic-provider-name",
+            )
+            .and_then(|binding| load_engine_config(&path, Some(&binding))),
+            ExpectedConfigBinding::new(
+                "private-digest",
+                "https://vpn.example.edu",
+                "school-a",
+                7,
+                EASYCONNECT_PASSWORD_MODERN_L3_V1,
+            )
+            .and_then(|binding| load_engine_config(&path, Some(&binding))),
             ExpectedConfigBinding::new(
                 &hex::encode(Sha256::digest(&payload)),
                 "https://vpn.example.edu",
                 "../school-a",
                 7,
+                EASYCONNECT_PASSWORD_MODERN_L3_V1,
             )
             .and_then(|binding| load_engine_config(&path, Some(&binding))),
         ] {

@@ -96,6 +96,7 @@ test('root CLI always uses strict stdin auth and its authenticated helper', () =
   assert.match(source, /source "\$PROXY_CREDENTIAL_LIBRARY"/);
   assert.match(source, /--socks-auth-stdin/);
   assert.match(source, /--profile-binding-v1-stdin/);
+  assert.match(source, /"protocolFamily":"easyconnect-password-modern-l3-v1"/u);
   assert.doesNotMatch(source, /shasum[^\n]*ENGINE_CONFIG/u);
   assert.ok(source.indexOf('printf -v binding_frame') < source.indexOf('pw="$(get_pw)"'));
   assert.ok(source.indexOf('engine_config_binding') < source.indexOf('printf \'%s\\n\' "$ACC"'));
