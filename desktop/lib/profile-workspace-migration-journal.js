@@ -27,6 +27,11 @@ const LEGACY_SOURCE_IDS = Object.freeze([
   'engineLogRotated',
   'engineLogRetention',
 ]);
+const REQUIRED_ABSENT_LEGACY_SOURCE_IDS = Object.freeze([
+  'engineOwner',
+  'credentialTransaction',
+  'proxyHelperCredential',
+]);
 const DESTINATION_RECEIPT_IDS = Object.freeze([
   'globalSettings',
   'globalProxyCredential',
@@ -182,6 +187,9 @@ function validateMigrationJournal(value) {
     LEGACY_SOURCE_IDS,
     'source receipt set',
   );
+  if (REQUIRED_ABSENT_LEGACY_SOURCE_IDS.some((id) => sourceReceipts[id].present)) {
+    throw new TypeError('legacy migration precondition source must be absent');
+  }
   const expectedSourceDigest = receiptSetDigest(sourceReceipts, LEGACY_SOURCE_IDS);
   if (source.sourceSetSha256 !== expectedSourceDigest) {
     throw new TypeError('source receipt set digest does not match');
@@ -313,6 +321,7 @@ function commitMigrationJournal(document, { destinationReceipts, now = Date.now 
 module.exports = {
   DESTINATION_RECEIPT_IDS,
   LEGACY_SOURCE_IDS,
+  REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   MIGRATION_JOURNAL_VERSION,
   commitMigrationJournal,
   createPreparedMigrationJournal,

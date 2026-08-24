@@ -92,6 +92,19 @@ test('receipt collection rejects links, broad permissions and oversized sources'
   assert.throws(() => collectLegacyFlatSourceReceipts({ userData }), /legacy source/u);
 });
 
+test('symlinked userData root is rejected before any source inspection', {
+  skip: process.platform === 'win32',
+}, (t) => {
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-legacy-root-target-'));
+  const link = `${target}-link`;
+  fs.symlinkSync(target, link);
+  t.after(() => {
+    try { fs.unlinkSync(link); } catch {}
+    fs.rmSync(target, { recursive: true, force: true });
+  });
+  assert.throws(() => collectLegacyFlatSourceReceipts({ userData: link }), /trusted directory/u);
+});
+
 test('replacement between lstat and opened descriptor fails closed', (t) => {
   const { userData, paths } = fixture(t);
   writePrivate(paths.settings, 'settings');

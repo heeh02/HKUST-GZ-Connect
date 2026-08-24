@@ -11,6 +11,7 @@ const {
 const {
   DESTINATION_RECEIPT_IDS,
   LEGACY_SOURCE_IDS,
+  REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   commitMigrationJournal,
   createPreparedMigrationJournal,
   validateMigrationJournal,
@@ -29,7 +30,12 @@ function receipt(seed) {
 }
 
 function sourceReceipts() {
-  return Object.fromEntries(LEGACY_SOURCE_IDS.map((id, index) => [id, receipt(index + 1)]));
+  return Object.fromEntries(LEGACY_SOURCE_IDS.map((id, index) => [
+    id,
+    REQUIRED_ABSENT_LEGACY_SOURCE_IDS.includes(id)
+      ? Object.freeze({ present: false, bytes: 0, sha256: null })
+      : receipt(index + 1),
+  ]));
 }
 
 function deepKeys(value, result = []) {
@@ -187,6 +193,14 @@ test('journal generation fails closed on weak entropy, missing receipts and unsa
     profileId: 'another-school',
     randomBytes: () => Buffer.alloc(16, 1),
   }), /HKUST profile/u);
+  assert.throws(() => createPreparedMigrationJournal({
+    ...base,
+    sourceReceipts: {
+      ...sourceReceipts(),
+      credentialTransaction: receipt(900),
+    },
+    randomBytes: () => Buffer.alloc(16, 1),
+  }), /precondition source must be absent/u);
 });
 
 test('P3 foundation is packaged but does not activate migration in production Main', () => {
@@ -196,6 +210,8 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'profile-workspace-migration-journal',
     'profile-workspace-migration-store',
     'profile-workspace-migration-coordinator',
+    'profile-workspace-destination-files',
+    'legacy-flat-source-retirement',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
     'vpn-credential-envelope-store',

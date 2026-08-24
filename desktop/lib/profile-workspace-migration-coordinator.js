@@ -145,7 +145,8 @@ class ProfileWorkspaceMigrationCoordinator {
     });
 
     if (journal.state === 'prepared') {
-      if (!bool(synchronous(this.legacyAuthorityExists(), 'legacy authority inspection'),
+      const context = Object.freeze({ journal, layout });
+      if (!bool(synchronous(this.legacyAuthorityExists(context), 'legacy authority inspection'),
         'legacy authority inspection')) {
         return result(false, 'blocked', 'none', 'LEGACY_AUTHORITY_MISSING');
       }
@@ -157,7 +158,7 @@ class ProfileWorkspaceMigrationCoordinator {
         return result(false, 'blocked', 'legacy', 'LEGACY_SOURCE_CHANGED');
       }
       const destinationReceipts = synchronous(
-        this.buildDestination(Object.freeze({ journal, layout })),
+        this.buildDestination(context),
         'destination build',
       );
       const committed = commitMigrationJournal(journal, {
@@ -186,25 +187,26 @@ class ProfileWorkspaceMigrationCoordinator {
       }
     }
 
-    if (!bool(synchronous(this.destinationAuthorityExists(), 'destination authority inspection'),
+    const context = Object.freeze({ journal, layout });
+    if (!bool(synchronous(this.destinationAuthorityExists(context), 'destination authority inspection'),
       'destination authority inspection')) {
       return result(false, 'blocked', 'destination', 'DESTINATION_MISSING');
     }
     const observedDestination = synchronous(
-      this.verifyDestination(Object.freeze({ journal, layout })),
+      this.verifyDestination(context),
       'destination verification',
     );
     if (destinationReceiptDigest(observedDestination) !== journal.destinationSetSha256) {
       return result(false, 'blocked', 'destination', 'DESTINATION_CHANGED');
     }
     if (synchronous(
-      this.retireLegacy(Object.freeze({ journal, layout })),
+      this.retireLegacy(context),
       'legacy retirement',
-    ) !== true || bool(synchronous(this.legacyAuthorityExists(), 'legacy authority inspection'),
+    ) !== true || bool(synchronous(this.legacyAuthorityExists(context), 'legacy authority inspection'),
       'legacy authority inspection')) {
       return result(false, 'blocked', 'destination', 'LEGACY_RETIREMENT_UNCONFIRMED');
     }
-    if (!bool(synchronous(this.destinationAuthorityExists(), 'destination authority inspection'),
+    if (!bool(synchronous(this.destinationAuthorityExists(context), 'destination authority inspection'),
       'destination authority inspection')) {
       return result(false, 'blocked', 'none', 'DESTINATION_MISSING');
     }

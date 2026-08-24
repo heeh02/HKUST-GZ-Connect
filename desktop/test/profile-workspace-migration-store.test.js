@@ -8,6 +8,7 @@ const test = require('node:test');
 const {
   DESTINATION_RECEIPT_IDS,
   LEGACY_SOURCE_IDS,
+  REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   commitMigrationJournal,
   createPreparedMigrationJournal,
 } = require('../lib/profile-workspace-migration-journal');
@@ -41,7 +42,12 @@ function prepared(seed = 1) {
     gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
     protocolFamily: 'easyconnect-password-modern-l3-v1',
     sourceReceipts: Object.fromEntries(
-      LEGACY_SOURCE_IDS.map((id, index) => [id, receipt(index + 1)]),
+      LEGACY_SOURCE_IDS.map((id, index) => [
+        id,
+        REQUIRED_ABSENT_LEGACY_SOURCE_IDS.includes(id)
+          ? { present: false, bytes: 0, sha256: null }
+          : receipt(index + 1),
+      ]),
     ),
     randomBytes: () => Buffer.alloc(16, entropy++),
     now: () => 1_700_000_000_000,

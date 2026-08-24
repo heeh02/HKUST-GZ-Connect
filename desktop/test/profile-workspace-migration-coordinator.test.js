@@ -8,6 +8,7 @@ const test = require('node:test');
 const {
   DESTINATION_RECEIPT_IDS,
   LEGACY_SOURCE_IDS,
+  REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   createPreparedMigrationJournal,
 } = require('../lib/profile-workspace-migration-journal');
 const {
@@ -16,6 +17,19 @@ const {
 const {
   ProfileWorkspaceMigrationJournalStore,
 } = require('../lib/profile-workspace-migration-store');
+const {
+  collectLegacyFlatSourceReceipts,
+} = require('../lib/legacy-flat-source-receipts');
+const {
+  retireLegacyFlatSources,
+} = require('../lib/legacy-flat-source-retirement');
+const {
+  destinationPathMap,
+  materializeDestinationFiles,
+  verifyDestinationFiles,
+} = require('../lib/profile-workspace-destination-files');
+const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+const { encryptVpnCredentialEnvelope } = require('../lib/vpn-credential-envelope');
 
 function receipt(seed) {
   return Object.freeze({
@@ -27,6 +41,15 @@ function receipt(seed) {
 
 function receipts(ids, start) {
   return Object.freeze(Object.fromEntries(ids.map((id, index) => [id, receipt(start + index)])));
+}
+
+function legacyReceipts(start) {
+  return Object.freeze(Object.fromEntries(LEGACY_SOURCE_IDS.map((id, index) => [
+    id,
+    REQUIRED_ABSENT_LEGACY_SOURCE_IDS.includes(id)
+      ? Object.freeze({ present: false, bytes: 0, sha256: null })
+      : receipt(start + index),
+  ])));
 }
 
 class MemoryJournalStore {
@@ -65,7 +88,7 @@ function scenario(overrides = {}) {
   const store = overrides.store || new MemoryJournalStore();
   let legacy = overrides.legacy ?? true;
   let destination = overrides.destination ?? false;
-  let sourceReceipts = overrides.sourceReceipts || receipts(LEGACY_SOURCE_IDS, 1);
+  let sourceReceipts = overrides.sourceReceipts || legacyReceipts(1);
   let destinationReceipts = overrides.destinationReceipts || receipts(DESTINATION_RECEIPT_IDS, 101);
   let entropy = 1;
   const calls = { build: 0, verify: 0, retire: 0 };
@@ -164,7 +187,7 @@ test('prepared migration blocks if any legacy source receipt changed', () => {
     buildDestination() { throw new Error('first crash'); },
   });
   assert.throws(() => value.coordinator.run(), /first crash/u);
-  value.setSourceReceipts(receipts(LEGACY_SOURCE_IDS, 20));
+  value.setSourceReceipts(legacyReceipts(20));
   assert.deepEqual(value.coordinator.run(), {
     ok: false,
     status: 'blocked',
@@ -268,7 +291,7 @@ test('coordinator and owner-only filesystem journal store complete one real cont
   let legacy = true;
   let destination = false;
   let entropy = 1;
-  const sources = receipts(LEGACY_SOURCE_IDS, 1);
+  const sources = legacyReceipts(1);
   const destinations = receipts(DESTINATION_RECEIPT_IDS, 101);
   const coordinator = new ProfileWorkspaceMigrationCoordinator({
     userData,
@@ -297,5 +320,94 @@ test('coordinator and owner-only filesystem journal store complete one real cont
   });
   assert.equal(coordinator.run().status, 'migrated');
   assert.equal(store.read(), null);
+  assert.equal(coordinator.run().status, 'already_migrated');
+});
+
+test('all P3 storage adapters complete one synthetic all-old to all-new filesystem migration', (t) => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-full-migration-'));
+  t.after(() => fs.rmSync(userData, { recursive: true, force: true }));
+  const legacyPaths = createLegacyFlatSourcePaths(userData);
+  for (const id of ['settings', 'settingsBackup', 'vpnCredential', 'routingRules',
+    'proxyCredential', 'engineLog', 'engineLogRotated', 'engineLogRetention']) {
+    fs.writeFileSync(legacyPaths[id], `legacy-${id}`, { mode: 0o600 });
+  }
+  const sourceReceipts = collectLegacyFlatSourceReceipts({ userData });
+  const journalStore = new ProfileWorkspaceMigrationJournalStore({
+    filePath: path.join(userData, 'global', 'profile-account-workspace-migration.json'),
+  });
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    getSelectedStorageBackend: () => 'keychain',
+    encryptString: (value) => Buffer.from(value, 'utf8').map((byte) => byte ^ 0xa5),
+    decryptString: (value) => Buffer.from(value).map((byte) => byte ^ 0xa5).toString('utf8'),
+  };
+  let entropy = 1;
+  let destinationLayout = null;
+  const coordinator = new ProfileWorkspaceMigrationCoordinator({
+    userData,
+    journalStore,
+    legacyAuthorityExists: () => fs.existsSync(legacyPaths.settings),
+    destinationAuthorityExists: (context) => {
+      const layout = context?.layout || destinationLayout;
+      return Boolean(layout && fs.existsSync(destinationPathMap(layout).globalSettings));
+    },
+    collectSourceReceipts: () => collectLegacyFlatSourceReceipts({ userData }),
+    prepareJournal: (receiptsValue) => createPreparedMigrationJournal({
+      profileId: 'hkustgz',
+      profileRevision: 1,
+      profileCredentialBindingRevision: 1,
+      gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
+      protocolFamily: 'easyconnect-password-modern-l3-v1',
+      sourceReceipts: receiptsValue,
+      randomBytes: () => Buffer.alloc(16, entropy++),
+      now: () => 1_700_000_000_000,
+    }),
+    buildDestination: ({ journal, layout }) => {
+      destinationLayout = layout;
+      const encrypted = encryptVpnCredentialEnvelope({
+        binding: {
+          profileId: journal.profileId,
+          profileCredentialBindingRevision: journal.profileCredentialBindingRevision,
+          accountKey: journal.identity.accountKey,
+          accountCredentialRevision: journal.accountCredentialRevision,
+          gatewayOrigin: journal.gatewayOrigin,
+          protocolFamily: journal.protocolFamily,
+        },
+        credentialVersion: 1,
+        username: 'synthetic-user',
+        password: 'synthetic-password',
+        updatedAt: 1_700_000_000_050,
+        safeStorage,
+        platform: 'darwin',
+      });
+      const absent = new Set([
+        'globalProxyHelperCredential', 'globalEngineOwner', 'globalActiveContextSwitch',
+        'credentialTransaction', 'deletionTombstone',
+      ]);
+      const files = Object.fromEntries(DESTINATION_RECEIPT_IDS.map((id) => [
+        id,
+        absent.has(id) ? null : Buffer.from(`destination-${id}`, 'utf8'),
+      ]));
+      files.vpnCredential = encrypted;
+      try {
+        return materializeDestinationFiles({ layout, files });
+      } finally {
+        encrypted.fill(0);
+      }
+    },
+    verifyDestination: ({ layout }) => verifyDestinationFiles({ layout }),
+    retireLegacy: () => retireLegacyFlatSources({
+      userData,
+      expectedReceipts: sourceReceipts,
+    }),
+    now: () => 1_700_000_000_100,
+  });
+
+  assert.deepEqual(coordinator.run(), {
+    ok: true, status: 'migrated', authority: 'destination',
+  });
+  assert.equal(fs.existsSync(legacyPaths.settings), false);
+  assert.equal(fs.existsSync(destinationPathMap(destinationLayout).vpnCredential), true);
+  assert.equal(journalStore.read(), null);
   assert.equal(coordinator.run().status, 'already_migrated');
 });

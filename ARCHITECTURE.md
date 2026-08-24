@@ -153,6 +153,11 @@ ProtocolFamily 和 credential version。解密结果由 Main-only zeroizing owne
 destination 时删除 legacy。生产接线前的非激活合同见
 [`ADR-0009`](docs/adr/0009-p3-migration-coordinator.md)。
 
+destination materializer 必须在第一次写入前预检全部 exact-schema target；已存在且 digest 相同可幂等
+复用，任何冲突、link、宽权限或未知文件都不得覆盖。legacy retirement 只能在 committed journal
+下重新验证收据后逐文件 unlink/fsync，禁止递归删除，并把旧 `settings.json` 权威放在最后退休。
+具体非激活适配器合同见 [`ADR-0010`](docs/adr/0010-p3-destination-and-retirement.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态
