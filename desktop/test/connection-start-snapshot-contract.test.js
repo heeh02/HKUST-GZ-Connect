@@ -39,6 +39,7 @@ test('the final snapshot is the one passed to engine arguments and credential st
   assert.match(finalPath, /--socks-bind[^\n]+Number\(s\.port\)/);
   assert.match(finalPath, /s\.strictProxyAuth === true/);
   assert.match(finalPath, /'--control-api-v2-stdin'/);
-  assert.match(finalPath, /child\.stdin\.write\(`\$\{s\.username\}\\n\$\{pw\}\\n/);
+  assert.match(finalPath, /'--profile-binding-v1-stdin'/);
+  assert.match(finalPath, /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{s\.username\}\\n\$\{pw\}\\n/);
   assert.doesNotMatch(finalPath, /child\.stdin\.end\(/);
 });

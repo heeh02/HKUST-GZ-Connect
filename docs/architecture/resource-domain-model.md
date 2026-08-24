@@ -1,8 +1,8 @@
-# Resource domain model
+# Web resource domain model
 
 Status: 2.0 architecture contract; no production capability is enabled by this document.
 
-This document defines the neutral resource model for the future Campus Workspace. It deliberately separates:
+This document defines the Web resource model for the first Campus Workspace Beta. It deliberately separates:
 
 - a resource being present in a package, local settings or an authenticated catalogue;
 - the source and trust class of that resource;
@@ -10,8 +10,9 @@ This document defines the neutral resource model for the future Campus Workspace
 - whether this build and current session have the required capability and Exit;
 - the private material required to launch it.
 
-None of those facts implies another. In particular, a parsed server field, a known resource type or an opaque
-launch target does not prove that HKUST(GZ), another school or the current production build supports it.
+None of those facts implies another. In particular, a parsed server field, an apparent SSH/HPC/Jupyter/database
+type or an opaque target does not prove that HKUST(GZ), another school or the current production build supports
+or should launch it.
 
 ## 1. Current evidence boundary
 
@@ -47,15 +48,16 @@ allow or deny decisions.
 Production still uses `UnsupportedResourceProvider`. The offline provider proves parser and redaction behavior
 only. It does not prove authenticated retrieval, authorization semantics, catalogue refresh, expiry or launch.
 
-### CLI and advanced-access building blocks
+### External integration building blocks are a separate domain
 
-The current product provides an authenticated loopback SOCKS/HTTP frontend, generated Clash/PAC/SSH
-configuration and `ec-proxy-command` for an SSH-style byte stream. It does not currently provide a generic
-resource launcher, scoped TCP/UDP forwarding, database or Jupyter launch orchestration, file-resource opening,
-Remote Desktop or WebVPN.
+The current product provides an authenticated loopback SOCKS/HTTP frontend, generated Clash/PAC/OpenSSH
+configuration and `ec-proxy-command` for an OpenSSH-style byte stream. These are External Tool Integration Center
+building blocks, not resource descriptors or launchers. Their profile/account binding and transactional
+export/install/update/remove contract is owned by
+[`ADR-0005`](../adr/0005-external-tool-integration-center.md).
 
-The model below must therefore preserve the current Web behavior while representing all other types honestly as
-unsupported or unavailable until their own implementation and evidence gates pass.
+The model below preserves current Web behavior. The first Beta does not map SSH, HPC, TCP/UDP, database,
+Jupyter, file, Remote Desktop or WebVPN records into typed resource launchers.
 
 ## 2. Ownership and scope
 
@@ -123,7 +125,7 @@ ResourceDescriptorInternal
     fetchedAt?
     expiresAt?
 
-  privateLaunchTarget
+  privateWebTarget
 ```
 
 ### Resource identity
@@ -169,47 +171,30 @@ checks.
 
 ### Resource type
 
-`ResourceType` is a closed, versioned enum:
+The first-Beta `ResourceType` is a closed, versioned enum:
 
 ```text
 web
-ssh
-tcp
-udp
-database
-jupyter
-file
-remote_desktop
-webvpn
 unsupported
 ```
 
-`unsupported` quarantines a bounded record whose source type has no reviewed neutral mapping. It is visible only
-when useful to explain why it cannot be opened and is never launchable.
+`unsupported` quarantines a bounded record whose source type has no reviewed Web mapping. It is visible only when
+useful to explain why it cannot be opened and is never launchable. SSH, HPC, TCP/UDP, database, Jupyter, file,
+Remote Desktop and WebVPN are not reserved first-Beta enum variants; adding one requires a later evidence-backed
+schema/version and an independent product decision. Unknown values must not be guessed from names, ports or URL
+shapes.
 
-The listed types are product-domain categories, not vendor numeric mappings. A vendor adapter may map a source
-value to one of them only after the value semantics are established by authorized evidence. Unknown values must
-not be guessed from apparent names, port numbers or URL shapes.
+### Private Web target
 
-### Private launch target
-
-`privateLaunchTarget` is a provider-owned, non-serializable, redacted-debug value. Its possible neutral shapes
-include:
+`privateWebTarget` is a provider-owned, non-serializable, redacted-debug value:
 
 ```text
-WebTarget            exact URL and intended route
-SshTarget            host, port and optional non-secret user hint
-TcpTarget            host and reviewed port policy
-UdpTarget            host and reviewed port policy
-DatabaseTarget       engine/display hint plus TcpTarget; never a database password
-JupyterTarget        private Web or Tcp composition; query tokens remain private
-FileTarget           provider-owned location and reviewed launcher family
-RemoteDesktopTarget  provider/backend-owned reference
-WebVpnTarget         provider-owned resource reference for WebVpnExit
+WebTarget  exact HTTPS/HTTP URL and intended route
 ```
 
-These shapes do not define a vendor wire format. They must not implement ordinary `Serialize`, `Display` or
-value-bearing `Debug`. Session-bound target strings use zeroizing storage where practical.
+This shape does not define a vendor wire format. It must not implement ordinary `Serialize`, `Display` or
+value-bearing `Debug`. Session-bound target strings use zeroizing storage where practical. External tool adapters
+never receive this target.
 
 ## 4. Renderer view
 
@@ -261,38 +246,28 @@ fields. That editor contract cannot be used to retrieve or mutate built-in or se
 compiled implementation, selected provider/backend, current profile and current ingress mode. Profile JSON or a
 resource record cannot promote a capability to Supported.
 
-Candidate neutral identifiers include:
+First-Beta identifiers include:
 
 ```text
 resource.catalogue
 resource.authorization
 frontend.campus_workspace
-frontend.ssh_proxy_command
-frontend.scoped_tcp_forward
-frontend.scoped_udp_forward
-frontend.file_launcher
-frontend.remote_desktop
 transport.l3
-transport.tcp_resource
-transport.web_vpn
 ```
 
-Names in this document are reserved architecture vocabulary; only existing provider capability names are
-currently implemented. New identifiers require the normal provider/contract review.
+Only existing provider capability names are currently implemented. SSH, forwarding, file, Remote Desktop and
+WebVPN identifiers are not P8 resource capabilities; future additions require a separately versioned contract.
 
 `requiredExit` is explicit and singular:
 
 ```text
 direct
 campus_modern_l3
-tcp_resource
-webvpn
 unresolved
 ```
 
-There is no implicit fallback. If `campus_modern_l3` is unavailable, a resource does not become Direct. If
-`webvpn` is unsupported, a WebVPN resource does not become an ordinary HTTP-proxy request. `unresolved` is
-non-launchable until a reviewed adapter selects an exact Exit.
+There is no implicit fallback. If `campus_modern_l3` is unavailable, a resource does not become Direct.
+`unresolved` is non-launchable until a reviewed Web adapter selects an exact Exit.
 
 ## 6. Authorization, revision and expiry
 
@@ -351,7 +326,7 @@ A `LaunchHandle` is:
 
 The handle encodes no target. A MACed or encrypted target blob is not a substitute for the owner-side record.
 
-## 8. Launcher boundary
+## 8. Web launcher boundary
 
 ### Components
 
@@ -362,16 +337,10 @@ Trusted IPC boundary
   -> ResourceCatalogueCoordinator
   -> ResourceLaunchBroker
        -> WorkspaceWebLauncher
-       -> SshConfigLauncher
-       -> ScopedTcpForwardLauncher
-       -> ScopedUdpForwardLauncher
-       -> FileResourceLauncher
-       -> RemoteDesktopLauncher
-       -> WebVpnLauncher
 ```
 
-The Renderer never chooses an executable, host, port, raw URL or Exit at launch time. It chooses only a bounded
-action allowed by the view, such as `open`, `copy_config`, `create_temporary_endpoint` or `cancel`.
+The Renderer never chooses an executable, host, port, raw URL or Exit at launch time. It chooses only the bounded
+Web actions `open` or `cancel` allowed by the view.
 
 ### Launch transaction
 
@@ -382,48 +351,24 @@ validate trusted IPC sender and exact schema
   -> verify source, revision, expiry and authorization
   -> verify required capabilities and exact Exit
   -> resolve and validate the private target under that Exit's destination policy
-  -> prepare a bounded LaunchHandle and launcher-owned lease
+  -> prepare a bounded Web LaunchHandle
   -> atomically consume the LaunchHandle
-  -> execute the type-specific launcher
+  -> execute the Workspace Web launcher
   -> record only a sanitized outcome
 ```
 
 If any snapshot changes before consumption, launch fails and the caller must request a new handle. Cancellation
-owns and closes every partial listener, Browser request, child process and temporary credential.
+owns and closes every partial Browser request and temporary Web authorization material.
 
-### Type-specific behavior and current support boundary
+### Web behavior and current support boundary
 
-| Type | Intended launcher | Current implementation fact | Activation rule |
+| Type | Intended launcher | Current implementation fact | P8 activation rule |
 | --- | --- | --- | --- |
-| Web | Managed Campus Workspace under an exact route/Exit | Built-in/local Web shortcuts exist; they currently pass raw URLs and always call `ensureConnected()` | P8 migrates current behavior behind a handle and may skip Engine connection for a validated Direct rule under the documented 1.x Chromium-DIRECT boundary; ControlledDirectExit later strengthens resolved-address ownership |
-| SSH | Generate/copy bounded SSH config or open an allowlisted terminal action | Generic SOCKS `ProxyCommand` and SSH config generation exist, but no resource-scoped SSH launcher | P8 Beta requires this launcher after resource target validation and profile/account/generation binding tests |
-| TCP | Temporary owner-scoped loopback forwarding lease | No generic scoped TCP-forward resource launcher exists | P8 Beta requires the bounded baseline after `frontend.scoped_tcp_forward`, strict ownership, timeout and cleanup gates pass |
-| UDP | Temporary owner-scoped loopback forwarding lease | No generic scoped UDP-forward resource launcher exists; strict proxy mode intentionally cannot authenticate SOCKS UDP datagrams | Requires a reviewed local authorization/ownership design; never inherit TCP assumptions |
-| Database | A typed presentation over a scoped TCP lease | No database launcher exists | Never stores database credentials; requires the TCP launcher and a reviewed database family hint |
-| Jupyter | Compose a scoped TCP lease and managed Web launch | No Jupyter launcher exists | Tokens remain private; requires both TCP and Web launch capabilities |
-| File | Reviewed platform/provider file launcher | No safe generic file-resource launcher exists | Each scheme/platform needs an allowlist and threat model; never call a shell with arbitrary input |
-| Remote Desktop | Separate optional backend/product | Unsupported and explicitly deferred | Requires independent protocol, sandbox, input/clipboard and release review |
-| WebVPN | `WebVpnExit` with provider-owned rewrite/session state | Typed backend slot exists but production backend is unsupported | Requires an L3-disabled real profile, authenticated provider evidence and parity; never fall back to HTTP proxy |
+| Web | Managed Campus Workspace under an exact route/Exit | Built-in/local Web shortcuts exist; they currently pass raw URLs and always call `ensureConnected()` | Migrate current behavior behind a handle and skip Engine connection for a validated Direct rule under the documented 1.x Chromium-DIRECT boundary; ControlledDirectExit later strengthens resolved-address ownership |
+| Unsupported/unknown | None | Offline parsers may observe bounded unknown records | Show only a safe explanation when useful; open action and network sessions remain absent |
 
-Creating the descriptor types does not activate any launcher in this table.
-
-### Scoped forwarding lease
-
-A future TCP/UDP launcher must return a private `ForwardLease`, not a permanent public listener:
-
-```text
-ForwardLease
-  leaseHandle
-  loopbackEndpoint
-  profile/account/Engine generation
-  destination resourceHandle + revision
-  protocol
-  idleDeadline / absoluteDeadline
-```
-
-The listener is loopback-only, uses an ephemeral or explicitly reviewed local port, has one owner and is removed
-on logout, disconnect, profile/account switch, Engine restart, expiry or cancellation. It is never a LAN sharing
-feature. The view may expose the local endpoint only after the lease is ready; it never exposes the remote target.
+External Tool Integration Center preview/export/managed lifecycle is not a launcher row in this table. Scoped TCP/UDP
+forwarding remains a post-Beta Headless capability in P13, not a P8 `ForwardLease`.
 
 ## 9. Search, favorites and recent activity
 
@@ -492,11 +437,11 @@ aggregate diagnostics by stable error code, but do not record a target, query, h
 
 ### Local user
 
-- created only through a type-specific, exact-schema editor;
-- initially remains Web-only during migration from the current model;
+- created only through the Web exact-schema editor;
+- remains Web-only during and after the first-Beta migration;
 - is validated on write and again on launch;
-- cannot select an unsupported capability, inject a provider ID, invent server authorization or supply an
-  executable/argument list;
+- cannot select an unsupported capability, inject a provider ID, invent server authorization, supply an
+  executable/argument list or create a non-Web resource type;
 - remains isolated to one profile/account/workspace and is removed through a durable local transaction.
 
 ## 11. Error model
@@ -526,7 +471,7 @@ change route, install/enable a reviewed feature, or contact the resource owner. 
 target, server response, raw authorization value or command line.
 
 Site failure, DNS failure, Tunnel failure and authorization denial remain distinct. No error path silently sends
-a Campus resource Direct or substitutes L3 for WebVPN/TCP Resource.
+a Campus Web resource Direct or treats an unsupported/unknown record as launchable.
 
 ## 12. Security invariants
 
@@ -536,15 +481,14 @@ a Campus resource Direct or substitutes L3 for WebVPN/TCP Resource.
 4. Server authorization cannot outlive its provider session, revision or expiry.
 5. LaunchHandle is one-use, generation-bound and non-persistent.
 6. Unknown type, capability, Exit or authorization semantics fail closed.
-7. Direct, Campus L3, TCP Resource and WebVPN never silently substitute for each other.
+7. Direct and Campus L3 never silently substitute for each other.
 8. Every application-owned resolved destination passes the selected Exit's post-resolution safety policy.
    P8's existing Chromium `DIRECT` route is a documented temporary exception: it keeps current literal/text host
    safety and proves zero Campus-Engine start/wait, but does not claim DNS-rebinding protection. P12 removes this
    exception by activating ControlledDirectExit.
-9. Launchers never construct an arbitrary shell command from resource data.
-10. Temporary listeners are loopback-only, owner-scoped, bounded and synchronously cleaned up.
-11. Resource labels/targets are absent from default logs, telemetry and crash reports.
-12. Profile manifests, server catalogues and local records use distinct namespaces and cannot override each
+9. The Web launcher never constructs a shell command or external-tool configuration from resource data.
+10. Resource labels/targets are absent from default logs, telemetry and crash reports.
+11. Profile manifests, server catalogues and local records use distinct namespaces and cannot override each
     other's trust labels.
 
 ## 13. Migration from the current simple model
@@ -581,7 +525,7 @@ Requirements:
 - keep the current maximum of 32 local entries until a separately measured storage/UI bound replaces it;
 - make migration idempotent and all-old/all-new under write, fsync, rename and restart fault injection;
 - retain the existing local editor as a Web-only compatibility adapter;
-- keep non-Web local creation disabled until a type-specific editor and launcher are reviewed;
+- reject non-Web local creation in the first-Beta schema; future support requires a new versioned contract;
 - retain a one-release rollback input without treating old data as an alternate authorization source;
 - never attempt to synthesize a server catalogue from built-in or local shortcuts.
 
@@ -590,9 +534,9 @@ path. This preserves current behavior but does not satisfy a future claim that D
 Tunnel: the current manager still calls `ensureConnected()`. That improvement requires its own launcher/Exit
 activation and tests.
 
-## 14. P8 Resource Workspace acceptance
+## 14. P8 Web Resource Workspace acceptance
 
-“P8” is the Resource Domain and Campus Workspace Beta milestone in the Revision 4 execution plan. This document
+“P8” is the Web Resource Workspace Beta milestone in the Revision 5 execution plan. This document
 defines its gates but does not itself authorize production changes.
 
 P8 is complete only when all of the following are true.
@@ -616,7 +560,7 @@ P8 is complete only when all of the following are true.
 
 ### Search and workspace UX
 
-- search covers all view types and presentation fields without indexing private targets;
+- search covers Web and unsupported view presentation fields without indexing private targets;
 - favorites and recent activity are profile/account/workspace scoped, bounded and durable;
 - unavailable, denied, expired and unsupported resources remain distinguishable and actionable;
 - keyboard navigation, bilingual labels and basic accessibility are covered by real Electron tests;
@@ -624,18 +568,12 @@ P8 is complete only when all of the following are true.
 
 ### Launcher
 
-- every launch goes through the broker transaction and a one-use LaunchHandle;
+- every Web open goes through the broker transaction and a one-use LaunchHandle;
 - existing Web shortcut launch behavior has packaged Electron parity after migration;
 - resource refresh, profile/account switch, route revision or Engine restart invalidates an old handle;
-- partial Browser/listener/process resources are cleaned after cancellation and 100 repeated launch/close cycles;
-- non-Web types either pass their independent implementation gate or return the exact unsupported/unavailable
-  error; schema presence alone never counts as launch support;
-- SSH, TCP, UDP, database, Jupyter, file, Remote Desktop and WebVPN are not reported Supported merely because
-  their descriptor and launcher interfaces exist;
-- P8 SSH completion requires exact-target validation, account/profile/Engine-generation binding, bounded config
-  output, zero shell interpolation and packaged one-click copy/open tests;
-- P8 TCP completion requires exact-target validation, loopback-only ephemeral listener, one owner, absolute/idle
-  expiry, cancel/disconnect/switch cleanup and zero residue across 100 lease cycles;
+- partial Browser resources are cleaned after cancellation and 100 repeated launch/close cycles;
+- SSH, HPC, TCP/UDP, database, Jupyter, file, Remote Desktop and WebVPN expose no P8 launch action or network
+  session; unknown schema presence never counts as support;
 - Direct-without-Tunnel may be claimed only for the existing validated Browser Direct route after a packaged
   P8 test proves it starts/waits for the Campus Engine zero times; it does not claim ControlledDirectExit-level
   resolved-address protection before P12.
@@ -647,8 +585,10 @@ P8 is complete only when all of the following are true.
   LaunchHandles or credentials;
 - package verification excludes synthetic catalogues, test launchers and fixture targets;
 - macOS, Windows and Linux packages retain the current loopback-only, no-global-network-mutation behavior;
-- no vendor authorization field, WebVPN endpoint, Remote Desktop protocol or forwarding behavior is guessed.
+- no vendor authorization field, SSH/HPC/Jupyter/database target, WebVPN endpoint, Remote Desktop protocol or
+  forwarding behavior is guessed.
 
-P8 may be called the first Resource Workspace Beta only after Web, resource-scoped SSH configuration and bounded
-TCP ForwardLease gates all pass. UDP, database, Jupyter, file, Remote Desktop and WebVPN remain typed
-future/unsupported capabilities or are omitted from the ordinary student view.
+P8 may be called the first Resource Workspace Beta only after the Web gates above and the independently defined
+External Tool Integration Center gates in
+[`ADR-0005`](../adr/0005-external-tool-integration-center.md) all pass. No non-Web resource launcher or scoped
+forwarding capability is implied.

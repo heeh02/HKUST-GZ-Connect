@@ -3,6 +3,7 @@ use ec_compat::engine::auth_control::{
 };
 use ec_compat::engine::auth_lifecycle::BlockingOperation;
 use ec_compat::engine::auth_transaction::AUTH_TRANSACTION_TIMEOUT_MS;
+use ec_compat::engine::config_binding::{load_engine_config, read_expected_config_binding};
 use ec_compat::engine::control::{
     ControlAction, ControlExchange, ControlSession, MAX_ACTIVE_REQUESTS,
 };
@@ -24,7 +25,6 @@ use ec_compat::engine::socks_auth::{
     EngineCredentials, ProxyAuthentication, ProxyAuthenticationMode, read_engine_credentials,
     read_engine_credentials_prefix,
 };
-use ec_compat::watch::load_json;
 use ec_compat::{Error, ErrorKind, Result};
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -53,6 +53,7 @@ const ENGINE_LIFECYCLE_FIXTURE_ADDRESS: Ipv4Addr = Ipv4Addr::new(10, 254, 0, 2);
 
 struct EngineArguments {
     config: PathBuf,
+    profile_binding_v1_stdin: bool,
     bind: SocketAddr,
     generation: u64,
     proxy_authentication_mode: ProxyAuthenticationMode,
@@ -211,6 +212,7 @@ fn argument_value<'a>(args: &'a [String], name: &str) -> Result<&'a str> {
 
 fn validate_arguments(args: &[String]) -> Result<()> {
     let mut config_seen = false;
+    let mut profile_binding_seen = false;
     let mut credentials_seen = false;
     let mut socks_seen = false;
     let mut generation_seen = false;
@@ -229,6 +231,10 @@ fn validate_arguments(args: &[String]) -> Result<()> {
                 config_seen = true;
                 require_argument_value(args, index, "--config")?;
                 index += 2;
+            }
+            "--profile-binding-v1-stdin" if !profile_binding_seen => {
+                profile_binding_seen = true;
+                index += 1;
             }
             "--socks-bind" if !socks_seen => {
                 socks_seen = true;
@@ -285,6 +291,9 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
         ));
     }
     let config = PathBuf::from(argument_value(args, "--config")?);
+    let profile_binding_v1_stdin = args
+        .iter()
+        .any(|argument| argument == "--profile-binding-v1-stdin");
     let bind = argument_value(args, "--socks-bind")?
         .parse::<SocketAddr>()
         .map_err(|_| Error("--socks-bind is not a valid socket address".into()))?;
@@ -324,6 +333,7 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     }
     Ok(EngineArguments {
         config,
+        profile_binding_v1_stdin,
         bind,
         generation,
         proxy_authentication_mode,
@@ -931,13 +941,29 @@ async fn run_engine<W: Write>(
     lifecycle
         .state(EngineState::Connecting)
         .map_err(event_output_failure)?;
-    let config = load_json(Path::new(&arguments.config)).map_err(|_| {
-        failure(
-            EngineErrorCode::ConfigurationInvalid,
-            StopReason::StartupFailed,
-            Error("engine configuration could not be loaded or is invalid".into()),
+    let stdin = std::io::stdin();
+    let mut inherited_stdin = stdin.lock();
+    let config_binding = if arguments.profile_binding_v1_stdin {
+        Some(
+            read_expected_config_binding(&mut inherited_stdin).map_err(|_| {
+                failure(
+                    EngineErrorCode::ConfigurationInvalid,
+                    StopReason::StartupFailed,
+                    Error("engine configuration binding is invalid".into()),
+                )
+            })?,
         )
-    })?;
+    } else {
+        None
+    };
+    let config = load_engine_config(Path::new(&arguments.config), config_binding.as_ref())
+        .map_err(|_| {
+            failure(
+                EngineErrorCode::ConfigurationInvalid,
+                StopReason::StartupFailed,
+                Error("engine configuration could not be loaded or is invalid".into()),
+            )
+        })?;
     let profile_dns_servers = configured_vpn_dns_servers(&config).map_err(|_| {
         failure(
             EngineErrorCode::ConfigurationInvalid,
@@ -950,9 +976,9 @@ async fn run_engine<W: Write>(
         .state(EngineState::Authenticating)
         .map_err(event_output_failure)?;
     let credentials = if arguments.control_api_v2_stdin {
-        read_engine_credentials_prefix(std::io::stdin().lock(), arguments.proxy_authentication_mode)
+        read_engine_credentials_prefix(&mut inherited_stdin, arguments.proxy_authentication_mode)
     } else {
-        read_engine_credentials(std::io::stdin().lock(), arguments.proxy_authentication_mode)
+        read_engine_credentials(&mut inherited_stdin, arguments.proxy_authentication_mode)
     }
     .map_err(|error| {
         failure(
@@ -961,6 +987,7 @@ async fn run_engine<W: Write>(
             error,
         )
     })?;
+    drop(inherited_stdin);
     let mut control_receiver = if arguments.control_api_v2_stdin {
         Some(start_control_reader().map_err(|error| {
             failure(

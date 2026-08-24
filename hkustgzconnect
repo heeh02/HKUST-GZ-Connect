@@ -6,6 +6,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
 ENGINE="$HERE/independent/target/release/ec-engine"
 PROXY_HELPER="$HERE/independent/target/release/ec-proxy-command"
 ENGINE_CONFIG="$HERE/independent/config/hkustgz.json"
+REVIEWED_ENGINE_CONFIG_SHA256="2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a"
 CONF="$HERE/config.toml"
 
 RUNDIR="$HOME/.hkustgzconnect"
@@ -83,18 +84,22 @@ report_up(){
 }
 
 run_engine(){
-  local pw
+  local binding_frame pw
+  printf -v binding_frame '{"type":"engine_config_binding","apiVersion":1,"configSha256":"%s","gatewayOrigin":"https://remote.hkust-gz.edu.cn","profileId":"hkustgz","profileRevision":1}' \
+    "$REVIEWED_ENGINE_CONFIG_SHA256"
   pw="$(get_pw)" || true
   [ -n "${pw:-}" ] || die "no password in Keychain — run: $(basename "$0") set-password"
   cli_proxy_load_or_create "$PROXY_CREDENTIAL" "$SOCKS_HOST:$SOCKS_PORT" \
     || die "local proxy credential file is unsafe or unavailable"
   {
+    printf '%s\n' "$binding_frame"
     printf '%s\n' "$ACC"
     printf '%s\n' "$pw"
     printf '%s\n' "$CLI_PROXY_USERNAME"
     printf '%s\n' "$CLI_PROXY_PASSWORD"
   } | "$ENGINE" \
     --config "$ENGINE_CONFIG" \
+    --profile-binding-v1-stdin \
     --credentials-stdin \
     --socks-bind "$SOCKS_HOST:$SOCKS_PORT" \
     --socks-auth-stdin

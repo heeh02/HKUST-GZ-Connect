@@ -7,6 +7,7 @@
 pub mod auth_control;
 pub mod auth_lifecycle;
 pub mod auth_transaction;
+pub mod config_binding;
 pub mod control;
 pub mod control_mux;
 pub mod data_plane;

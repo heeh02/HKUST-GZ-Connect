@@ -7,6 +7,7 @@
 // network request and never records credential values.
 
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const net = require('node:net');
 const path = require('node:path');
 const readline = require('node:readline');
@@ -21,9 +22,16 @@ function argument(name) {
 
 const generation = Number(argument('--generation'));
 const bind = argument('--socks-bind');
+const configPath = argument('--config');
 const port = Number(String(bind).split(':').at(-1));
 if (!Number.isSafeInteger(generation) || generation <= 0 ||
-    !Number.isInteger(port) || port < 1025 || port > 65535) process.exit(64);
+    !Number.isInteger(port) || port < 1025 || port > 65535 ||
+    !process.argv.includes('--profile-binding-v1-stdin') || !path.isAbsolute(configPath)) {
+  process.exit(64);
+}
+const configBytes = fs.readFileSync(configPath);
+const configSha256 = crypto.createHash('sha256').update(configBytes).digest('hex');
+const configOrigin = new URL(JSON.parse(configBytes.toString('utf8')).base_url).origin;
 
 const attemptFile = path.join(userData, 'synthetic-engine-attempt.txt');
 const observationFile = path.join(userData, 'synthetic-engine-observations.jsonl');
@@ -78,9 +86,25 @@ process.on('SIGINT', () => stopCleanly());
 
 send({ type: 'hello', apiVersion: 1, capabilities: ['password', 'l3'] });
 
+let bindingSeen = false;
 let credentialLines = 0;
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 input.on('line', (line) => {
+  if (!bindingSeen) {
+    let binding;
+    try { binding = JSON.parse(line); } catch { process.exit(64); }
+    const keys = Object.keys(binding || {}).sort();
+    if (JSON.stringify(keys) !== JSON.stringify([
+      'apiVersion', 'configSha256', 'gatewayOrigin', 'profileId', 'profileRevision', 'type',
+    ]) || binding.type !== 'engine_config_binding' || binding.apiVersion !== 1 ||
+        binding.configSha256 !== configSha256 || binding.gatewayOrigin !== configOrigin ||
+        binding.profileId !== 'hkustgz' || binding.profileRevision !== 1) {
+      process.exit(64);
+    }
+    bindingSeen = true;
+    observe('config_binding_received');
+    return;
+  }
   if (credentialLines < 2) {
     credentialLines += 1;
     if (credentialLines !== 2) return;

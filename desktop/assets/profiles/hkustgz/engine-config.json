@@ -1,0 +1,29 @@
+{
+  "base_url": "https://remote.hkust-gz.edu.cn",
+  "endpoints": {
+    "discovery": "/por/login_auth.csp?apiversion=1",
+    "logout": "/por/logout.csp?apiversion=1",
+    "packages": "/por/ec_pkg.csp",
+    "password_config": "/public/psw_config?apiversion=1",
+    "password_login": "/por/login_psw.csp?anti_replay=1&encrypt=1&type=csp",
+    "resource_list": "/por/rclist.csp?rnd=1234",
+    "session_config": "/por/conf.csp",
+    "windows_installer": "/com/EasyConnectInstaller.exe",
+    "windows_modules": "/com/WindowsModule.xml"
+  },
+  "hash_windows_installer": true,
+  "max_artifact_bytes": 536870912,
+  "proxy": {
+    "allow_system_dns_fallback": false,
+    "vpn_dns_servers": [
+      "10.90.63.2",
+      "10.90.63.3"
+    ]
+  },
+  "target": "hkustgz-production",
+  "timeout_seconds": 15,
+  "tunnel": {
+    "mtu": 1400
+  },
+  "user_agent": "EasyConnect_windows"
+}

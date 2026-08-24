@@ -7,14 +7,9 @@ const { buildDomainRoutePac } = require('./domain-route-policy');
 const DEFAULT_ROUTE_DOMAINS = SCHOOL_CAMPUS_HOSTS;
 const MAX_ROUTE_DOMAINS = 64;
 
-function normalizeRouteDomains(input) {
-  const values = Array.isArray(input)
-    ? input
-    : typeof input === 'string'
-      ? input.split(/[\s,;]+/)
-      : DEFAULT_ROUTE_DOMAINS;
+function collectRouteDomains(input) {
   const normalized = [];
-  for (const value of values) {
+  for (const value of Array.isArray(input) ? input : []) {
     const candidate = String(value)
       .trim()
       .toLowerCase()
@@ -36,7 +31,19 @@ function normalizeRouteDomains(input) {
     normalized.push(domain);
     if (normalized.length >= MAX_ROUTE_DOMAINS) break;
   }
-  return normalized.length ? normalized : [...DEFAULT_ROUTE_DOMAINS];
+  return normalized;
+}
+
+function normalizeRouteDomains(input, defaultDomains = DEFAULT_ROUTE_DOMAINS) {
+  const values = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(/[\s,;]+/)
+      : defaultDomains;
+  const normalized = collectRouteDomains(values);
+  if (normalized.length) return normalized;
+  const fallback = collectRouteDomains(defaultDomains);
+  return fallback.length ? fallback : [...DEFAULT_ROUTE_DOMAINS];
 }
 
 function buildPac(routeDomains, port, options = {}) {

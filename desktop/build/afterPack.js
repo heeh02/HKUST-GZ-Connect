@@ -12,7 +12,7 @@ const {
   selectLocalAppleIdentity,
   shouldDelegateSigning,
 } = require('./macos-signing');
-const { assertNoTestOnlyEngineMarker } = require('./verify-package');
+const { assertNoTestOnlyEngineMarker, assertPackagedSchoolProfile } = require('./verify-package');
 
 function architectureName(arch) {
   return arch === 'arm64' || arch === 3 ? 'arm64' : 'amd64';
@@ -102,6 +102,10 @@ exports.default = async function afterPack(context) {
   );
   const proxyCommandPath = assertProxyCommandPresent(
     packagedEngineDirectory, context.electronPlatformName, context.arch,
+  );
+  assertPackagedSchoolProfile(
+    path.join(resourcesDir, 'app.asar'),
+    path.join(packagedEngineDirectory, 'hkustgz.json'),
   );
   if (context.electronPlatformName !== 'darwin') return;
   if (shouldDelegateSigning(process.env)) {

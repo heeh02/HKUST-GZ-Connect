@@ -74,7 +74,7 @@ function normalizeProxyAuthMigrationPending(saved = {}) {
   return false;
 }
 
-function normalizeSettings(saved = {}) {
+function normalizeSettings(saved = {}, { defaultRouteDomains = DEFAULT_ROUTE_DOMAINS } = {}) {
   const port = Number(saved.port);
   const maxAttempts = Number(saved.maxAttempts);
   return {
@@ -98,12 +98,12 @@ function normalizeSettings(saved = {}) {
     updateCheckedAt: Number.isFinite(Number(saved.updateCheckedAt)) && Number(saved.updateCheckedAt) > 0
       ? Number(saved.updateCheckedAt)
       : DEFAULTS.updateCheckedAt,
-    routeDomains: normalizeRouteDomains(saved.routeDomains),
+    routeDomains: normalizeRouteDomains(saved.routeDomains, defaultRouteDomains),
     customResources: normalizeCustomResources(saved.customResources),
   };
 }
 
-function parseSettingsFile(file) {
+function parseSettingsFile(file, options) {
   let bytes;
   try {
     bytes = readPrivateFileBounded(file, {
@@ -125,7 +125,7 @@ function parseSettingsFile(file) {
     error.settingsDocumentCorrupt = true;
     throw error;
   }
-  return normalizeSettings(parsed);
+  return normalizeSettings(parsed, options);
 }
 
 function temporaryPathFor(file, label = 'tmp') {
@@ -220,14 +220,15 @@ function notifyRecovery(callback, detail) {
   try { callback(detail); } catch {}
 }
 
-function loadSettings(file, { onRecovery } = {}) {
+function loadSettings(file, { onRecovery, defaultRouteDomains = DEFAULT_ROUTE_DOMAINS } = {}) {
+  const normalizationOptions = { defaultRouteDomains };
   const primaryExisted = fs.existsSync(file);
   const backupFile = `${file}${BACKUP_SUFFIX}`;
   const backupExisted = fs.existsSync(backupFile);
   let quarantined = '';
   let primaryError;
   try {
-    return parseSettingsFile(file);
+    return parseSettingsFile(file, normalizationOptions);
   } catch (error) {
     primaryError = error;
     const primaryIsRecoverable = error?.code === 'ENOENT' ||
@@ -246,7 +247,7 @@ function loadSettings(file, { onRecovery } = {}) {
       // explicit current-version compatibility choice, though: changing it
       // during a runtime recovery would make UI/PAC say HTTP-auth while the
       // already-running engine still exposes the selected SOCKS contract.
-      const restored = parseSettingsFile(backupFile);
+      const restored = parseSettingsFile(backupFile, normalizationOptions);
       try { writePrivateJsonAtomic(file, restored); } catch {}
       try { writePrivateJsonAtomic(backupFile, restored); } catch {}
       notifyRecovery(onRecovery, { kind: 'restored', quarantined: Boolean(quarantined) });
@@ -261,13 +262,13 @@ function loadSettings(file, { onRecovery } = {}) {
       if (primaryExisted || backupExisted) {
         notifyRecovery(onRecovery, { kind: 'defaults', quarantined: Boolean(quarantined) });
       }
-      return normalizeSettings(DEFAULTS);
+      return normalizeSettings(DEFAULTS, normalizationOptions);
     }
   }
 }
 
-function saveSettings(file, settings) {
-  const normalized = normalizeSettings(settings);
+function saveSettings(file, settings, { defaultRouteDomains = DEFAULT_ROUTE_DOMAINS } = {}) {
+  const normalized = normalizeSettings(settings, { defaultRouteDomains });
   const backupFile = `${file}${BACKUP_SUFFIX}`;
   // Never leave a historical security state available for recovery. The
   // primary rename is still atomic; removing the old backup first means a

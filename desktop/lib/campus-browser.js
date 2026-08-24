@@ -5,7 +5,6 @@ const {
   CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
-  routeForUrl,
 } = require('./campus-route');
 const { resolveDomainRouteForUrl } = require('./domain-route-policy');
 const { normalizeRuleHost } = require('./routing-rule-store');
@@ -162,6 +161,7 @@ class CampusBrowser {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
     onManageRoutingRules,
@@ -185,6 +185,7 @@ class CampusBrowser {
     this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
+    this.homeUrl = normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
     this.onError = onError;
     this.certificateController = new CertificateController({
       trustStore: certificateTrust,
@@ -478,7 +479,7 @@ class CampusBrowser {
     const active = this.activeTab();
     const navigation = navigationForContents(active?.view.webContents);
 
-    if (command === 'new-tab') this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
+    if (command === 'new-tab') this.createTab(this.homeUrl, ROUTE_CAMPUS);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -562,7 +563,7 @@ class CampusBrowser {
         setImmediate(() => {
           let popup = null;
           try {
-            popup = this.createTab(url, routeForUrl(url), { credentialReservation });
+            popup = this.createTab(url, this.resolveRoute(url).route, { credentialReservation });
           } catch {
             if (this.onError) this.onError(this.t('tab.createFailed'));
           } finally {
@@ -638,7 +639,7 @@ class CampusBrowser {
       const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
-        this.createTab(DEFAULT_CAMPUS_HOME);
+        this.createTab(this.homeUrl);
       } else if (commandKey && key === 'w') {
         event.preventDefault();
         this.closeTab(tab.id);
@@ -705,10 +706,10 @@ class CampusBrowser {
         details.reason === 'clean-exit') return;
     this.certificateController.cancelAll();
     const contents = tab.view.webContents;
-    const failedUrl = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
+    const failedUrl = this.currentUrl(tab) || this.homeUrl;
     const reason = String(details.reason || 'crashed').slice(0, 80);
     tab.loading = false;
-    tab.failedUrl = safePopupUrl(failedUrl) ? failedUrl : DEFAULT_CAMPUS_HOME;
+    tab.failedUrl = safePopupUrl(failedUrl) ? failedUrl : this.homeUrl;
     tab.renderingError = true;
     tab.crashed = true;
     this.clearCredentialCandidate(tab);
@@ -764,7 +765,7 @@ class CampusBrowser {
     }
   }
 
-  createTab(rawUrl = DEFAULT_CAMPUS_HOME, route = routeForUrl(rawUrl), options = {}) {
+  createTab(rawUrl = null, route = null, options = {}) {
     if (!this.window || this.window.isDestroyed()) return null;
     const targetWindow = this.window;
     if (!this.tabManager.canAdd()) {
@@ -773,7 +774,7 @@ class CampusBrowser {
     }
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl, undefined, this.t);
+      url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return null;
@@ -855,7 +856,7 @@ class CampusBrowser {
     // A route-switch request invalidates the in-flight page regardless of
     // whether reconnecting/configuring the requested route later succeeds.
     this.clearCredentialCandidate(tab);
-    const url = this.currentUrl(tab) || DEFAULT_CAMPUS_HOME;
+    const url = this.currentUrl(tab) || this.homeUrl;
     let host;
     try {
       host = normalizeRuleHost(new URL(url).hostname);
@@ -916,7 +917,7 @@ class CampusBrowser {
 
     if (empty) {
       this.view = null;
-      this.createTab(DEFAULT_CAMPUS_HOME, ROUTE_CAMPUS);
+      this.createTab(this.homeUrl, ROUTE_CAMPUS);
     } else if (replacement) {
       this.switchTab(replacement.id);
     } else {
@@ -972,7 +973,7 @@ class CampusBrowser {
   navigate(rawUrl, tab = this.activeTab()) {
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl, undefined, this.t);
+      url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return false;
@@ -990,8 +991,8 @@ class CampusBrowser {
     return true;
   }
 
-  async open(rawUrl, port, route = routeForUrl(rawUrl)) {
-    const url = normalizeCampusUrl(rawUrl, undefined, this.t);
+  async open(rawUrl, port, route = null) {
+    const url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     const resolution = this.resolveRoute(url, null, route);
     if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) {
       throw new Error(this.t('error.connectTimeout'));

@@ -193,6 +193,8 @@ jobs:
         run: npm run test:main-engine-lifecycle
       - name: Exercise initially-offline Main startup recovery
         run: npm run test:main-network-startup
+      - name: Exercise the School Profile registry inside a real ASAR
+        run: npm run test:profile-asar
       - name: Exercise campus-browser toolbar IPC
         run: ./node_modules/.bin/electron e2e/campus-browser-toolbar.electron.js
       - name: Exercise Campus Browser MFA credential boundaries

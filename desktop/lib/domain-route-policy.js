@@ -65,6 +65,7 @@ function normalizeDomainRoutePolicy({
   userRules = [],
   customResources = [],
   schoolDomains = SCHOOL_CAMPUS_HOSTS,
+  directPartnerDomains = DIRECT_PARTNER_HOSTS,
   serverResources = [],
 } = {}) {
   const rules = normalizeRoutingRules(userRules);
@@ -78,7 +79,8 @@ function normalizeDomainRoutePolicy({
       .map(({ host, route }) => ({ host, route })),
     customExact: normalizeResourceRoutes(customResources),
     builtinSubdomains: [
-      ...normalizeDomains(DIRECT_PARTNER_HOSTS).map((host) => ({ host, route: ROUTE_DIRECT })),
+      ...normalizeDomains(directPartnerDomains, DIRECT_PARTNER_HOSTS)
+        .map((host) => ({ host, route: ROUTE_DIRECT })),
       ...normalizeDomains(schoolDomains, SCHOOL_CAMPUS_HOSTS)
         .map((host) => ({ host, route: ROUTE_CAMPUS })),
     ],
@@ -163,6 +165,7 @@ class DomainRoutePolicyStore {
     filePath,
     customResources = () => [],
     schoolDomains = () => SCHOOL_CAMPUS_HOSTS,
+    directPartnerDomains = () => DIRECT_PARTNER_HOSTS,
     serverResources = () => [],
   } = {}) {
     if (typeof filePath !== 'string' || !filePath) {
@@ -175,6 +178,9 @@ class DomainRoutePolicyStore {
     this.schoolDomains = typeof schoolDomains === 'function'
       ? schoolDomains
       : () => schoolDomains;
+    this.directPartnerDomains = typeof directPartnerDomains === 'function'
+      ? directPartnerDomains
+      : () => directPartnerDomains;
     this.serverResources = typeof serverResources === 'function'
       ? serverResources
       : () => serverResources;
@@ -189,6 +195,7 @@ class DomainRoutePolicyStore {
       userRules: this.list(),
       customResources: this.customResources(),
       schoolDomains: this.schoolDomains(),
+      directPartnerDomains: this.directPartnerDomains(),
       serverResources: this.serverResources(),
     };
   }

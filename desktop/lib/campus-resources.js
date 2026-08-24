@@ -1,41 +1,32 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const { normalizeCampusUrl } = require('./campus-browser');
+const {
+  MAX_CUSTOM_RESOURCES,
+  MAX_MERGED_RESOURCES,
+  normalizeLegacyCustomResource,
+  validateCustomResourceDocument,
+  validateRuntimeBuiltinResources,
+} = require('./campus-resource-contract');
 const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('./campus-route');
 const { isIsolatedNetworkHost } = require('./host-safety');
 
-const RESOURCE_FILE = path.join(__dirname, '..', 'assets', 'campus-resources.json');
-const MAX_RESOURCES = 32;
-
-function normalizeResource(value, { builtin = false } = {}) {
+function normalizeResource(value) {
   if (!value || typeof value !== 'object') return null;
-  const id = String(value.id || '').trim();
-  const name = String(value.name || '').trim();
-  const description = String(value.description || '').trim();
-  if (!/^[a-z0-9-]{1,40}$/.test(id) || !name || name.length > 40 || description.length > 80) {
-    return null;
-  }
+  let route = value.route === ROUTE_DIRECT || value.route === ROUTE_CAMPUS
+    ? value.route
+    : routeForUrl(value.url);
   try {
-    let route = value.route === ROUTE_DIRECT || value.route === ROUTE_CAMPUS
-      ? value.route
-      : routeForUrl(value.url);
-    const url = normalizeCampusUrl(value.url);
-    if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(url).hostname)) {
+    if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(value.url).hostname)) {
       route = ROUTE_CAMPUS;
     }
-    return {
-      id,
-      name,
-      description,
-      url,
-      route,
-      builtin,
-    };
-  } catch {
-    return null;
-  }
+  } catch {}
+  return normalizeLegacyCustomResource({
+    id: String(value.id || '').trim(),
+    name: String(value.name || '').trim(),
+    description: String(value.description || '').trim(),
+    url: String(value.url || '').trim(),
+    route,
+  }, route);
 }
 
 function normalizeCustomResources(input) {
@@ -43,7 +34,7 @@ function normalizeCustomResources(input) {
   const seenIds = new Set();
   const seenUrls = new Set();
   return input
-    .slice(0, MAX_RESOURCES)
+    .slice(0, MAX_CUSTOM_RESOURCES)
     .map((value) => normalizeResource(value))
     .filter((resource) => {
       if (!resource || seenIds.has(resource.id) || seenUrls.has(resource.url)) return false;
@@ -54,51 +45,51 @@ function normalizeCustomResources(input) {
     .map(({ builtin, ...resource }) => resource);
 }
 
-function mergeCampusResources(builtIns, custom) {
-  const result = [];
-  const seenIds = new Set();
-  const seenUrls = new Set();
-  for (const [items, builtin] of [[builtIns, true], [custom, false]]) {
-    for (const value of Array.isArray(items) ? items : []) {
-      const resource = normalizeResource(value, { builtin });
-      if (!resource || seenIds.has(resource.id) || seenUrls.has(resource.url)) continue;
-      seenIds.add(resource.id);
-      seenUrls.add(resource.url);
-      result.push(resource);
-      if (result.length >= MAX_RESOURCES) return result;
+function projectCampusResources(builtIns, custom) {
+  const reviewed = validateRuntimeBuiltinResources(builtIns);
+  const local = validateCustomResourceDocument(custom);
+  const resources = [...reviewed];
+  const seenIds = new Set(reviewed.map(({ id }) => id));
+  const seenUrls = new Set(reviewed.map(({ url }) => url));
+  let conflictCount = 0;
+  let hiddenCount = 0;
+  for (const resource of local) {
+    // Old releases intentionally kept builtin-first behavior. A previously
+    // stored custom duplicate must remain removable from settings, but cannot
+    // replace or crash the reviewed builtin projection.
+    if (seenIds.has(resource.id) || seenUrls.has(resource.url)) {
+      conflictCount += 1;
+      continue;
     }
+    seenIds.add(resource.id);
+    seenUrls.add(resource.url);
+    if (resources.length < MAX_MERGED_RESOURCES) resources.push(resource);
+    else hiddenCount += 1;
   }
-  return result;
+  return Object.freeze({
+    resources: Object.freeze(resources),
+    receipt: Object.freeze({
+      sourceCount: reviewed.length + local.length,
+      visibleCount: resources.length,
+      conflictCount,
+      hiddenCount,
+    }),
+  });
+}
+
+function mergeCampusResources(builtIns, custom) {
+  return projectCampusResources(builtIns, custom).resources;
 }
 
 function resourceRoute(resource) {
   return resource?.route === ROUTE_DIRECT ? ROUTE_DIRECT : ROUTE_CAMPUS;
 }
 
-function loadCampusResources(file = RESOURCE_FILE) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!Array.isArray(parsed)) return [];
-    const seen = new Set();
-    return parsed
-      .slice(0, MAX_RESOURCES)
-      .map((resource) => normalizeResource(resource, { builtin: true }))
-      .filter((resource) => {
-        if (!resource || seen.has(resource.id)) return false;
-        seen.add(resource.id);
-        return true;
-      });
-  } catch {
-    return [];
-  }
-}
-
 module.exports = {
-  MAX_RESOURCES,
-  RESOURCE_FILE,
-  loadCampusResources,
+  MAX_CUSTOM_RESOURCES,
   mergeCampusResources,
   normalizeCustomResources,
   normalizeResource,
+  projectCampusResources,
   resourceRoute,
 };

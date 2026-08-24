@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -77,8 +78,27 @@ test('CLI proxy credential is stable, owner-only, endpoint-aware, and never prin
 
 test('root CLI always uses strict stdin auth and its authenticated helper', () => {
   const source = fs.readFileSync(path.join(root, 'hkustgzconnect'), 'utf8');
+  const reviewedConfig = fs.readFileSync(path.join(root, 'independent', 'config', 'hkustgz.json'));
+  const expectedDigest = crypto.createHash('sha256').update(reviewedConfig).digest('hex');
+  const declaredDigest = source.match(
+    /^REVIEWED_ENGINE_CONFIG_SHA256="([0-9a-f]{64})"$/mu,
+  )?.[1];
+  const manifest = JSON.parse(fs.readFileSync(path.join(
+    root, 'desktop', 'assets', 'profiles', 'manifest.json',
+  ), 'utf8'));
+  const manifestDigest = manifest.profiles.find(
+    ({ profileId }) => profileId === 'hkustgz',
+  )?.assets.find(
+    ({ kind }) => kind === 'engine-config',
+  )?.sha256;
+  assert.equal(declaredDigest, expectedDigest);
+  assert.equal(declaredDigest, manifestDigest);
   assert.match(source, /source "\$PROXY_CREDENTIAL_LIBRARY"/);
   assert.match(source, /--socks-auth-stdin/);
+  assert.match(source, /--profile-binding-v1-stdin/);
+  assert.doesNotMatch(source, /shasum[^\n]*ENGINE_CONFIG/u);
+  assert.ok(source.indexOf('printf -v binding_frame') < source.indexOf('pw="$(get_pw)"'));
+  assert.ok(source.indexOf('engine_config_binding') < source.indexOf('printf \'%s\\n\' "$ACC"'));
   assert.match(source, /printf '%s\\n' "\$CLI_PROXY_USERNAME"/);
   assert.match(source, /printf '%s\\n' "\$CLI_PROXY_PASSWORD"/);
   assert.match(source, /"\$PROXY_HELPER" --credential-file "\$PROXY_CREDENTIAL"/);

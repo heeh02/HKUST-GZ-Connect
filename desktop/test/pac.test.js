@@ -11,6 +11,9 @@ test('route domains are normalized, deduplicated, and bounded', () => {
     ['hkust-gz.edu.cn', 'hkust.edu.hk'],
   );
   assert.equal(normalizeRouteDomains(Array(100).fill('example.com')).length, 1);
+  assert.deepEqual(normalizeRouteDomains(undefined, ['Campus.Example.EDU']), [
+    'campus.example.edu',
+  ]);
 });
 
 test('PAC routes only explicit suffixes and literal private addresses', () => {

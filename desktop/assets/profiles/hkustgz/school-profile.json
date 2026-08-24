@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "profileId": "hkustgz",
+  "profileRevision": 1,
+  "profileCredentialBindingRevision": 1,
+  "evidenceClass": "builtin-reviewed",
+  "branding": {
+    "localizedSchoolName": {
+      "zh": "香港科技大学(广州)",
+      "en": "The Hong Kong University of Science and Technology (Guangzhou)"
+    },
+    "shortName": "HKUST(GZ)",
+    "bundledAssetKey": "hkustgz-logo"
+  },
+  "gateway": {
+    "origin": "https://remote.hkust-gz.edu.cn",
+    "protocolFamily": "easyconnect-password-modern-l3-v1",
+    "engineConfigRef": "hkustgz-engine-config"
+  },
+  "browser": {
+    "homeUrl": "https://www.hkust-gz.edu.cn/",
+    "campusDomains": [
+      "hkust-gz.edu.cn",
+      "hkust.edu.hk"
+    ],
+    "directPartnerDomains": [
+      "outlook.office.com",
+      "microsoftonline.com",
+      "microsoftonline-p.com",
+      "msauth.net",
+      "msftauth.net",
+      "office.com",
+      "office.net",
+      "hkust-gz.instructure.com",
+      "instructure.com",
+      "instructuremedia.com"
+    ],
+    "builtinResourcesRef": "hkustgz-builtin-resources",
+    "healthTargets": [
+      {
+        "host": "www.hkust-gz.edu.cn",
+        "port": 443
+      },
+      {
+        "host": "library.hkust-gz.edu.cn",
+        "port": 443
+      }
+    ]
+  },
+  "policy": {
+    "reviewedPrivateGatewayAllowed": false,
+    "reviewedDnsFallback": [
+      "10.90.63.2",
+      "10.90.63.3"
+    ]
+  }
+}

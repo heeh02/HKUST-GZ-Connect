@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "profileId": "hkustgz",
+      "default": true,
+      "document": {
+        "path": "assets/profiles/hkustgz/school-profile.json",
+        "sha256": "17b15b4b6e7f2e03b7bb733f21c53714b2f7c7f3924d07905fd4518f5dd6397d"
+      },
+      "assets": [
+        {
+          "key": "hkustgz-engine-config",
+          "kind": "engine-config",
+          "path": "assets/profiles/hkustgz/engine-config.json",
+          "sha256": "2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a"
+        },
+        {
+          "key": "hkustgz-logo",
+          "kind": "branding",
+          "path": "assets/logo.svg",
+          "sha256": "395e6e5ed6fa17c4e649bb1f4fc332c09a622ed0a9b6d3e5b007c96be123b6d5"
+        },
+        {
+          "key": "hkustgz-builtin-resources",
+          "kind": "builtin-resources",
+          "path": "assets/profiles/hkustgz/builtin-resources.json",
+          "sha256": "4387485544f205fb3852eea66975c69e824f6f246ee13edb47def050fe790e40"
+        }
+      ]
+    }
+  ]
+}

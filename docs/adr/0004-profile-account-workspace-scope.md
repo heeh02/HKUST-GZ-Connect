@@ -176,14 +176,15 @@ WorkspaceScope
   recent resources
   local resource descriptors
   user routing rules and PACs
+  non-secret external integration records
   authenticated/server resource projection
   active Gateway session and notices
   account-scoped diagnostics
 ```
 
 Reviewed builtin resources and deployment DNS/default policy remain profile-owned. The account workspace owns
-favorites, recent entries, locally added resources, user route overrides and authenticated server resources,
-because their visibility or authorization may differ by account.
+favorites, recent entries, locally added resources, user route overrides, non-secret external integration records
+and authenticated server resources, because their visibility or authorization may differ by account.
 
 Favorites and recent history store opaque resource handles plus bounded display timestamps, not full Browser
 navigation history. An arbitrary recent URL is reduced to a reviewed/local resource handle or a sanitized HTTPS
@@ -220,6 +221,7 @@ userData/
           local-resources.json
           favorites.json
           recent-resources.json
+          external-integrations.json
           engine.log
 ```
 
@@ -227,9 +229,17 @@ userData/
 Gateway hosts, usernames and labels are never path components. All directories/files retain current no-follow,
 single-link, owner-only or Windows current-user ACL requirements.
 
-App-global local proxy credentials remain global because they authorize the one active loopback listener, not a
-school identity. Their plaintext sidecar remains short-lived and is destroyed on any profile/account/context
-transition. The sidecar and Engine owner record bind the current active-context epoch and Engine generation.
+The encrypted mechanism/master used to issue local proxy credentials may remain app-global, but every credential
+exported through the External Tool Integration Center is derived/bound to the exact active profile/account,
+listener security revision and context/Engine generation. Profile/account transition rotates or revokes the old
+authorization before activating the new context. An old external configuration must fail authentication even if
+the loopback port is reused. Global `NO_AUTH` compatibility is explicitly unbound legacy behavior and cannot
+satisfy the multi-school integration contract.
+
+The plaintext helper sidecar remains short-lived, profile/account-bound and is destroyed on any
+profile/account/context transition. The sidecar and Engine owner record bind the current active-context epoch and
+Engine generation. Detailed adapter/export ownership is fixed by
+[`ADR-0005`](0005-external-tool-integration-center.md).
 
 ## Browser partition and local website state
 
@@ -462,7 +472,8 @@ added later, expose counts/stable codes only and require user action.
   Engine.
 - Existing password + Modern L3 behavior, local proxy security and product app identity remain unchanged.
 - The first release does not support concurrent Engines, account sharing, credential synchronization, cloud
-  backup/export/import or account data merge.
+  backup, account/workspace-data export/import or account data merge. Explicit local external-tool configuration
+  export is the narrow ADR-0005 integration action, not an account-data export.
 - A profile update never copies state to another account.
 - Account readiness does not claim that a Gateway permits multiple simultaneous sessions.
 
@@ -487,7 +498,9 @@ Use two synthetic profiles with two synthetic accounts each, even while the prod
 - account A server resources/notices disappear on context change;
 - stale Engine, health, retry, MFA, certificate, credential, navigation, download, routing and telemetry
   callbacks cannot mutate B;
-- external SOCKS/Clash/SSH always target the one active account's Campus session.
+- every External Tool Integration adapter targets only the one bound active account's Campus session; a stale
+  export, Clash Verge Rev managed extension, OpenSSH Include/profile config or user-selected managed block cannot
+  authenticate after context change.
 
 ### Migration and recovery
 
@@ -500,8 +513,8 @@ Use two synthetic profiles with two synthetic accounts each, even while the prod
 
 ### Lifecycle and deletion
 
-- 100 profile/account context switches leave no Engine PID, port, timer, View, challenge, sidecar or borrowed
-  credential;
+- 100 profile/account context switches leave no Engine PID, port, timer, View, challenge, integration transaction,
+  sidecar or borrowed credential;
 - switch/quit/sleep/offline/crash races start no new Engine from ambiguous context;
 - cleanup-unconfirmed blocks context activation;
 - account/profile deletion cannot remove a registry record before partition and secret/grant cleanup;

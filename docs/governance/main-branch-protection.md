@@ -1,6 +1,6 @@
 # Main branch protection contract
 
-- Status: activation target for the governance PR; external API receipt is required before P1 production code
+- Status: active and read back from GitHub on 2026-08-24 before the P1 branch was created
 - Applies to: `main`
 - Owner: project maintainer
 
@@ -74,3 +74,23 @@ The receipt must prove:
 
 P1 production code must not be pushed for review until this read-back succeeds. Recheck the receipt before any
 future claim that `main` is protected; green CI alone is not protection.
+
+### 2026-08-24 activation receipt
+
+The protection was applied after governance PR #8 and read back while `main` pointed to
+`871cdd9e5e27529b7580b40f710436e78da1bcb5`:
+
+```text
+strict=true
+contexts=secret-scan,package-verifier,desktop,desktop-electron,windows-private-file,engine,offline-tests
+required_approving_review_count=1
+dismiss_stale_reviews=true
+required_conversation_resolution=true
+required_linear_history=true
+allow_force_pushes=false
+allow_deletions=false
+enforce_admins=false
+```
+
+This receipt records the P1 admission decision; it is not a timeless claim. Release or governance work that
+depends on protection must query the GitHub API again.

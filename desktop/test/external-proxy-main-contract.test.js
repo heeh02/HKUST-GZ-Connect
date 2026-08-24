@@ -16,7 +16,10 @@ test('strict and compatibility generations share one stable credential with dist
   assert.match(connectOnce, /stableProxyCredential \|\| fs\.existsSync\(PROXY_CREDENTIAL\)[\s\S]*proxyCredentialMode = 'optional'/);
   assert.match(connectOnce, /proxyCredentialMode === 'required'[^\n]+--socks-auth-stdin/);
   assert.match(connectOnce, /proxyCredentialMode === 'optional'[^\n]+--socks-auth-optional-stdin/);
-  assert.match(connectOnce, /child\.stdin\.write\(`\$\{s\.username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}`\)/);
+  assert.match(
+    connectOnce,
+    /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{s\.username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}/,
+  );
   assert.match(connectOnce, /'--control-api-v2-stdin'/);
 });
 

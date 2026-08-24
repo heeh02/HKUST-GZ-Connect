@@ -57,6 +57,19 @@ test('the language override is whitelisted to auto/zh/en', () => {
   assert.equal(normalizeSettings({ language: 'fr' }).language, 'auto');
 });
 
+test('profile route defaults apply only when settings do not contain a valid user value', () => {
+  const options = { defaultRouteDomains: ['campus.example.edu'] };
+  assert.deepEqual(normalizeSettings({}, options).routeDomains, ['campus.example.edu']);
+  assert.deepEqual(
+    normalizeSettings({ routeDomains: ['user.example.edu'] }, options).routeDomains,
+    ['user.example.edu'],
+  );
+  assert.deepEqual(
+    normalizeSettings({ routeDomains: ['bad/domain'] }, options).routeDomains,
+    ['campus.example.edu'],
+  );
+});
+
 test('invalid ports and retry counts use reviewed defaults', () => {
   const settings = normalizeSettings({ port: 80, maxAttempts: 1.5 });
   assert.equal(settings.port, 1080);

@@ -49,6 +49,19 @@ test('browser resolution follows user, custom, school, server, then safe default
   assert.equal(resolveDomainRouteForUrl('https://unknown.example/', options).route, 'campus');
 });
 
+test('reviewed profile domains replace static deployment defaults when supplied', () => {
+  const options = {
+    schoolDomains: ['campus.example.edu'],
+    directPartnerDomains: ['partner.example.com'],
+  };
+  assert.deepEqual(normalizeDomainRoutePolicy(options).builtinSubdomains, [
+    { host: 'partner.example.com', route: 'direct' },
+    { host: 'campus.example.edu', route: 'campus' },
+  ]);
+  assert.equal(resolveDomainRouteForUrl('https://app.partner.example.com/', options).route, 'direct');
+  assert.equal(resolveDomainRouteForUrl('https://portal.campus.example.edu/', options).route, 'campus');
+});
+
 test('internal PAC keeps one session while switching hosts by the shared policy', () => {
   const source = buildDomainRoutePac({
     userRules: [

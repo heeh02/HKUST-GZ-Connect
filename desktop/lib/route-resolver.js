@@ -1,9 +1,10 @@
 'use strict';
 
 const {
+  DIRECT_PARTNER_HOSTS,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
-  builtinRouteForHost,
+  SCHOOL_CAMPUS_HOSTS,
   hostMatches,
 } = require('./campus-route');
 const { normalizeRoutingRules, normalizeRuleHost } = require('./routing-rule-store');
@@ -51,7 +52,8 @@ function schoolDomainMatch(host, domains) {
 function resolveRouteForUrl(rawUrl, {
   userRules = [],
   customResources = [],
-  schoolDomains = [],
+  schoolDomains = SCHOOL_CAMPUS_HOSTS,
+  directPartnerDomains = DIRECT_PARTNER_HOSTS,
   serverResources = [],
   inheritedRoute = null,
 } = {}) {
@@ -74,8 +76,7 @@ function resolveRouteForUrl(rawUrl, {
   const custom = resourceMatch(host, customResources);
   if (custom) return result(custom.route, 'custom-resource');
 
-  const builtin = builtinRouteForHost(host);
-  if (builtin) return result(builtin, 'builtin');
+  if (schoolDomainMatch(host, directPartnerDomains)) return result(ROUTE_DIRECT, 'builtin');
   if (schoolDomainMatch(host, schoolDomains)) return result(ROUTE_CAMPUS, 'builtin');
   const server = resourceMatch(host, serverResources);
   if (server) return result(server.route, 'server-resource');

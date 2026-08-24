@@ -13,6 +13,7 @@ const {
 } = require('../build/afterPack');
 const {
   TEST_ONLY_ENGINE_MARKER,
+  archiveEntryPath,
   assertMacDylibDependenciesAllowed,
   assertMacSystemOnlyDylibs,
   assertCustomResourceManager,
@@ -24,6 +25,15 @@ const {
   parseMachODylibDependencies,
   resolveResourcesDirectory,
 } = require('../build/verify-package');
+
+test('ASAR entry paths use the packaging host separator at every nesting level', () => {
+  const entry = 'assets/profiles/hkustgz/school-profile.json';
+  assert.equal(archiveEntryPath(entry, path.posix), entry);
+  assert.equal(
+    archiveEntryPath(entry, path.win32),
+    'assets\\profiles\\hkustgz\\school-profile.json',
+  );
+});
 
 test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredEngineName('darwin', 'arm64'), 'ec-engine-darwin-arm64');
@@ -62,7 +72,8 @@ test('package verifier rejects fake gateways, test PKI and private-key formats',
     );
   }
   assert.doesNotThrow(() => assertNoTestOnlyPackageEntries([
-    '/main.js', '/lib/auth-challenge-coordinator.js', '/assets/campus-resources.json',
+    '/main.js', '/lib/auth-challenge-coordinator.js',
+    '/assets/profiles/hkustgz/builtin-resources.json',
   ]));
 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-native-resources-'));
