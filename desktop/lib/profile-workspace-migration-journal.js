@@ -126,6 +126,20 @@ function receiptSetDigest(receipts, ids) {
   return crypto.createHash('sha256').update(JSON.stringify(canonical), 'utf8').digest('hex');
 }
 
+function legacySourceReceiptDigest(value) {
+  return receiptSetDigest(
+    normalizeReceiptSet(value, LEGACY_SOURCE_IDS, 'source receipt set'),
+    LEGACY_SOURCE_IDS,
+  );
+}
+
+function destinationReceiptDigest(value) {
+  return receiptSetDigest(
+    normalizeReceiptSet(value, DESTINATION_RECEIPT_IDS, 'destination receipt set'),
+    DESTINATION_RECEIPT_IDS,
+  );
+}
+
 function journalKey(prefix, randomBytes) {
   const entropy = randomBytes(16);
   if (!Buffer.isBuffer(entropy) || entropy.length !== 16) {
@@ -302,5 +316,7 @@ module.exports = {
   MIGRATION_JOURNAL_VERSION,
   commitMigrationJournal,
   createPreparedMigrationJournal,
+  destinationReceiptDigest,
+  legacySourceReceiptDigest,
   validateMigrationJournal,
 };

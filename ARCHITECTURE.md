@@ -147,6 +147,12 @@ P3 完整激活前，flat 1.x `userData` 仍是唯一生产权威；基础 layou
 ProtocolFamily 和 credential version。解密结果由 Main-only zeroizing owner 管理，不进入 Renderer、
 日志或 migration journal。详细合同见 [`ADR-0008`](docs/adr/0008-p3-receipts-and-vpn-envelope.md)。
 
+迁移协调器是同步、single-flight 的 Main-domain service。无 journal 时新旧权威并存必须阻断；
+`prepared` 只能在旧 source receipts 完全一致时幂等续跑；`committed` 只能在 destination receipts
+完全一致时退休旧权威并清 journal。异常不得把 prepared 降级为 absent，也不得在未验证
+destination 时删除 legacy。生产接线前的非激活合同见
+[`ADR-0009`](docs/adr/0009-p3-migration-coordinator.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态

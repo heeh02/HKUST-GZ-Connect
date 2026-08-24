@@ -129,4 +129,5 @@ module.exports = {
   LEGACY_HKUST_BROWSER_PARTITION,
   createLegacyFlatSourcePaths,
   createProfileAccountWorkspaceLayout,
+  validateUserDataRoot: normalizedUserData,
 };
