@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { AuthChallengeCoordinator } = require('../lib/auth-challenge-coordinator');
+const CONTEXT_TOKEN = Object.freeze({});
 
 function internalChallenge(overrides = {}) {
   return {
@@ -43,7 +44,7 @@ test('renderer view omits Engine correlation and protocol context', () => {
   const published = [];
   const control = new FakeControl();
   const coordinator = new AuthChallengeCoordinator({ publish: (view) => published.push(view) });
-  coordinator.bind(9, control);
+  coordinator.bind(9, control, CONTEXT_TOKEN);
   control.handlers.onChallenge(internalChallenge());
 
   assert.deepEqual(Object.keys(published[0]).sort(), [
@@ -64,7 +65,7 @@ test('renderer view omits Engine correlation and protocol context', () => {
 test('response is removed from IPC payload and its Main-process Buffer is zeroized immediately', async () => {
   const control = new FakeControl();
   const coordinator = new AuthChallengeCoordinator();
-  coordinator.bind(9, control);
+  coordinator.bind(9, control, CONTEXT_TOKEN);
   control.handlers.onChallenge(internalChallenge());
   const payload = { response: 'synthetic-accepted' };
   const operation = coordinator.respond(payload);
@@ -79,7 +80,7 @@ test('unknown fields, empty responses, duplicate actions and cooldown resend fai
   const control = new FakeControl();
   control.respond = () => new Promise((resolve) => { resolveResponse = resolve; });
   const coordinator = new AuthChallengeCoordinator({ now: () => 1_000 });
-  coordinator.bind(9, control);
+  coordinator.bind(9, control, CONTEXT_TOKEN);
   control.handlers.onChallenge(internalChallenge({ resendAfterUnixMs: 2_000 }));
 
   await assert.rejects(coordinator.respond({ response: 'x', extra: true }), /invalid/);
@@ -106,7 +107,7 @@ test('expiry cancels the bound transaction, clears UI, and stale generations can
     setTimeoutFn: (callback) => { timerCallback = callback; return { unref() {} }; },
     clearTimeoutFn: () => {},
   });
-  coordinator.bind(4, control);
+  coordinator.bind(4, control, CONTEXT_TOKEN);
   control.handlers.onChallenge(internalChallenge({ expiresAtUnixMs: 1_500 }));
   assert.equal(timerCallback, undefined, 'already-expired challenge clears synchronously');
   await new Promise((done) => setImmediate(done));
@@ -126,7 +127,7 @@ test('expiry cleanup remains fail-closed when the control client throws synchron
     publish: (view) => published.push(view),
     now: () => 2_000,
   });
-  coordinator.bind(4, control);
+  coordinator.bind(4, control, CONTEXT_TOKEN);
   assert.doesNotThrow(() => {
     control.handlers.onChallenge(internalChallenge({ expiresAtUnixMs: 1_500 }));
   });
@@ -144,7 +145,7 @@ test('renderer lifecycle loss cancels through Main even while a submit is in fli
     return new Promise((resolve) => { resolveResponse = resolve; });
   };
   const coordinator = new AuthChallengeCoordinator({ publish: (view) => published.push(view) });
-  coordinator.bind(9, control);
+  coordinator.bind(9, control, CONTEXT_TOKEN);
   control.handlers.onChallenge(internalChallenge());
   const response = coordinator.respond({ response: 'synthetic-in-flight' });
   assert.equal(coordinator.cancelForLifecycle(), true);
@@ -157,4 +158,26 @@ test('renderer lifecycle loss cancels through Main even while a submit is in fli
   await response;
   control.handlers.onChallenge?.(internalChallenge());
   assert.equal(coordinator.snapshot(), null, 'late provider output cannot revive the renderer');
+});
+
+test('context invalidation clears the prompt and rejects old renderer actions as stale', async () => {
+  let current = true;
+  const published = [];
+  const control = new FakeControl();
+  const coordinator = new AuthChallengeCoordinator({
+    publish: (view) => published.push(view),
+    isContextCurrent: (token) => current && token === CONTEXT_TOKEN,
+  });
+  assert.throws(() => coordinator.bind(9, control), /control suite/u);
+  coordinator.bind(9, control, CONTEXT_TOKEN);
+  control.handlers.onChallenge(internalChallenge());
+  current = false;
+  const payload = { response: 'synthetic-stale-response' };
+  const result = await coordinator.ipcHandlers()['respond-auth-challenge']({}, payload);
+  assert.deepEqual(result, { ok: false, code: 'stale_context' });
+  assert.equal(payload.response, '');
+  assert.equal(coordinator.snapshot(), null);
+  assert.equal(published.at(-1), null);
+  assert.deepEqual(control.handlers, {});
+  assert.deepEqual(control.actions, []);
 });

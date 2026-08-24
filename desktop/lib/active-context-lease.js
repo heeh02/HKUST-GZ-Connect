@@ -93,14 +93,19 @@ class ActiveContextLease {
   }
 
   isCurrent(token, lifecycleValue) {
-    if (this.#current === null || !token || typeof token !== 'object') return false;
+    if (!this.isContextCurrent(token)) return false;
     const observed = this.#tokens.get(token);
-    if (!observed || !sameContext(observed.context, this.#current)) return false;
     let currentLifecycle;
     try { currentLifecycle = lifecycle(lifecycleValue); }
     catch { return false; }
     return observed.lifecycle.connectionIntent === currentLifecycle.connectionIntent &&
       observed.lifecycle.engineGeneration === currentLifecycle.engineGeneration;
+  }
+
+  isContextCurrent(token) {
+    if (this.#current === null || !token || typeof token !== 'object') return false;
+    const observed = this.#tokens.get(token);
+    return Boolean(observed && sameContext(observed.context, this.#current));
   }
 
   invalidate() {

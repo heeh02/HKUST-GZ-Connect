@@ -191,6 +191,7 @@ let state = {
 function statusSnapshot() { return projectConnectionStatus(state, connectionState.presentation(), connectedAt); }
 function reportLogFailure() { if (!state.diagnosticNotice) { state.diagnosticNotice = t('error.logUnavailable'); emit(); } }
 const authChallengeCoordinator = new AuthChallengeCoordinator({
+  isContextCurrent: (token) => activeContextLease.isContextCurrent(token),
   publish: (challenge) => {
     desktopShell?.send('auth-challenge', challenge);
   },
@@ -510,7 +511,6 @@ function clearConnectionPresentation() {
   state.dnsMode = 'unknown'; activeSchoolProfile.clearCapabilitySnapshot();
   telemetryCoordinator?.stop();
 }
-
 function invalidateForConnectivity(reason, intent) {
   if (!connectionState.pauseForConnectivity(intent, {
     isQuitting: desktopShell?.isQuitting === true,
@@ -530,7 +530,6 @@ function invalidateForConnectivity(reason, intent) {
     emit();
   }).catch(() => {});
 }
-
 async function recoverConnectivity(intent, reason) {
   let autoReconnect;
   try {
@@ -999,6 +998,7 @@ async function connectOnce(isRetry, intent) {
   };
   engineRuntime = new EngineConnectionRuntime({
     generation: engineGeneration,
+    contextToken: engineContextToken,
     expectedPort: Number(s.port),
     stdin: child.stdin,
     controlRegistry: engineControlRegistry,

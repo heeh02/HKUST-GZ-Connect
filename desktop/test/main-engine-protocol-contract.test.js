@@ -34,7 +34,8 @@ test('desktop requires Engine API hello and has no English stdout readiness fall
 
 test('desktop opts into the private Control v2 stream and retains signal fallback', () => {
   assert.match(source, /controlRegistry: engineControlRegistry/);
-  assert.match(runtime, /controlRegistry\.bind\(generation, stdin\)/);
+  assert.match(runtime, /controlRegistry\.bind\(generation, stdin, contextToken\)/);
+  assert.match(source, /contextToken: engineContextToken/u);
   assert.match(runtime, /this\.control\.feed\(data\)/);
   assert.match(source, /'--control-api-v2-stdin'/);
   assert.match(source, /'--profile-binding-v1-stdin'/);

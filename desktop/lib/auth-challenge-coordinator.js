@@ -28,24 +28,29 @@ function rendererChallengeView(challenge) {
 
 class AuthChallengeCoordinator {
   constructor({ publish = () => {}, now = Date.now, setTimeoutFn = setTimeout,
-    clearTimeoutFn = clearTimeout } = {}) {
+    clearTimeoutFn = clearTimeout, isContextCurrent = () => true } = {}) {
+    if (typeof isContextCurrent !== 'function') {
+      throw new TypeError('authentication context guard is required');
+    }
     this.publish = publish;
     this.now = now;
     this.setTimeoutFn = setTimeoutFn;
     this.clearTimeoutFn = clearTimeoutFn;
+    this.isContextCurrent = isContextCurrent;
     this.binding = null;
     this.publicView = null;
     this.expiryTimer = null;
     this.inFlight = false;
   }
 
-  bind(generation, control) {
+  bind(generation, control, contextToken) {
     if (!Number.isSafeInteger(generation) || generation <= 0 || !control ||
-        typeof control.setAuthHandlers !== 'function') {
+        typeof control.setAuthHandlers !== 'function' || !contextToken ||
+        typeof contextToken !== 'object') {
       throw new TypeError('a generation-bound auth control suite is required');
     }
     this.detach();
-    this.binding = { generation, control };
+    this.binding = { generation, control, contextToken };
     control.setAuthHandlers({
       onChallenge: (challenge) => this.#activate(generation, control, challenge),
       onCleared: () => this.#clear(generation, control),
@@ -67,6 +72,7 @@ class AuthChallengeCoordinator {
   }
 
   snapshot() {
+    if (this.binding && !this.#contextCurrent()) this.detach();
     return this.publicView ? { ...this.publicView } : null;
   }
 
@@ -128,6 +134,12 @@ class AuthChallengeCoordinator {
     if (!this.binding || !this.publicView) {
       return Promise.reject(new Error('no active authentication challenge'));
     }
+    if (!this.#contextCurrent()) {
+      this.detach();
+      const error = new Error('authentication challenge belongs to a stale context');
+      error.code = 'stale_context';
+      return Promise.reject(error);
+    }
     if (this.inFlight) return Promise.reject(new Error('authentication action is in progress'));
     this.inFlight = true;
     let operation;
@@ -154,7 +166,7 @@ class AuthChallengeCoordinator {
 
   #activate(generation, control, challenge) {
     if (!this.binding || this.binding.generation !== generation ||
-        this.binding.control !== control) return;
+        this.binding.control !== control || !this.#contextCurrent()) return;
     this.publicView = rendererChallengeView(challenge);
     this.publish(this.snapshot());
     this.#scheduleExpiry(generation, control);
@@ -162,7 +174,7 @@ class AuthChallengeCoordinator {
 
   #clear(generation, control) {
     if (!this.binding || this.binding.generation !== generation ||
-        this.binding.control !== control) return;
+        this.binding.control !== control || !this.#contextCurrent()) return;
     this.#clearExpiryTimer();
     if (!this.publicView) return;
     this.publicView = null;
@@ -175,7 +187,8 @@ class AuthChallengeCoordinator {
     if (expiresAt == null) return;
     const schedule = () => {
       if (!this.binding || this.binding.generation !== generation ||
-          this.binding.control !== control || this.publicView?.expiresAtUnixMs !== expiresAt) return;
+          this.binding.control !== control || !this.#contextCurrent() ||
+          this.publicView?.expiresAtUnixMs !== expiresAt) return;
       const remaining = expiresAt - this.now();
       if (remaining > 0) {
         this.expiryTimer = this.setTimeoutFn(schedule, Math.min(remaining, MAX_TIMER_DELAY_MS));
@@ -192,6 +205,10 @@ class AuthChallengeCoordinator {
   #clearExpiryTimer() {
     if (this.expiryTimer) this.clearTimeoutFn(this.expiryTimer);
     this.expiryTimer = null;
+  }
+
+  #contextCurrent() {
+    return Boolean(this.binding && this.isContextCurrent(this.binding.contextToken));
   }
 }
 

@@ -21,6 +21,7 @@ function binding({
 test('token requires the exact active context intent and Engine generation', () => {
   const lease = new ActiveContextLease(binding());
   const token = lease.capture({ connectionIntent: 3, engineGeneration: 7 });
+  assert.equal(lease.isContextCurrent(token), true);
   assert.equal(lease.isCurrent(token, { connectionIntent: 3, engineGeneration: 7 }), true);
   assert.equal(lease.isCurrent(token, { connectionIntent: 4, engineGeneration: 7 }), false);
   assert.equal(lease.isCurrent(token, { connectionIntent: 3, engineGeneration: 8 }), false);
@@ -37,6 +38,7 @@ test('gating invalidates every borrowed token until a higher epoch activates', (
   assert.equal(lease.invalidate(), false);
   assert.equal(lease.snapshot(), null);
   assert.equal(lease.isCurrent(old, { connectionIntent: 1, engineGeneration: 1 }), false);
+  assert.equal(lease.isContextCurrent(old), false);
   assert.throws(() => lease.capture({ connectionIntent: 1, engineGeneration: 1 }), /gated/u);
   assert.throws(() => lease.activate(binding()), /increase monotonically/u);
 

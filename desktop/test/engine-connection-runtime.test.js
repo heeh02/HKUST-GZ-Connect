@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const { EngineConnectionRuntime } = require('../lib/engine-connection-runtime');
+const CONTEXT_TOKEN = Object.freeze({});
 
 class FakeControl {
   constructor() {
@@ -49,11 +50,12 @@ function fixture(overrides = {}) {
   ].map((name) => [name, (...args) => calls.push([name, ...args])]));
   const runtime = new EngineConnectionRuntime({
     generation: 7,
+    contextToken: CONTEXT_TOKEN,
     expectedPort: 6180,
     stdin: { write() {} },
     controlRegistry: {
-      bind(generation, stdin) {
-        binds.push([generation, stdin]);
+      bind(generation, stdin, contextToken) {
+        binds.push([generation, stdin, contextToken]);
         return control;
       },
     },
@@ -85,6 +87,7 @@ function lines(...events) {
 test('runtime binds one generation, negotiates before readiness, and dispatches typed events', async () => {
   const f = fixture();
   assert.equal(f.binds.length, 1);
+  assert.equal(f.binds[0][2], CONTEXT_TOKEN);
   assert.equal(f.runtime.start(f.stdout), true);
   assert.equal(f.runtime.start(f.stdout), false);
   assert.equal(f.control.handshakes, 1);
@@ -215,12 +218,14 @@ test('constructor rejects unbound generations, ports, controls and handlers', ()
   assert.throws(() => new EngineConnectionRuntime(), /generation/);
   assert.throws(() => new EngineConnectionRuntime({
     generation: 1,
+    contextToken: CONTEXT_TOKEN,
     expectedPort: 80,
     controlRegistry: { bind() {} },
     isCurrent() {},
   }), /port/);
   assert.throws(() => new EngineConnectionRuntime({
     generation: 1,
+    contextToken: CONTEXT_TOKEN,
     expectedPort: 6180,
     controlRegistry: {},
     isCurrent() {},
