@@ -17,7 +17,7 @@ risks: one school's password, Cookies, certificate pins or routes could be used 
 3. later, an Advanced `Other` flow where the user enters a Gateway domain/port locally.
 
 The ordinary selector initially shows reviewed profiles only. The P5 connector foundation is implemented first,
-a second reviewed school proves profile/account isolation in P10, and only P11 may expose `Other` as experimental
+a second reviewed school proves profile/account isolation in P6, and only P6b may expose `Other` as experimental
 and unverified.
 
 Entering a domain must be simple, but it must not cause the application to guess protocol endpoints and submit
@@ -142,12 +142,12 @@ PublicProbeSpec
   maximum candidate attempts
 ```
 
-P11 compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
+P6b compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
 its path, method, headers, parser or candidate list. Future families add a separately reviewed compiled spec and
 synthetic fixture. A probe result identifies only a candidate public authentication surface; the
 `ProtocolFamily` factory independently constructs credential-bearing endpoints after confirmation.
 
-## Advanced custom Gateway onboarding (P11)
+## Advanced custom Gateway onboarding (P6b)
 
 Proposed login surface:
 
@@ -478,7 +478,7 @@ Before adding a second reviewed school:
 - three-platform package verifier validates the exact profile manifest;
 - the new school completes official parity and staff canary.
 
-Before P11 exposes Advanced custom onboarding:
+Before P6b exposes Advanced custom onboarding:
 
 - the second reviewed school has passed the preceding gate;
 - custom Gateway probe sends no credentials and rejects invalid TLS/origin/protocol;

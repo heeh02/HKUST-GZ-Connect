@@ -1,8 +1,8 @@
 # ADR-0005: External Tool Integration Center
 
-- Status: Accepted product/architecture direction for the first 2.0 Beta
+- Status: Accepted P7 product/architecture direction
 - Decision owner: project maintainer
-- Production activation: requires the P8 integration gates below
+- Production activation: requires the P7 integration gates below
 
 ## Context
 
@@ -16,8 +16,7 @@ local proxy authentication or silently reusing one school's tunnel after a profi
 
 ## Decision
 
-Introduce an **External Tool Integration Center** as a domain independent from the resource catalogue and
-`ResourceLaunchBroker`.
+Introduce an **External Tool Integration Center** as a domain independent from the Web resource catalogue.
 
 The first Beta supports explicit preview plus export or managed install/update/remove for:
 
@@ -31,8 +30,8 @@ The first Beta supports explicit preview plus export or managed install/update/r
 
 The Center does not:
 
-- model SSH, HPC, Jupyter, database or forwarding targets as `ResourceDescriptor` values;
-- create or consume `resourceHandle`, `LaunchHandle` or `ForwardLease` values;
+- model SSH, HPC, Jupyter, database or forwarding targets as campus resources;
+- create generic launch-authorization objects or temporary forwarding leases;
 - install VS Code extensions, open a terminal, launch an arbitrary executable or open a workspace;
 - scan local processes or search broadly for third-party configuration files;
 - scan disks or silently choose/overwrite third-party configuration, subscriptions or user-owned blocks;
@@ -56,7 +55,6 @@ IntegrationAdapterId
   user_selected_managed_block
 
 IntegrationAdapterView
-  integrationHandle          opaque, non-authorizing
   adapterId
   displayName
   supportedActions[]         preview | copy | save | install | update | remove
@@ -66,9 +64,9 @@ IntegrationAdapterView
 ```
 
 Renderer views contain no proxy username/password, generated YAML, helper credential path, persistent
-profile/account/workspace key, full third-party path or command line. A value-free trusted IPC asks Main to
-prepare an action for an opaque current `integrationHandle`; a separate explicit confirmation consumes the
-prepared diff/transaction.
+profile/account/workspace key, full third-party path or command line. The Renderer selects only a closed
+`adapterId` and action; trusted IPC asks Main to prepare the current redacted diff, and a separate explicit
+confirmation consumes the prepared transaction.
 
 Main owns the complete binding:
 
@@ -87,9 +85,24 @@ IntegrationBindingInternal
   state
 ```
 
-Persistent keys, `credentialRef` and secret output material never cross to Renderer. Non-secret integration
-records belong to the account workspace. Proxy credentials remain in the secure credential domain; an
-integration record contains only a reference and revision.
+Persistent keys, `credentialRef` and secret output material never cross to Renderer. Transient Main state may
+carry the complete binding above, but the account-scoped persistent record is deliberately small:
+
+```text
+IntegrationRecord
+  adapterId
+  profileId
+  targetFile
+  installedRevision
+  installedDigest
+  managedBlockId
+  backupReference
+```
+
+The enclosing Profile/Account workspace supplies account ownership, so no username, account key or credential is
+duplicated into the record. Proxy credentials remain in the secure credential domain. A retained record is not
+authorization; Main revalidates current profile/account/listener/auth/policy revisions before every update or
+remove action.
 
 ## Profile and account binding
 
@@ -144,7 +157,7 @@ Clipboard output is an explicit secret-bearing action performed by Main. Optiona
 when the clipboard still exactly contains the payload written by this transaction, so newer user clipboard data
 is never erased.
 
-The first Beta writes only one of these scoped targets:
+P7 writes only one of these scoped targets:
 
 1. a user-selected generic export;
 2. the dedicated Campus Connect managed extension owned by the Clash Verge Rev adapter;
@@ -155,6 +168,17 @@ No adapter performs a full-disk search, rewrites a subscription, replaces an unm
 unselected target. Every managed adapter has its own parser, conflict policy, ownership marker, diff, backup,
 readback and uninstall tests.
 
+A text adapter owns only its marked region, for example:
+
+```text
+# BEGIN CAMPUS-CONNECT MANAGED <profileId>
+...
+# END CAMPUS-CONNECT MANAGED <profileId>
+```
+
+Removal deletes only the matching region whose marker and installed digest still match the record. It does not
+restore an entire historical file and therefore cannot erase unrelated edits made after installation.
+
 ## Adapter boundaries
 
 ### Clash and Mihomo generic export
@@ -164,6 +188,14 @@ per tool. The first Beta offers copy/save export; it does not find or overwrite 
 configuration automatically. YAML contains only the loopback endpoint and the exact profile-bound proxy
 credential required by the active listener. No Browser routing rule silently changes these integrations to
 Direct.
+
+Before copy/save/install, the UI states that generated configuration contains a local campus-proxy credential
+(not the school VPN password) and must not be uploaded, synchronized or shared. Owner-only permissions/ACL are
+required where an adapter writes a file. Strict local proxy authentication is never disabled for convenience.
+
+Node names and rules come only from the active Profile's shared network rules. The generic generator never
+hardcodes HKUST domains, and `udp` remains disabled unless the selected frontend explicitly proves compatible
+authenticated UDP support.
 
 ### Clash Verge Rev managed extension
 
@@ -177,10 +209,10 @@ failure.
 ### OpenSSH and VS Code
 
 OpenSSH install uses the packaged `ec-proxy-command` and an owner-only, profile/account-bound credential sidecar.
-After an explicit preview, it adds one idempotent managed `Include` to the user-selected OpenSSH config and owns
-profile-scoped config below an app-owned directory. Update changes only the owned profile file; remove deletes the
-owned profile file and removes the Include only when no managed profile still needs it. Existing Host blocks are
-never rewritten.
+After an explicit preview, it adds one idempotent managed `Include ~/.ssh/campus-connect/*.conf` to the
+user-selected OpenSSH config and owns profile-scoped files below `~/.ssh/campus-connect/`. Update changes only the
+owned profile file; remove deletes that file and removes the Include only when no managed profile still needs it.
+Existing Host blocks are never rewritten.
 
 The OpenSSH `Port` directive always means the **remote SSH service port** (normally 22 or an explicitly
 user-selected remote port). It is never set to the local SOCKS/HTTP listener port. Campus proxying is expressed
@@ -231,9 +263,9 @@ INTEGRATION_ROLLBACK_INCOMPLETE
 Errors do not contain generated configuration, credential values, full third-party paths or arbitrary command
 lines. A failed/stale integration never changes Campus/Direct policy or starts another Engine.
 
-## P8 acceptance
+## P7 acceptance
 
-The Integration Center portion of P8 is complete only when:
+The Integration Center is complete only when:
 
 - every listed adapter has bounded schema and golden configuration tests on its supported platforms;
 - Profile A credentials are rejected after switching to Profile/Account B;
@@ -251,18 +283,27 @@ The Integration Center portion of P8 is complete only when:
 - no adapter scans disks/processes, overwrites unrelated third-party content or mutates global DNS/routes/proxy;
 - package verification includes the production adapters but excludes synthetic tool/config fixtures.
 
-P8 can ship only after both the Web Resource Workspace gates and these Integration Center gates pass. Neither
-domain implies SSH/HPC/Jupyter/database launch or scoped forwarding support.
+P7 can ship independently before the P8 ordinary-user Web upgrade, while both use the same Profile Network Rules
+and Profile/Account scope. Neither domain implies SSH/HPC/Jupyter/database launch or scoped forwarding support.
 
 ## Multi-school rollout
 
-The first user-visible Beta remains HKUST(GZ)-only. The architecture remains multi-school: P10 adds the second
-reviewed profile and must repeat the integration credential-rotation, stale-export and zero-cross-profile tests
-with two real reviewed profiles. P11 custom Gateway onboarding remains separately gated and receives no inherited
-integration record or proxy credential.
+P6 adds the school selector and second reviewed Profile before P7 activation. Integration credential rotation,
+stale-export and zero-cross-profile tests run with two real reviewed Profiles. Advanced custom-domain onboarding
+is a separately gated P6b step and receives no inherited integration record or proxy credential.
 
 ## Rollback
 
 Disabling the Integration Center removes its UI/IPC adapters and retires app-owned integration metadata without
 changing VPN credentials, Browser state or user-owned exported files. Previously exported configuration is not
 silently deleted; its profile-bound credential is revoked so it cannot authorize another active profile.
+
+## References
+
+- [Clash Verge Rev extension configuration](https://www.clashverge.dev/guide/extend.html) documents merge/script
+  extensions and their global/subscription scopes. The adapter still requires a version-pinned compatibility
+  test; this link is not authority to edit an arbitrary client file.
+- [VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh) uses a local OpenSSH-compatible client and
+  SSH configuration, so Campus Connect reuses OpenSSH rather than defining a VS Code-specific tunnel format.
+- [OpenSSH `ssh_config`](https://man.openbsd.org/ssh_config) defines `Include`, `ProxyCommand` and `Port`; `Port`
+  is the remote server port, while Campus proxying belongs only in `ProxyCommand`.
