@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const { createLegacyRuntimeStoragePaths } = require('./runtime-storage-paths');
 
 function resolveUserDataOverride(rawValue) {
   if (rawValue == null || String(rawValue).trim() === '') return null;
@@ -11,4 +12,4 @@ function resolveUserDataOverride(rawValue) {
   return path.resolve(candidate);
 }
 
-module.exports = { resolveUserDataOverride };
+module.exports = { createLegacyRuntimeStoragePaths, resolveUserDataOverride };

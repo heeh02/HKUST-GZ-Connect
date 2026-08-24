@@ -20,7 +20,7 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { resolveUserDataOverride } = require('./lib/app-data-dir');
+const { createLegacyRuntimeStoragePaths, resolveUserDataOverride } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -107,18 +107,19 @@ app.setName('HKUST(GZ) Connect');
 
 // ---------- paths & state ----------
 const DATA = app.getPath('userData');
-const SETTINGS = path.join(DATA, 'settings.json');
-const CRED = path.join(DATA, 'cred.bin');
-const LOG = path.join(DATA, 'engine.log');
-const PAC_FILE = path.join(DATA, 'routing.pac');
-const CAMPUS_BROWSER_PAC_FILE = path.join(DATA, 'campus-browser-routing.pac');
-const ROUTING_RULES = path.join(DATA, 'routing-rules.json');
-const CAMPUS_CREDENTIALS = path.join(DATA, 'campus-credentials.json');
-const CAMPUS_CERTIFICATE_TRUST = path.join(DATA, 'campus-certificate-trust.json');
-const ENGINE_OWNER = path.join(DATA, 'engine-owner.json');
-const CREDENTIAL_TRANSACTION = path.join(DATA, 'credential-settings-transaction.json');
-const PROXY_CREDENTIAL = path.join(DATA, 'proxy-credential.bin');
-const PROXY_HELPER_CREDENTIAL = path.join(DATA, 'proxy-helper-credential.txt');
+const runtimeStoragePaths = createLegacyRuntimeStoragePaths(DATA);
+const SETTINGS = runtimeStoragePaths.settings;
+const CRED = runtimeStoragePaths.vpnCredential;
+const LOG = runtimeStoragePaths.engineLog;
+const PAC_FILE = runtimeStoragePaths.externalPac;
+const CAMPUS_BROWSER_PAC_FILE = runtimeStoragePaths.browserPac;
+const ROUTING_RULES = runtimeStoragePaths.routingRules;
+const CAMPUS_CREDENTIALS = runtimeStoragePaths.siteCredentials;
+const CAMPUS_CERTIFICATE_TRUST = runtimeStoragePaths.certificateTrust;
+const ENGINE_OWNER = runtimeStoragePaths.engineOwner;
+const CREDENTIAL_TRANSACTION = runtimeStoragePaths.credentialTransaction;
+const PROXY_CREDENTIAL = runtimeStoragePaths.proxyCredential;
+const PROXY_HELPER_CREDENTIAL = runtimeStoragePaths.proxyHelperCredential;
 const syntheticEngineE2e = !app.isPackaged && process.env[SYNTHETIC_ENGINE_E2E_ENV] === '1';
 
 // The helper sidecar is a short-lived, owner-only plaintext projection of the
