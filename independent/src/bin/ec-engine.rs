@@ -1049,13 +1049,6 @@ async fn run_engine<W: Write>(
         lifecycle.begin_stopping().map_err(event_output_failure)?;
         return Ok(StopReason::UserRequested);
     }
-    let providers = ProductionProviderSet::from_config(provider_family, &config).map_err(|_| {
-        failure(
-            EngineErrorCode::ConfigurationInvalid,
-            StopReason::StartupFailed,
-            Error("engine provider composition is invalid".into()),
-        )
-    })?;
     // Accepted control actions belong to the whole connection attempt, not one
     // phase. A shutdown acknowledged just before Auth or Transport completes
     // must remain pending in the next phase until its cancellation window ends.
@@ -1119,6 +1112,13 @@ async fn run_engine<W: Write>(
         )
         .await;
     }
+    let providers = ProductionProviderSet::from_config(provider_family, &config).map_err(|_| {
+        failure(
+            EngineErrorCode::ConfigurationInvalid,
+            StopReason::StartupFailed,
+            Error("engine provider composition is invalid".into()),
+        )
+    })?;
     let Some(session) = authenticate_password_with_lifecycle(
         &providers,
         gateway_username,
