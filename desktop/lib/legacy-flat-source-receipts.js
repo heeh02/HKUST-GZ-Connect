@@ -18,7 +18,13 @@ const LEGACY_SOURCE_MAX_BYTES = Object.freeze({
   browserPac: 1024 * 1024,
   siteCredentials: 2 * 1024 * 1024,
   certificateTrust: 2 * 1024 * 1024,
+  engineOwner: 64 * 1024,
+  credentialTransaction: 2 * 1024 * 1024,
+  proxyCredential: 64 * 1024,
+  proxyHelperCredential: 1024,
   engineLog: 16 * 1024 * 1024,
+  engineLogRotated: 16 * 1024 * 1024,
+  engineLogRetention: 64,
 });
 
 function absentReceipt() {

@@ -21,7 +21,9 @@ and encrypted password independently could commit a credential for the wrong acc
 ### Legacy receipt collection
 
 `legacy-flat-source-receipts.js` derives the exact existing paths from the normalized `userData` root. Callers
-cannot supply arbitrary source files. Each present source is processed through one no-follow descriptor:
+cannot supply arbitrary source files. The set includes settings/backup, VPN credential, routing/PAC, website
+vault, certificate trust, Engine owner, the existing credential transaction, proxy credential/helper projection,
+and current/rotated/retention log files. Each present source is processed through one no-follow descriptor:
 
 ```text
 lstat and policy check

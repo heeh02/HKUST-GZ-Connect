@@ -44,7 +44,13 @@ function createLegacyFlatSourcePaths(userData) {
     browserPac: path.join(root, 'campus-browser-routing.pac'),
     siteCredentials: path.join(root, 'campus-credentials.json'),
     certificateTrust: path.join(root, 'campus-certificate-trust.json'),
+    engineOwner: path.join(root, 'engine-owner.json'),
+    credentialTransaction: path.join(root, 'credential-settings-transaction.json'),
+    proxyCredential: path.join(root, 'proxy-credential.bin'),
+    proxyHelperCredential: path.join(root, 'proxy-helper-credential.txt'),
     engineLog: path.join(root, 'engine.log'),
+    engineLogRotated: path.join(root, 'engine.log.1'),
+    engineLogRetention: path.join(root, 'engine.log.retention'),
   });
 }
 
@@ -110,6 +116,8 @@ function createProfileAccountWorkspaceLayout({
       recentResources: path.join(workspaceRoot, 'recent-resources.json'),
       externalIntegrations: path.join(workspaceRoot, 'external-integrations.json'),
       engineLog: path.join(workspaceRoot, 'engine.log'),
+      engineLogRotated: path.join(workspaceRoot, 'engine.log.1'),
+      engineLogRetention: path.join(workspaceRoot, 'engine.log.retention'),
     },
     browserPartition: adoptLegacyHkustBrowserPartition
       ? LEGACY_HKUST_BROWSER_PARTITION

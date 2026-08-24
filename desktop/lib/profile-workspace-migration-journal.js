@@ -19,14 +19,27 @@ const LEGACY_SOURCE_IDS = Object.freeze([
   'browserPac',
   'siteCredentials',
   'certificateTrust',
+  'engineOwner',
+  'credentialTransaction',
+  'proxyCredential',
+  'proxyHelperCredential',
   'engineLog',
+  'engineLogRotated',
+  'engineLogRetention',
 ]);
 const DESTINATION_RECEIPT_IDS = Object.freeze([
   'globalSettings',
+  'globalProxyCredential',
+  'globalProxyHelperCredential',
+  'globalEngineOwner',
+  'globalUpdateState',
+  'globalActiveContextSwitch',
   'profileSettings',
   'profileState',
   'account',
   'vpnCredential',
+  'credentialTransaction',
+  'deletionTombstone',
   'workspaceState',
   'siteCredentials',
   'certificateTrust',
@@ -38,6 +51,8 @@ const DESTINATION_RECEIPT_IDS = Object.freeze([
   'recentResources',
   'externalIntegrations',
   'engineLog',
+  'engineLogRotated',
+  'engineLogRetention',
 ]);
 const JOURNAL_STATES = Object.freeze(['prepared', 'committed']);
 const HEX_DIGEST = /^[a-f0-9]{64}$/u;

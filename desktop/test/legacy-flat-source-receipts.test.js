@@ -36,7 +36,13 @@ test('legacy source paths are the exact current flat userData authorities', () =
     browserPac: path.join(userData, 'campus-browser-routing.pac'),
     siteCredentials: path.join(userData, 'campus-credentials.json'),
     certificateTrust: path.join(userData, 'campus-certificate-trust.json'),
+    engineOwner: path.join(userData, 'engine-owner.json'),
+    credentialTransaction: path.join(userData, 'credential-settings-transaction.json'),
+    proxyCredential: path.join(userData, 'proxy-credential.bin'),
+    proxyHelperCredential: path.join(userData, 'proxy-helper-credential.txt'),
     engineLog: path.join(userData, 'engine.log'),
+    engineLogRotated: path.join(userData, 'engine.log.1'),
+    engineLogRetention: path.join(userData, 'engine.log.retention'),
   });
 });
 
