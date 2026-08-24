@@ -64,7 +64,7 @@ SchoolProfileInternal
     homeUrl?
     campusDomains[]
     directPartnerDomains[]
-    builtinResources[]
+    builtinResourcesRef
     healthTargets[]
 
   policy
@@ -304,6 +304,7 @@ userData/
         routing-rules.json
         routing.pac
         browser-routing.pac
+        external-integrations.json
         engine.log
 ```
 
@@ -315,7 +316,9 @@ profileId + profileCredentialBindingRevision + GatewayOrigin + ProtocolFamily
 ```
 
 Website credentials and certificate pins bind to profile + account + exact HTTPS origin. Server resources bind
-to profile and authenticated-session generation; user views/favorites/recent bind to account workspace.
+to profile and authenticated-session generation; user views/favorites/recent and non-secret external integration
+records bind to the account workspace. Integration proxy credentials remain in the secure credential domain and
+bind profile/account/listener/auth revisions according to ADR-0005.
 
 Only one profile/account/Engine may be active in the first multi-school release. Account/workspace storage and
 switching follow ADR-0004.
@@ -342,8 +345,9 @@ increment active context epoch
   → close Browser request gate
   → cancel auth/certificate/credential/navigation continuations
   → close old account workspace tabs/views/connections
+  → mark old external integrations stale and revoke/rotate their proxy credentials
   → stop old Engine and confirm cleanup
-  → destroy proxy sidecar/generation secrets
+  → destroy proxy/helper sidecars and generation secrets
   → clear old account server resources/notices
   → validate destination profile + primary account + workspace
   → atomically commit exact profile/account pair
@@ -352,7 +356,8 @@ increment active context epoch
 
 Every continuation binds connection intent + active-context epoch + Engine generation and is checked against the
 exact profile/account pair. Old Engine closes, health probes, retries, route transactions and MFA responses
-cannot affect the new context.
+cannot affect the new context. An exported or managed configuration for the old profile cannot authenticate to the new
+profile even when the loopback port is reused.
 
 If old Engine cleanup is unconfirmed, switching fails closed and no new Engine starts on the same port.
 
@@ -463,6 +468,8 @@ credentials. Rollback never submits a credential to a changed Gateway or merges 
 Before adding a second reviewed school:
 
 - two profiles × two accounts prove password/Cookie/pin/rule/resource/event isolation;
+- Integration Center exports, managed blocks/extensions and credentials for Profile/Account A are stale and
+  unauthorized in B;
 - 100 profile/account switches leave no PID/port/timer/view/credential residue;
 - every migration write/fsync/rename failure yields all-old or all-new state;
 - legacy credential retirement is coupled to logout/password replacement/account clear and never reappears on
@@ -479,3 +486,4 @@ Before P11 exposes Advanced custom onboarding:
   observed in authentication;
 - public probe never advertises L3/DNS/resource support before authenticated runtime confirmation;
 - no custom new-tab or health request reaches a reviewed school or arbitrary public hostname by default.
+- a custom profile inherits no reviewed profile integration record, proxy credential or helper sidecar.
