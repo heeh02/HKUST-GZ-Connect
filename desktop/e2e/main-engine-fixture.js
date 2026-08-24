@@ -32,6 +32,15 @@ if (!Number.isSafeInteger(generation) || generation <= 0 ||
 const configBytes = fs.readFileSync(configPath);
 const configSha256 = crypto.createHash('sha256').update(configBytes).digest('hex');
 const configOrigin = new URL(JSON.parse(configBytes.toString('utf8')).base_url).origin;
+const providerCapabilities = Object.fromEntries([
+  'auth.password', 'auth.captcha', 'auth.sms', 'auth.token', 'auth.certificate',
+  'auth.hid', 'auth.sso', 'auth.device', 'auth.unknown_secondary',
+  'resource.catalogue', 'resource.authorization_decision', 'transport.l3',
+  'transport.web_vpn',
+].map((capability) => [
+  capability,
+  ['auth.password', 'transport.l3'].includes(capability) ? 'supported' : 'unsupported',
+]));
 
 const attemptFile = path.join(userData, 'synthetic-engine-attempt.txt');
 const observationFile = path.join(userData, 'synthetic-engine-observations.jsonl');
@@ -96,9 +105,11 @@ input.on('line', (line) => {
     const keys = Object.keys(binding || {}).sort();
     if (JSON.stringify(keys) !== JSON.stringify([
       'apiVersion', 'configSha256', 'gatewayOrigin', 'profileId', 'profileRevision', 'type',
-    ]) || binding.type !== 'engine_config_binding' || binding.apiVersion !== 1 ||
+      'protocolFamily',
+    ].sort()) || binding.type !== 'engine_config_binding' || binding.apiVersion !== 1 ||
         binding.configSha256 !== configSha256 || binding.gatewayOrigin !== configOrigin ||
-        binding.profileId !== 'hkustgz' || binding.profileRevision !== 1) {
+        binding.profileId !== 'hkustgz' || binding.profileRevision !== 1 ||
+        binding.protocolFamily !== 'easyconnect-password-modern-l3-v1') {
       process.exit(64);
     }
     bindingSeen = true;
@@ -164,7 +175,20 @@ input.on('line', (line) => {
       type: 'control_hello',
       apiVersion: 2,
       requestId: frame.requestId,
-      capabilities: ['engine.shutdown'],
+      capabilities: ['engine.shutdown', 'provider.capabilities'],
+    });
+  } else if (frame?.type === 'request' && frame.apiVersion === 2 &&
+      frame.command?.name === 'provider_capabilities' && Number.isSafeInteger(frame.requestId)) {
+    observe('provider_capabilities_requested');
+    send({
+      type: 'provider_capabilities',
+      apiVersion: 2,
+      requestId: frame.requestId,
+      profileId: 'hkustgz',
+      profileRevision: 1,
+      engineGeneration: generation,
+      compiled: providerCapabilities,
+      provider: providerCapabilities,
     });
   } else if (frame?.type === 'request' && frame.apiVersion === 2 &&
       frame.command?.name === 'shutdown' && Number.isSafeInteger(frame.requestId)) {

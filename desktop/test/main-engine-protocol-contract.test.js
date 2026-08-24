@@ -45,5 +45,8 @@ test('desktop opts into the private Control v2 stream and retains signal fallbac
   assert.ok(credentials > 0 && runtimeStart > credentials,
     'runtime/handshake starts only after the credential prefix');
   assert.match(runtime, /this\.control\.handshake\(\)/);
+  assert.match(runtime, /this\.control\.providerCapabilities\(\)/);
+  assert.match(source, /activeSchoolProfile\.observeCapabilityReport\(report\)/u);
+  assert.match(source, /getCapabilitySnapshot: \(\) => activeSchoolProfile\.capabilitySnapshot\(\)/u);
   assert.match(source, /requestGracefulStop: requestActiveEngineControlShutdown/);
 });

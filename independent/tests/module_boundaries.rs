@@ -33,6 +33,28 @@ fn production_engine_never_imports_probe_workflows() {
 }
 
 #[test]
+fn production_engine_composes_one_closed_provider_set_instead_of_concrete_adapters() {
+    let engine = source("src/bin/ec-engine.rs");
+    assert!(engine.contains("ProductionProviderSet::from_config"));
+    assert!(engine.contains("providers.authentication_provider()"));
+    assert!(engine.contains("providers.transport_backend()"));
+    assert!(!engine.contains("ModernL3TransportBackend::new"));
+    assert!(
+        !engine
+            .contains("AuthenticatedGatewaySession::authenticate_with_provider_error_cancellable")
+    );
+
+    let composition = source("src/engine/provider_composition.rs").to_ascii_lowercase();
+    assert!(composition.contains("easyconnect-password-modern-l3-v1"));
+    for forbidden in ["libloading", "dlopen", "library::new", "loadlibrary"] {
+        assert!(
+            !composition.contains(forbidden),
+            "composition contains {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn gateway_http_is_neutral_to_probe_transport_and_local_frontends() {
     let gateway = source("src/gateway_http.rs");
     for forbidden in [

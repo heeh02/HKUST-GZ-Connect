@@ -63,6 +63,28 @@ test('client negotiates v2 then requests typed graceful shutdown', async () => {
   assert.equal((await shutdown).status, 'accepted');
 });
 
+test('provider capability query is bounded typed and profile-generation bound', async () => {
+  const writable = new FakeWritable();
+  const client = new EngineControlClient({ writable });
+  const hello = client.handshake();
+  client.feed('{"type":"control_hello","apiVersion":2,"requestId":1,"capabilities":["provider.capabilities"]}\n');
+  await hello;
+  const request = client.providerCapabilities();
+  assert.deepEqual(writable.frames[1], {
+    type: 'request', apiVersion: 2, requestId: 2,
+    command: { name: 'provider_capabilities' },
+  });
+  client.feed('{"type":"provider_capabilities","apiVersion":2,"requestId":2,"profileId":"hkustgz","profileRevision":1,"engineGeneration":9,"compiled":{"auth.password":"supported","auth.sms":"unsupported","transport.l3":"supported"},"provider":{"auth.password":"supported","auth.sms":"unsupported","transport.l3":"supported"}}\n');
+  const report = await request;
+  assert.equal(report.profileId, 'hkustgz');
+  assert.equal(report.engineGeneration, 9);
+  assert.equal(report.provider['auth.sms'], 'unsupported');
+  assert.equal(normalizeControlResponse({ ...report, cookie: 'private' }), null);
+  assert.equal(normalizeControlResponse({
+    ...report, provider: { ...report.provider, 'auth.token': 'supported' },
+  }), null);
+});
+
 test('typed errors and stream close reject pending requests without leaking payloads', async () => {
   const writable = new FakeWritable();
   const client = new EngineControlClient({ writable });

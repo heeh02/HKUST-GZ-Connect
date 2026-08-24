@@ -212,7 +212,7 @@ fn engine_rechecks_config_digest_and_origin_before_reading_credentials() {
     ] {
         let private_credential = "must-not-appear-in-config-binding-errors";
         let binding = format!(
-            "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{expected_digest}\",\"gatewayOrigin\":\"{expected_origin}\",\"profileId\":\"hkustgz\",\"profileRevision\":1}}\n",
+            "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{expected_digest}\",\"gatewayOrigin\":\"{expected_origin}\",\"profileId\":\"hkustgz\",\"profileRevision\":1,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\n",
         );
         let mut child = engine()
             .args([
@@ -251,7 +251,7 @@ fn matching_config_binding_reaches_the_credential_boundary() {
         .join("hkustgz.json");
     let digest = hex::encode(Sha256::digest(std::fs::read(&config).unwrap()));
     let binding = format!(
-        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://remote.hkust-gz.edu.cn\",\"profileId\":\"hkustgz\",\"profileRevision\":1}}\n",
+        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://remote.hkust-gz.edu.cn\",\"profileId\":\"hkustgz\",\"profileRevision\":1,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\n",
     );
     let output = engine()
         .args([

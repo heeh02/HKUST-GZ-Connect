@@ -17,6 +17,7 @@ pub mod event;
 pub mod ip_packet;
 pub mod netstack;
 pub mod provider;
+pub mod provider_composition;
 pub mod proxy;
 pub mod session;
 pub mod socks;

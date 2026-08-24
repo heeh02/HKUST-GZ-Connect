@@ -147,6 +147,15 @@ async function run() {
   assert.equal(connected.phase, 'connected');
   assert.equal(connected.dnsMode, 'gateway');
   assert.ok(connected.clientIp);
+  assert.equal(connected.capabilitySnapshot.profileId, 'hkustgz');
+  assert.equal(connected.capabilitySnapshot.effective['auth.password'], 'supported');
+  assert.equal(connected.capabilitySnapshot.effective['transport.l3'], 'supported');
+  assert.equal(connected.capabilitySnapshot.effective['auth.sms'], 'unsupported');
+  assert.equal(
+    connected.capabilitySnapshot.accountHandle,
+    connected.campusAccount.accountHandle,
+  );
+  assert.equal(JSON.stringify(connected.capabilitySnapshot).includes('accountKey'), false);
   assert.equal(await loopbackConnects(port), true,
     'listener_ready must correspond to a real owned loopback listener');
   const opened = await opening;
@@ -169,6 +178,8 @@ async function run() {
   control = await controlWindow(oldContentsId);
   const recovered = await invoke(control, 'window.api.getState()');
   assert.equal(recovered.connected, true, 'renderer recovery must not stop the healthy Engine');
+  assert.equal(recovered.capabilitySnapshot.engineGeneration,
+    connected.capabilitySnapshot.engineGeneration);
 
   const stopped = await invoke(control, 'window.api.disconnect()');
   assert.equal(stopped.ok, true);
@@ -177,6 +188,7 @@ async function run() {
     return !state.connected && !state.connecting ? state : null;
   }, 'graceful disconnect');
   assert.equal(disconnected.phase, 'idle');
+  assert.equal(disconnected.capabilitySnapshot, null);
   await waitFor(async () => !await loopbackConnects(port), 'loopback listener release');
 
   const events = observations();
@@ -195,6 +207,7 @@ async function run() {
   assert.ok(events.some((entry) => entry.type === 'stale_generation_sent'));
   assert.ok(events.some((entry) => entry.type === 'listener_ready_sent'));
   assert.ok(events.some((entry) => entry.type === 'shutdown_received'));
+  assert.ok(events.filter((entry) => entry.type === 'provider_capabilities_requested').length >= 2);
   process.stdout.write('main synthetic Engine lifecycle: PASS\n');
 }
 

@@ -85,7 +85,7 @@ report_up(){
 
 run_engine(){
   local binding_frame pw
-  printf -v binding_frame '{"type":"engine_config_binding","apiVersion":1,"configSha256":"%s","gatewayOrigin":"https://remote.hkust-gz.edu.cn","profileId":"hkustgz","profileRevision":1}' \
+  printf -v binding_frame '{"type":"engine_config_binding","apiVersion":1,"configSha256":"%s","gatewayOrigin":"https://remote.hkust-gz.edu.cn","profileId":"hkustgz","profileRevision":1,"protocolFamily":"easyconnect-password-modern-l3-v1"}' \
     "$REVIEWED_ENGINE_CONFIG_SHA256"
   pw="$(get_pw)" || true
   [ -n "${pw:-}" ] || die "no password in Keychain — run: $(basename "$0") set-password"

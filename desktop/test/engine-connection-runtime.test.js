@@ -8,9 +8,21 @@ const { EngineConnectionRuntime } = require('../lib/engine-connection-runtime');
 class FakeControl {
   constructor() {
     this.handshakes = 0;
+    this.capabilityQueries = 0;
     this.chunks = [];
   }
   handshake() { this.handshakes += 1; return Promise.resolve(); }
+  providerCapabilities() {
+    this.capabilityQueries += 1;
+    return Promise.resolve({
+      type: 'provider_capabilities',
+      profileId: 'hkustgz',
+      profileRevision: 1,
+      engineGeneration: 7,
+      compiled: { 'auth.password': 'supported', 'transport.l3': 'supported' },
+      provider: { 'auth.password': 'supported', 'transport.l3': 'supported' },
+    });
+  }
   feed(chunk) { this.chunks.push(Buffer.from(chunk)); }
 }
 
@@ -33,6 +45,7 @@ function fixture(overrides = {}) {
     'onFatalError',
     'onStopped',
     'onProtocolTimeout',
+    'onProviderCapabilities',
   ].map((name) => [name, (...args) => calls.push([name, ...args])]));
   const runtime = new EngineConnectionRuntime({
     generation: 7,
@@ -117,6 +130,25 @@ test('runtime binds one generation, negotiates before readiness, and dispatches 
   ]);
   assert.equal(f.control.chunks.length, 1, 'v2/v3 control sees the same stdout chunk');
   assert.ok(f.clearedTimer, 'the Event API hello clears its deadline');
+});
+
+test('runtime queries additive provider capabilities without changing Event API v1', async () => {
+  const f = fixture();
+  f.runtime.start(f.stdout);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(f.control.handshakes, 1);
+  assert.equal(f.control.capabilityQueries, 1);
+  assert.deepEqual(f.calls, [[
+    'onProviderCapabilities',
+    {
+      type: 'provider_capabilities',
+      profileId: 'hkustgz',
+      profileRevision: 1,
+      engineGeneration: 7,
+      compiled: { 'auth.password': 'supported', 'transport.l3': 'supported' },
+      provider: { 'auth.password': 'supported', 'transport.l3': 'supported' },
+    },
+  ]]);
 });
 
 test('listener mismatch and stale generation output fail closed before UI callbacks', () => {

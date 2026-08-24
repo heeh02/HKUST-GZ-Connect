@@ -16,6 +16,8 @@ class EngineControlSuite {
 
   shutdown() { return this.v2.shutdown(); }
 
+  providerCapabilities() { return this.v2.providerCapabilities(); }
+
   feed(value) {
     this.v2.feed(value);
     this.auth.feed(value);
@@ -65,6 +67,11 @@ class EngineControlRegistry {
   shutdown() {
     if (!this.active?.client.negotiated) return false;
     return this.active.client.shutdown().then(() => true);
+  }
+
+  providerCapabilities() {
+    if (!this.active?.client.negotiated) return null;
+    return this.active.client.providerCapabilities();
   }
 }
 

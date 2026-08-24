@@ -88,6 +88,11 @@ Desktop Renderer
 - secret 输入的有界、内存化、zeroizing 生命周期；
 - 产出 `AuthenticatedGatewaySession` 或稳定失败。
 
+生产 provider 选择由闭合、编译期 `ProductionProviderSet` 统一装配。Profile 只能选择已编译
+`ProtocolFamily`；不能通过 JSON 加载任意实现。能力报告以 compiled/provider/profile/ingress
+四层相交，任何后续层只能收紧，不能提升缺失能力。详细合同见
+[`ADR-0006`](docs/adr/0006-production-provider-composition.md)。
+
 绝不负责：
 
 - L3、DNS、SOCKS、PAC、浏览器路由；

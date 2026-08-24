@@ -451,33 +451,38 @@ function createWorkspaceView(value) {
 }
 
 function createLegacyPrimaryAccountView(value = {}) {
-  const source = exactKeys(value, ['label', 'hasCredential', 'isActive'], [],
+  const source = exactKeys(value, ['accountHandle', 'label', 'hasCredential', 'isActive'], [],
     'legacy primary account view');
   if (source.hasCredential != null && typeof source.hasCredential !== 'boolean' ||
       source.isActive != null && typeof source.isActive !== 'boolean') {
     throw new TypeError('legacy primary account state is invalid');
   }
-  return Object.freeze({
+  const view = {
     kind: 'legacy-primary',
     role: 'primary',
     state: 'legacy',
     label: source.label == null ? null : boundedText(source.label, 40, 'account label'),
     hasCredential: source.hasCredential === true,
     isActive: source.isActive !== false,
-  });
+  };
+  if (source.accountHandle != null) view.accountHandle = opaqueAccountHandle(source.accountHandle);
+  return Object.freeze(view);
 }
 
 function createLegacyWorkspaceView(value = {}) {
-  const source = exactKeys(value, ['resourceCount', 'favoriteCount', 'recentCount'], [],
+  const source = exactKeys(value,
+    ['accountHandle', 'resourceCount', 'favoriteCount', 'recentCount'], [],
     'legacy workspace view');
-  return Object.freeze({
+  const view = {
     kind: 'legacy-workspace',
     accountRole: 'primary',
     persistentScope: false,
     resourceCount: boundedCount(source.resourceCount ?? 0, 'resourceCount'),
     favoriteCount: boundedCount(source.favoriteCount ?? 0, 'favoriteCount'),
     recentCount: boundedCount(source.recentCount ?? 0, 'recentCount'),
-  });
+  };
+  if (source.accountHandle != null) view.accountHandle = opaqueAccountHandle(source.accountHandle);
+  return Object.freeze(view);
 }
 
 function normalizeCapabilityLayer(value, name) {
