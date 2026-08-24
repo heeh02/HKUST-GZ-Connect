@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   LEGACY_HKUST_BROWSER_PARTITION,
+  createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
 } = require('../lib/profile-workspace-layout');
 const {
@@ -93,6 +94,24 @@ test('only the migrated HKUST primary workspace adopts the legacy Browser partit
     ...input,
     adoptLegacyHkustBrowserPartition: true,
   }).browserPartition, LEGACY_HKUST_BROWSER_PARTITION);
+});
+
+test('bootstrap layout discovers Account authority before the Workspace key is known', () => {
+  const input = {
+    userData: path.resolve('/tmp/campus-connect-user-data'),
+    profileKey: PROFILE_KEY,
+    accountKey: ACCOUNT_KEY,
+  };
+  const bootstrap = createProfileAccountBootstrapLayout(input);
+  const complete = createProfileAccountWorkspaceLayout({
+    ...input,
+    workspaceKey: WORKSPACE_KEY,
+  });
+  assert.deepEqual(bootstrap.global, complete.global);
+  assert.deepEqual(bootstrap.profile, complete.profile);
+  assert.deepEqual(bootstrap.account, complete.account);
+  assert.equal(Object.hasOwn(bootstrap, 'workspace'), false);
+  assert.equal(Object.isFrozen(bootstrap.account), true);
 });
 
 test('layout rejects relative roots, traversal keys and key reuse', () => {
@@ -223,6 +242,8 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'hkust-migration-destination-plan',
     'legacy-credential-rollback-state',
     'legacy-credential-rollback-store',
+    'profile-workspace-documents',
+    'profile-workspace-runtime-authority',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
     'vpn-credential-envelope-store',

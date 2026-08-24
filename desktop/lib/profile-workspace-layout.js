@@ -54,33 +54,13 @@ function createLegacyFlatSourcePaths(userData) {
   });
 }
 
-function createProfileAccountWorkspaceLayout({
-  userData,
-  profileKey,
-  accountKey,
-  workspaceKey,
-  adoptLegacyHkustBrowserPartition = false,
-} = {}) {
-  const root = normalizedUserData(userData);
-  const keys = {
-    profileKey: validateOpaqueKey(profileKey, 'profileKey'),
-    accountKey: validateOpaqueKey(accountKey, 'accountKey'),
-    workspaceKey: validateOpaqueKey(workspaceKey, 'workspaceKey'),
-  };
-  if (new Set(Object.values(keys)).size !== 3) {
-    throw new TypeError('profile, account and workspace keys must be distinct');
-  }
-  if (typeof adoptLegacyHkustBrowserPartition !== 'boolean') {
-    throw new TypeError('legacy Browser partition adoption must be explicit');
-  }
-
+function createProfileAccountRoots(root, keys) {
   const globalRoot = path.join(root, 'global');
   const profileRoot = path.join(root, 'profiles', keys.profileKey);
   const accountRoot = path.join(profileRoot, 'accounts', keys.accountKey);
-  const workspaceRoot = path.join(accountRoot, 'workspace');
-  return deepFreeze({
+  return {
     root,
-    identity: keys,
+    identity: { profileKey: keys.profileKey, accountKey: keys.accountKey },
     global: {
       root: globalRoot,
       settings: path.join(globalRoot, 'settings.json'),
@@ -109,6 +89,47 @@ function createProfileAccountWorkspaceLayout({
       credentialTransaction: path.join(accountRoot, 'credential-transaction.json'),
       deletionTombstone: path.join(accountRoot, 'deletion-tombstone.json'),
     },
+  };
+}
+
+function createProfileAccountBootstrapLayout({ userData, profileKey, accountKey } = {}) {
+  const root = normalizedUserData(userData);
+  const keys = {
+    profileKey: validateOpaqueKey(profileKey, 'profileKey'),
+    accountKey: validateOpaqueKey(accountKey, 'accountKey'),
+  };
+  if (keys.profileKey === keys.accountKey) {
+    throw new TypeError('profile and account keys must be distinct');
+  }
+  return deepFreeze(createProfileAccountRoots(root, keys));
+}
+
+function createProfileAccountWorkspaceLayout({
+  userData,
+  profileKey,
+  accountKey,
+  workspaceKey,
+  adoptLegacyHkustBrowserPartition = false,
+} = {}) {
+  const root = normalizedUserData(userData);
+  const keys = {
+    profileKey: validateOpaqueKey(profileKey, 'profileKey'),
+    accountKey: validateOpaqueKey(accountKey, 'accountKey'),
+    workspaceKey: validateOpaqueKey(workspaceKey, 'workspaceKey'),
+  };
+  if (new Set(Object.values(keys)).size !== 3) {
+    throw new TypeError('profile, account and workspace keys must be distinct');
+  }
+  if (typeof adoptLegacyHkustBrowserPartition !== 'boolean') {
+    throw new TypeError('legacy Browser partition adoption must be explicit');
+  }
+
+  const base = createProfileAccountRoots(root, keys);
+  const accountRoot = base.account.root;
+  const workspaceRoot = path.join(accountRoot, 'workspace');
+  return deepFreeze({
+    ...base,
+    identity: keys,
     workspace: {
       root: workspaceRoot,
       settings: path.join(workspaceRoot, 'workspace-settings.json'),
@@ -135,6 +156,7 @@ function createProfileAccountWorkspaceLayout({
 module.exports = {
   LEGACY_HKUST_BROWSER_PARTITION,
   createLegacyFlatSourcePaths,
+  createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
   validateUserDataRoot: normalizedUserData,
 };

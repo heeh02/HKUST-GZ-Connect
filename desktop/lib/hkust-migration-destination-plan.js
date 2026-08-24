@@ -11,6 +11,13 @@ const {
   createLegacyCredentialRollbackState,
 } = require('./legacy-credential-rollback-state');
 const {
+  validateGlobalSettingsDocument,
+  validateGlobalUpdateStateDocument,
+  validateProfileSettingsDocument,
+  validateProfileStateDocument,
+  validateWorkspaceSettingsDocument,
+} = require('./profile-workspace-documents');
+const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,
 } = require('./school-profile-schema');
@@ -209,7 +216,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
   });
 
   const files = {
-    globalSettings: jsonBuffer({
+    globalSettings: jsonBuffer(validateGlobalSettingsDocument({
       schemaVersion: 1,
       activeProfileKey: journal.identity.profileKey,
       activeAccountKey: journal.identity.accountKey,
@@ -220,19 +227,22 @@ function createHkustMigrationDestinationPlan(options = {}) {
       closeAction: settings.closeAction,
       language: settings.language,
       startAtLogin: settings.startAtLogin,
-    }),
+    })),
     globalProxyCredential: copyOrNull(payloads.proxyCredential),
     globalProxyHelperCredential: null,
     globalEngineOwner: null,
-    globalUpdateState: jsonBuffer({ schemaVersion: 1, checkedAt: settings.updateCheckedAt }),
+    globalUpdateState: jsonBuffer(validateGlobalUpdateStateDocument({
+      schemaVersion: 1,
+      checkedAt: settings.updateCheckedAt,
+    })),
     globalActiveContextSwitch: null,
-    profileSettings: jsonBuffer({
+    profileSettings: jsonBuffer(validateProfileSettingsDocument({
       schemaVersion: 1,
       profileId: journal.profileId,
       profileRevision: journal.profileRevision,
       primaryAccountKey: journal.identity.accountKey,
-    }),
-    profileState: jsonBuffer({
+    })),
+    profileState: jsonBuffer(validateProfileStateDocument({
       schemaVersion: 1,
       migrationId: journal.migrationId,
       profileId: journal.profileId,
@@ -240,7 +250,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
       profileCredentialBindingRevision: journal.profileCredentialBindingRevision,
       gatewayOrigin: journal.gatewayOrigin,
       protocolFamily: journal.protocolFamily,
-    }),
+    })),
     account: jsonBuffer(accountDocument),
     vpnCredential: encryptedCredential,
     legacyCredentialRollbackBlob: copyOrNull(source.legacyCredential),
@@ -248,13 +258,13 @@ function createHkustMigrationDestinationPlan(options = {}) {
     legacyCredentialRollbackRetirement: null,
     credentialTransaction: null,
     deletionTombstone: null,
-    workspaceSettings: jsonBuffer({
+    workspaceSettings: jsonBuffer(validateWorkspaceSettingsDocument({
       schemaVersion: 1,
       autoReconnect: settings.autoReconnect,
       maxAttempts: settings.maxAttempts,
       autoConnect: settings.autoConnect,
       routeDomains: settings.routeDomains,
-    }),
+    })),
     workspaceState: jsonBuffer(workspace),
     siteCredentials: copyOrNull(payloads.siteCredentials),
     certificateTrust: copyOrNull(payloads.certificateTrust),
