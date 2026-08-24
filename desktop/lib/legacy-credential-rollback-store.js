@@ -460,7 +460,56 @@ class LegacyCredentialRollbackStore {
   }
 }
 
+function createLegacyCredentialRollbackStoreForAuthority({
+  authority,
+  fileSystem = fs,
+  platform = process.platform,
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+} = {}) {
+  const layout = authority?.layout;
+  const statePath = layout?.account?.legacyCredentialRollbackState;
+  if (typeof statePath !== 'string' || !authority?.profileState || !authority?.account ||
+      (platform === 'win32' && !windowsAcl?.verify?.(statePath))) {
+    throw new TypeError('legacy rollback authority is incomplete');
+  }
+  let data;
+  let state;
+  try {
+    ({ data } = readPrivateFileBounded(statePath, {
+      maxBytes: MAX_ROLLBACK_DOCUMENT_BYTES,
+      minBytes: 2,
+      platform,
+      fileSystem,
+    }));
+    state = validateLegacyCredentialRollbackState(JSON.parse(data.toString('utf8')));
+  } finally {
+    data?.fill(0);
+  }
+  const accountOrigin = authority.account.gatewayOrigin?.origin;
+  if (state.migrationId !== authority.profileState.migrationId ||
+      state.profileId !== authority.profile.profileId ||
+      state.profileCredentialBindingRevision !==
+        authority.profileState.profileCredentialBindingRevision ||
+      state.accountKey !== authority.account.accountKey ||
+      state.accountCredentialRevision > authority.account.accountCredentialRevision ||
+      state.gatewayOrigin !== accountOrigin ||
+      state.protocolFamily !== authority.account.protocolFamily) {
+    throw new Error('legacy rollback metadata does not match runtime authority');
+  }
+  return new LegacyCredentialRollbackStore({
+    layout,
+    expectedBinding: bindingFromState(state),
+    fileSystem,
+    platform,
+    windowsAcl,
+  });
+}
+
 module.exports = {
+  createLegacyCredentialRollbackStoreForAuthority,
   LegacyCredentialRollbackStore,
   RETIREMENT_INTENT_VERSION,
 };
