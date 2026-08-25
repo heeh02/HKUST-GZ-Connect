@@ -1,6 +1,6 @@
 # Web resource model
 
-Status: accepted 2.0 product/architecture direction; P8 implementation is not enabled by this document.
+Status: accepted and implemented on the active P8 branch; merge remains independently reviewed.
 
 ## 1. Product boundary
 
