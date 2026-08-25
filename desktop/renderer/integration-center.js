@@ -123,6 +123,7 @@
       const value = document.createElement('button');
       value.type = 'button';
       value.className = `mini${danger ? ' danger-action' : ''}`;
+      value.dataset.integrationAction = action;
       value.textContent = label;
       value.disabled = busy;
       value.addEventListener('click', () => prepare(adapterId, action));
@@ -132,6 +133,7 @@
       const rows = [];
       for (const view of views.filter((value) => value.compatibilityState !== 'unavailable')) {
         const row = document.createElement('div'); row.className = 'integration-row';
+        row.dataset.integrationAdapter = view.adapterId;
         const main = document.createElement('div'); main.className = 'integration-main';
         const name = document.createElement('div'); name.className = 'integration-name';
         name.textContent = t(`integration.adapter.${view.adapterId}`);

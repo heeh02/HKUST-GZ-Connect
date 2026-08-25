@@ -17,7 +17,7 @@ const IDS = [
 function element() {
   return {
     children: [], listeners: new Map(), textContent: '', className: '', disabled: false,
-    open: false,
+    open: false, dataset: {},
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
     addEventListener(name, callback) { this.listeners.set(name, callback); },

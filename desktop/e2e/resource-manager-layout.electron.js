@@ -38,7 +38,7 @@ async function measureAt(window, width, height) {
         open: dialog.open,
         dialog: rect(dialog),
         close: rect(document.getElementById('closeResourceDialog')),
-        actions: rect(document.querySelector('.dialog-actions')),
+        actions: rect(dialog.querySelector('.dialog-actions')),
         body: body && {
           ...rect(body),
           clientHeight: body.clientHeight,
@@ -145,6 +145,51 @@ function assertCustomResourceAddAndOpen(result) {
   }, 'adding and opening did not use the saved campus route');
 }
 
+async function exerciseIntegrationCenter(window) {
+  await window.webContents.executeJavaScript(`document.querySelector('.nav[data-page="tower"]').click()`);
+  await waitFor(window,
+    `document.querySelectorAll('[data-integration-adapter]').length === 6`,
+    'Integration Center rows');
+  const prepared = await window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="install"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const dialog = document.getElementById('integrationDialog');
+    const rect = dialog.getBoundingClientRect();
+    return {
+      open: dialog.open,
+      rect: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+      summary: document.getElementById('integrationPreviewSummary').textContent,
+      warning: document.getElementById('integrationPreviewWarnings').textContent,
+      pageText: document.body.textContent,
+    };
+  })()`);
+  assert.equal(prepared.open, true, 'Integration Center preview did not open');
+  assert.ok(prepared.rect.top >= 48 && prepared.rect.left >= 8,
+    'Integration Center preview overlaps the titlebar or window edge');
+  assert.ok(prepared.rect.right <= 500 - 8 && prepared.rect.bottom <= 640 - 12,
+    'Integration Center preview escapes the compact viewport');
+  assert.match(prepared.summary, /1|512|2/u, 'Integration Center omitted the bounded change summary');
+  assert.match(prepared.warning, /凭据|credential/iu,
+    'Integration Center omitted the local proxy credential warning');
+  assert.doesNotMatch(prepared.pageText, /\/Users\/|\\Users\\|password\s*[:=]/iu,
+    'Integration Center exposed a path or credential value to the renderer');
+
+  await window.webContents.executeJavaScript(`document.getElementById('confirmIntegration').click()`);
+  await waitFor(window,
+    `document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] .integration-state').classList.contains('current')`,
+    'managed integration confirmation');
+  const confirmed = await window.webContents.executeJavaScript(`({
+    dialogOpen: document.getElementById('integrationDialog').open,
+    status: document.getElementById('integrationStatus').textContent,
+    updateVisible: !!document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="update"]'),
+    removeVisible: !!document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="remove"]'),
+  })`);
+  assert.equal(confirmed.dialogOpen, false, 'confirmed Integration Center preview remained open');
+  assert.ok(confirmed.status, 'confirmed Integration Center operation gave no visible result');
+  assert.equal(confirmed.updateVisible, true, 'managed integration did not expose update after install');
+  assert.equal(confirmed.removeVisible, true, 'managed integration did not expose removal after install');
+}
+
 async function main() {
   await app.whenReady();
   const window = new BrowserWindow({
@@ -157,6 +202,7 @@ async function main() {
   try {
     await window.loadFile(renderer);
     await waitFor(window, "document.getElementById('dash').hidden === false", 'dashboard initialization');
+    await exerciseIntegrationCenter(window);
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
       assertLayout(await measureAt(window, width, height), width, height);
     }
