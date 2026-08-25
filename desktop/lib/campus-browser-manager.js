@@ -59,6 +59,8 @@ class CampusBrowserManager {
 
   get routingRequestsBlocked() { return this.browser?.routingRequestsBlocked; }
 
+  get hasBrowser() { return this.browser !== null; }
+
   getOrCreate() {
     if (this.browser) return this.browser;
     const credentialVault = new this.CredentialVaultClass({
@@ -131,7 +133,9 @@ class CampusBrowserManager {
   }
 
   close() {
-    return this.browser?.close() ?? null;
+    const browser = this.browser;
+    this.browser = null;
+    return browser?.close() ?? null;
   }
 
   ownsWebContents(contents) {

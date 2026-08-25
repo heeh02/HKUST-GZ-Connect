@@ -98,5 +98,8 @@ test('lifecycle and certificate wrappers are inert before creation and delegate 
   assert.deepEqual(f.manager.handleCertificateError({ origin: 'fixture' }), { origin: 'fixture' });
   f.manager.setLocale('en', () => {});
   assert.equal(f.manager.browser.locale[0], 'en');
+  const retired = f.manager.browser;
   assert.equal(f.manager.close(), 'closed');
+  assert.equal(f.manager.hasBrowser, false);
+  assert.notEqual(f.manager.getOrCreate(), retired);
 });
