@@ -54,6 +54,13 @@ test('runtime storage documents are exact canonical and immutable', () => {
   }
   assert.equal(Object.isFrozen(workspace.routeDomains), true);
   assert.equal(state.gatewayOrigin, 'https://remote.hkust-gz.edu.cn');
+  assert.deepEqual(validateWorkspaceSettingsDocument({
+    schemaVersion: 1,
+    autoReconnect: true,
+    maxAttempts: 3,
+    autoConnect: false,
+    routeDomains: [],
+  }).routeDomains, [], 'an unreviewed custom Profile starts without invented campus domains');
 });
 
 test('runtime storage documents reject drift instead of normalizing it silently', () => {

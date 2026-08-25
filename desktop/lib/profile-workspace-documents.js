@@ -130,10 +130,10 @@ function validateWorkspaceSettingsDocument(value) {
   ], 'workspace settings');
   if (!Number.isSafeInteger(source.maxAttempts) || source.maxAttempts < 0 ||
       source.maxAttempts > 10 || !Array.isArray(source.routeDomains) ||
-      source.routeDomains.length < 1 || source.routeDomains.length > 64) {
+      source.routeDomains.length > 64) {
     throw new TypeError('workspace settings contain an unsupported value');
   }
-  const routeDomains = normalizeRouteDomains(source.routeDomains);
+  const routeDomains = normalizeRouteDomains(source.routeDomains, []);
   if (routeDomains.length !== source.routeDomains.length ||
       routeDomains.some((domain, index) => domain !== source.routeDomains[index])) {
     throw new TypeError('workspace route domains are not canonical');

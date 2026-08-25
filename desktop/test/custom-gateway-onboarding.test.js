@@ -61,6 +61,7 @@ test('one-use confirmation produces one minimal isolated custom Profile', () => 
   });
   assert.match(consumed.draftProfileId, /^custom-[a-f0-9]{32}$/u);
   assert.equal(consumed.profile.evidenceClass, 'custom-local');
+  assert.equal(consumed.profileDocument.gateway.origin, 'https://vpn.example.edu');
   assert.equal(consumed.profile.gateway.origin.origin, 'https://vpn.example.edu');
   assert.equal(consumed.profile.gateway.engineConfigRef, null);
   assert.deepEqual(consumed.profile.browser.campusDomains, []);
@@ -123,7 +124,7 @@ test('custom Profile identity and policy never derive authority from the label',
     origin: 'https://VPN.Example.EDU.:443/',
     schoolLabel: '',
   });
-  assert.equal(profile.gateway.origin.origin, 'https://vpn.example.edu');
+  assert.equal(profile.gateway.origin, 'https://vpn.example.edu');
   assert.equal(profile.branding.localizedSchoolName.zh, 'vpn.example.edu');
   assert.throws(() => customProfileDocument({
     profileId: `custom-${'2'.repeat(32)}`,

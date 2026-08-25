@@ -43,7 +43,7 @@ function normalizeRouteDomains(input, defaultDomains = DEFAULT_ROUTE_DOMAINS) {
   const normalized = collectRouteDomains(values);
   if (normalized.length) return normalized;
   const fallback = collectRouteDomains(defaultDomains);
-  return fallback.length ? fallback : [...DEFAULT_ROUTE_DOMAINS];
+  return fallback;
 }
 
 function buildPac(routeDomains, port, options = {}) {

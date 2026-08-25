@@ -75,6 +75,7 @@ function createProfileAccountRoots(root, keys) {
     },
     profile: {
       root: profileRoot,
+      document: path.join(profileRoot, 'school-profile.json'),
       settings: path.join(profileRoot, 'profile-settings.json'),
       state: path.join(profileRoot, 'profile-state.json'),
     },

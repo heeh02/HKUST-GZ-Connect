@@ -35,6 +35,13 @@ function exactKeys(value, keys, name) {
   return source;
 }
 
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreeze(child);
+  return value;
+}
+
 function positive(value, name) {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new TypeError(`${name} must be a positive safe integer`);
@@ -98,7 +105,7 @@ function customProfileDocument({ profileId, origin, schoolLabel }) {
   }
   const label = boundedLabel(schoolLabel, gateway.hostname);
   const shortName = label.length <= 40 ? label : gateway.hostname.slice(0, 40);
-  return validateSchoolProfileDocument({
+  const document = {
     schemaVersion: 1,
     profileId,
     profileRevision: 1,
@@ -126,7 +133,9 @@ function customProfileDocument({ profileId, origin, schoolLabel }) {
       reviewedPrivateGatewayAllowed: false,
       reviewedDnsFallback: [],
     },
-  });
+  };
+  validateSchoolProfileDocument(document);
+  return deepFreeze(document);
 }
 
 function validatedProbe(value) {
@@ -175,16 +184,18 @@ class CustomGatewayConfirmationOwner {
     const issuedAt = positive(this.now(), 'confirmation issuedAt');
     const expiresAt = issuedAt + this.ttlMs;
     if (!Number.isSafeInteger(expiresAt)) throw new TypeError('confirmation expiry is invalid');
-    const profile = customProfileDocument({
+    const profileDocument = customProfileDocument({
       profileId: draftProfileId,
       origin: probe.normalizedOrigin,
       schoolLabel,
     });
+    const profile = validateSchoolProfileDocument(profileDocument);
     this.#record = Object.freeze({
       confirmationHandle,
       draftProfileId,
       context,
       probe,
+      profileDocument,
       profile,
       issuedAt,
       expiresAt,
@@ -221,6 +232,7 @@ class CustomGatewayConfirmationOwner {
       draftProfileId: record.draftProfileId,
       normalizedOrigin: record.probe.normalizedOrigin,
       candidateFamily: record.probe.candidateFamily,
+      profileDocument: record.profileDocument,
       profile: record.profile,
     });
   }

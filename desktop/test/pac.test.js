@@ -14,6 +14,8 @@ test('route domains are normalized, deduplicated, and bounded', () => {
   assert.deepEqual(normalizeRouteDomains(undefined, ['Campus.Example.EDU']), [
     'campus.example.edu',
   ]);
+  assert.deepEqual(normalizeRouteDomains([], []), [],
+    'a custom Profile with no reviewed domains must not inherit another school');
 });
 
 test('PAC routes only explicit suffixes and literal private addresses', () => {
