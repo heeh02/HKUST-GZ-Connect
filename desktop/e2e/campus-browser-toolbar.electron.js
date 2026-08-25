@@ -6,8 +6,8 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
-const { CampusBrowser, FIND_BAR_HEIGHT, TOOLBAR_HEIGHT } = require('../lib/campus-browser');
-const { CAMPUS_PARTITION } = require('../lib/campus-route');
+const { CampusBrowser, FIND_BAR_HEIGHT, TOOLBAR_HEIGHT } = require('../lib/browser/session/campus-browser');
+const { CAMPUS_PARTITION } = require('../lib/routing/policy/campus-route');
 
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
 // local error page immediately instead of hanging the test.

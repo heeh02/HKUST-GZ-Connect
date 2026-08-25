@@ -7,8 +7,8 @@ const vm = require('node:vm');
 const {
   buildDomainRoutePac,
   resolveDomainRouteForUrl,
-} = require('../lib/domain-route-policy');
-const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/campus-route');
+} = require('../lib/routing/policy/domain-route-policy');
+const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing/policy/campus-route');
 
 const PROXY_PORT = 46180;
 const CAMPUS_PROXY = `SOCKS5 127.0.0.1:${PROXY_PORT}`;

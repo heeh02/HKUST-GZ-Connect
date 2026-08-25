@@ -1,7 +1,7 @@
 'use strict';
 
 const { isValidPort, normalizeSettings } = require('./settings-store');
-const { normalizeRouteDomains } = require('./pac');
+const { normalizeRouteDomains } = require('./routing/pac/pac');
 
 // The engine reads the account on one stdin line and the password on the next.
 // A control character in either value would reframe that exchange, so it is

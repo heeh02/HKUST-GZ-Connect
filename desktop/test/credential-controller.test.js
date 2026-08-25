@@ -381,7 +381,10 @@ test('save prompts are single-flight per origin and every candidate copy is eras
 });
 
 test('CampusBrowser delegates candidate state and keeps all lifecycle clear calls', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'campus-browser.js'), 'utf8');
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'browser', 'session', 'campus-browser.js'),
+    'utf8',
+  );
   assert.match(source, /new CredentialController\(\{/);
   assert.match(source, /this\.credentialController\.stage\(tab, candidate\)/);
   assert.match(source, /this\.credentialController\.confirmPageState\(tab, candidate\)/);

@@ -39,11 +39,11 @@ const {
   writeEngineOwnerRecord,
 } = require('./lib/connection/engine/engine-supervisor');
 const { ConnectionTelemetryCoordinator } = require('./lib/connection/telemetry/connection-telemetry-coordinator');
-const { buildPac } = require('./lib/pac');
-const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
-const { savePacFile } = require('./lib/pac-file');
-const { pacDataUrl } = require('./lib/browser-session-manager');
-const { CampusBrowserManager } = require('./lib/campus-browser-manager');
+const { buildPac } = require('./lib/routing/pac/pac');
+const { DomainRoutePolicyStore } = require('./lib/routing/policy/domain-route-policy');
+const { savePacFile } = require('./lib/routing/pac/pac-file');
+const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
+const { CampusBrowserManager } = require('./lib/browser/session/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
   createControlStateSnapshot,
@@ -71,11 +71,11 @@ const {
 } = require('./lib/external-proxy-config');
 const {
   CampusCertificateTrustStore,
-} = require('./lib/campus-certificate-trust');
-const { routeCertificateError } = require('./lib/certificate-error-boundary');
+} = require('./lib/browser/certificates/campus-certificate-trust');
+const { routeCertificateError } = require('./lib/browser/certificates/certificate-error-boundary');
 const { createT, effectiveLocale } = require('./lib/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
-const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
+const { RoutingPolicyTransactionQueue } = require('./lib/routing/rules/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');
 const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection/state/connection-state-machine');
 // The campus browser is intentionally constrained to the application's

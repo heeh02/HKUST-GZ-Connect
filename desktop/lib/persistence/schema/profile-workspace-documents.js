@@ -1,7 +1,7 @@
 'use strict';
 
-const { validateCustomResourceDocument } = require('../../campus-resource-contract');
-const { normalizeRouteDomains } = require('../../pac');
+const { validateCustomResourceDocument } = require('../../resources/schema/campus-resource-contract');
+const { normalizeRouteDomains } = require('../../routing/pac/pac');
 const {
   normalizeGatewayOrigin,
   validateOpaqueKey,

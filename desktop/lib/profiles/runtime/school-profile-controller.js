@@ -3,8 +3,8 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { CAMPUS_PARTITION } = require('../../campus-route');
-const { mergeCampusResources, projectCampusResources } = require('../../campus-resources');
+const { CAMPUS_PARTITION } = require('../../routing/policy/campus-route');
+const { mergeCampusResources, projectCampusResources } = require('../../resources/runtime/campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
 const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
 const { verifyPrivateDirectoryChain } = require('../../private-directory');

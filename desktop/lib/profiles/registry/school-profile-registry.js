@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseBuiltinResourceDocument } = require('../../campus-resource-contract');
+const { parseBuiltinResourceDocument } = require('../../resources/schema/campus-resource-contract');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,

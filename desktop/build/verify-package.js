@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
-const { parseBuiltinResourceDocument } = require('../lib/campus-resource-contract');
+const { parseBuiltinResourceDocument } = require('../lib/resources/schema/campus-resource-contract');
 const {
   normalizeGatewayOrigin,
   validateSchoolProfileDocument,
@@ -340,22 +340,22 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/main.js',
     '/preload.js',
     '/campus-preload.js',
-    '/lib/campus-browser.js',
-    '/lib/campus-certificate-trust.js',
-    '/lib/campus-credential-vault.js',
+    '/lib/browser/session/campus-browser.js',
+    '/lib/browser/certificates/campus-certificate-trust.js',
+    '/lib/browser/credentials/campus-credential-vault.js',
     '/lib/app/desktop-runtime-composition.js',
     '/lib/i18n.js',
     '/lib/login-flow.js',
-    '/lib/resource-view.js',
+    '/lib/resources/presentation/resource-view.js',
     '/lib/connection/engine/engine-control-client.js',
     '/lib/connection/engine/engine-auth-control-client.js',
     '/lib/connection/engine/engine-connection-runtime.js',
     '/lib/connection/engine/engine-control-suite.js',
     '/lib/desktop-shell.js',
     '/lib/windows-private-file.js',
-    '/lib/campus-browser-manager.js',
+    '/lib/browser/session/campus-browser-manager.js',
     '/lib/profiles/schema/school-profile-schema.js',
-    '/lib/campus-resource-contract.js',
+    '/lib/resources/schema/campus-resource-contract.js',
     '/lib/profiles/registry/school-profile-registry.js',
     '/lib/profiles/runtime/school-profile-runtime.js',
     '/lib/profiles/runtime/school-profile-controller.js',

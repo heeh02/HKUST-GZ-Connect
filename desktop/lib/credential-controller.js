@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeCertificateOrigin } = require('./campus-certificate-trust');
+const { normalizeCertificateOrigin } = require('./browser/certificates/campus-certificate-trust');
 
 const CREDENTIAL_CANDIDATE_TTL_MS = 90 * 1000;
 const MAX_USERNAME_LENGTH = 320;

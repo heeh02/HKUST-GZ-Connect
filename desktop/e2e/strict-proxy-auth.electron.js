@@ -14,9 +14,9 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
-const { CampusBrowser } = require('../lib/campus-browser');
-const { buildDomainRoutePac } = require('../lib/domain-route-policy');
-const { pacDataUrl } = require('../lib/browser-session-manager');
+const { CampusBrowser } = require('../lib/browser/session/campus-browser');
+const { buildDomainRoutePac } = require('../lib/routing/policy/domain-route-policy');
+const { pacDataUrl } = require('../lib/browser/session/browser-session-manager');
 const { EphemeralProxyCredential } = require('../lib/proxy-credential');
 
 const HTTP_TARGET = 'http://strict-proxy-http.invalid/authenticated';

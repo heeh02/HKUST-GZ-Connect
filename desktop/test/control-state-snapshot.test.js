@@ -2,8 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { validateBuiltinResourceDocument } = require('../lib/campus-resource-contract');
-const { projectCampusResources } = require('../lib/campus-resources');
+const { validateBuiltinResourceDocument } = require('../lib/resources/schema/campus-resource-contract');
+const { projectCampusResources } = require('../lib/resources/runtime/campus-resources');
 const { createControlStateSnapshot } = require('../lib/control-state-snapshot');
 
 function fixture(overrides = {}) {

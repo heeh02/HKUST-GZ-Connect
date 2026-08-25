@@ -2,12 +2,12 @@
 
 const crypto = require('node:crypto');
 const net = require('node:net');
-const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../campus-route');
+const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../routing/policy/campus-route');
 const {
   normalizeDomainRoutePolicy,
   normalizeResourceRoutes,
-} = require('../domain-route-policy');
-const { normalizeRoutingRules, normalizeRuleHost } = require('../routing-rule-store');
+} = require('../routing/policy/domain-route-policy');
+const { normalizeRoutingRules, normalizeRuleHost } = require('../routing/rules/routing-rule-store');
 const {
   normalizeGatewayOrigin,
   validateProfileId,
