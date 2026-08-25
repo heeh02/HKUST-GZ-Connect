@@ -19,6 +19,11 @@ const {
 } = require('./school-profile-schema');
 
 const CUSTOM_PROFILE_PROVISIONING_VERSION = 1;
+const CUSTOM_PROFILE_FILE_IDS = Object.freeze([
+  'schoolProfile', 'profileSettings', 'profileState', 'account',
+  'workspaceSettings', 'workspaceState', 'localResources', 'favorites',
+  'recentResources', 'externalIntegrations',
+]);
 
 function plainObject(value, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -174,8 +179,16 @@ function createCustomProfileProvisioningPlan({
   const files = Object.freeze(Object.fromEntries(Object.entries(documents).map(([name, document]) => (
     [name, jsonBuffer(document)]
   ))));
+  if (Object.keys(paths).length !== CUSTOM_PROFILE_FILE_IDS.length ||
+      Object.keys(files).length !== CUSTOM_PROFILE_FILE_IDS.length ||
+      CUSTOM_PROFILE_FILE_IDS.some((name) => !Object.hasOwn(paths, name) ||
+        !Object.hasOwn(files, name))) {
+    throw new Error('custom Profile destination plan has an invalid file set');
+  }
   return Object.freeze({
     schemaVersion: CUSTOM_PROFILE_PROVISIONING_VERSION,
+    createdAt,
+    profileDocument: consumed.profileDocument,
     identity: Object.freeze({ ...keys }),
     context: Object.freeze({
       profileId: profile.profileId,
@@ -195,6 +208,7 @@ function createCustomProfileProvisioningPlan({
 }
 
 module.exports = {
+  CUSTOM_PROFILE_FILE_IDS,
   CUSTOM_PROFILE_PROVISIONING_VERSION,
   createCustomProfileProvisioningIdentity,
   createCustomProfileProvisioningPlan,

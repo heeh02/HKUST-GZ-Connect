@@ -79,8 +79,9 @@ test('confirmed custom Gateway produces one credential-free isolated destination
     assert.equal(account.activeCredentialVersion, null);
     assert.deepEqual(workspace.routeDomains, []);
     assert.equal(Object.hasOwn(plan.files, 'vpnCredential'), false);
+    assert.deepEqual(plan.profileDocument.policy.reviewedDnsFallback, []);
     const encoded = JSON.stringify(plan);
-    for (const forbidden of ['password', 'TwfID', 'reviewedDnsFallback']) {
+    for (const forbidden of ['"password":', 'TwfID']) {
       assert.equal(encoded.includes(forbidden), false, forbidden);
     }
   } finally {
