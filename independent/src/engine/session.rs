@@ -8,6 +8,7 @@ use crate::engine::provider::{
     TransportCapabilities, require_supported,
 };
 use crate::gateway_auth::AuthenticatedSessionId;
+use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::gateway_http::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
 use crate::modern::{parse_sha256_pin, request_modern_token};
 use crate::xml::{first_descendant_text, parse_xml};
@@ -82,13 +83,32 @@ pub struct ModernL3TransportBackend {
 #[derive(Clone)]
 pub struct ProductionPasswordAuthProvider {
     config: Arc<Value>,
+    connector: Option<Arc<GatewayConnectorGeneration>>,
 }
 
 impl ProductionPasswordAuthProvider {
     pub fn new(config: &Value) -> Self {
         Self {
             config: Arc::new(config.clone()),
+            connector: None,
         }
+    }
+
+    pub fn new_with_connector(
+        config: &Value,
+        connector: Arc<GatewayConnectorGeneration>,
+    ) -> Result<Self> {
+        let base_url = required_text(config, "base_url")?;
+        if connector.origin() != base_url.trim_end_matches('/') {
+            return Err(Error::classified(
+                ErrorKind::Configuration,
+                "authentication connector origin does not match config",
+            ));
+        }
+        Ok(Self {
+            config: Arc::new(config.clone()),
+            connector: Some(connector),
+        })
     }
 
     pub fn authenticate_password_cancellable(
@@ -97,12 +117,17 @@ impl ProductionPasswordAuthProvider {
         password: &str,
         cancellation: &AuthenticationCancellation,
     ) -> ProviderResult<AuthenticatedGatewaySession> {
-        AuthenticatedGatewaySession::authenticate_password_with_cancellation(
+        AuthenticatedGatewaySession::authenticate_password_with_connector_and_cancellation(
             &self.config,
+            self.connector.clone(),
             username,
             password,
             Some(cancellation),
         )
+    }
+
+    pub fn connector(&self) -> Option<&GatewayConnectorGeneration> {
+        self.connector.as_deref()
     }
 }
 
@@ -120,9 +145,15 @@ impl AuthProvider for ProductionPasswordAuthProvider {
     ) -> ProviderResult<AuthOutcome<Self::Session, Self::Challenge>> {
         match request {
             AuthRequest::Password { username, password } => {
-                AuthenticatedGatewaySession::authenticate_password(&self.config, username, password)
-                    .map(AuthOutcome::Authenticated)
-                    .map_err(|error| error.with_failure_kind(ErrorKind::Authentication))
+                AuthenticatedGatewaySession::authenticate_password_with_connector_and_cancellation(
+                    &self.config,
+                    self.connector.clone(),
+                    username,
+                    password,
+                    None,
+                )
+                .map(AuthOutcome::Authenticated)
+                .map_err(|error| error.with_failure_kind(ErrorKind::Authentication))
             }
             AuthRequest::ChallengeResponse { method, .. } => {
                 let capability = method.capability();
@@ -364,16 +395,24 @@ impl AuthenticatedGatewaySession {
         CapabilityModel::production_password_l3()
     }
 
-    fn authenticate_password(
+    fn authenticate_password_with_cancellation(
         config: &Value,
         username: &str,
         password: &str,
+        cancellation: Option<&AuthenticationCancellation>,
     ) -> ProviderResult<Self> {
-        Self::authenticate_password_with_cancellation(config, username, password, None)
+        Self::authenticate_password_with_connector_and_cancellation(
+            config,
+            None,
+            username,
+            password,
+            cancellation,
+        )
     }
 
-    fn authenticate_password_with_cancellation(
+    fn authenticate_password_with_connector_and_cancellation(
         config: &Value,
+        connector: Option<Arc<GatewayConnectorGeneration>>,
         username: &str,
         password: &str,
         cancellation: Option<&AuthenticationCancellation>,
@@ -400,8 +439,16 @@ impl AuthenticatedGatewaySession {
             .as_str()
             .unwrap_or("EasyConnect_windows");
         let logout_path = required_endpoint(config, "logout")?.to_owned();
-        let http =
-            GatewaySession::new(base_url.to_owned(), user_agent.to_owned(), timeout_seconds)?;
+        let http = match connector {
+            Some(connector) => GatewaySession::new_with_connector(
+                connector,
+                user_agent.to_owned(),
+                timeout_seconds,
+            )?,
+            None => {
+                GatewaySession::new(base_url.to_owned(), user_agent.to_owned(), timeout_seconds)?
+            }
+        };
 
         let discovery_path = required_endpoint(config, "discovery")?;
         let _ = http

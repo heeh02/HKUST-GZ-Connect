@@ -35,7 +35,7 @@ test('composes the reviewed HKUST deployment without persistent account scope', 
   assert.deepEqual(JSON.parse(binding.stdinFrame), {
     type: 'engine_config_binding',
     apiVersion: 1,
-    configSha256: '2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a',
+    configSha256: 'ed7d9d3dee309124b35f9b9921c83df4947d9c919fc009ab2b8b9b3b0457e1db',
     gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
     profileId: 'hkustgz',
     profileRevision: 1,

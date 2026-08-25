@@ -12,6 +12,9 @@
     "windows_modules": "/com/WindowsModule.xml"
   },
   "hash_windows_installer": true,
+  "gateway_connector": {
+    "reviewed_private_gateway_allowed": false
+  },
   "max_artifact_bytes": 536870912,
   "proxy": {
     "allow_system_dns_fallback": false,

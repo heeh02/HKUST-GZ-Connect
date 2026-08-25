@@ -4,6 +4,7 @@
 //! object. The module has no dependency on Engine transport, local proxy, or
 //! probe workflows, making it suitable for a future pending-auth transaction.
 
+use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::xml::MAX_XML_BYTES;
 use crate::{Error, ErrorKind, Result};
 use reqwest::blocking::Client;
@@ -67,10 +68,29 @@ pub struct GatewaySession {
     user_agent: String,
     client: Client,
     cookie_stats: Arc<Mutex<CookieStats>>,
+    connector: Option<Arc<GatewayConnectorGeneration>>,
 }
 
 impl GatewaySession {
     pub fn new(base_url: String, user_agent: String, timeout: u64) -> Result<Self> {
+        Self::build(base_url, user_agent, timeout, None)
+    }
+
+    pub fn new_with_connector(
+        connector: Arc<GatewayConnectorGeneration>,
+        user_agent: String,
+        timeout: u64,
+    ) -> Result<Self> {
+        let base_url = connector.origin().to_owned();
+        Self::build(base_url, user_agent, timeout, Some(connector))
+    }
+
+    fn build(
+        base_url: String,
+        user_agent: String,
+        timeout: u64,
+        connector: Option<Arc<GatewayConnectorGeneration>>,
+    ) -> Result<Self> {
         let parsed = Url::parse(&base_url).map_err(|_| configuration_error("invalid base_url"))?;
         if parsed.scheme() != "https" {
             return Err(configuration_error("gateway base URL must use HTTPS"));
@@ -85,14 +105,24 @@ impl GatewaySession {
                 "gateway user agent has an invalid shape",
             ));
         }
-        let client = Client::builder()
+        let builder = Client::builder();
+        let builder = if let Some(connector) = connector.as_ref() {
+            if connector.origin() != parsed.origin().ascii_serialization() {
+                return Err(configuration_error(
+                    "Gateway connector origin does not match the HTTPS session",
+                ));
+            }
+            connector.apply_to_reqwest_builder(builder)
+        } else {
+            builder.no_proxy()
+        };
+        let client = builder
             // Gateway control traffic must not inherit HTTP(S)_PROXY from the
             // parent shell or a desktop proxy application. The Modern data
             // plane opens its own direct sockets; proxying only discovery,
             // authentication, configuration, or logout would split one VPN
             // session across unrelated underlays and can recurse into this
             // application's not-yet-ready loopback listener.
-            .no_proxy()
             .timeout(Duration::from_secs(timeout))
             .redirect(Policy::none())
             .https_only(true)
@@ -104,7 +134,12 @@ impl GatewaySession {
             user_agent,
             client,
             cookie_stats: Arc::new(Mutex::new(CookieStats::default())),
+            connector,
         })
+    }
+
+    pub fn connector(&self) -> Option<&GatewayConnectorGeneration> {
+        self.connector.as_deref()
     }
 
     pub fn request(
@@ -227,6 +262,8 @@ impl GatewaySession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gateway_connector::GatewayConnectorGeneration;
+    use std::net::SocketAddr;
 
     #[test]
     fn endpoint_is_origin_bound() {
@@ -258,15 +295,52 @@ mod tests {
         // environment variables in a parallel test process. The locked
         // reqwest API defines `no_proxy()` as clearing explicit matchers and
         // disabling automatic system/environment proxy discovery.
-        let source = include_str!("gateway_http.rs");
-        let builder = source
-            .split_once("let client = Client::builder()")
-            .expect("GatewaySession client builder")
+        let session_source = include_str!("gateway_http.rs");
+        let builder = session_source
+            .split_once("fn build(")
+            .expect("GatewaySession builder")
             .1
-            .split_once(".build()")
-            .expect("GatewaySession client build")
+            .split_once("pub fn connector(")
+            .expect("GatewaySession connector accessor")
             .0;
         assert_eq!(builder.matches(".no_proxy()").count(), 1);
-        assert!(builder.find(".no_proxy()").unwrap() < builder.find(".timeout(").unwrap());
+        assert!(builder.contains("connector.apply_to_reqwest_builder(builder)"));
+
+        let connector_source = include_str!("gateway_connector.rs");
+        let connector_builder = connector_source
+            .split_once("pub fn apply_to_reqwest_builder")
+            .expect("Gateway connector reqwest binding")
+            .1
+            .split_once("pub fn connect_tcp")
+            .expect("Gateway connector TCP binding")
+            .0;
+        assert_eq!(connector_builder.matches(".no_proxy()").count(), 1);
+        assert!(
+            connector_builder.find(".no_proxy()").unwrap()
+                < connector_builder.find(".resolve_to_addrs(").unwrap()
+        );
+    }
+
+    #[test]
+    fn connector_bound_session_preserves_exact_profile_origin_and_generation() {
+        let connector = Arc::new(
+            GatewayConnectorGeneration::from_resolved(
+                "school-a",
+                7,
+                11,
+                "https://vpn.example.edu",
+                false,
+                vec!["8.8.8.8:443".parse::<SocketAddr>().unwrap()],
+            )
+            .unwrap(),
+        );
+        let session =
+            GatewaySession::new_with_connector(Arc::clone(&connector), "fixture-agent".into(), 20)
+                .unwrap();
+        let observed = session.connector().unwrap();
+        assert_eq!(observed.profile_id(), "school-a");
+        assert_eq!(observed.profile_revision(), 7);
+        assert_eq!(observed.generation(), 11);
+        assert_eq!(observed.origin(), "https://vpn.example.edu");
     }
 }

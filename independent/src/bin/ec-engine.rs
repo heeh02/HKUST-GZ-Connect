@@ -24,6 +24,7 @@ use ec_compat::engine::socks_auth::{
     EngineCredentials, ProxyAuthentication, ProxyAuthenticationMode, read_engine_credentials,
     read_engine_credentials_prefix,
 };
+use ec_compat::gateway_connector::GatewayConnectorGeneration;
 use ec_compat::{Error, ErrorKind, Result};
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -348,6 +349,16 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
         #[cfg(feature = "engine-lifecycle-fixture")]
         lifecycle_fixture,
     })
+}
+
+#[cfg(feature = "engine-lifecycle-fixture")]
+fn lifecycle_fixture_selected(arguments: &EngineArguments) -> bool {
+    arguments.lifecycle_fixture
+}
+
+#[cfg(not(feature = "engine-lifecycle-fixture"))]
+fn lifecycle_fixture_selected(_arguments: &EngineArguments) -> bool {
+    false
 }
 
 fn start_control_reader(
@@ -989,6 +1000,46 @@ async fn run_engine<W: Write>(
             Error("engine VPN DNS configuration is invalid".into()),
         )
     })?;
+    let gateway_connector = if let Some(binding) = config_binding
+        .as_ref()
+        .filter(|_| !lifecycle_fixture_selected(arguments))
+    {
+        let base_url = config["base_url"].as_str().ok_or_else(|| {
+            failure(
+                EngineErrorCode::ConfigurationInvalid,
+                StopReason::StartupFailed,
+                Error("engine Gateway connector origin is invalid".into()),
+            )
+        })?;
+        let private_allowed = config["gateway_connector"]["reviewed_private_gateway_allowed"]
+            .as_bool()
+            .ok_or_else(|| {
+                failure(
+                    EngineErrorCode::ConfigurationInvalid,
+                    StopReason::StartupFailed,
+                    Error("engine Gateway connector policy is invalid".into()),
+                )
+            })?;
+        Some(Arc::new(
+            GatewayConnectorGeneration::resolve_system(
+                binding.profile_id(),
+                binding.profile_revision(),
+                arguments.generation,
+                base_url,
+                private_allowed,
+            )
+            .map_err(|error| {
+                let code = if error.kind() == ErrorKind::Configuration {
+                    EngineErrorCode::ConfigurationInvalid
+                } else {
+                    EngineErrorCode::AuthIndeterminate
+                };
+                failure(code, StopReason::StartupFailed, error)
+            })?,
+        ))
+    } else {
+        None
+    };
 
     lifecycle
         .state(EngineState::Authenticating)
@@ -1112,7 +1163,13 @@ async fn run_engine<W: Write>(
         )
         .await;
     }
-    let providers = ProductionProviderSet::from_config(provider_family, &config).map_err(|_| {
+    let providers = match gateway_connector {
+        Some(connector) => {
+            ProductionProviderSet::from_config_with_connector(provider_family, &config, connector)
+        }
+        None => ProductionProviderSet::from_config(provider_family, &config),
+    }
+    .map_err(|_| {
         failure(
             EngineErrorCode::ConfigurationInvalid,
             StopReason::StartupFailed,

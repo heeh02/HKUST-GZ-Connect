@@ -9,8 +9,10 @@ use crate::engine::provider::{
     CapabilityModel, ProviderCapabilityReport, ProviderCoordinator, UnsupportedResourceProvider,
 };
 use crate::engine::session::{ModernL3TransportBackend, ProductionPasswordAuthProvider};
+use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::{Error, ErrorKind, Result};
 use serde_json::Value;
+use std::sync::Arc;
 
 pub const EASYCONNECT_PASSWORD_MODERN_L3_V1: &str = "easyconnect-password-modern-l3-v1";
 
@@ -66,10 +68,32 @@ pub struct ProductionProviderSet {
 
 impl ProductionProviderSet {
     pub fn from_config(family: ProductionProviderFamily, config: &Value) -> Result<Self> {
+        Self::compose(family, config, None)
+    }
+
+    pub fn from_config_with_connector(
+        family: ProductionProviderFamily,
+        config: &Value,
+        connector: Arc<GatewayConnectorGeneration>,
+    ) -> Result<Self> {
+        Self::compose(family, config, Some(connector))
+    }
+
+    fn compose(
+        family: ProductionProviderFamily,
+        config: &Value,
+        connector: Option<Arc<GatewayConnectorGeneration>>,
+    ) -> Result<Self> {
         match family {
             ProductionProviderFamily::EasyConnectPasswordModernL3V1 => {
+                let authentication = match connector {
+                    Some(connector) => {
+                        ProductionPasswordAuthProvider::new_with_connector(config, connector)?
+                    }
+                    None => ProductionPasswordAuthProvider::new(config),
+                };
                 let coordinator = ProviderCoordinator::new(
-                    ProductionPasswordAuthProvider::new(config),
+                    authentication,
                     UnsupportedResourceProvider,
                     ModernL3TransportBackend::new(config)?,
                     family.compiled_capabilities(),
@@ -107,7 +131,9 @@ impl ProductionProviderSet {
 mod tests {
     use super::*;
     use crate::engine::provider::{Capability, CapabilityAvailability};
+    use crate::gateway_connector::GatewayConnectorGeneration;
     use serde_json::json;
+    use std::net::SocketAddr;
 
     fn config() -> Value {
         json!({
@@ -146,5 +172,35 @@ mod tests {
         assert!(ProductionProviderFamily::parse("dynamic-provider-name").is_err());
         let family = ProductionProviderFamily::EasyConnectPasswordModernL3V1;
         assert!(ProductionProviderSet::from_config(family, &json!({})).is_err());
+    }
+
+    #[test]
+    fn connector_generation_is_owned_by_the_selected_authentication_provider() {
+        let family = ProductionProviderFamily::EasyConnectPasswordModernL3V1;
+        let connector = Arc::new(
+            GatewayConnectorGeneration::from_resolved(
+                "school-a",
+                1,
+                9,
+                "https://gateway.example.test",
+                false,
+                vec!["8.8.8.8:443".parse::<SocketAddr>().unwrap()],
+            )
+            .unwrap(),
+        );
+        let providers = ProductionProviderSet::from_config_with_connector(
+            family,
+            &config(),
+            Arc::clone(&connector),
+        )
+        .unwrap();
+        assert_eq!(
+            providers
+                .authentication_provider()
+                .connector()
+                .unwrap()
+                .generation(),
+            9
+        );
     }
 }

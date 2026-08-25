@@ -134,7 +134,7 @@ test('manifest assets are exact, hashed, read-only copies and match current sour
     key: 'hkustgz-engine-config',
     kind: 'engine-config',
     path: 'assets/profiles/hkustgz/engine-config.json',
-    sha256: '2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a',
+    sha256: 'ed7d9d3dee309124b35f9b9921c83df4947d9c919fc009ab2b8b9b3b0457e1db',
   });
   const first = registry.readAsset('hkustgz', 'hkustgz-engine-config', 'engine-config');
   assert.deepEqual(first, fs.readFileSync(path.join(desktopRoot, '..', 'independent', 'config', 'hkustgz.json')));

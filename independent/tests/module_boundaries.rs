@@ -97,6 +97,32 @@ fn gateway_connector_is_profile_bound_but_credential_and_transport_neutral() {
 }
 
 #[test]
+fn production_gateway_http_is_bound_before_credentials_and_owned_by_one_session() {
+    let engine = source("src/bin/ec-engine.rs");
+    let run = engine
+        .split_once("async fn run_engine")
+        .expect("production run_engine")
+        .1;
+    let connector = run
+        .find("GatewayConnectorGeneration::resolve_system")
+        .expect("profile-bound Gateway connector");
+    let credential = run
+        .find("read_engine_credentials_prefix")
+        .expect("private credential input");
+    assert!(
+        connector < credential,
+        "Gateway origin and peer policy must fail before credential input"
+    );
+
+    let session = source("src/engine/session.rs");
+    assert!(session.contains("GatewaySession::new_with_connector"));
+    assert!(session.contains("http: GatewaySession"));
+    assert!(session.contains(".request(&self.configuration_path"));
+    assert!(session.contains(".request(&self.resource_list_path"));
+    assert!(session.contains(".request_with_timeout(&self.logout_path"));
+}
+
+#[test]
 fn credential_input_is_neutral_to_gateway_and_protocol_layers() {
     let credentials = source("src/credentials.rs");
     for forbidden in [
