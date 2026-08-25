@@ -33,7 +33,7 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
   background: #fff; border-bottom: 1.5px solid var(--gold);
   display: flex; align-items: center; justify-content: center;
 }
-.titlebar::after { content: "HKUST(GZ) Connect"; font-size: 12.5px; font-weight: 700; letter-spacing: .4px; color: var(--navy); }
+.titlebar span { font-size: 12.5px; font-weight: 700; letter-spacing: .4px; color: var(--navy); }
 
 .inp {
   font-size: 14px; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px;
@@ -67,8 +67,9 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 .err { color: var(--err); font-size: 12.5px; text-align: center; min-height: 16px; margin-top: 4px; }
 
 /* ===== LOGIN ===== */
-.login { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 36px 30px; gap: 6px; background: radial-gradient(120% 80% at 50% 0%, #f7f9fd 0%, #fff 60%); }
+.login { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow-y: auto; padding: 18px 36px 30px; gap: 6px; background: radial-gradient(120% 80% at 50% 0%, #f7f9fd 0%, #fff 60%); }
 .login .logo { height: 66px; margin-bottom: 6px; }
+.profile-logo-fallback { width: 64px; height: 64px; margin-bottom: 6px; display: grid; place-items: center; border-radius: 18px; color: #fff; background: linear-gradient(145deg, var(--navy-2), var(--navy)); box-shadow: var(--shadow); font-size: 25px; font-weight: 800; }
 .brand-title { font-size: 23px; font-weight: 780; color: var(--navy); letter-spacing: .2px; }
 .brand-title .paren { color: var(--gold); }
 .brand-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
@@ -76,6 +77,20 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 .lbl { font-size: 11.5px; color: var(--muted); font-weight: 650; padding-left: 2px; margin-top: 4px; }
 .lg-form .primary { margin-top: 16px; }
 .login-help { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.45; text-align: center; }
+.school-picker { width: 100%; margin-bottom: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 13px; background: #fbfcff; display: flex; flex-direction: column; gap: 7px; }
+.school-picker-head { display: flex; align-items: center; gap: 8px; min-height: 18px; }
+.school-picker-label { margin: 0; padding: 0; }
+.school-status { margin-left: auto; color: var(--muted); font-size: 10.5px; text-align: right; }
+.school-picker-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; }
+.school-select { min-width: 0; }
+.school-switch { min-width: 70px; }
+.custom-school-panel, .gateway-confirmation { display: flex; flex-direction: column; gap: 7px; padding-top: 4px; border-top: 1px solid var(--line); }
+.school-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 3px; }
+.school-picker .primary { margin-top: 0; width: auto; }
+.gateway-confirmation { color: #41516a; font-size: 11.5px; line-height: 1.45; }
+.gateway-confirmation strong { color: var(--navy); font-size: 12.5px; }
+.gateway-warning { padding: 8px 9px; border-radius: 9px; color: #725300; background: #fff8df; border: 1px solid #f1dfac; }
+.school-error { min-height: 14px; color: var(--err); font-size: 11px; line-height: 1.35; }
 
 /* ===== DASHBOARD ===== */
 .dash { flex: 1; display: flex; min-height: 0; }
@@ -400,6 +415,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .manager-form-actions { flex-wrap: wrap; }
   .manager-form-actions .dialog-edit-hint { width: 100%; flex-basis: 100%; }
   .manager-form-actions .ghost.sm, .manager-form-actions .primary.sm { flex: 1 1 0; padding: 0 10px; }
+}
+
+@media (max-width: 459px) {
+  .login { padding-left: 20px; padding-right: 20px; }
+  .school-picker-row { grid-template-columns: 1fr; }
+  .school-switch { width: 100%; }
+  .school-actions { align-items: stretch; }
+  .school-actions .ghost.sm, .school-actions .primary.sm { flex: 1 1 0; padding-left: 8px; padding-right: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

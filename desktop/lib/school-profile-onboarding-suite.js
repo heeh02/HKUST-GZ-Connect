@@ -8,6 +8,7 @@ const { SchoolProfileOnboardingCoordinator } = require('./school-profile-onboard
 function createSchoolProfileOnboardingRuntime({
   userData,
   executablePath,
+  probeLaunch = null,
   spawnProcess,
   environment = process.env,
   platform = process.platform,
@@ -15,8 +16,15 @@ function createSchoolProfileOnboardingRuntime({
   listProfiles,
   onDiagnostic,
 } = {}) {
+  const launch = probeLaunch || {
+    command: executablePath,
+    argsPrefix: [],
+    electronRunAsNode: false,
+  };
   const probeRunner = new GatewayProbeRunner({
-    executablePath,
+    executablePath: launch.command,
+    argsPrefix: launch.argsPrefix,
+    electronRunAsNode: launch.electronRunAsNode,
     spawnProcess,
     environment,
     platform,

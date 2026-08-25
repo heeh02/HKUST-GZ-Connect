@@ -106,3 +106,31 @@ test('private child environment never forwards proxy credential or certificate o
     TEMP: 'C:\\Temp',
   });
 });
+
+test('synthetic probe uses only a fixed absolute prefix and an isolated Electron Node flag', async () => {
+  const calls = [];
+  const process = child();
+  const runner = new GatewayProbeRunner({
+    executablePath: '/app/Electron',
+    argsPrefix: ['/app/e2e/main-gateway-probe-fixture.js'],
+    electronRunAsNode: true,
+    environment: { TMPDIR: '/private/tmp', SECRET: 'must-not-cross' },
+    spawnProcess: (...args) => { calls.push(args); return process; },
+  });
+  const pending = runner.probe('https://vpn.example.edu');
+  process.stdout.emit('data', `${JSON.stringify({ ok: true })}\n`);
+  process.emit('close', 0, null);
+  assert.deepEqual(await pending, { ok: true });
+  assert.deepEqual(calls[0][1], [
+    '/app/e2e/main-gateway-probe-fixture.js',
+    '--origin',
+    'https://vpn.example.edu',
+  ]);
+  assert.deepEqual(calls[0][2].env, {
+    TMPDIR: '/private/tmp',
+    ELECTRON_RUN_AS_NODE: '1',
+  });
+  assert.throws(() => new GatewayProbeRunner({
+    executablePath: '/app/Electron', argsPrefix: ['relative.js'], spawnProcess: () => child(),
+  }), /dependencies are invalid/u);
+});

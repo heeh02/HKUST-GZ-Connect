@@ -50,6 +50,8 @@ test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux Ap
     'the credential-free Gateway probe must use the packaged Linux name');
   assert.match(workflow, /npm run test:main-profile-switch/,
     'tag builds must gate recoverable Profile switching and relaunch');
+  assert.match(workflow, /npm run test:main-school-onboarding/,
+    'tag builds must gate the real School selector and custom Gateway onboarding');
   assert.match(workflow, /Build \(Linux AppImage x86_64\)/, 'cloud build needs a required AppImage step');
   assert.match(workflow, /release\/linux-unpacked\/resources linux x64/, 'the unpacked Linux package must be verified');
   assert.deepEqual(
@@ -83,6 +85,7 @@ test('electron-builder never publishes implicitly from build jobs or local scrip
 test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', () => {
   assert.match(ciWorkflow, /test:main-engine-lifecycle/u);
   assert.match(ciWorkflow, /test:main-profile-switch/u);
+  assert.match(ciWorkflow, /test:main-school-onboarding/u);
   assert.match(workflow, /test:main-engine-lifecycle/u);
   assert.match(ciWorkflow, /test:campus-popup-mfa-safety/u);
   assert.match(

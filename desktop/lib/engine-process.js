@@ -5,6 +5,8 @@ const path = require('node:path');
 
 const SYNTHETIC_ENGINE_E2E_ENV = 'HKUSTGZ_SYNTHETIC_ENGINE_E2E';
 const SYNTHETIC_ENGINE_FIXTURE = 'main-engine-fixture.js';
+const SYNTHETIC_GATEWAY_PROBE_E2E_ENV = 'HKUSTGZ_SYNTHETIC_GATEWAY_PROBE_E2E';
+const SYNTHETIC_GATEWAY_PROBE_FIXTURE = 'main-gateway-probe-fixture.js';
 const NATIVE_RESOURCE_KINDS = new Set([
   'ec-engine',
   'ec-gateway-probe',
@@ -91,10 +93,54 @@ function resolveEngineLaunch({
   });
 }
 
+function resolveGatewayProbeLaunch({
+  appIsPackaged,
+  baseDirectory,
+  nativeProbe,
+  execPath,
+  environment = process.env,
+  fileSystem = fs,
+} = {}) {
+  if (![baseDirectory, nativeProbe, execPath].every((value) => (
+    typeof value === 'string' && path.isAbsolute(value)
+  )) || !environment || typeof environment !== 'object') {
+    throw new TypeError('Gateway probe launch inputs are invalid');
+  }
+  const native = Object.freeze({
+    command: nativeProbe,
+    argsPrefix: Object.freeze([]),
+    electronRunAsNode: false,
+    synthetic: false,
+  });
+  if (appIsPackaged || environment[SYNTHETIC_GATEWAY_PROBE_E2E_ENV] !== '1') {
+    return native;
+  }
+
+  const fixtureDirectory = fileSystem.realpathSync(path.join(baseDirectory, 'e2e'));
+  const fixture = fileSystem.realpathSync(path.join(
+    baseDirectory,
+    'e2e',
+    SYNTHETIC_GATEWAY_PROBE_FIXTURE,
+  ));
+  if (path.dirname(fixture) !== fixtureDirectory ||
+      path.basename(fixture) !== SYNTHETIC_GATEWAY_PROBE_FIXTURE) {
+    throw new Error('synthetic Gateway probe fixture escaped its test directory');
+  }
+  return Object.freeze({
+    command: execPath,
+    argsPrefix: Object.freeze([fixture]),
+    electronRunAsNode: true,
+    synthetic: true,
+  });
+}
+
 module.exports = {
   SYNTHETIC_ENGINE_E2E_ENV,
   SYNTHETIC_ENGINE_FIXTURE,
+  SYNTHETIC_GATEWAY_PROBE_E2E_ENV,
+  SYNTHETIC_GATEWAY_PROBE_FIXTURE,
   exactExecutablePattern,
+  resolveGatewayProbeLaunch,
   resolveNativeResourcePath,
   resolveEngineLaunch,
 };

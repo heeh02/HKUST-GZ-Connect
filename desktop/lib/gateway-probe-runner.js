@@ -34,6 +34,8 @@ class GatewayProbeRunner {
 
   constructor({
     executablePath,
+    argsPrefix = [],
+    electronRunAsNode = false,
     spawnProcess,
     environment = process.env,
     platform = process.platform,
@@ -42,14 +44,21 @@ class GatewayProbeRunner {
     clearTimeoutFn = clearTimeout,
   } = {}) {
     if (typeof executablePath !== 'string' || !path.isAbsolute(executablePath) ||
+        !Array.isArray(argsPrefix) || argsPrefix.length > 2 ||
+        !argsPrefix.every((value) => typeof value === 'string' && path.isAbsolute(value)) ||
+        typeof electronRunAsNode !== 'boolean' ||
         typeof spawnProcess !== 'function' || !['darwin', 'linux', 'win32'].includes(platform) ||
         !Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 30_000 ||
         typeof setTimeoutFn !== 'function' || typeof clearTimeoutFn !== 'function') {
       throw new TypeError('Gateway probe runner dependencies are invalid');
     }
     this.executablePath = executablePath;
+    this.argsPrefix = Object.freeze([...argsPrefix]);
     this.spawnProcess = spawnProcess;
-    this.environment = privateProbeEnvironment(environment, platform);
+    this.environment = Object.freeze({
+      ...privateProbeEnvironment(environment, platform),
+      ...(electronRunAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+    });
     this.platform = platform;
     this.timeoutMs = timeoutMs;
     this.setTimeoutFn = setTimeoutFn;
@@ -64,7 +73,9 @@ class GatewayProbeRunner {
     return new Promise((resolve, reject) => {
       let child;
       try {
-        child = this.spawnProcess(this.executablePath, ['--origin', origin], {
+        child = this.spawnProcess(this.executablePath, [
+          ...this.argsPrefix, '--origin', origin,
+        ], {
           cwd: path.dirname(this.executablePath),
           env: this.environment,
           shell: false,

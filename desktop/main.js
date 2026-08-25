@@ -30,7 +30,7 @@ const {
 const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
 const { EngineConnectionRuntime } = require('./lib/engine-connection-runtime');
 const { DesktopShell } = require('./lib/desktop-shell');
-const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
+const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
 const {
   EngineSupervisor,
   cleanupOrphanedEngine,
@@ -263,7 +263,7 @@ const persistenceRuntime = new DesktopPersistenceRuntime({
 });
 const initializeMultiSchoolStartup = createMultiSchoolStartupInitializer({ userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, desktopDir: __dirname });
 const schoolProfileOnboarding = createSchoolProfileOnboardingRuntime({
-  userData: DATA, executablePath: gatewayProbePath(), spawnProcess: spawn,
+  userData: DATA, probeLaunch: resolveGatewayProbeLaunch({ appIsPackaged: app.isPackaged, baseDirectory: __dirname, nativeProbe: gatewayProbePath(), execPath: process.execPath }), spawnProcess: spawn,
   getActiveContext: () => activeSchoolProfile.activeContextBinding(), listProfiles: (options) => initializeMultiSchoolStartup.listViews(options),
   onDiagnostic: (code) => logWriter?.append(`[profile-onboarding] ${code}\n`),
 });
