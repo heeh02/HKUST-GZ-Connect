@@ -14,14 +14,14 @@ const BUILTINS = [{
   builtin: true,
 }];
 
-test('adding a shortcut generates a stable local id and partner route', () => {
+test('adding a route-less shortcut generates a stable local id and fails safe to Campus', () => {
   const result = upsertCustomResource([], {
     name: 'Outlook',
     description: '邮件',
     url: 'https://outlook.office.com/owa/',
   });
   assert.match(result.resource.id, /^custom-[a-f0-9]{8}$/);
-  assert.equal(result.resource.route, 'direct');
+  assert.equal(result.resource.route, 'campus');
   assert.equal(Object.hasOwn(result.resource, 'builtin'), false);
   assert.equal(result.resources.length, 1);
 });

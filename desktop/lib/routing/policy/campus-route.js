@@ -2,26 +2,15 @@
 
 const ROUTE_CAMPUS = 'campus';
 const ROUTE_DIRECT = 'direct';
-const CAMPUS_PARTITION = 'persist:hkustgz-campus-browser';
-const DIRECT_PARTITION = 'persist:hkustgz-direct-browser';
+const CAMPUS_PARTITION = 'persist:campus-workspace-campus';
+const DIRECT_PARTITION = 'persist:campus-workspace-direct';
 const NEUTRAL_CAMPUS_PARTITION = 'persist:campus-workspace-neutral';
 
-const DIRECT_PARTNER_HOSTS = Object.freeze([
-  'outlook.office.com',
-  'microsoftonline.com',
-  'microsoftonline-p.com',
-  'msauth.net',
-  'msftauth.net',
-  'office.com',
-  'office.net',
-  'hkust-gz.instructure.com',
-  'instructure.com',
-  'instructuremedia.com',
-]);
-const SCHOOL_CAMPUS_HOSTS = Object.freeze([
-  'hkust-gz.edu.cn',
-  'hkust.edu.hk',
-]);
+// Deployment domains are Profile authority, never a generic Browser fallback.
+// These empty compatibility exports keep older callers fail-safe to Campus
+// while preventing a missing Profile argument from selecting another deployment.
+const DIRECT_PARTNER_HOSTS = Object.freeze([]);
+const SCHOOL_CAMPUS_HOSTS = Object.freeze([]);
 
 function validRoute(route) {
   return route === ROUTE_CAMPUS || route === ROUTE_DIRECT;

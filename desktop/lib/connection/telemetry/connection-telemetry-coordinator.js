@@ -54,7 +54,7 @@ class ConnectionTelemetryCoordinator {
     appPid,
     gatewayHost,
     gatewayPort = 443,
-    healthTargets = null,
+    healthTargets = [],
     getSocksPort,
     getEnginePid,
     getProxyCredentials,
@@ -85,15 +85,13 @@ class ConnectionTelemetryCoordinator {
     }
     if (!Number.isInteger(appPid) || appPid <= 0 || typeof gatewayHost !== 'string' ||
         !Number.isInteger(gatewayPort) || gatewayPort < 1 || gatewayPort > 65535 ||
-        (healthTargets !== null && !validHealthTargets(healthTargets)) ||
+        !validHealthTargets(healthTargets) ||
         !enumerator || typeof enumerator.list !== 'function') {
       throw new TypeError('connection telemetry environment is incomplete');
     }
     Object.assign(this, {
       appPid, gatewayHost, gatewayPort,
-      healthTargets: healthTargets === null
-        ? null
-        : Object.freeze(healthTargets.map((target) => Object.freeze({ ...target }))),
+      healthTargets: Object.freeze(healthTargets.map((target) => Object.freeze({ ...target }))),
       getSocksPort, getEnginePid, getProxyCredentials,
       isConnected, isEngineCurrent, isVisible, getConnectedAt, send,
       getAutoReconnect, isDesiredConnected, reconnect, onRecovering,
@@ -159,7 +157,7 @@ class ConnectionTelemetryCoordinator {
       probe: this.probe,
       proxyPort,
       proxyCredentials: this.getProxyCredentials(generation),
-      ...(this.healthTargets === null ? {} : { targets: this.healthTargets }),
+      targets: this.healthTargets,
       timeoutMs: PROBE_TIMEOUT_MS,
     });
     if (result.kind === 'stale') return result;

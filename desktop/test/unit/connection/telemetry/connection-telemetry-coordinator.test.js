@@ -4,6 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { ConnectionTelemetryCoordinator } = require('../../../../lib/connection/telemetry/connection-telemetry-coordinator');
 const CONTEXT_TOKEN = Object.freeze({});
+const TEST_HEALTH_TARGETS = Object.freeze([
+  Object.freeze({ host: 'one.example.test', port: 443 }),
+  Object.freeze({ host: 'two.example.test', port: 443 }),
+]);
 
 class FakeTelemetryService {
   constructor(options) { this.options = options; this.starts = []; this.stops = 0; }
@@ -17,6 +21,7 @@ function fixture(overrides = {}) {
   const coordinator = new ConnectionTelemetryCoordinator({
     appPid: 10,
     gatewayHost: 'gateway.example.test',
+    healthTargets: TEST_HEALTH_TARGETS,
     getSocksPort: () => 6180,
     getEnginePid: () => 20,
     getProxyCredentials: () => null,

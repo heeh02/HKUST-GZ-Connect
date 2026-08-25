@@ -87,6 +87,18 @@ test('generic Campus Browser contains no HKUST default home title or partition f
   assert.match(sources, /campus-workspace-neutral|BLANK_CAMPUS_HOME/u);
 });
 
+test('generic routing and health modules contain no HKUST deployment defaults', () => {
+  const sources = [
+    read('desktop/lib/routing/policy/campus-route.js'),
+    read('desktop/lib/routing/policy/route-resolver.js'),
+    read('desktop/lib/routing/policy/domain-route-policy.js'),
+    read('desktop/lib/routing/pac/pac.js'),
+    read('desktop/lib/connection/recovery/health-supervisor.js'),
+  ].join('\n');
+  assert.doesNotMatch(sources, /hkust|remote\.hkust/iu);
+  assert.match(sources, /Deployment domains are Profile authority/u);
+});
+
 test('2.0 product exposes safe other-school onboarding instead of packaging it away', () => {
   const mainSource = read('desktop/main.js');
   assert.match(mainSource, /customGatewayProductAvailability\(\)/u);

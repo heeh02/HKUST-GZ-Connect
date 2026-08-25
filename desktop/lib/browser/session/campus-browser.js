@@ -554,9 +554,9 @@ class CampusBrowser {
     return resolution;
   }
 
-  updateTabRoute(tab, rawUrl = this.currentUrl(tab)) {
+  updateTabRoute(tab, rawUrl = this.currentUrl(tab), requestedRoute = null) {
     if (!tab || !rawUrl) return null;
-    const resolution = this.resolveRoute(rawUrl);
+    const resolution = this.resolveRoute(rawUrl, null, requestedRoute);
     tab.route = resolution.route;
     tab.routeSource = resolution.source;
     tab.matchedRule = resolution.matchedRule;
@@ -999,7 +999,7 @@ class CampusBrowser {
       }
       targetWindow.contentView.addChildView(view);
       this.attachPageEvents(tab);
-      if (!this.switchTab(tab.id) || !this.navigate(url, tab)) {
+      if (!this.switchTab(tab.id) || !this.navigate(url, tab, resolution.route)) {
         throw new Error('campus browser tab activation failed');
       }
       return tab;
@@ -1150,7 +1150,7 @@ class CampusBrowser {
     });
   }
 
-  navigate(rawUrl, tab = this.activeTab()) {
+  navigate(rawUrl, tab = this.activeTab(), requestedRoute = null) {
     let url;
     try {
       url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
@@ -1159,7 +1159,11 @@ class CampusBrowser {
       return false;
     }
     if (!tab || tab.view.webContents.isDestroyed()) return false;
-    this.updateTabRoute(tab, url);
+    // `open()` may carry a route already resolved from the active Profile or
+    // an ID-only WebResource. Keep that decision through the first load when
+    // the generic policy has no matching rule; later user navigation resolves
+    // afresh from the live Profile-backed policy.
+    this.updateTabRoute(tab, url, requestedRoute);
     tab.failedUrl = '';
     tab.renderingError = false;
     tab.crashed = false;

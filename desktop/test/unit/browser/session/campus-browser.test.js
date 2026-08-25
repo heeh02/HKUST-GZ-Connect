@@ -473,7 +473,7 @@ test('a provisional load failure keeps the failed URL and shows an error page', 
     };
   }
   const sessions = new Map([
-    ['persist:hkustgz-campus-browser', makeSession('campus')],
+    [CAMPUS_PARTITION, makeSession('campus')],
     [DIRECT_PARTITION, makeSession('direct')],
   ]);
   class FakeWebContents extends EventEmitter {

@@ -42,6 +42,8 @@ test('browser resolution follows user, custom, school, server, then safe default
     }],
     customResources: [{ url: 'https://outlook.office.com/owa/', route: 'direct' }],
     serverResources: [{ url: 'https://vendor.example/service', route: 'direct' }],
+    schoolDomains: ['hkust-gz.edu.cn'],
+    directPartnerDomains: ['office.com'],
   };
   assert.equal(resolveDomainRouteForUrl('https://outlook.office.com/', options).source, 'user-subdomain');
   assert.equal(resolveDomainRouteForUrl('https://library.hkust-gz.edu.cn/', options).source, 'builtin');

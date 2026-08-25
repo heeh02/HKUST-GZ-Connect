@@ -1,10 +1,5 @@
 'use strict';
 
-const DEFAULT_TARGETS = Object.freeze([
-  Object.freeze({ host: 'www.hkust-gz.edu.cn', port: 443 }),
-  Object.freeze({ host: 'library.hkust-gz.edu.cn', port: 443 }),
-]);
-
 function deadline(setTimeoutFn, clearTimeoutFn, timeoutMs) {
   let timer = null;
   const promise = new Promise((resolve) => {
@@ -24,7 +19,7 @@ async function runConcurrentHealthRound({
   proxyPort,
   proxyHost = '127.0.0.1',
   proxyCredentials = null,
-  targets = DEFAULT_TARGETS,
+  targets,
   timeoutMs,
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
@@ -87,4 +82,4 @@ async function runConcurrentHealthRound({
   };
 }
 
-module.exports = { DEFAULT_TARGETS, runConcurrentHealthRound };
+module.exports = { runConcurrentHealthRound };
