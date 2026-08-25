@@ -15,14 +15,19 @@ const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent
 const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
 const repositoryAttributes = fs.readFileSync(path.join(desktopRoot, '..', '.gitattributes'), 'utf8');
 
-test('cross-platform desktop checks explicitly run under Bash', () => {
+test('cross-platform desktop checks use repository-owned source gates', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
   const end = workflow.indexOf('- name: Test independent Rust engine', start);
   assert.ok(start >= 0 && end > start);
   const step = workflow.slice(start, end);
   assert.match(step, /shell:\s*bash/,
-    'Windows otherwise parses process substitution and shell loops as PowerShell');
-  assert.match(step, /done < <\(/, 'the step still contains Bash-only process substitution');
+    'the remaining shell entry-point checks require Bash on every release runner');
+  for (const source of [step, ciWorkflow]) {
+    assert.match(source, /npm run check:syntax -- --tree "\$GITHUB_SHA"/u);
+    assert.match(source, /npm run check:install-scripts/u);
+    assert.doesNotMatch(source, /rg --files|done < <\(/u,
+      'source gates must not silently depend on runner-provided ripgrep or process substitution');
+  }
 });
 
 test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux AppImages', () => {

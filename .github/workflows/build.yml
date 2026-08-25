@@ -52,9 +52,8 @@ jobs:
           npm run check:architecture
           npm run check:secrets -- --tree "$GITHUB_SHA"
           npm audit --audit-level=high
-          while IFS= read -r source_file; do
-            node --check "$source_file"
-          done < <(rg --files -g '*.js' -g '!node_modules/**' -g '!release/**')
+          npm run check:install-scripts
+          npm run check:syntax -- --tree "$GITHUB_SHA"
           bash -n ../hkustgzconnect
           bash -n ../tools/mac-cli/proxy-credential.sh
 
