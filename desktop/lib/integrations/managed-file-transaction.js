@@ -161,12 +161,43 @@ class ManagedFileTransaction {
       const afterReceipt = receipt(payload);
       return Object.freeze({
         targetFile,
+        operation: 'replace',
         createParent,
         before: beforeReceipt,
         after: afterReceipt,
         change: sameReceipt(beforeReceipt, afterReceipt)
           ? 'unchanged'
           : (beforeReceipt.present ? 'replace' : 'create'),
+      });
+    } finally { before?.fill(0); }
+  }
+
+  inspectRemoval(targetFileValue, { removeEmptyOwnedParent = null } = {}) {
+    const targetFile = normalizedIntegrationTargetFile(targetFileValue);
+    const parent = path.dirname(targetFile);
+    let parentStat;
+    try { parentStat = this.fileSystem.lstatSync(parent); }
+    catch (error) { throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT', error); }
+    if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
+      throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT');
+    }
+    if (removeEmptyOwnedParent !== null && removeEmptyOwnedParent !== parent) {
+      throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT');
+    }
+    let before = null;
+    try {
+      before = readRegularFile(targetFile, {
+        fileSystem: this.fileSystem, platform: this.platform, missing: true,
+      });
+      const beforeReceipt = receipt(before);
+      return Object.freeze({
+        targetFile,
+        operation: 'remove',
+        createParent: false,
+        removeEmptyParent: removeEmptyOwnedParent === parent,
+        before: beforeReceipt,
+        after: receipt(null),
+        change: beforeReceipt.present ? 'remove' : 'unchanged',
       });
     } finally { before?.fill(0); }
   }
@@ -185,8 +216,11 @@ class ManagedFileTransaction {
   }
 
   stage(plan, payload, validatePayload = () => true) {
+    const removal = plan?.operation === 'remove';
     if (!plan || typeof plan !== 'object' || typeof validatePayload !== 'function' ||
-        !Buffer.isBuffer(payload) || !sameReceipt(receipt(payload), plan.after)) {
+        (removal ? payload !== null || plan.after?.present !== false
+          : (!Buffer.isBuffer(payload) || !sameReceipt(receipt(payload), plan.after))) ||
+        (!removal && plan.operation !== 'replace')) {
       throw new TypeError('managed file apply plan is invalid');
     }
     const targetFile = normalizedIntegrationTargetFile(plan.targetFile);
@@ -221,8 +255,9 @@ class ManagedFileTransaction {
       if (plan.change === 'unchanged') return this.#token({
         targetFile, before: plan.before, after: plan.after,
         backupPath: null, backupReceipt: null, changed: false, createdParent,
+        removeEmptyParent: plan.removeEmptyParent === true,
       });
-      if (validatePayload(payload) !== true) {
+      if (!removal && validatePayload(payload) !== true) {
         throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
       }
       if (current !== null) {
@@ -230,22 +265,27 @@ class ManagedFileTransaction {
         backupPath = this.#writeBackup(backup);
       }
       mutationAttempted = true;
-      if (!this.#writePrivate(targetFile, payload)) {
+      if (removal) {
+        if (!safeRemove(targetFile, plan.before, this.#dependencies())) {
+          throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
+        }
+      } else if (!this.#writePrivate(targetFile, payload)) {
         throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
       }
       let verified = null;
       try {
         verified = readRegularFile(targetFile, {
-          fileSystem: this.fileSystem, platform: this.platform,
+          fileSystem: this.fileSystem, platform: this.platform, missing: removal,
         });
-        if (!sameReceipt(receipt(verified), plan.after) || validatePayload(verified) !== true) {
+        if (!sameReceipt(receipt(verified), plan.after) ||
+            (!removal && validatePayload(verified) !== true)) {
           throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
         }
       } finally { verified?.fill(0); }
       return this.#token({
         targetFile, before: plan.before, after: plan.after,
         backupPath, backupReceipt: backup === null ? null : receipt(backup), changed: true,
-        createdParent,
+        createdParent, removeEmptyParent: plan.removeEmptyParent === true,
       });
     } catch (error) {
       if (!mutationAttempted) {
@@ -276,7 +316,7 @@ class ManagedFileTransaction {
     } finally {
       current?.fill(0);
       backup?.fill(0);
-      payload.fill(0);
+      payload?.fill(0);
     }
   }
 
@@ -285,6 +325,9 @@ class ManagedFileTransaction {
     if (token.backupPath &&
         !safeRemove(token.backupPath, token.backupReceipt, this.#dependencies())) {
       throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE');
+    }
+    if (token.removeEmptyParent && token.after.present === false) {
+      this.#removeEmptyParent(path.dirname(token.targetFile));
     }
     this.tokens.delete(token);
     return true;

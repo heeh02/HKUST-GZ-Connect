@@ -195,3 +195,46 @@ test('an explicitly owned missing parent is created only at stage and removed on
   assert.equal(f.transaction.finalize(finalToken), true);
   assert.equal(fs.readFileSync(target, 'utf8'), 'final\n');
 });
+
+test('staged removal is reversible until finalized and absent removal is unchanged', (t) => {
+  const f = fixture(t);
+  const target = path.join(f.exports, 'remove.conf');
+  fs.writeFileSync(target, 'owned\n', { mode: 0o600 });
+  let plan = f.transaction.inspectRemoval(target);
+  assert.equal(plan.change, 'remove');
+  let token = f.transaction.stage(plan, null);
+  assert.equal(fs.existsSync(target), false);
+  assert.equal(f.transaction.rollback(token), true);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'owned\n');
+
+  plan = f.transaction.inspectRemoval(target);
+  token = f.transaction.stage(plan, null);
+  assert.equal(f.transaction.finalize(token), true);
+  assert.equal(fs.existsSync(target), false);
+  plan = f.transaction.inspectRemoval(target);
+  assert.equal(plan.change, 'unchanged');
+  token = f.transaction.stage(plan, null);
+  assert.equal(f.transaction.finalize(token), true);
+});
+
+test('finalized removal cleans only its exact empty app-owned parent', (t) => {
+  const f = fixture(t);
+  const managedRoot = path.join(f.exports, 'campus-connect');
+  fs.mkdirSync(managedRoot, { mode: 0o700 });
+  const target = path.join(managedRoot, 'school-a.conf');
+  fs.writeFileSync(target, 'managed\n', { mode: 0o600 });
+  const plan = f.transaction.inspectRemoval(target, { removeEmptyOwnedParent: managedRoot });
+  const token = f.transaction.stage(plan, null);
+  f.transaction.finalize(token);
+  assert.equal(fs.existsSync(managedRoot), false);
+
+  fs.mkdirSync(managedRoot, { mode: 0o700 });
+  fs.writeFileSync(target, 'managed\n', { mode: 0o600 });
+  fs.writeFileSync(path.join(managedRoot, 'user.conf'), 'user\n', { mode: 0o600 });
+  const retained = f.transaction.stage(
+    f.transaction.inspectRemoval(target, { removeEmptyOwnedParent: managedRoot }), null,
+  );
+  f.transaction.finalize(retained);
+  assert.equal(fs.existsSync(managedRoot), true);
+  assert.equal(fs.readFileSync(path.join(managedRoot, 'user.conf'), 'utf8'), 'user\n');
+});

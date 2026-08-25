@@ -104,11 +104,27 @@ class IntegrationRecordStore {
   }
 
   planUpsert(recordValue) {
-    return this.#plan((document) => upsert(document, recordValue), recordValue);
+    return this.#plan((document) => upsert(document, recordValue), [recordValue]);
   }
 
   planRemove(recordValue) {
-    return this.#plan((document) => remove(document, recordValue), recordValue);
+    return this.#plan((document) => remove(document, recordValue), [recordValue]);
+  }
+
+  planUpserts(recordValues) {
+    const records = this.#records(recordValues);
+    return this.#plan(
+      (document) => records.reduce((current, record) => upsert(current, record), document),
+      records,
+    );
+  }
+
+  planRemovals(recordValues) {
+    const records = this.#records(recordValues);
+    return this.#plan(
+      (document) => records.reduce((current, record) => remove(current, record), document),
+      records,
+    );
   }
 
   apply(plan) {
@@ -153,16 +169,17 @@ class IntegrationRecordStore {
     }
   }
 
-  #plan(mutator, recordValue) {
+  #plan(mutator, recordValues) {
     if (typeof mutator !== 'function') throw new TypeError('integration record mutator is invalid');
-    const record = validateIntegrationRecord(recordValue);
+    const records = this.#records(recordValues);
     const current = this.#readCurrent();
     let after = null;
     try {
       const document = mutator(current.document);
       after = serialize(document);
       return Object.freeze({
-        record,
+        record: records.length === 1 ? records[0] : null,
+        records,
         before: receipt(current.data),
         after: receipt(after),
         document,
@@ -171,6 +188,13 @@ class IntegrationRecordStore {
       current.data?.fill(0);
       after?.fill(0);
     }
+  }
+
+  #records(value) {
+    if (!Array.isArray(value) || !value.length || value.length > 8) {
+      throw new TypeError('integration record transition must be a bounded non-empty array');
+    }
+    return Object.freeze(value.map(validateIntegrationRecord));
   }
 
   #readCurrent() {

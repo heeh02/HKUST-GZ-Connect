@@ -94,3 +94,20 @@ test('simulated Windows protects the temporary record and verifies committed ACL
   assert.match(calls[0][1], /^\.external-integrations\.json\..+\.tmp$/u);
   assert.deepEqual(calls.at(-1), ['verify', 'external-integrations.json']);
 });
+
+test('multiple managed targets commit or remove in one record document transition', (t) => {
+  const f = fixture(t);
+  const first = record('a');
+  const second = record('b', {
+    adapterId: 'openssh_proxy_command',
+    managedBlockId: 'openssh-profile-school-a',
+  });
+  const install = f.store.planUpserts([first, second]);
+  assert.equal(install.records.length, 2);
+  f.store.apply(install);
+  assert.deepEqual(f.store.read().records.map((value) => value.adapterId), [
+    'clash_yaml', 'openssh_proxy_command',
+  ]);
+  f.store.apply(f.store.planRemovals([first, second]));
+  assert.deepEqual(f.store.read().records, []);
+});

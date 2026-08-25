@@ -85,6 +85,18 @@ class StableProxyCredential {
     return callback(this.#username.toString('ascii'), this.#password.toString('ascii'));
   }
 
+  reference() {
+    if (this.#destroyed) throw storageError('proxy credential is unavailable');
+    const digest = crypto.createHash('sha256')
+      .update('campus-connect-proxy-reference-v1\0', 'utf8')
+      .update(this.#username)
+      .update(Buffer.of(0))
+      .update(this.#password)
+      .digest('hex')
+      .slice(0, 32);
+    return `credential-${digest}`;
+  }
+
   destroy() {
     if (this.#destroyed) return false;
     this.#username.fill(0);

@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const crypto = require('node:crypto');
 const vm = require('node:vm');
 const {
   clashRuleLines,
@@ -8,6 +9,7 @@ const {
 } = require('./generic-export-adapters');
 const {
   managedBlockMatches,
+  inspectManagedBlock,
   removeManagedBlock,
   upsertManagedBlock,
 } = require('./managed-text-block');
@@ -94,11 +96,27 @@ function validateClashVergeManagedScript(source, options) {
   } catch { return false; }
 }
 
+function clashVergeManagedBlockDigest(source) {
+  const observed = inspectManagedBlock(source, CLASH_VERGE_BLOCK);
+  if (!observed.present) return null;
+  return crypto.createHash('sha256').update(observed.content, 'utf8').digest('hex');
+}
+
+function validateClashVergeScriptWithoutManagedBlock(source) {
+  try {
+    if (inspectManagedBlock(source, CLASH_VERGE_BLOCK).present) return false;
+    new vm.Script(source, { filename: 'Script.js' });
+    return true;
+  } catch { return false; }
+}
+
 module.exports = {
   CLASH_VERGE_BLOCK,
   assertClashVergeScriptTarget: assertScriptTarget,
   buildClashVergeManagedBlock,
+  clashVergeManagedBlockDigest,
   installClashVergeManagedScript,
   removeClashVergeManagedScript,
   validateClashVergeManagedScript,
+  validateClashVergeScriptWithoutManagedBlock,
 };

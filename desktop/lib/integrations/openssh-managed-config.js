@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const crypto = require('node:crypto');
 const {
   buildSshProxyCommand,
 } = require('../external-proxy-config');
@@ -130,6 +131,35 @@ function validateOpenSshManagedFiles({ mainSource, profileSource, options } = {}
   } catch { return false; }
 }
 
+function openSshManagedBlockDigest(source, blockId) {
+  const observed = inspectManagedBlock(source, { commentPrefix: '#', blockId });
+  if (!observed.present) return null;
+  return crypto.createHash('sha256').update(observed.content, 'utf8').digest('hex');
+}
+
+function validateOpenSshMainSource(source) {
+  try {
+    return managedBlockMatches(source, OPENSSH_INCLUDE, OPENSSH_INCLUDE_BLOCK) ||
+      source.split(/\r?\n/u).some((line) => line.trim() === OPENSSH_INCLUDE);
+  } catch { return false; }
+}
+
+function validateOpenSshProfileSource(source, options) {
+  try {
+    const rules = validateProfileNetworkRules(options?.networkRules);
+    return managedBlockMatches(
+      source,
+      buildOpenSshProfileBlock(options),
+      { commentPrefix: '#', blockId: `openssh-profile-${rules.profileId}` },
+    );
+  } catch { return false; }
+}
+
+function validateOpenSshRemovedSource(source, blockId) {
+  try { return !inspectManagedBlock(source, { commentPrefix: '#', blockId }).present; }
+  catch { return false; }
+}
+
 module.exports = {
   OPENSSH_INCLUDE,
   OPENSSH_INCLUDE_BLOCK,
@@ -138,7 +168,11 @@ module.exports = {
   installOpenSshInclude,
   installOpenSshProfile,
   openSshProfileTarget,
+  openSshManagedBlockDigest,
   removeOpenSshInclude,
   removeOpenSshProfile,
   validateOpenSshManagedFiles,
+  validateOpenSshMainSource,
+  validateOpenSshProfileSource,
+  validateOpenSshRemovedSource,
 };
