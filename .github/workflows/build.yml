@@ -47,8 +47,14 @@ jobs:
       - name: Test desktop shell
         working-directory: desktop
         shell: bash
+        env:
+          BUILD_PLATFORM: ${{ matrix.platform }}
         run: |
-          npm test
+          if [ "$BUILD_PLATFORM" = win ]; then
+            npm run test:windows
+          else
+            npm test
+          fi
           npm run check:architecture
           npm run check:secrets -- --tree "$GITHUB_SHA"
           npm audit --audit-level=high
