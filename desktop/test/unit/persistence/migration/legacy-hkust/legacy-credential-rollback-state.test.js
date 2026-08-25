@@ -7,7 +7,7 @@ const {
   createLegacyCredentialRollbackState,
   retireLegacyCredentialRollbackState,
   validateLegacyCredentialRollbackState,
-} = require('../lib/legacy-credential-rollback-state');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-state');
 
 function journal() {
   return {

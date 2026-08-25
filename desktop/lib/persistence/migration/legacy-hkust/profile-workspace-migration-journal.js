@@ -6,8 +6,8 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./profiles/schema/school-profile-schema');
-const { LEGACY_HKUST_BROWSER_PARTITION } = require('./persistence/paths/profile-workspace-layout');
+} = require('../../../profiles/schema/school-profile-schema');
+const { LEGACY_HKUST_BROWSER_PARTITION } = require('../../paths/profile-workspace-layout');
 
 const MIGRATION_JOURNAL_VERSION = 1;
 const LEGACY_SOURCE_IDS = Object.freeze([

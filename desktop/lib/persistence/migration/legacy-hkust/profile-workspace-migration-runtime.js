@@ -17,7 +17,7 @@ const {
   destinationPathMap,
   materializeDestinationFiles,
   verifyDestinationFiles,
-} = require('./persistence/paths/profile-workspace-destination-files');
+} = require('../../paths/profile-workspace-destination-files');
 const {
   createPreparedMigrationJournal,
   LEGACY_SOURCE_IDS,
@@ -28,17 +28,17 @@ const { ProfileWorkspaceMigrationJournalStore } =
   require('./profile-workspace-migration-store');
 const {
   loadActiveProfileWorkspaceAuthority,
-} = require('./persistence/runtime/profile-workspace-runtime-authority');
-const { validateUserDataRoot } = require('./persistence/paths/profile-workspace-layout');
+} = require('../../runtime/profile-workspace-runtime-authority');
+const { validateUserDataRoot } = require('../../paths/profile-workspace-layout');
 const {
   createLegacyRuntimeStoragePaths,
   createProfileWorkspaceRuntimeStoragePaths,
-} = require('./persistence/paths/runtime-storage-paths');
-const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
+} = require('../../paths/runtime-storage-paths');
+const { validateSchoolProfileDocument } = require('../../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../../windows-private-file');
 
 function pathExists(file, fileSystem) {
   try {

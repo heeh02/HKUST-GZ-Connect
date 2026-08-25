@@ -10,30 +10,30 @@ const {
   LEGACY_SOURCE_IDS,
   REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   createPreparedMigrationJournal,
-} = require('../lib/profile-workspace-migration-journal');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
 const {
   ProfileWorkspaceMigrationCoordinator,
-} = require('../lib/profile-workspace-migration-coordinator');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-coordinator');
 const {
   ProfileWorkspaceMigrationJournalStore,
-} = require('../lib/profile-workspace-migration-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-store');
 const {
   collectLegacyFlatSourceReceipts,
-} = require('../lib/legacy-flat-source-receipts');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-flat-source-receipts');
 const {
   retireLegacyFlatSources,
-} = require('../lib/legacy-flat-source-retirement');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-flat-source-retirement');
 const {
   destinationPathMap,
   materializeDestinationFiles,
   verifyDestinationFiles,
-} = require('../lib/persistence/paths/profile-workspace-destination-files');
-const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
+} = require('../../../../../lib/persistence/paths/profile-workspace-destination-files');
+const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   LEGACY_COPY_SOURCE_IDS,
   createHkustMigrationDestinationPlan,
-} = require('../lib/hkust-migration-destination-plan');
-const { normalizeSettings } = require('../lib/settings-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
+const { normalizeSettings } = require('../../../../../lib/settings-store');
 
 function receipt(seed) {
   return Object.freeze({

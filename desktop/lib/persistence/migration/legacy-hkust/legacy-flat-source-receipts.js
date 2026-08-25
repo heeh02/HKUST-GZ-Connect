@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const {
   createLegacyFlatSourcePaths,
   validateUserDataRoot,
-} = require('./persistence/paths/profile-workspace-layout');
+} = require('../../paths/profile-workspace-layout');
 const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
-const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
+const { verifyWindowsFileOwnerOnly } = require('../../../windows-private-file');
 
 const READ_CHUNK_BYTES = 64 * 1024;
 const LEGACY_SOURCE_MAX_BYTES = Object.freeze({

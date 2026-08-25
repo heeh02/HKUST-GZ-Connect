@@ -5,7 +5,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../../../profiles/schema/school-profile-schema');
 
 const LEGACY_CREDENTIAL_ROLLBACK_VERSION = 1;
 const LEGACY_CREDENTIAL_FORMAT = 'safe_storage_password_v1';

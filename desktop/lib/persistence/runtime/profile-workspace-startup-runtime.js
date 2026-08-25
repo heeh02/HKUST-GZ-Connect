@@ -4,13 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   createLegacyCredentialRollbackStoreForAuthority,
-} = require('../../legacy-credential-rollback-store');
+} = require('../migration/legacy-hkust/legacy-credential-rollback-store');
 const {
   ProfileWorkspaceCredentialStore,
 } = require('../../profile-workspace-credential-store');
 const {
   ProfileWorkspaceMigrationRuntime,
-} = require('../../profile-workspace-migration-runtime');
+} = require('../migration/legacy-hkust/profile-workspace-migration-runtime');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,

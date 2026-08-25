@@ -9,7 +9,7 @@ const {
 const {
   createProfileAccountWorkspaceLayout,
   validateUserDataRoot,
-} = require('./persistence/paths/profile-workspace-layout');
+} = require('../../paths/profile-workspace-layout');
 
 function result(ok, status, authority, code = null) {
   const value = { ok, status, authority };

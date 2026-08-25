@@ -17,7 +17,7 @@ const {
   commitMigrationJournal,
   createPreparedMigrationJournal,
   validateMigrationJournal,
-} = require('../../../../lib/profile-workspace-migration-journal');
+} = require('../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
 
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;

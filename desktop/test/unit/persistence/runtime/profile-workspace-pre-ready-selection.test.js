@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
-const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/hkust-migration-destination-plan');
+const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
 const {
   selectProfileWorkspacePreReadyStorage,
 } = require('../../../../lib/persistence/runtime/profile-workspace-pre-ready-selection');

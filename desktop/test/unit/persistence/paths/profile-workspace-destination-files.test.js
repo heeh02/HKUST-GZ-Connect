@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { DESTINATION_RECEIPT_IDS } = require('../../../../lib/profile-workspace-migration-journal');
+const { DESTINATION_RECEIPT_IDS } = require('../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
 const { createProfileAccountWorkspaceLayout } = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   destinationPathMap,

@@ -5,16 +5,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { LEGACY_COPY_SOURCE_IDS } = require('../lib/hkust-migration-destination-plan');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+const { LEGACY_COPY_SOURCE_IDS } = require('../../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
 const { ProfileWorkspaceMigrationRuntime } =
-  require('../lib/profile-workspace-migration-runtime');
-const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../lib/settings-store');
-const { decryptVpnCredentialEnvelope } = require('../lib/vpn-credential-envelope');
+  require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-runtime');
+const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
+const { normalizeSettings } = require('../../../../../lib/settings-store');
+const { decryptVpnCredentialEnvelope } = require('../../../../../lib/vpn-credential-envelope');
 
 function profile() {
   return JSON.parse(fs.readFileSync(
-    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    path.join(desktopRoot, 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
     'utf8',
   ));
 }

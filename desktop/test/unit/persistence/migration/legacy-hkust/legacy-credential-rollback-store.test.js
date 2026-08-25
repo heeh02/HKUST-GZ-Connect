@@ -7,13 +7,13 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   LegacyCredentialRollbackStore,
-} = require('../lib/legacy-credential-rollback-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-store');
 const {
   createLegacyCredentialRollbackState,
   retireLegacyCredentialRollbackState,
   validateLegacyCredentialRollbackState,
-} = require('../lib/legacy-credential-rollback-state');
-const { createProfileAccountWorkspaceLayout } = require('../lib/persistence/paths/profile-workspace-layout');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-state');
+const { createProfileAccountWorkspaceLayout } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
 
 function migrationJournal() {
   return {

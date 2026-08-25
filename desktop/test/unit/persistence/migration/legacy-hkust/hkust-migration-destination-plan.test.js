@@ -8,19 +8,19 @@ const {
   LEGACY_SOURCE_IDS,
   REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   createPreparedMigrationJournal,
-} = require('../lib/profile-workspace-migration-journal');
-const { normalizeSettings } = require('../lib/settings-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
+const { normalizeSettings } = require('../../../../../lib/settings-store');
 const {
   LEGACY_COPY_SOURCE_IDS,
   createHkustMigrationDestinationPlan,
-} = require('../lib/hkust-migration-destination-plan');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
 const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,
-} = require('../lib/profiles/schema/school-profile-schema');
+} = require('../../../../../lib/profiles/schema/school-profile-schema');
 const {
   validateLegacyCredentialRollbackState,
-} = require('../lib/legacy-credential-rollback-state');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-state');
 
 function receipt(value) {
   if (value === null) return Object.freeze({ present: false, bytes: 0, sha256: null });

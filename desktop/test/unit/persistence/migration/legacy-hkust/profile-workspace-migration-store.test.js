@@ -11,10 +11,10 @@ const {
   REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   commitMigrationJournal,
   createPreparedMigrationJournal,
-} = require('../lib/profile-workspace-migration-journal');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
 const {
   ProfileWorkspaceMigrationJournalStore,
-} = require('../lib/profile-workspace-migration-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-store');
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-workspace-migration-'));

@@ -3,7 +3,7 @@
 const path = require('path');
 const { assertActiveContextSwitchStartupClear } = require('../active-context-switch-startup');
 const { DesktopPersistenceRuntime } = require('../persistence/runtime/desktop-persistence-runtime');
-const { LegacyMigrationCredentialOwner } = require('../legacy-migration-inputs');
+const { LegacyMigrationCredentialOwner } = require('../persistence/migration/legacy-hkust/legacy-migration-inputs');
 const { MultiSchoolStartupRuntime } = require('../multi-school-startup-runtime');
 const {
   createMainProfileSwitchComposition,
@@ -12,7 +12,7 @@ const { selectProfileWorkspacePreReadyStorage } =
   require('../persistence/runtime/profile-workspace-pre-ready-selection');
 const { ProfileWorkspaceStartupRuntime } = require('../persistence/runtime/profile-workspace-startup-runtime');
 const { relaunchAfterPersistenceMigration, writePersistenceE2EMarker } =
-  require('../persistence-relaunch');
+  require('../persistence/migration/legacy-hkust/persistence-relaunch');
 const { createProfileSwitchBarrierEffects } = require('../profile-switch-main-effects');
 const { createMainProfileSwitchRuntime } = require('../profile-switch-main-runtime');
 const { relaunchAfterProfileSwitch, scheduleProfileSwitchRelaunch,

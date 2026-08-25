@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { collectLegacyFlatSourceReceipts } = require('../lib/legacy-flat-source-receipts');
+const { collectLegacyFlatSourceReceipts } = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-flat-source-receipts');
 const {
   openLegacyMigrationCredential,
   readLegacyMigrationPayloads,
-} = require('../lib/legacy-migration-inputs');
-const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../lib/settings-store');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-migration-inputs');
+const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
+const { normalizeSettings } = require('../../../../../lib/settings-store');
 
 function safeStorage() {
   return {

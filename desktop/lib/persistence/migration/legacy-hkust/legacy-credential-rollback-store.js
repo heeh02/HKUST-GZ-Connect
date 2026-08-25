@@ -3,22 +3,22 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('../../../credential-store');
 const {
   retireLegacyCredentialRollbackState,
   validateLegacyCredentialRollbackState,
 } = require('./legacy-credential-rollback-state');
-const { readPrivateFileBounded } = require('./private-file');
+const { readPrivateFileBounded } = require('../../../private-file');
 const {
   normalizeGatewayOrigin,
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../../windows-private-file');
 
 const RETIREMENT_INTENT_VERSION = 1;
 const MAX_ROLLBACK_BLOB_BYTES = 64 * 1024;

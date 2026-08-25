@@ -6,8 +6,8 @@ const path = require('node:path');
 const { atomicWritePrivateFile } = require('../../credential-store');
 const {
   collectPrivateFileReceipt,
-} = require('../../legacy-flat-source-receipts');
-const { DESTINATION_RECEIPT_IDS } = require('../../profile-workspace-migration-journal');
+} = require('../migration/legacy-hkust/legacy-flat-source-receipts');
+const { DESTINATION_RECEIPT_IDS } = require('../migration/legacy-hkust/profile-workspace-migration-journal');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,

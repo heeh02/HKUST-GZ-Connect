@@ -6,9 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
-const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/hkust-migration-destination-plan');
+const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
 const { createLegacyCredentialRollbackStoreForAuthority } =
-  require('../../../../lib/legacy-credential-rollback-store');
+  require('../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-store');
 const { ProfileWorkspaceCredentialStore } = require('../../../../lib/profile-workspace-credential-store');
 const {
   loadActiveProfileAccountAuthority,

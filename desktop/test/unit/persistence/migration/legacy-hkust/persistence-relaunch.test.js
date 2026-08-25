@@ -7,7 +7,7 @@ const {
   persistenceRelaunchArguments,
   relaunchAfterPersistenceMigration,
   writePersistenceE2EMarker,
-} = require('../lib/persistence-relaunch');
+} = require('../../../../../lib/persistence/migration/legacy-hkust/persistence-relaunch');
 
 test('development migration relaunches the Desktop entry instead of its Electron test wrapper', () => {
   assert.deepEqual(persistenceRelaunchArguments({

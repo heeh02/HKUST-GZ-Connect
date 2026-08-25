@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { collectPrivateFileReceipt } = require('../../legacy-flat-source-receipts');
+const { collectPrivateFileReceipt } = require('../migration/legacy-hkust/legacy-flat-source-receipts');
 const { readPrivateFileBounded } = require('../../private-file');
 const {
   createProfileAccountBootstrapLayout,

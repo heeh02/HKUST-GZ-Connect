@@ -11,8 +11,8 @@ const {
   LEGACY_SOURCE_IDS,
   legacySourceReceiptDigest,
 } = require('./profile-workspace-migration-journal');
-const { createLegacyFlatSourcePaths } = require('./persistence/paths/profile-workspace-layout');
-const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
+const { createLegacyFlatSourcePaths } = require('../../paths/profile-workspace-layout');
+const { verifyWindowsFileOwnerOnly } = require('../../../windows-private-file');
 
 function sameReceipt(left, right) {
   return left.present === right.present && left.bytes === right.bytes && left.sha256 === right.sha256;
