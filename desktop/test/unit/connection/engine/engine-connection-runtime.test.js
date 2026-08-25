@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
-const { EngineConnectionRuntime } = require('../lib/engine-connection-runtime');
+const { EngineConnectionRuntime } = require('../../../../lib/connection/engine/engine-connection-runtime');
 const CONTEXT_TOKEN = Object.freeze({});
 
 class FakeControl {

@@ -10,7 +10,7 @@ const {
   recoveryEvidenceWindowMs,
   shouldProbe,
   shouldRecover,
-} = require('../lib/tunnel-health');
+} = require('../../../../lib/connection/recovery/tunnel-health');
 
 test('a slow tunnel is given enough time to answer the liveness probe', () => {
   // A congested tunnel still answers, just late. A probe deadline near the

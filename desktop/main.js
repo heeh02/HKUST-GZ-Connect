@@ -21,24 +21,24 @@ const {
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
 const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
-const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
+const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,
   classifyEngineStopReason, formatEngineEventDiagnostic,
   resolveEngineFailureKind,
-} = require('./lib/engine-output');
-const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
-const { EngineConnectionRuntime } = require('./lib/engine-connection-runtime');
+} = require('./lib/connection/engine/engine-output');
+const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/connection/engine/engine-control-suite');
+const { EngineConnectionRuntime } = require('./lib/connection/engine/engine-connection-runtime');
 const { DesktopShell } = require('./lib/desktop-shell');
-const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
+const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/connection/engine/engine-process');
 const {
   EngineSupervisor,
   cleanupOrphanedEngine,
   removeEngineOwnerRecord,
   writeEngineOwnerRecord,
-} = require('./lib/engine-supervisor');
-const { ConnectionTelemetryCoordinator } = require('./lib/connection-telemetry-coordinator');
+} = require('./lib/connection/engine/engine-supervisor');
+const { ConnectionTelemetryCoordinator } = require('./lib/connection/telemetry/connection-telemetry-coordinator');
 const { buildPac } = require('./lib/pac');
 const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
 const { savePacFile } = require('./lib/pac-file');
@@ -57,10 +57,10 @@ const {
 } = require('./lib/control-ipc-suite');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
-const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/stop-policy');
+const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/stop-policy');
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
-const { ConnectivityRecovery } = require('./lib/connectivity-recovery');
-const { createNetworkStartupSystem } = require('./lib/network-status-monitor');
+const { ConnectivityRecovery } = require('./lib/connection/recovery/connectivity-recovery');
+const { createNetworkStartupSystem } = require('./lib/connection/telemetry/network-status-monitor');
 const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/proxy-credential');
 const {
   ExternalProxyCredentialStore,
@@ -77,7 +77,7 @@ const { createT, effectiveLocale } = require('./lib/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');
-const { ActiveContextLease, ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
+const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection/state/connection-state-machine');
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone
 // permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing

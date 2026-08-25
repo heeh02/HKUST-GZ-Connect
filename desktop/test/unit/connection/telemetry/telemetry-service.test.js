@@ -6,7 +6,7 @@ const {
   HIDDEN_PUMP_MS,
   TelemetryService,
   VISIBLE_PUMP_MS,
-} = require('../lib/telemetry-service');
+} = require('../../../../lib/connection/telemetry/telemetry-service');
 
 function flush() {
   return new Promise((resolve) => setImmediate(resolve));

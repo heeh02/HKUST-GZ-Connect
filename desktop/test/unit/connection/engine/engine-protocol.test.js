@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   EngineEventParser,
   normalizeEngineEvent,
-} = require('../lib/engine-protocol');
+} = require('../../../../lib/connection/engine/engine-protocol');
 
 test('normalizes only bounded API v1 machine events and drops extra data', () => {
   assert.deepEqual(normalizeEngineEvent({

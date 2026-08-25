@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const { ActiveContextLease } = require('../switching/active-context/active-context-lease');
 const { assertActiveContextSwitchStartupClear } = require('../switching/active-context/active-context-switch-startup');
 const { DesktopPersistenceRuntime } = require('../persistence/runtime/desktop-persistence-runtime');
 const { LegacyMigrationCredentialOwner } = require('../persistence/migration/legacy-hkust/legacy-migration-inputs');
@@ -41,6 +42,7 @@ function createMultiSchoolStartupInitializer(options) {
 }
 
 const desktopRuntimeComposition = Object.freeze({
+  ActiveContextLease,
   assertActiveContextSwitchStartupClear,
   createLegacyRuntimeStoragePaths,
   createMainProfileSwitchComposition,

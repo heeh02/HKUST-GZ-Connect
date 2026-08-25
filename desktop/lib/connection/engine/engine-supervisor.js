@@ -2,12 +2,12 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('../../private-file');
 const {
   STOP_CONTROL_GRACE_MS,
   STOP_GRACE_MS,
   STOP_FORCE_WAIT_MS,
-} = require('./stop-policy');
+} = require('../state/stop-policy');
 
 const MAX_ENGINE_OWNER_RECORD_BYTES = 4096;
 

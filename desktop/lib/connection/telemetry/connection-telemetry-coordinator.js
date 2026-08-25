@@ -1,11 +1,11 @@
 'use strict';
 
 const net = require('node:net');
-const { AppConnectionEnumerator } = require('./app-connection-enumerator');
-const { runConcurrentHealthRound } = require('./health-supervisor');
-const { probeSocksConnect } = require('./socks-health');
+const { AppConnectionEnumerator } = require('../../app-connection-enumerator');
+const { runConcurrentHealthRound } = require('../recovery/health-supervisor');
+const { probeSocksConnect } = require('../recovery/socks-health');
 const { TelemetryService } = require('./telemetry-service');
-const { PROBE_TIMEOUT_MS, shouldRecover } = require('./tunnel-health');
+const { PROBE_TIMEOUT_MS, shouldRecover } = require('../recovery/tunnel-health');
 const RENDERER_HEALTH_STATES = new Set([
   'unknown', 'healthy', 'site-failure', 'tunnel-failure', 'settings-unavailable', 'stale',
 ]);

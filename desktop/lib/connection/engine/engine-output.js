@@ -1,6 +1,6 @@
 'use strict';
 
-const { createT } = require('./i18n');
+const { createT } = require('../../i18n');
 
 const SAFE_DIAGNOSTIC_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/u;
 

@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   ConnectivityRecovery,
   RECOVERY_DEBOUNCE_MS,
-} = require('../lib/connectivity-recovery');
+} = require('../../../../lib/connection/recovery/connectivity-recovery');
 
 class FakeTimers {
   constructor() {

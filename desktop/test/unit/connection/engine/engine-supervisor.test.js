@@ -19,7 +19,7 @@ const {
   sameWindowsExecutablePath,
   windowsOwnedEngineCleanupInvocation,
   writeEngineOwnerRecord,
-} = require('../lib/engine-supervisor');
+} = require('../../../../lib/connection/engine/engine-supervisor');
 
 function fakeChild() {
   const child = new EventEmitter();

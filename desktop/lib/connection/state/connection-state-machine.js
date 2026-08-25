@@ -2,7 +2,6 @@
 
 const { planReconnect } = require('./reconnect-policy');
 const { ConnectionWaitRegistry } = require('./connection-wait-registry');
-const { ActiveContextLease } = require('./switching/active-context/active-context-lease');
 
 const CONNECTION_PHASE = Object.freeze({
   IDLE: 'idle',
@@ -326,7 +325,6 @@ class ConnectionStateMachine {
 }
 
 module.exports = {
-  ActiveContextLease,
   CONNECTION_PHASE,
   ConnectionWaitRegistry,
   ConnectionStateMachine,

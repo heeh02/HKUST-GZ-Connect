@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { STABLE_SESSION_MS, planReconnect } = require('../lib/reconnect-policy');
+const { STABLE_SESSION_MS, planReconnect } = require('../../../../lib/connection/state/reconnect-policy');
 
 test('a short-lived listener does not reset the retry budget', () => {
   assert.deepEqual(planReconnect({

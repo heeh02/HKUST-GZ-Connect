@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { EngineControlSuite } = require('../lib/engine-control-suite');
+const { EngineControlSuite } = require('../../../../lib/connection/engine/engine-control-suite');
 
 class FakeWritable {
   constructor() { this.frames = []; }

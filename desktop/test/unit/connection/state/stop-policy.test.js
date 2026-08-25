@@ -9,7 +9,7 @@ const {
   STOP_GRACE_MS,
   STOP_FORCE_WAIT_MS,
   stopPhase,
-} = require('../lib/stop-policy');
+} = require('../../../../lib/connection/state/stop-policy');
 
 function rustDurationMs(source, name) {
   const match = source.match(new RegExp(
@@ -44,7 +44,7 @@ test('stop policy accounts for the optional Control v2 grace window', () => {
 });
 
 test('Engine cancellation and logout retain one second inside the control grace', () => {
-  const repository = path.resolve(__dirname, '..', '..');
+  const repository = path.resolve(__dirname, '..', '..', '..', '..', '..');
   const engine = fs.readFileSync(path.join(repository, 'independent/src/bin/ec-engine.rs'), 'utf8');
   const session = fs.readFileSync(path.join(repository, 'independent/src/engine/session.rs'), 'utf8');
   const reviewedWorstCase = rustDurationMs(engine, 'CONTROL_SHUTDOWN_CANCEL_WINDOW') +

@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   ConnectionWaitRegistry,
   MAX_PENDING_CONNECTION_INTENTS,
-} = require('../lib/connection-wait-registry');
+} = require('../../../../lib/connection/state/connection-wait-registry');
 
 class FakeTimer {
   constructor(callback, delayMs) {

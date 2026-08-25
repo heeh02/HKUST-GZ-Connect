@@ -12,7 +12,7 @@ const {
   formatConnectionDiagnostic,
   formatEngineEventDiagnostic,
   resolveEngineFailureKind,
-} = require('../lib/engine-output');
+} = require('../../../../lib/connection/engine/engine-output');
 
 test('connection diagnostics are correlated, bounded, and cannot echo free-form data', () => {
   const diagnostic = formatConnectionDiagnostic({

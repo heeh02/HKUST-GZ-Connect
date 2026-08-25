@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { AuthChallengeCoordinator } = require('../lib/auth-challenge-coordinator');
+const { AuthChallengeCoordinator } = require('../../../../lib/connection/auth/auth-challenge-coordinator');
 const CONTEXT_TOKEN = Object.freeze({});
 
 function internalChallenge(overrides = {}) {

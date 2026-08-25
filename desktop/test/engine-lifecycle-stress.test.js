@@ -12,7 +12,7 @@ const {
   removeEngineOwnerRecord,
   windowsOwnedEngineCleanupInvocation,
   writeEngineOwnerRecord,
-} = require('../lib/engine-supervisor');
+} = require('../lib/connection/engine/engine-supervisor');
 
 class DeterministicTimers {
   constructor() {

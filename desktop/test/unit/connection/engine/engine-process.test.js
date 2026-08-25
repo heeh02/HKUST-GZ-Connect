@@ -12,7 +12,7 @@ const {
   resolveEngineLaunch,
   resolveGatewayProbeLaunch,
   resolveNativeResourcePath,
-} = require('../lib/engine-process');
+} = require('../../../../lib/connection/engine/engine-process');
 
 test('orphan cleanup matches only the resolved engine executable', () => {
   const pattern = new RegExp(exactExecutablePattern('/tmp/build+test/ec-engine'));

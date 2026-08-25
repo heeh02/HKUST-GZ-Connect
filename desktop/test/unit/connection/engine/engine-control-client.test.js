@@ -7,7 +7,7 @@ const {
   EngineControlClient,
   EngineControlResponseParser,
   normalizeControlResponse,
-} = require('../lib/engine-control-client');
+} = require('../../../../lib/connection/engine/engine-control-client');
 
 class FakeWritable extends EventEmitter {
   constructor() {

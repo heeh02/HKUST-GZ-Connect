@@ -7,8 +7,8 @@ const {
   ConnectionStateMachine,
   connectionPresentation,
   projectConnectionStatus,
-} = require('../lib/connection-state-machine');
-const { STABLE_SESSION_MS } = require('../lib/reconnect-policy');
+} = require('../../../../lib/connection/state/connection-state-machine');
+const { STABLE_SESSION_MS } = require('../../../../lib/connection/state/reconnect-policy');
 
 function start(machine, generation = 1) {
   const intent = machine.beginConnectIntent();

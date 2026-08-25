@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   ENGINE_HELLO_TIMEOUT_MS,
   EngineProtocolSession,
-} = require('../lib/engine-protocol-session');
+} = require('../../../../lib/connection/engine/engine-protocol-session');
 
 test('machine events are accepted only after one API hello', () => {
   const session = new EngineProtocolSession(7);

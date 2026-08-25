@@ -2,7 +2,7 @@
 
 const { EngineAuthControlClient } = require('./engine-auth-control-client');
 const { EngineControlClient } = require('./engine-control-client');
-const { AuthChallengeCoordinator } = require('./auth-challenge-coordinator');
+const { AuthChallengeCoordinator } = require('../auth/auth-challenge-coordinator');
 
 class EngineControlSuite {
   constructor({ writable, generation } = {}) {

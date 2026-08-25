@@ -7,7 +7,7 @@ const {
   probeSocksConnect,
   socksAuthenticationRequest,
   socksConnectRequest,
-} = require('../lib/socks-health');
+} = require('../../../../lib/connection/recovery/socks-health');
 
 test('SOCKS health request is a bounded domain CONNECT', () => {
   const request = socksConnectRequest('www.hkust-gz.edu.cn', 443);

@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { runConcurrentHealthRound } = require('../lib/health-supervisor');
+const { runConcurrentHealthRound } = require('../../../../lib/connection/recovery/health-supervisor');
 
 function deferred() {
   let resolve;

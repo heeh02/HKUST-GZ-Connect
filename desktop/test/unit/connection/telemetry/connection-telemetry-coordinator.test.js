@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ConnectionTelemetryCoordinator } = require('../lib/connection-telemetry-coordinator');
+const { ConnectionTelemetryCoordinator } = require('../../../../lib/connection/telemetry/connection-telemetry-coordinator');
 const CONTEXT_TOKEN = Object.freeze({});
 
 class FakeTelemetryService {

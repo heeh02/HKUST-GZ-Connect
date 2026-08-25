@@ -2,13 +2,13 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ConnectionStateMachine } = require('../lib/connection-state-machine');
+const { ConnectionStateMachine } = require('../../../../lib/connection/state/connection-state-machine');
 const {
   DEFAULT_NETWORK_POLL_MS,
   NetworkStartupCoordinator,
   NetworkStatusMonitor,
   createNetworkStartupSystem,
-} = require('../lib/network-status-monitor');
+} = require('../../../../lib/connection/telemetry/network-status-monitor');
 
 function deferred() {
   let resolve;

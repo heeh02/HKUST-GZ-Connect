@@ -13,7 +13,7 @@ const {
   HIDDEN_LATENCY_REFRESH_MS,
   HIDDEN_PUMP_MS,
   TelemetryService,
-} = require('../lib/telemetry-service');
+} = require('../lib/connection/telemetry/telemetry-service');
 const {
   PERFORMANCE_REPORT_SCHEMA,
   writePerformanceReport,

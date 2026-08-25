@@ -6,7 +6,7 @@ const {
   EngineAuthControlClient,
   EngineAuthControlParser,
   normalizeAuthControlMessage,
-} = require('../lib/engine-auth-control-client');
+} = require('../../../../lib/connection/engine/engine-auth-control-client');
 
 const CHALLENGE = Object.freeze({
   transactionId: '04040404040404040404040404040404',
