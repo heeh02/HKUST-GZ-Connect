@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   registerSettingsCredentialIpc,
   settingsPatchFromIpc,
-} = require('../lib/settings-credential-ipc');
+} = require('../../../lib/ipc/settings-credential-ipc');
 
 function fixture(overrides = {}) {
   const handlers = new Map();

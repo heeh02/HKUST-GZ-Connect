@@ -1,7 +1,7 @@
 'use strict';
 
 const { allowedKeys, boundedArray, boundedString } = require('./ipc-guard');
-const { applySettingsPatch } = require('./settings-update');
+const { applySettingsPatch } = require('../settings-update');
 
 function settingsPatchFromIpc(value) {
   const source = allowedKeys(value, [

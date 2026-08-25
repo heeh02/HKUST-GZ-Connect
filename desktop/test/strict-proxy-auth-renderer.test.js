@@ -13,7 +13,7 @@ const proxyFeature = fs.readFileSync(path.join(renderer, 'proxy-auth-migration.j
 const integrationFeature = fs.readFileSync(path.join(renderer, 'integration-center.js'), 'utf8');
 const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 const integrationSuite = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'integration-center-suite.js'), 'utf8',
+  path.join(__dirname, '..', 'lib', 'ipc', 'integration-center-suite.js'), 'utf8',
 );
 const i18n = require('../renderer/i18n');
 

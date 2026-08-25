@@ -3,8 +3,8 @@
 const { registerCampusResourceIpc } = require('./campus-resource-ipc');
 const { registerCertificatePinIpc } = require('./certificate-pin-ipc');
 const { registerRoutingRuleIpc } = require('./routing-rule-ipc');
-const { registerSchoolProfileOnboardingIpc } = require('./profiles/onboarding/school-profile-onboarding-ipc');
-const { registerSchoolProfileSwitchIpc } = require('./profiles/onboarding/school-profile-switch-ipc');
+const { registerSchoolProfileOnboardingIpc } = require('./school-profile-onboarding-ipc');
+const { registerSchoolProfileSwitchIpc } = require('./school-profile-switch-ipc');
 const { registerIntegrationCenterIpc } = require('./integration-center-ipc');
 
 function registerControlDataIpc({ register, routing, certificates, resources, schools, integrations } = {}) {

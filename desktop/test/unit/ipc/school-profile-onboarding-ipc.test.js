@@ -6,7 +6,7 @@ const {
   confirmationRequest,
   probeRequest,
   registerSchoolProfileOnboardingIpc,
-} = require('../../../../lib/profiles/onboarding/school-profile-onboarding-ipc');
+} = require('../../../lib/ipc/school-profile-onboarding-ipc');
 
 function fixture() {
   const handlers = new Map();

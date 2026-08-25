@@ -4,7 +4,7 @@ const { allowedKeys, boundedString, enumValue } = require('./ipc-guard');
 const {
   INTEGRATION_ACTIONS,
   INTEGRATION_ADAPTER_IDS,
-} = require('./integrations/integration-schema');
+} = require('../integrations/integration-schema');
 
 const PUBLIC_CODES = new Set([
   'INTEGRATION_ADAPTER_UNAVAILABLE',

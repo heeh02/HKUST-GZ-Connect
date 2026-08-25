@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
 const { pathToFileURL } = require('node:url');
-const { registerTrustedIpcHandlers } = require('../lib/ipc-handlers');
+const { registerTrustedIpcHandlers } = require('../../../lib/ipc/ipc-handlers');
 
 test('trusted IPC registration binds the exact control contents and local file', async () => {
   const registered = new Map();

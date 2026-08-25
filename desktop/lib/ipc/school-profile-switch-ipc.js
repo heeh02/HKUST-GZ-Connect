@@ -1,6 +1,6 @@
 'use strict';
 
-const { allowedKeys, boundedString } = require('../../ipc-guard');
+const { allowedKeys, boundedString } = require('./ipc-guard');
 
 function switchRequest(value) {
   const source = allowedKeys(value, ['profileId']);

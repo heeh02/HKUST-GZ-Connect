@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { registerControlDataIpc } = require('../lib/control-data-ipc');
+const { registerControlDataIpc } = require('../../../lib/ipc/control-data-ipc');
 
 function fixture() {
   const handlers = new Map();

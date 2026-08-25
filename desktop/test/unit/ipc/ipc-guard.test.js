@@ -12,7 +12,7 @@ const {
   enumValue,
   isTrustedIpcSender,
   plainObject,
-} = require('../lib/ipc-guard');
+} = require('../../../lib/ipc/ipc-guard');
 
 test('accepts only the expected WebContents at an explicitly allowed local file', () => {
   const localFile = path.resolve('/app/renderer/index.html');

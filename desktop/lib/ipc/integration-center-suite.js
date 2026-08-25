@@ -4,14 +4,14 @@ const path = require('node:path');
 const {
   createDisabledIntegrationCenterRuntime,
   createIntegrationCenterRuntime,
-} = require('./integrations/integration-center-runtime');
+} = require('../integrations/integration-center-runtime');
 const {
   createIntegrationRuntimeContext,
-} = require('./integrations/integration-runtime-context');
+} = require('../integrations/integration-runtime-context');
 const {
   buildClashProxyYaml,
   buildSshProxyCommand,
-} = require('./external-proxy-config');
+} = require('../external-proxy-config');
 
 function selectedFile(result) {
   if (!result || result.canceled === true) return null;

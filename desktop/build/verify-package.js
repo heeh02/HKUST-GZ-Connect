@@ -359,17 +359,17 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/profiles/registry/school-profile-registry.js',
     '/lib/profiles/runtime/school-profile-runtime.js',
     '/lib/profiles/runtime/school-profile-controller.js',
-    '/lib/control-state-snapshot.js',
+    '/lib/ipc/control-state-snapshot.js',
     '/lib/connection/telemetry/connection-telemetry-coordinator.js',
     '/lib/connection/engine/engine-protocol-session.js',
     '/lib/connection/auth/auth-challenge-coordinator.js',
-    '/lib/control-data-ipc.js',
-    '/lib/control-ipc-suite.js',
-    '/lib/core-control-ipc.js',
-    '/lib/settings-credential-ipc.js',
-    '/lib/routing-rule-ipc.js',
-    '/lib/certificate-pin-ipc.js',
-    '/lib/campus-resource-ipc.js',
+    '/lib/ipc/control-data-ipc.js',
+    '/lib/ipc/control-ipc-suite.js',
+    '/lib/ipc/core-control-ipc.js',
+    '/lib/ipc/settings-credential-ipc.js',
+    '/lib/ipc/routing-rule-ipc.js',
+    '/lib/ipc/certificate-pin-ipc.js',
+    '/lib/ipc/campus-resource-ipc.js',
     '/lib/settings-update.js',
     '/lib/connection/recovery/tunnel-health.js',
     '/lib/update-check.js',
@@ -401,9 +401,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const packagedRenderer = extractArchiveFile(archive, 'renderer/app.js').toString('utf8');
   const packagedPreload = extractArchiveFile(archive, 'preload.js').toString('utf8');
   const packagedMain = extractArchiveFile(archive, 'main.js').toString('utf8');
-  const packagedControlDataIpc = extractArchiveFile(archive, 'lib/control-data-ipc.js')
+  const packagedControlDataIpc = extractArchiveFile(archive, 'lib/ipc/control-data-ipc.js')
     .toString('utf8');
-  const packagedResourceIpc = extractArchiveFile(archive, 'lib/campus-resource-ipc.js')
+  const packagedResourceIpc = extractArchiveFile(archive, 'lib/ipc/campus-resource-ipc.js')
     .toString('utf8');
   const packagedResourceManager = extractArchiveFile(archive, 'renderer/resource-manager.js')
     .toString('utf8');
@@ -411,8 +411,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
       packagedMain.includes("'--config-sha256'")) {
     throw new Error('packaged Desktop does not enforce private Engine profile binding');
   }
-  for (const helper of ['login-flow', 'resource-view']) {
-    if (!packagedIndex.includes(`../lib/${helper}.js`)) {
+  for (const [helper, source] of [
+    ['login-flow', '../lib/login-flow.js'],
+    ['resource-view', '../lib/resources/presentation/resource-view.js'],
+  ]) {
+    if (!packagedIndex.includes(source)) {
       throw new Error(`renderer does not load its shared helper: ${helper}`);
     }
   }

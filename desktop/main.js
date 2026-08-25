@@ -54,7 +54,7 @@ const {
   registerControlDataIpc,
   registerCoreControlIpc,
   registerSettingsCredentialIpc,
-} = require('./lib/control-ipc-suite');
+} = require('./lib/ipc/control-ipc-suite');
 const { ensureOwnerOnly } = require('./lib/private-file');
 const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
 const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/stop-policy');
@@ -74,7 +74,7 @@ const {
 } = require('./lib/browser/certificates/campus-certificate-trust');
 const { routeCertificateError } = require('./lib/browser/certificates/certificate-error-boundary');
 const { createT, effectiveLocale } = require('./lib/i18n');
-const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
+const { registerTrustedIpcHandlers } = require('./lib/ipc/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing/rules/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');
 const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection/state/connection-state-machine');

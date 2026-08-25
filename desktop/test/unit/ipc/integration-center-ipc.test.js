@@ -6,7 +6,7 @@ const {
   confirmIntegrationRequest,
   prepareIntegrationRequest,
   registerIntegrationCenterIpc,
-} = require('../lib/integration-center-ipc');
+} = require('../../../lib/ipc/integration-center-ipc');
 
 function fixture(overrides = {}) {
   const handlers = new Map();

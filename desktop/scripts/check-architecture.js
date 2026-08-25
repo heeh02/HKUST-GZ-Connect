@@ -83,6 +83,23 @@ function buildDependencyGraph(files) {
   return graph;
 }
 
+function unresolvedRelativeRequireErrors(files, root) {
+  const fileSet = new Set(files.map((file) => path.resolve(file)));
+  const errors = [];
+  for (const file of fileSet) {
+    const relativeFile = path.relative(root, file).replaceAll(path.sep, '/');
+    const productionSource = relativeFile === 'main.js' || relativeFile === 'preload.js' ||
+      relativeFile === 'campus-preload.js' || relativeFile.startsWith('lib/') ||
+      relativeFile.startsWith('renderer/');
+    if (!productionSource) continue;
+    for (const specifier of relativeRequires(fs.readFileSync(file, 'utf8'))) {
+      if (resolveLocalModule(file, specifier, fileSet)) continue;
+      errors.push(`unresolved relative require: ${relativeFile} -> ${specifier}`);
+    }
+  }
+  return errors.sort();
+}
+
 function findCycles(graph) {
   const state = new Map();
   const stack = [];
@@ -257,6 +274,7 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
   const fan = graphFanMetrics(graph, root);
   return {
     cycles: findCycles(graph),
+    unresolvedRequireErrors: unresolvedRelativeRequireErrors(files, root),
     layerErrors: dependencyLayerErrors(graph, root),
     domainLayerErrors: domainDependencyErrors(graph, root),
     rootLibraryDebtErrors: rootLibraryDebtErrors(rootFiles, rootDebt),
@@ -277,6 +295,7 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
 function architectureErrors(snapshot) {
   const errors = [];
   if (snapshot.cycles.length) errors.push(`CommonJS cycles: ${snapshot.cycles.length}`);
+  errors.push(...(snapshot.unresolvedRequireErrors || []));
   errors.push(...(snapshot.layerErrors || []));
   errors.push(...(snapshot.domainLayerErrors || []));
   errors.push(...(snapshot.rootLibraryDebtErrors || []));
@@ -331,4 +350,5 @@ module.exports = {
   rootLibraryDebtErrors,
   rootLibraryFiles,
   transitiveDependencies,
+  unresolvedRelativeRequireErrors,
 };

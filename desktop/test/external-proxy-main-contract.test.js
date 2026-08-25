@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 const integrationSuite = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'integration-center-suite.js'), 'utf8',
+  path.join(__dirname, '..', 'lib', 'ipc', 'integration-center-suite.js'), 'utf8',
 );
 const connectStart = source.indexOf('async function connectOnce(');
 const connectEnd = source.indexOf('\nfunction ensureEngineStopped()', connectStart);

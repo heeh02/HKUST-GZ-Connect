@@ -6,7 +6,7 @@ const { registerSettingsCredentialIpc } = require('./settings-credential-ipc');
 const { createControlStateSnapshot } = require('./control-state-snapshot');
 const {
   createSchoolProfileOnboardingRuntime,
-} = require('./profiles/onboarding/school-profile-onboarding-suite');
+} = require('../profiles/onboarding/school-profile-onboarding-suite');
 const {
   createExternalIntegrationRuntime,
   createIntegrationTargetSelector,

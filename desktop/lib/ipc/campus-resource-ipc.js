@@ -4,7 +4,7 @@ const {
   deleteCustomResource,
   reorderCustomResources,
   upsertCustomResource,
-} = require('./browser/resources/campus-resource-store');
+} = require('../browser/resources/campus-resource-store');
 const { allowedKeys, boundedArray, boundedString } = require('./ipc-guard');
 
 function registerCampusResourceIpc({

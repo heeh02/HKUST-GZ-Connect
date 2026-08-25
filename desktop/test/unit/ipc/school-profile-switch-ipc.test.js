@@ -6,7 +6,7 @@ const {
   publicSwitchCode,
   registerSchoolProfileSwitchIpc,
   switchRequest,
-} = require('../../../../lib/profiles/onboarding/school-profile-switch-ipc');
+} = require('../../../lib/ipc/school-profile-switch-ipc');
 
 test('switch IPC accepts only one bounded public Profile id', async () => {
   const handlers = new Map();

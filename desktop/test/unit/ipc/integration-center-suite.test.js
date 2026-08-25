@@ -6,7 +6,7 @@ const {
   createIntegrationTargetSelector,
   createLegacyExternalProxyActions,
   selectedIntegrationTargetFile,
-} = require('../lib/integration-center-suite');
+} = require('../../../lib/ipc/integration-center-suite');
 
 test('target selector uses explicit save/open dialogs and returns no guessed managed path', async () => {
   const calls = [];

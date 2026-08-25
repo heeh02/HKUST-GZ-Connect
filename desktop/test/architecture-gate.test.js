@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
@@ -14,6 +16,7 @@ const {
   relativeRequires,
   rootLibraryDebtErrors,
   transitiveDependencies,
+  unresolvedRelativeRequireErrors,
 } = require('../scripts/check-architecture');
 
 test('dependency parser accepts only static relative CommonJS imports', () => {
@@ -71,6 +74,20 @@ test('cycle detection reports a closed dependency path', () => {
   assert.deepEqual(findCycles(graph), [['a', 'b', 'c', 'a']]);
 });
 
+test('unresolved static relative imports fail the architecture gate', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'architecture-require-'));
+  const source = path.join(root, 'lib', 'source.js');
+  try {
+    fs.mkdirSync(path.dirname(source));
+    fs.writeFileSync(source, "require('./missing');\n");
+    assert.deepEqual(unresolvedRelativeRequireErrors([source], root), [
+      'unresolved relative require: lib/source.js -> ./missing',
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('production dependency layers reject reverse imports into renderer, tests or build code', () => {
   const root = path.resolve('/fixture/desktop');
   const graph = new Map([
@@ -89,6 +106,7 @@ test('current production graph has no cycle and stays within debt growth caps', 
   assert.deepEqual(architectureErrors(snapshot), []);
   assert.equal(snapshot.cycles.length, 0);
   assert.deepEqual(snapshot.layerErrors, []);
+  assert.deepEqual(snapshot.unresolvedRequireErrors, []);
   assert.ok(snapshot.mainDirectDependencies <= BASELINE.mainDirectDependencies);
   assert.ok(snapshot.mainTransitiveDependencies <= BASELINE.mainTransitiveDependencies);
   assert.ok(snapshot.mainLines <= BASELINE.mainLines);

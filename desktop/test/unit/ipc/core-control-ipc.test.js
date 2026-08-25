@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   campusOpenRequestFromIpc,
   registerCoreControlIpc,
-} = require('../lib/core-control-ipc');
+} = require('../../../lib/ipc/core-control-ipc');
 
 function fixture() {
   const handlers = new Map();
