@@ -15,6 +15,12 @@ const {
 
 const EXPORT_CONFIRMATION_TTL_MS = 120_000;
 const ACTIONS = Object.freeze(['copy', 'save']);
+const PROPAGATED_ERROR_CODES = new Set([
+  'INTEGRATION_EXPORT_CONFLICT',
+  'INTEGRATION_EXPORT_FAILED',
+  'INTEGRATION_ROLLBACK_INCOMPLETE',
+  'INTEGRATION_TARGET_CHANGED',
+]);
 
 class GenericExportError extends Error {
   constructor(code, cause = null) {
@@ -56,6 +62,7 @@ class GenericExportTransactionOwner {
     randomBytes = crypto.randomBytes,
     now = Date.now,
     ttlMs = EXPORT_CONFIRMATION_TTL_MS,
+    fileTransaction = null,
   } = {}) {
     if (typeof randomBytes !== 'function' || typeof now !== 'function' ||
         !Number.isSafeInteger(ttlMs) || ttlMs < 10_000 || ttlMs > 300_000) {
@@ -64,6 +71,7 @@ class GenericExportTransactionOwner {
     this.randomBytes = randomBytes;
     this.now = now;
     this.ttlMs = ttlMs;
+    this.fileTransaction = fileTransaction;
   }
 
   prepare({
@@ -96,6 +104,18 @@ class GenericExportTransactionOwner {
     } catch (cause) {
       throw new GenericExportError('INTEGRATION_EXPORT_PREPARE_FAILED', cause);
     }
+    let targetPlan = null;
+    if (action === 'save') {
+      if (!this.fileTransaction || typeof this.fileTransaction.inspect !== 'function') {
+        generated.payload.fill(0);
+        throw new GenericExportError('INTEGRATION_EXPORT_PREPARE_FAILED');
+      }
+      try { targetPlan = this.fileTransaction.inspect(target, generated.payload); }
+      catch (cause) {
+        generated.payload.fill(0);
+        throw new GenericExportError(cause?.code || 'INTEGRATION_EXPORT_CONFLICT', cause);
+      }
+    }
     let confirmationHandle;
     try { confirmationHandle = handle(this.randomBytes); }
     catch (error) {
@@ -110,6 +130,7 @@ class GenericExportTransactionOwner {
       binding,
       payload: generated.payload,
       targetFile: target,
+      targetPlan,
       expiresAt,
     };
     return Object.freeze({
@@ -119,6 +140,9 @@ class GenericExportTransactionOwner {
       action,
       expiresAt,
       targetSelected: target !== null,
+      targetChange: targetPlan?.change || null,
+      existingBytes: targetPlan?.before?.bytes || 0,
+      replacementBytes: generated.payload.length,
       byteLength: generated.payload.length,
       ruleCount: generated.ruleCount,
       containsLocalProxyCredential: generated.containsLocalProxyCredential,
@@ -144,11 +168,15 @@ class GenericExportTransactionOwner {
         adapterId: record.adapterId,
         action: record.action,
         targetFile: record.targetFile,
+        targetPlan: record.targetPlan,
         payload: record.payload,
       }));
       return Object.freeze({ ok: true, adapterId: record.adapterId, action: record.action });
     } catch (error) {
       if (error instanceof GenericExportError) throw error;
+      if (PROPAGATED_ERROR_CODES.has(error?.code)) {
+        throw new GenericExportError(error.code, error);
+      }
       throw new GenericExportError('INTEGRATION_EXPORT_FAILED', error);
     } finally {
       record.payload.fill(0);
@@ -168,7 +196,9 @@ class GenericExportTransactionOwner {
       this.cancel();
       return null;
     }
-    const { payload: _payload, binding: _binding, targetFile, ...view } = this.#record;
+    const {
+      payload: _payload, binding: _binding, targetFile, targetPlan: _targetPlan, ...view
+    } = this.#record;
     return Object.freeze({ ...view, targetSelected: targetFile !== null });
   }
 

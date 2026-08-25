@@ -106,6 +106,74 @@ function validatePacSource(value) {
   return value;
 }
 
+function exactKeys(value, keys) {
+  return value && typeof value === 'object' && !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
+}
+
+function validateClashCompatibleText(text) {
+  const lines = text.trimEnd().split('\n');
+  if (lines.length < 12 || !/^# Campus Connect (?:Clash|Mihomo) export$/u.test(lines[0]) ||
+      !/^# Profile: [a-z0-9-]{1,64}; rules: [a-f0-9]{64}$/u.test(lines[1]) ||
+      lines[2] !== 'proxies:' || lines[4] !== '    type: "socks5"' ||
+      lines[5] !== '    server: "127.0.0.1"' || lines[10] !== 'rules:') return false;
+  let name;
+  let username;
+  let password;
+  let proxyPort;
+  try {
+    name = JSON.parse(lines[3].replace(/^  - name: /u, ''));
+    username = JSON.parse(lines[7].replace(/^    username: /u, ''));
+    password = JSON.parse(lines[8].replace(/^    password: /u, ''));
+    proxyPort = port(Number(lines[6].slice('    port: '.length)));
+  } catch { return false; }
+  const profileId = lines[1].match(/^# Profile: ([a-z0-9-]{1,64});/u)?.[1];
+  if (name !== `Campus Connect - ${profileId}` ||
+      !/^    port: (?:[1-9][0-9]{3,4})$/u.test(lines[6]) ||
+      proxyPort < 1025 ||
+      !LOCAL_PROXY_SECRET.test(username) || !LOCAL_PROXY_SECRET.test(password) ||
+      username === password || lines[9] !== '    udp: false') return false;
+  for (const line of lines.slice(11)) {
+    if (!line.startsWith('  - ')) return false;
+    let rule;
+    try { rule = JSON.parse(line.slice(4)); } catch { return false; }
+    const fields = String(rule).split(',');
+    if (!['DOMAIN', 'DOMAIN-SUFFIX', 'IP-CIDR'].includes(fields[0]) ||
+        !fields[1] || !['DIRECT', name].includes(fields[2]) ||
+        (fields.length === 4 && (fields[0] !== 'IP-CIDR' || fields[3] !== 'no-resolve')) ||
+        fields.length < 3 || fields.length > 4) return false;
+  }
+  return true;
+}
+
+function validateManualText(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { return false; }
+  if (!exactKeys(value, ['schemaVersion', 'profileId', 'profileRevision', 'rulesDigest', 'proxy']) ||
+      value.schemaVersion !== 1 || !/^[a-z0-9-]{1,64}$/u.test(value.profileId) ||
+      !Number.isSafeInteger(value.profileRevision) || value.profileRevision <= 0 ||
+      !/^[a-f0-9]{64}$/u.test(value.rulesDigest) ||
+      !exactKeys(value.proxy, ['type', 'host', 'port', 'username', 'password', 'udp']) ||
+      value.proxy.type !== 'socks5' || value.proxy.host !== '127.0.0.1' ||
+      value.proxy.udp !== false || !LOCAL_PROXY_SECRET.test(value.proxy.username) ||
+      !LOCAL_PROXY_SECRET.test(value.proxy.password) ||
+      value.proxy.username === value.proxy.password) return false;
+  try { port(value.proxy.port); } catch { return false; }
+  return true;
+}
+
+function validateGenericExportPayload(adapterId, payload) {
+  if (!GENERIC_EXPORT_ADAPTERS.includes(adapterId) || !Buffer.isBuffer(payload) ||
+      !payload.length || payload.length > MAX_GENERIC_EXPORT_BYTES) return false;
+  const text = payload.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(payload)) return false;
+  if (adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml') {
+    return validateClashCompatibleText(text);
+  }
+  if (adapterId === 'manual_export') return validateManualText(text);
+  try { return validatePacSource(text) === text; } catch { return false; }
+}
+
 function buildGenericExport({
   adapterId,
   port: rawPort,
@@ -149,4 +217,5 @@ module.exports = {
   buildGenericExport,
   buildManualProxyExport,
   clashRuleLines,
+  validateGenericExportPayload,
 };

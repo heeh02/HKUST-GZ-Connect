@@ -265,6 +265,7 @@ module.exports = {
   bindingStateFor,
   createIntegrationAdapterView,
   createIntegrationBinding,
+  normalizedIntegrationTargetFile: normalizedTargetFile,
   validateIntegrationBinding,
   validateIntegrationRecord,
   validateIntegrationRecordDocument,

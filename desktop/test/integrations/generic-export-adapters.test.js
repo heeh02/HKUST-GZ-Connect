@@ -49,6 +49,8 @@ test('Clash and Mihomo export one Profile-bound authenticated node and precedenc
     assert.match(yaml, new RegExp(`password: ${JSON.stringify(material.password)}`, 'u'));
     assert.match(yaml, /udp: false/u);
     assert.match(yaml, /rules:/u);
+    assert.equal(require('../../lib/integrations/generic-export-adapters')
+      .validateGenericExportPayload(adapterId, Buffer.from(yaml)), true);
   }
 });
 
@@ -74,6 +76,8 @@ test('manual and PAC adapters remain bounded and declare whether credentials are
   assert.equal(parsed.proxy.port, 6180);
   assert.equal(parsed.proxy.password, material.password);
   assert.equal(parsed.rulesDigest, rules.rulesDigest);
+  assert.equal(require('../../lib/integrations/generic-export-adapters')
+    .validateGenericExportPayload('manual_export', Buffer.from(manual)), true);
 
   const pac = buildGenericExport({
     adapterId: 'pac',

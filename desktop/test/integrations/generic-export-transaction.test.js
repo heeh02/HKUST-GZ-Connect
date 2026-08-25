@@ -43,6 +43,16 @@ function owner(overrides = {}) {
     randomBytes: (length) => Buffer.alloc(length, ++entropy),
     now: () => 1_800_000_000_000,
     ttlMs: 20_000,
+    fileTransaction: {
+      inspect(targetFile, payload) {
+        return Object.freeze({
+          targetFile,
+          before: Object.freeze({ present: false, bytes: 0, sha256: null }),
+          after: Object.freeze({ present: true, bytes: payload.length, sha256: 'e'.repeat(64) }),
+          change: 'create',
+        });
+      },
+    },
     ...overrides,
   });
 }
@@ -54,6 +64,9 @@ test('preview is redacted and explicit execute exposes payload only to one Main 
     adapterId: 'clash_yaml', action: 'copy', binding: current,
     networkRules: rules, port: 6180, credential,
   });
+  assert.equal(preview.targetChange, null);
+  assert.equal(preview.existingBytes, 0);
+  assert.equal(preview.replacementBytes, preview.byteLength);
   assert.equal(preview.containsLocalProxyCredential, true);
   assert.equal(preview.warningCode, 'INTEGRATION_LOCAL_CREDENTIAL_PRIVATE');
   const serialized = JSON.stringify(preview);
@@ -84,6 +97,7 @@ test('binding drift fails stale and erases the prepared secret payload', async (
     networkRules: rules, port: 6180, credential,
     targetFile: '/Users/student/Desktop/campus.yaml',
   });
+  assert.equal(preview.targetChange, 'create');
   let invoked = false;
   await assert.rejects(value.execute({
     confirmationHandle: preview.confirmationHandle,
