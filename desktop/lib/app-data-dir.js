@@ -4,6 +4,7 @@ const path = require('path');
 const { assertActiveContextSwitchStartupClear } = require('./active-context-switch-startup');
 const { DesktopPersistenceRuntime } = require('./desktop-persistence-runtime');
 const { LegacyMigrationCredentialOwner } = require('./legacy-migration-inputs');
+const { MultiSchoolStartupRuntime } = require('./multi-school-startup-runtime');
 const { selectProfileWorkspacePreReadyStorage } =
   require('./profile-workspace-pre-ready-selection');
 const { ProfileWorkspaceStartupRuntime } = require('./profile-workspace-startup-runtime');
@@ -20,9 +21,19 @@ function resolveUserDataOverride(rawValue) {
   return path.resolve(candidate);
 }
 
+function createMultiSchoolStartupInitializer(options) {
+  const runtime = new MultiSchoolStartupRuntime(options);
+  return (persistenceRuntime, activeSchoolProfile) => runtime.initialize({
+    mode: persistenceRuntime.mode,
+    authority: persistenceRuntime.authority,
+    withProfileDocument: (callback) => activeSchoolProfile.withProfileDocument(callback),
+  });
+}
+
 module.exports = {
   assertActiveContextSwitchStartupClear,
   createLegacyRuntimeStoragePaths,
+  createMultiSchoolStartupInitializer,
   DesktopPersistenceRuntime,
   LegacyMigrationCredentialOwner,
   ProfileWorkspaceStartupRuntime,

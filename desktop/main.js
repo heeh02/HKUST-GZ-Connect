@@ -20,7 +20,7 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
+const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -86,7 +86,6 @@ app.commandLine.appendSwitch(
   'force-webrtc-ip-handling-policy',
   'disable_non_proxied_udp',
 );
-
 // ---------- profile override & single instance ----------
 // Automated package checks need to isolate every app-owned file, not merely
 // Chromium's cache. The override is deliberately private to the current
@@ -94,7 +93,6 @@ app.commandLine.appendSwitch(
 // an unexpected working directory.
 const userDataOverride = resolveUserDataOverride(process.env.HKUSTGZ_USER_DATA_DIR);
 if (userDataOverride) app.setPath('userData', userDataOverride);
-
 // ---------- single instance (avoid the app fighting its own session) ----------
 // `app.quit()` does not stop the rest of this module from running, so return
 // before a second instance touches the shared settings, credential, and log
@@ -264,6 +262,7 @@ const persistenceRuntime = new DesktopPersistenceRuntime({
     hasCredential: () => hasStoredPassword(CRED, process.platform),
   },
 });
+const initializeMultiSchoolStartup = createMultiSchoolStartupInitializer({ userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, desktopDir: __dirname });
 function loadSettings() { return persistenceRuntime.loadSettings(); }
 function reportSettingsReadFailure(cause, { emitState = true } = {}) {
   if (cause?.code === 'SETTINGS_READ_FAILED') return cause;
@@ -1582,6 +1581,7 @@ app.whenReady().then(() => {
       isPackaged: app.isPackaged, developmentEntry: __dirname });
     return;
   }
+  initializeMultiSchoolStartup(persistenceRuntime, activeSchoolProfile);
   initializeLogWriter();
   writePersistenceE2EMarker({ application: app, environment: process.env, userData: DATA, mode: persistenceRuntime.mode });
   try {
