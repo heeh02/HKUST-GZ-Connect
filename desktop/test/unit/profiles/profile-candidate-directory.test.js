@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -17,7 +18,7 @@ const {
 } = require('../../../lib/profiles/runtime/school-profile-controller');
 const { createProfileAccountWorkspaceLayout } = require('../../../lib/persistence/paths/profile-workspace-layout');
 const { ReviewedProfileAnchorStore } = require('../../../lib/profiles/registry/reviewed-profile-anchor-store');
-const { PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
+const { createSchoolProfileView, PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
 
 const DESKTOP = path.resolve(__dirname, '..', '..', '..');
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
@@ -72,6 +73,104 @@ function reviewedAuthority(userData) {
   });
   writeJson(layout.workspace.localResources, { schemaVersion: 1, resources: [] });
   return { layout, createdAt };
+}
+
+function secondReviewedFixture(userData) {
+  const projectRoot = path.join(userData, 'synthetic-reviewed-project');
+  const desktopDir = path.join(projectRoot, 'desktop');
+  const configDir = path.join(projectRoot, 'independent', 'config');
+  fs.mkdirSync(desktopDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  const sourceProfile = JSON.parse(fs.readFileSync(
+    path.join(DESKTOP, 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    'utf8',
+  ));
+  const sourceConfig = JSON.parse(fs.readFileSync(
+    path.join(DESKTOP, '..', 'independent', 'config', 'hkustgz.json'),
+    'utf8',
+  ));
+  const exampleProfile = structuredClone(sourceProfile);
+  exampleProfile.profileId = 'example-university';
+  exampleProfile.branding.localizedSchoolName = { zh: '示例大学', en: 'Example University' };
+  exampleProfile.branding.shortName = 'Example';
+  exampleProfile.branding.bundledAssetKey = 'example-logo';
+  exampleProfile.gateway.origin = 'https://vpn.example.edu';
+  exampleProfile.gateway.engineConfigRef = 'example-university-engine-config';
+  exampleProfile.browser.homeUrl = 'https://www.example.edu/';
+  exampleProfile.browser.campusDomains = ['example.edu'];
+  exampleProfile.browser.directPartnerDomains = [];
+  exampleProfile.browser.builtinResourcesRef = 'example-resources';
+  exampleProfile.browser.healthTargets = [
+    { host: 'www.example.edu', port: 443 },
+    { host: 'library.example.edu', port: 443 },
+  ];
+  exampleProfile.policy.reviewedDnsFallback = [];
+  const exampleConfig = { ...sourceConfig, base_url: 'https://vpn.example.edu', dns_fallback: [] };
+  const configs = new Map([
+    ['hkustgz', Buffer.from(`${JSON.stringify(sourceConfig, null, 2)}\n`)],
+    ['example-university', Buffer.from(`${JSON.stringify(exampleConfig, null, 2)}\n`)],
+  ]);
+  for (const [profileId, data] of configs) {
+    fs.writeFileSync(path.join(configDir, `${profileId}.json`), data, { mode: 0o600 });
+  }
+  const profiles = new Map([
+    ['hkustgz', sourceProfile],
+    ['example-university', exampleProfile],
+  ]);
+  const packagedRegistry = {
+    withProfileDocument(profileId, callback) {
+      if (!profiles.has(profileId)) throw new Error('school profile is not present');
+      return callback(profiles.get(profileId));
+    },
+    createView(profileId, options) {
+      return createSchoolProfileView(profiles.get(profileId), options);
+    },
+    resolveAsset(profileId, key, kind) {
+      const data = configs.get(profileId);
+      if (!data || kind !== 'engine-config' ||
+          key !== profiles.get(profileId).gateway.engineConfigRef) throw new Error('asset unavailable');
+      return { key, kind, path: `synthetic/${profileId}.json`,
+        sha256: crypto.createHash('sha256').update(data).digest('hex') };
+    },
+    readAsset(profileId) { return Buffer.from(configs.get(profileId)); },
+    getBuiltinResources() { return Object.freeze([]); },
+  };
+  return { desktopDir, exampleProfile, packagedRegistry };
+}
+
+function secondReviewedAuthority(userData, profile) {
+  const profileKey = `profile-${'66'.repeat(16)}`;
+  const accountKey = `account-${'77'.repeat(16)}`;
+  const workspaceKey = `workspace-${'88'.repeat(16)}`;
+  const layout = createProfileAccountWorkspaceLayout({
+    userData, profileKey, accountKey, workspaceKey, adoptLegacyHkustBrowserPartition: false,
+  });
+  const createdAt = 1_700_000_000_500;
+  writeJson(layout.profile.settings, {
+    schemaVersion: 1, profileId: profile.profileId, profileRevision: 1,
+    primaryAccountKey: accountKey,
+  });
+  writeJson(layout.profile.state, {
+    schemaVersion: 1, migrationId: `migration-${'99'.repeat(16)}`,
+    profileId: profile.profileId, profileRevision: 1, profileCredentialBindingRevision: 1,
+    gatewayOrigin: 'https://vpn.example.edu', protocolFamily: PROTOCOL_FAMILY,
+  });
+  writeJson(layout.account.document, {
+    schemaVersion: 1, accountKey, accountRevision: 1, accountCredentialRevision: 1,
+    role: 'primary', state: 'enabled', profileId: profile.profileId, profileRevision: 1,
+    gatewayOrigin: 'https://vpn.example.edu', protocolFamily: PROTOCOL_FAMILY, workspaceKey,
+    activeCredentialVersion: null, createdAt, updatedAt: createdAt,
+  });
+  writeJson(layout.workspace.state, {
+    schemaVersion: 1, profileId: profile.profileId, profileRevision: 1,
+    accountKey, accountRevision: 1, workspaceKey, activeContextEpoch: 1,
+  });
+  writeJson(layout.workspace.settings, {
+    schemaVersion: 1, autoReconnect: true, maxAttempts: 3, autoConnect: false,
+    routeDomains: ['example.edu'],
+  });
+  writeJson(layout.workspace.localResources, { schemaVersion: 1, resources: [] });
+  return { accountKey, layout, profileKey };
 }
 
 function provisionCustom(userData) {
@@ -205,6 +304,90 @@ test('candidate directory rejects wrong reviewed keys and unknown Profile IDs', 
   assert.throws(() => candidates.withCandidate('custom-missing', () => true), /unavailable/u);
   assert.throws(() => candidates.withCandidate('hkustgz', () => true), /unavailable/u,
     'a packaged Profile is not switchable until its exact local authority is anchored');
+});
+
+test('second synthetic reviewed Profile switches without inheriting HKUST workspace state', async (t) => {
+  const userData = root(t);
+  const hkust = reviewedAuthority(userData);
+  const second = secondReviewedFixture(userData);
+  const example = secondReviewedAuthority(userData, second.exampleProfile);
+  writeJson(path.join(userData, 'global', 'settings.json'), {
+    schemaVersion: 1,
+    activeProfileKey: PROFILE_KEY,
+    activeAccountKey: ACCOUNT_KEY,
+    port: 6180,
+    strictProxyAuth: true,
+    proxySecurityVersion: 3,
+    proxyAuthMigrationPending: false,
+    closeAction: 'minimize',
+    language: 'en',
+    startAtLogin: false,
+  });
+  const candidates = new ProfileCandidateDirectory({
+    userData,
+    packageRoot: DESKTOP,
+    desktopDir: second.desktopDir,
+    isPackaged: false,
+    packagedRegistry: second.packagedRegistry,
+  });
+  const hkustRecord = candidates.anchorReviewedCurrent({
+    profileId: 'hkustgz', profileKey: PROFILE_KEY, accountKey: ACCOUNT_KEY,
+  });
+  const exampleRecord = candidates.anchorReviewedCurrent({
+    profileId: 'example-university',
+    profileKey: example.profileKey,
+    accountKey: example.accountKey,
+  });
+  assert.notEqual(hkustRecord.context.profileKey, exampleRecord.context.profileKey);
+  assert.notEqual(hkustRecord.authority.layout.browserPartition,
+    exampleRecord.authority.layout.browserPartition);
+  assert.equal(hkustRecord.authority.layout.browserPartition, 'persist:hkustgz-campus-browser');
+  assert.equal(exampleRecord.authority.layout.browserPartition.startsWith('persist:campus-workspace-'), true);
+  assert.deepEqual(hkustRecord.authority.workspaceSettings.routeDomains,
+    ['hkust-gz.edu.cn', 'hkust.edu.hk']);
+  assert.deepEqual(exampleRecord.authority.workspaceSettings.routeDomains, ['example.edu']);
+  assert.equal(exampleRecord.authority.workspaceSettings.routeDomains.includes('hkust-gz.edu.cn'), false);
+  assert.deepEqual(candidates.listViews({ locale: 'en' }).map(({ profileId, unverified }) => (
+    { profileId, unverified }
+  )), [
+    { profileId: 'hkustgz', unverified: false },
+    { profileId: 'example-university', unverified: false },
+  ]);
+
+  let active = hkustRecord.context;
+  const journalStore = new ActiveContextSwitchJournalStore({
+    filePath: path.join(userData, 'global', 'active-context-switch.json'),
+  });
+  const switching = new ProfileSwitchRuntime({
+    directory: candidates,
+    journalStore,
+    activationStore: new ActiveContextActivationStore({ userData }),
+    barrier: new ActiveContextSwitchBarrier({
+      invalidateContext: () => {},
+      suspendBrowser: async () => {},
+      browserBoundaryClosed: () => true,
+      cancelAuth: () => {},
+      cancelConnectivity: () => {},
+      cancelMutations: async () => true,
+      closeBrowser: async () => {},
+      browserClosed: () => true,
+      stopEngine: async () => ({ ok: true, cleanExit: true }),
+      revokeProxyAccess: async () => true,
+      clearServerState: async () => true,
+    }),
+    getActivePersistentContext: () => active,
+    getEngineGeneration: () => null,
+    activateRuntime: (record) => { active = record.context; return true; },
+  });
+  for (let round = 0; round < 12; round += 1) {
+    const target = active.profileId === 'hkustgz' ? 'example-university' : 'hkustgz';
+    assert.equal((await switching.switchTo(target)).status, 'activated');
+    assert.equal(active.profileId, target);
+    assert.equal(journalStore.read(), null);
+  }
+  assert.equal(active.profileId, 'hkustgz');
+  assert.equal(new ReviewedProfileAnchorStore({ userData }).read().entries.length, 2);
+  assert.notEqual(hkust.layout.profile.root, example.layout.profile.root);
 });
 
 test('real P4 authority alternates reviewed and custom Profiles without residue', async (t) => {
