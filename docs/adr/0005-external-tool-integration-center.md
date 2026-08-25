@@ -17,11 +17,10 @@ install and configure their chosen tool; an ordinary user should not see install
 
 ## Decision
 
-The production Integration Center only generates three non-destructive configuration artifacts:
+The production Integration Center only generates two non-destructive configuration artifacts:
 
 ```text
-clash_yaml          preview -> copy | save
-mihomo_yaml         preview -> copy | save
+clash_mihomo_yaml   preview -> copy | save
 vscode_remote_ssh   preview -> copy
 ```
 
@@ -83,7 +82,7 @@ binding.
 
 ## Verification requirements
 
-- production list contains exactly `clash_yaml`, `mihomo_yaml`, and `vscode_remote_ssh`;
+- production list contains exactly `clash_mihomo_yaml` and `vscode_remote_ssh`;
 - trusted IPC rejects every historical or unknown adapter ID;
 - VS Code supports copy only; no adapter exposes install/update/remove;
 - Renderer never receives generated payloads, credentials, helper paths, or target paths;

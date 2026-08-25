@@ -33,8 +33,10 @@ function createIntegrationTargetSelector({
   return async ({ adapterId, action } = {}) => {
     if (action === 'save') {
       const names = {
-        clash_yaml: ['campus-connect-clash.yaml', [{ name: 'YAML', extensions: ['yaml', 'yml'] }]],
-        mihomo_yaml: ['campus-connect-mihomo.yaml', [{ name: 'YAML', extensions: ['yaml', 'yml'] }]],
+        clash_mihomo_yaml: [
+          'campus-connect-clash-mihomo.yaml',
+          [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
+        ],
       };
       const selected = names[adapterId];
       if (!selected) return null;

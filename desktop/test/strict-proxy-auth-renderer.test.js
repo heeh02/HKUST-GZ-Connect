@@ -91,6 +91,19 @@ test('Clash credentials never cross into renderer JavaScript', () => {
   assert.match(integrationSuite, /createIntegrationCenterRuntime/u);
 });
 
+test('Clash and Mihomo share one explained configuration surface', () => {
+  assert.match(html, /<details class="integration-explainer">/u);
+  assert.match(html, /data-i18n="integration\.explainSummary"/u);
+  assert.match(html, /data-i18n="integration\.explainStep1"/u);
+  assert.match(html, /data-i18n="integration\.explainPrivacy"/u);
+  assert.doesNotMatch(integrationFeature, /['"]mihomo_yaml['"]/u,
+    'the retired duplicate adapter must not remain a second Renderer card');
+  assert.match(i18n.dictionaries.zh['integration.adapter.clash_mihomo_yaml'], /Clash \/ Mihomo/u);
+  assert.match(i18n.dictionaries.zh['integration.explainStep2'], /SOCKS5.*校园域名分流/u);
+  assert.match(i18n.dictionaries.zh['integration.explainPrivacy'], /不含校园账号密码/u);
+  assert.match(i18n.dictionaries.en['integration.explainStep3'], /other sites keep their existing routes/i);
+});
+
 test('strict proxy authentication card wraps safely in narrow windows', () => {
   assert.match(css, /\.proxy-auth-setting\s*\{[^}]*border-radius:[^}]*background:/);
   assert.match(css, /\.sw\s*>\s*span\s*\{[^}]*min-width:\s*0/);

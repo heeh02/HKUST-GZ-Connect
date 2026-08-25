@@ -49,7 +49,7 @@ function fixture(overrides = {}) {
     listIntegrations: async () => ({
       ok: true,
       integrations: overrides.views || [
-        view('clash_yaml'), view('mihomo_yaml'), view('vscode_remote_ssh'),
+        view('clash_mihomo_yaml'), view('vscode_remote_ssh'),
       ],
     }),
     prepareIntegration: async (request) => {
@@ -91,14 +91,14 @@ function fixture(overrides = {}) {
 }
 
 test('Renderer projections drop paths payloads keys and unknown adapters', () => {
-  const projected = adapterView(view('clash_yaml'));
-  assert.equal(projected.adapterId, 'clash_yaml');
+  const projected = adapterView(view('clash_mihomo_yaml'));
+  assert.equal(projected.adapterId, 'clash_mihomo_yaml');
   assert.equal(Object.hasOwn(projected, 'targetFile'), false);
   assert.equal(adapterView(view('user_selected_managed_block')), null);
   const preview = previewView({
     schemaVersion: 1,
     confirmationHandle: `export-${'b'.repeat(32)}`,
-    adapterId: 'clash_yaml', action: 'copy', expiresAt: 1_800_000_020_000,
+    adapterId: 'clash_mihomo_yaml', action: 'copy', expiresAt: 1_800_000_020_000,
     containsLocalProxyCredential: true,
     warningCode: 'INTEGRATION_LOCAL_CREDENTIAL_PRIVATE',
     targetFile: '/private', payload: 'secret', accountKey: 'forbidden',
@@ -112,10 +112,10 @@ test('list renders only non-destructive exports without unavailable adapters', a
   f.feature.start();
   await f.feature.refresh();
   const rows = f.elements.get('integrationList').children;
-  assert.equal(rows.length, 3);
-  assert.equal(rows[0].children[1].children.length, 2, 'generic adapter has copy and save');
-  assert.equal(rows[1].children[1].children.length, 2, 'Mihomo has copy and save');
-  assert.equal(rows[2].children[1].children.length, 1, 'VS Code snippet is copy-only');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].children[1].children.length, 2,
+    'combined Clash / Mihomo adapter has copy and save');
+  assert.equal(rows[1].children[1].children.length, 1, 'VS Code snippet is copy-only');
   assert.equal(f.elements.get('integrationError').textContent, '');
 });
 

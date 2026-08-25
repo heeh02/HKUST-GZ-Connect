@@ -13,7 +13,7 @@ const {
 
 const digest = (value) => String(value).repeat(64).slice(0, 64);
 const base = Object.freeze({
-  adapterId: 'clash_yaml',
+  adapterId: 'clash_mihomo_yaml',
   adapterVersion: 1,
   profileId: 'school-a',
   profileRevision: 1,
@@ -59,7 +59,7 @@ test('internal binding covers every Profile Account listener credential and poli
 
 test('Renderer adapter views are closed key-free and never carry generated payloads or paths', () => {
   assert.deepEqual(ACTIVE_INTEGRATION_ADAPTER_IDS, [
-    'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+    'clash_mihomo_yaml', 'vscode_remote_ssh',
   ]);
   for (const adapterId of INTEGRATION_ADAPTER_IDS) {
     const view = createIntegrationAdapterView({

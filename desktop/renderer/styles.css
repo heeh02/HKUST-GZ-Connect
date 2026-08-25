@@ -78,10 +78,22 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 .gateway-warning { padding: 8px 9px; border-radius: 9px; color: #725300; background: #fff8df; border: 1px solid #f1dfac; }
 .school-error { min-height: 14px; color: var(--err); font-size: 11px; line-height: 1.35; }
 .integration-hint { margin: 2px 0 10px; }
+.integration-explainer { margin: -2px 0 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--field); overflow: hidden; }
+.integration-explainer summary { display: flex; align-items: center; padding: 9px 11px; color: var(--navy); font-size: 11px; font-weight: 750; cursor: pointer; list-style: none; }
+.integration-explainer summary::-webkit-details-marker { display: none; }
+.integration-explainer summary::after { content: "⌄"; margin-left: auto; color: var(--navy-3); }
+.integration-explainer[open] summary::after { content: "⌃"; }
+.integration-explainer summary:focus-visible { outline: 2px solid var(--navy-3); outline-offset: -3px; border-radius: 9px; }
+.integration-explainer-body { padding: 0 12px 11px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+.integration-explainer-body p { margin: 9px 0 0; }
+.integration-explainer-body ol { margin: 7px 0 0; padding-left: 20px; }
+.integration-explainer-body li + li { margin-top: 4px; }
+.integration-explainer-body .integration-privacy { padding: 7px 8px; border-radius: 8px; background: #fff7da; color: #705100; }
 .integration-list { display: flex; flex-direction: column; gap: 7px; }
 .integration-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
 .integration-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .integration-name { color: var(--navy); font-size: 12px; font-weight: 750; }
+.integration-description { color: var(--muted); font-size: 10.5px; line-height: 1.35; }
 .integration-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 10px; }
 .integration-state { display: inline-flex; padding: 2px 6px; border-radius: 999px; background: var(--panel); color: var(--navy); font-weight: 700; }
 .integration-state.current { color: #0a6b44; background: #e8f7f0; }

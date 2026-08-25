@@ -24,7 +24,7 @@ test('2.0 keeps Web resources and external tool integration as separate product 
   assert.doesNotMatch(resources, /^A `LaunchHandle` is:/mu);
   assert.doesNotMatch(resources, /^ResourceLaunchBroker/mu);
 
-  assert.match(integrations, /only generates three non-destructive configuration artifacts/u);
+  assert.match(integrations, /only generates two non-destructive configuration artifacts/u);
   assert.match(integrations, /never downloads, installs, launches, detects, or updates third-party software/u);
   assert.match(integrations, /VS Code Remote-SSH output is a standard SSH host template/u);
   assert.match(integrations, /must not be uploaded, synchronized or shared/u);

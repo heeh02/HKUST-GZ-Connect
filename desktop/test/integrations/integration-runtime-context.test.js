@@ -54,7 +54,7 @@ test('runtime context binds exact Profile Account listener credential rules and 
     authority: { account, workspaceState }, profileDocument, settings,
     proxyCredential, pacSource, engineGeneration: null,
   });
-  const binding = context.bindingFor('clash_yaml', 2);
+  const binding = context.bindingFor('clash_mihomo_yaml', 2);
   assert.equal(binding.profileId, 'hkustgz');
   assert.equal(binding.accountRevision, 2);
   assert.equal(binding.accountCredentialRevision, 3);
@@ -74,7 +74,7 @@ test('runtime accepts the already-validated Account authority returned by persis
     pacSource,
   });
   assert.equal(
-    context.bindingFor('clash_yaml', 1).listenerKind,
+    context.bindingFor('clash_mihomo_yaml', 1).listenerKind,
     'socks5-optional-authentication',
   );
 });
@@ -82,11 +82,11 @@ test('runtime accepts the already-validated Account authority returned by persis
 test('strict and optional authentication produce distinct usable listener bindings', () => {
   const strict = createIntegrationRuntimeContext({
     authority: { account, workspaceState }, profileDocument, settings, proxyCredential, pacSource,
-  }).bindingFor('clash_yaml', 1);
+  }).bindingFor('clash_mihomo_yaml', 1);
   const optional = createIntegrationRuntimeContext({
     authority: { account, workspaceState }, profileDocument,
     settings: { ...settings, strictProxyAuth: false }, proxyCredential, pacSource,
-  }).bindingFor('clash_yaml', 1);
+  }).bindingFor('clash_mihomo_yaml', 1);
   assert.equal(strict.listenerKind, 'socks5-authenticated');
   assert.equal(optional.listenerKind, 'socks5-optional-authentication');
   assert.notEqual(strict.bindingDigest, optional.bindingDigest);

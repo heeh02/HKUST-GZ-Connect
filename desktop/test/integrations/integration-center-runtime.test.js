@@ -54,11 +54,11 @@ function fixture({ contextValue = context() } = {}) {
   return { calls, runtime, target };
 }
 
-test('list exposes only the three non-destructive configuration exports', () => {
+test('list exposes only the two non-destructive configuration exports', () => {
   const f = fixture();
   const views = f.runtime.list();
   assert.deepEqual(views.map((view) => view.adapterId), [
-    'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+    'clash_mihomo_yaml', 'vscode_remote_ssh',
   ]);
   assert.equal(views.every((view) => view.compatibilityState === 'supported'), true);
   assert.equal(views.every((view) => view.bindingState === 'not-installed'), true);
@@ -66,7 +66,7 @@ test('list exposes only the three non-destructive configuration exports', () => 
 
 test('Clash save selects a destination while VS Code remains copy-only', async () => {
   const f = fixture();
-  await f.runtime.prepare({ adapterId: 'clash_yaml', action: 'save' });
+  await f.runtime.prepare({ adapterId: 'clash_mihomo_yaml', action: 'save' });
   assert.ok(f.calls.some(([name]) => name === 'select'));
   assert.equal(f.calls.find(([name, action]) => name === 'generic' && action === 'prepare')[2]
     .targetFile, f.target);
@@ -93,7 +93,7 @@ test('confirm refreshes context and provisions a sidecar only for the VS Code sn
 test('disabled runtime is a complete fail-closed facade', async () => {
   const disabled = createDisabledIntegrationCenterRuntime();
   assert.equal(disabled.list().every((view) => view.compatibilityState === 'unavailable'), true);
-  await assert.rejects(disabled.prepare({ adapterId: 'clash_yaml', action: 'copy' }), {
+  await assert.rejects(disabled.prepare({ adapterId: 'clash_mihomo_yaml', action: 'copy' }), {
     code: 'INTEGRATION_ADAPTER_UNAVAILABLE',
   });
 });

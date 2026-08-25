@@ -6,7 +6,7 @@
   'use strict';
 
   const ADAPTERS = new Set([
-    'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+    'clash_mihomo_yaml', 'vscode_remote_ssh',
   ]);
   const ACTIONS = new Set(['copy', 'save']);
   const STATES = new Set(['not-installed', 'current', 'stale', 'unavailable']);
@@ -137,11 +137,14 @@
         const main = document.createElement('div'); main.className = 'integration-main';
         const name = document.createElement('div'); name.className = 'integration-name';
         name.textContent = t(`integration.adapter.${view.adapterId}`);
+        const description = document.createElement('div');
+        description.className = 'integration-description';
+        description.textContent = t(`integration.adapterDescription.${view.adapterId}`);
         const meta = document.createElement('div'); meta.className = 'integration-meta';
         const state = document.createElement('span');
         state.className = `integration-state ${view.bindingState}`;
         state.textContent = t(`integration.state.${view.bindingState}`);
-        meta.append(state); main.append(name, meta);
+        meta.append(state); main.append(name, description, meta);
         const actions = document.createElement('div'); actions.className = 'integration-actions';
         if (view.supportedActions.includes('copy')) {
           actions.append(button(t('integration.action.copy'), 'copy', view.adapterId));

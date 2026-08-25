@@ -32,7 +32,7 @@ let nextCustomId = 1;
 let pendingIntegration = null;
 
 const integrationAdapters = [
-  'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+  'clash_mihomo_yaml', 'vscode_remote_ssh',
 ];
 
 function integrationViews() {

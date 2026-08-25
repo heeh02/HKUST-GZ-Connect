@@ -254,6 +254,18 @@
             </div>
           </div>
           <p class="hint integration-hint" data-i18n="integration.hint">生成与当前学校绑定的 Clash、Mihomo 配置和 VS Code Remote-SSH 片段；应用不会安装或修改第三方软件。</p>
+          <details class="integration-explainer">
+            <summary data-i18n="integration.explainSummary">查看功能说明</summary>
+            <div class="integration-explainer-body">
+              <p data-i18n="integration.explainLead">这里生成的是连接信息，不会安装或接管 Clash、Mihomo 或 VS Code。</p>
+              <ol>
+                <li data-i18n="integration.explainStep1">Campus Connect 先在本机建立只通往当前学校的安全隧道。</li>
+                <li data-i18n="integration.explainStep2">Clash / Mihomo 配置把该隧道加入为一个本地 SOCKS5 节点，并附带校园域名分流规则。</li>
+                <li data-i18n="integration.explainStep3">将 YAML 合并进自己的客户端后，校园网站走学校隧道，其他网站继续按原规则访问。</li>
+              </ol>
+              <p class="integration-privacy" data-i18n="integration.explainPrivacy">配置含本机代理凭据，但不含校园账号密码；请勿上传、同步或分享。</p>
+            </div>
+          </details>
           <div id="integrationList" class="integration-list" aria-live="polite"></div>
           <p id="integrationStatus" class="integration-status" data-i18n="integration.loading">正在读取集成状态…</p>
           <p id="integrationError" class="dialog-error" role="alert"></p>

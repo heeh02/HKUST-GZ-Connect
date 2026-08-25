@@ -149,10 +149,20 @@ async function exerciseIntegrationCenter(window) {
   await waitFor(window, 'window.innerWidth === 500 && window.innerHeight === 640', 'compact Integration Center size');
   await window.webContents.executeJavaScript(`document.querySelector('.nav[data-page="tower"]').click()`);
   await waitFor(window,
-    `document.querySelectorAll('[data-integration-adapter]').length === 3`,
+    `document.querySelectorAll('[data-integration-adapter]').length === 2`,
     'Integration Center rows');
+  const explanation = await window.webContents.executeJavaScript(`(() => {
+    const details = document.querySelector('.integration-explainer');
+    details.querySelector('summary').click();
+    return { open: details.open, text: details.textContent };
+  })()`);
+  assert.equal(explanation.open, true, 'Integration Center explanation did not expand');
+  assert.match(explanation.text, /SOCKS5/u,
+    'Integration Center explanation omitted its local proxy mechanism');
+  assert.match(explanation.text, /校园账号密码|campus password/iu,
+    'Integration Center explanation omitted the credential boundary');
   const prepared = await window.webContents.executeJavaScript(`(async () => {
-    document.querySelector('[data-integration-adapter="clash_yaml"] [data-integration-action="copy"]').click();
+    document.querySelector('[data-integration-adapter="clash_mihomo_yaml"] [data-integration-action="copy"]').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
     const dialog = document.getElementById('integrationDialog');
     const rect = dialog.getBoundingClientRect();
@@ -187,7 +197,7 @@ async function exerciseIntegrationCenter(window) {
   })`);
   assert.equal(confirmed.dialogOpen, false, 'confirmed Integration Center preview remained open');
   assert.ok(confirmed.status, 'confirmed Integration Center operation gave no visible result');
-  assert.equal(confirmed.adapterCount, 3, 'production Integration Center exposed a historical adapter');
+  assert.equal(confirmed.adapterCount, 2, 'production Integration Center exposed a historical adapter');
   assert.equal(confirmed.installVisible, false, 'Integration Center exposed third-party installation controls');
   assert.equal(confirmed.vscodeSaveVisible, false, 'VS Code snippet must remain copy-only');
 }

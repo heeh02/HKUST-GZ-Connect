@@ -5,7 +5,7 @@ const { buildSshProxyCommand } = require('./external-proxy-config');
 const { validateProfileNetworkRules } = require('./profile-network-rules');
 
 const GENERIC_EXPORT_ADAPTERS = Object.freeze([
-  'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+  'clash_mihomo_yaml', 'vscode_remote_ssh',
 ]);
 const MAX_GENERIC_EXPORT_BYTES = 512 * 1024;
 const LOCAL_PROXY_SECRET = /^[A-Za-z0-9_-]{16,128}$/u;
@@ -60,14 +60,14 @@ function clashRuleLines(rulesValue, proxyName) {
 }
 
 function buildClashCompatibleYaml({ adapterId, port: rawPort, credential, networkRules } = {}) {
-  if (!['clash_yaml', 'mihomo_yaml'].includes(adapterId)) {
+  if (adapterId !== 'clash_mihomo_yaml') {
     throw new TypeError('Clash-compatible adapter is invalid');
   }
   const rules = validateProfileNetworkRules(networkRules);
   const name = nodeName(rules.profileId);
   return withCredential(credential, (username, password) => {
     const lines = [
-      `# Campus Connect ${adapterId === 'mihomo_yaml' ? 'Mihomo' : 'Clash'} export`,
+      '# Campus Connect Clash / Mihomo export',
       `# Profile: ${rules.profileId}; rules: ${rules.rulesDigest}`,
       'proxies:',
       `  - name: ${JSON.stringify(name)}`,
@@ -112,7 +112,7 @@ function buildVscodeRemoteSshSnippet({ helperPath, credentialFile, networkRules 
 
 function validateClashCompatibleText(text) {
   const lines = text.trimEnd().split('\n');
-  if (lines.length < 12 || !/^# Campus Connect (?:Clash|Mihomo) export$/u.test(lines[0]) ||
+  if (lines.length < 12 || lines[0] !== '# Campus Connect Clash / Mihomo export' ||
       !/^# Profile: [a-z0-9-]{1,64}; rules: [a-f0-9]{64}$/u.test(lines[1]) ||
       lines[2] !== 'proxies:' || lines[4] !== '    type: "socks5"' ||
       lines[5] !== '    server: "127.0.0.1"' || lines[10] !== 'rules:') return false;
@@ -160,7 +160,7 @@ function validateGenericExportPayload(adapterId, payload) {
       !payload.length || payload.length > MAX_GENERIC_EXPORT_BYTES) return false;
   const text = payload.toString('utf8');
   if (!Buffer.from(text, 'utf8').equals(payload)) return false;
-  if (adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml') {
+  if (adapterId === 'clash_mihomo_yaml') {
     return validateClashCompatibleText(text);
   }
   return adapterId === 'vscode_remote_ssh' && validateVscodeRemoteSshText(text);
@@ -177,7 +177,7 @@ function buildGenericExport({
   if (!GENERIC_EXPORT_ADAPTERS.includes(adapterId)) {
     throw new TypeError('generic export adapter is unsupported');
   }
-  const source = adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml'
+  const source = adapterId === 'clash_mihomo_yaml'
     ? buildClashCompatibleYaml({ adapterId, port: rawPort, credential, networkRules })
     : buildVscodeRemoteSshSnippet({ helperPath, credentialFile, networkRules });
   const payload = Buffer.from(source, 'utf8');

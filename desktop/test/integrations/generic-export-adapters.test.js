@@ -22,7 +22,7 @@ const credential = {
   withStrings(callback) { return callback(material.username, material.password); },
 };
 
-test('Clash and Mihomo export one Profile-bound authenticated node and precedence-ordered rules', () => {
+test('shared Clash / Mihomo export has one Profile-bound node and precedence-ordered rules', () => {
   const rules = createProfileNetworkRules({
     profileDocument: reviewed,
     userRules: [
@@ -38,20 +38,20 @@ test('Clash and Mihomo export one Profile-bound authenticated node and precedenc
   assert.ok(lines.includes('DOMAIN-SUFFIX,campus.example.edu,Campus Connect - hkustgz'));
   assert.equal(lines.at(-1), 'IP-CIDR,10.90.0.0/16,Campus Connect - hkustgz,no-resolve');
 
-  for (const adapterId of ['clash_yaml', 'mihomo_yaml']) {
-    const yaml = buildClashCompatibleYaml({
-      adapterId, port: 6180, credential, networkRules: rules,
-    });
-    assert.match(yaml, /name: "Campus Connect - hkustgz"/u);
-    assert.match(yaml, /server: "127\.0\.0\.1"/u);
-    assert.match(yaml, /port: 6180/u);
-    assert.match(yaml, new RegExp(`username: ${JSON.stringify(material.username)}`, 'u'));
-    assert.match(yaml, new RegExp(`password: ${JSON.stringify(material.password)}`, 'u'));
-    assert.match(yaml, /udp: false/u);
-    assert.match(yaml, /rules:/u);
-    assert.equal(require('../../lib/integrations/generic-export-adapters')
-      .validateGenericExportPayload(adapterId, Buffer.from(yaml)), true);
-  }
+  const adapterId = 'clash_mihomo_yaml';
+  const yaml = buildClashCompatibleYaml({
+    adapterId, port: 6180, credential, networkRules: rules,
+  });
+  assert.match(yaml, /^# Campus Connect Clash \/ Mihomo export$/mu);
+  assert.match(yaml, /name: "Campus Connect - hkustgz"/u);
+  assert.match(yaml, /server: "127\.0\.0\.1"/u);
+  assert.match(yaml, /port: 6180/u);
+  assert.match(yaml, new RegExp(`username: ${JSON.stringify(material.username)}`, 'u'));
+  assert.match(yaml, new RegExp(`password: ${JSON.stringify(material.password)}`, 'u'));
+  assert.match(yaml, /udp: false/u);
+  assert.match(yaml, /rules:/u);
+  assert.equal(require('../../lib/integrations/generic-export-adapters')
+    .validateGenericExportPayload(adapterId, Buffer.from(yaml)), true);
 });
 
 test('custom Profile export never inherits HKUST names domains CIDRs or routes', () => {
@@ -62,7 +62,7 @@ test('custom Profile export never inherits HKUST names domains CIDRs or routes',
   });
   const rules = createProfileNetworkRules({ profileDocument });
   const yaml = buildClashCompatibleYaml({
-    adapterId: 'clash_yaml', port: 6180, credential, networkRules: rules,
+    adapterId: 'clash_mihomo_yaml', port: 6180, credential, networkRules: rules,
   });
   assert.match(yaml, new RegExp(`Campus Connect - ${profileDocument.profileId}`, 'u'));
   assert.doesNotMatch(yaml, /hkust|10\.90\./iu);

@@ -9,8 +9,7 @@ const {
 
 const INTEGRATION_SCHEMA_VERSION = 1;
 const ACTIVE_INTEGRATION_ADAPTER_IDS = Object.freeze([
-  'clash_yaml',
-  'mihomo_yaml',
+  'clash_mihomo_yaml',
   'vscode_remote_ssh',
 ]);
 const INTEGRATION_ADAPTER_IDS = ACTIVE_INTEGRATION_ADAPTER_IDS;
@@ -18,8 +17,9 @@ const INTEGRATION_ACTIONS = Object.freeze([
   'copy', 'save',
 ]);
 const ADAPTERS = Object.freeze({
-  clash_yaml: Object.freeze({ displayName: 'Clash YAML', actions: ['preview', 'copy', 'save'] }),
-  mihomo_yaml: Object.freeze({ displayName: 'Mihomo YAML', actions: ['preview', 'copy', 'save'] }),
+  clash_mihomo_yaml: Object.freeze({
+    displayName: 'Clash / Mihomo configuration', actions: ['preview', 'copy', 'save'],
+  }),
   vscode_remote_ssh: Object.freeze({
     displayName: 'VS Code Remote-SSH', actions: ['preview', 'copy'],
   }),
