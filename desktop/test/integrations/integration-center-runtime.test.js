@@ -35,13 +35,11 @@ function context(patch = {}) {
   };
 }
 
-function fixture({ records = [], contextValue = context() } = {}) {
+function fixture({ contextValue = context() } = {}) {
   const calls = [];
   const target = '/Users/student/.ssh/config';
   const fake = (name) => ({
     prepare(value) { calls.push([name, 'prepare', value]); return { confirmationHandle: `${name}-handle` }; },
-    prepareInstall(value) { calls.push([name, 'install', value]); return { confirmationHandle: `${name}-handle` }; },
-    prepareRemove(value) { calls.push([name, 'remove', value]); return { confirmationHandle: `${name}-handle` }; },
     confirm(value) { calls.push([name, 'confirm', value]); return { ok: true, name }; },
     cancel() { calls.push([name, 'cancel']); return name === 'generic'; },
   });
@@ -49,66 +47,47 @@ function fixture({ records = [], contextValue = context() } = {}) {
     getContext: () => contextValue,
     selectTarget: async (value) => { calls.push(['select', value]); return target; },
     ensureSidecar: () => calls.push(['sidecar']),
-    recordStore: { read: () => ({ records }) },
     genericCoordinator: fake('generic'),
-    clashVergeCoordinator: fake('clash'),
-    openSshCoordinator: fake('ssh'),
+    helperPath: '/Applications/Campus Connect.app/Contents/Resources/ec-proxy-command',
+    credentialFile: '/Users/student/Library/Application Support/Campus Connect/proxy-credential',
   });
   return { calls, runtime, target };
 }
 
-test('list exposes only closed adapter status and derives current versus stale binding', () => {
-  const current = context();
-  const binding = current.bindingFor('clash_verge_rev_managed', 1);
-  const records = [{
-    adapterId: 'clash_verge_rev_managed', profileId: 'school-a',
-    managedBlockId: 'clash-verge-rev', bindingDigest: binding.bindingDigest,
-    updatedAt: 1_800_000_000_000, targetFile: '/private/Script.js',
-  }];
-  const f = fixture({ records, contextValue: current });
+test('list exposes only the three non-destructive configuration exports', () => {
+  const f = fixture();
   const views = f.runtime.list();
-  assert.equal(views.find((view) => view.adapterId === 'clash_verge_rev_managed').bindingState,
-    'current');
-  assert.equal(views.find((view) => view.adapterId === 'vscode_remote_ssh').compatibilityState,
-    'unavailable');
-  assert.equal(JSON.stringify(views).includes('/private/Script.js'), false);
-
-  const stale = fixture({ records, contextValue: context({ activeContextEpoch: 2 }) });
-  assert.equal(stale.runtime.list().find((view) => (
-    view.adapterId === 'clash_verge_rev_managed'
-  )).bindingState, 'stale');
+  assert.deepEqual(views.map((view) => view.adapterId), [
+    'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+  ]);
+  assert.equal(views.every((view) => view.compatibilityState === 'supported'), true);
+  assert.equal(views.every((view) => view.bindingState === 'not-installed'), true);
 });
 
-test('generic save selects in Main while managed update reuses its private recorded target', async () => {
-  let f = fixture();
+test('Clash save selects a destination while VS Code remains copy-only', async () => {
+  const f = fixture();
   await f.runtime.prepare({ adapterId: 'clash_yaml', action: 'save' });
   assert.ok(f.calls.some(([name]) => name === 'select'));
   assert.equal(f.calls.find(([name, action]) => name === 'generic' && action === 'prepare')[2]
     .targetFile, f.target);
 
-  const binding = context().bindingFor('openssh_proxy_command', 1);
-  f = fixture({ records: [{
-    adapterId: 'openssh_proxy_command', profileId: 'school-a',
-    managedBlockId: 'openssh-profile-school-a', bindingDigest: binding.bindingDigest,
-    updatedAt: 1, targetFile: '/Users/student/.ssh/campus-connect/school-a.conf',
-  }] });
-  await f.runtime.prepare({ adapterId: 'openssh_proxy_command', action: 'update' });
-  assert.equal(f.calls.some(([name]) => name === 'select'), false);
-  const request = f.calls.find(([name, action]) => name === 'ssh' && action === 'install')[2];
-  assert.equal(request.mainConfigFile, '/Users/student/.ssh/config');
+  assert.equal((await f.runtime.prepare({
+    adapterId: 'vscode_remote_ssh', action: 'copy',
+  })).confirmationHandle, 'generic-handle');
+  await assert.rejects(f.runtime.prepare({
+    adapterId: 'vscode_remote_ssh', action: 'save',
+  }), { code: 'INTEGRATION_ADAPTER_UNAVAILABLE' });
 });
 
-test('confirm refreshes context, provisions sidecar only for OpenSSH, and cancellation reaches all owners', async () => {
+test('confirm refreshes context and provisions a sidecar only for the VS Code snippet', async () => {
   const f = fixture();
-  const preview = await f.runtime.prepare({ adapterId: 'openssh_proxy_command', action: 'install' });
+  const preview = await f.runtime.prepare({ adapterId: 'vscode_remote_ssh', action: 'copy' });
   assert.deepEqual(await f.runtime.confirm({ confirmationHandle: preview.confirmationHandle }), {
-    ok: true, name: 'ssh',
+    ok: true, name: 'generic',
   });
   assert.ok(f.calls.some(([name]) => name === 'sidecar'));
   f.runtime.cancel();
-  for (const name of ['generic', 'clash', 'ssh']) {
-    assert.ok(f.calls.some(([owner, action]) => owner === name && action === 'cancel'));
-  }
+  assert.ok(f.calls.some(([owner, action]) => owner === 'generic' && action === 'cancel'));
 });
 
 test('disabled runtime is a complete fail-closed facade', async () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  CAMPUS_PARTITION,
+  NEUTRAL_CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
 } = require('../../routing/policy/campus-route');
@@ -152,7 +152,7 @@ class BrowserSessionManager {
   constructor({
     session,
     routingPolicy,
-    partition = CAMPUS_PARTITION,
+    partition = NEUTRAL_CAMPUS_PARTITION,
     onSessionReady,
     ensureRequestReady,
   } = {}) {

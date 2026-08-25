@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   createIntegrationRuntimeContext,
+  validateIntegrationAccountAuthority,
 } = require('../../lib/integrations/integration-runtime-context');
 
 const profileDocument = JSON.parse(fs.readFileSync(path.join(
@@ -63,11 +64,39 @@ test('runtime context binds exact Profile Account listener credential rules and 
   assert.equal(binding.engineGeneration, null, 'durable adapters do not stale on ordinary Engine restart');
 });
 
-test('strict auth Profile and authority drift fail before integration payload generation', () => {
-  assert.throws(() => createIntegrationRuntimeContext({
+test('runtime accepts the already-validated Account authority returned by persistence', () => {
+  const normalizedAccount = validateIntegrationAccountAuthority(account);
+  const context = createIntegrationRuntimeContext({
+    authority: { account: normalizedAccount, workspaceState },
+    profileDocument,
+    settings: { ...settings, strictProxyAuth: false },
+    proxyCredential,
+    pacSource,
+  });
+  assert.equal(
+    context.bindingFor('clash_yaml', 1).listenerKind,
+    'socks5-optional-authentication',
+  );
+});
+
+test('strict and optional authentication produce distinct usable listener bindings', () => {
+  const strict = createIntegrationRuntimeContext({
+    authority: { account, workspaceState }, profileDocument, settings, proxyCredential, pacSource,
+  }).bindingFor('clash_yaml', 1);
+  const optional = createIntegrationRuntimeContext({
     authority: { account, workspaceState }, profileDocument,
     settings: { ...settings, strictProxyAuth: false }, proxyCredential, pacSource,
-  }), { code: 'INTEGRATION_AUTH_INCOMPATIBLE' });
+  }).bindingFor('clash_yaml', 1);
+  assert.equal(strict.listenerKind, 'socks5-authenticated');
+  assert.equal(optional.listenerKind, 'socks5-optional-authentication');
+  assert.notEqual(strict.bindingDigest, optional.bindingDigest);
+  assert.throws(() => createIntegrationRuntimeContext({
+    authority: { account, workspaceState }, profileDocument,
+    settings: { ...settings, strictProxyAuth: 'false' }, proxyCredential, pacSource,
+  }), { code: 'INTEGRATION_LISTENER_UNAVAILABLE' });
+});
+
+test('Profile and authority drift fail before integration payload generation', () => {
   assert.throws(() => createIntegrationRuntimeContext({
     authority: { account: { ...account, profileId: 'other' }, workspaceState },
     profileDocument, settings, proxyCredential, pacSource,

@@ -1,12 +1,12 @@
 'use strict';
 
 const CONTROL_WINDOW = Object.freeze({
-  width: 500,
-  height: 640,
+  width: 620,
+  height: 720,
   minWidth: 420,
   minHeight: 560,
-  maxWidth: 760,
-  maxHeight: 900,
+  maxWidth: 960,
+  maxHeight: 960,
 });
 
 function clampWindowSize(width, height) {

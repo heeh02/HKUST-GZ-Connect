@@ -3,13 +3,12 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  ACTIVE_INTEGRATION_ADAPTER_IDS,
   INTEGRATION_ADAPTER_IDS,
   bindingStateFor,
   createIntegrationAdapterView,
   createIntegrationBinding,
   validateIntegrationBinding,
-  validateIntegrationRecord,
-  validateIntegrationRecordDocument,
 } = require('../../lib/integrations/integration-schema');
 
 const digest = (value) => String(value).repeat(64).slice(0, 64);
@@ -50,9 +49,18 @@ test('internal binding covers every Profile Account listener credential and poli
     assert.equal(bindingStateFor(binding, createIntegrationBinding({ ...base, ...patch })), 'stale');
   }
   assert.equal(bindingStateFor(binding, { malformed: true }), 'unavailable');
+  const optional = createIntegrationBinding({
+    ...base,
+    listenerKind: 'socks5-optional-authentication',
+  });
+  assert.equal(optional.listenerKind, 'socks5-optional-authentication');
+  assert.equal(bindingStateFor(binding, optional), 'stale');
 });
 
 test('Renderer adapter views are closed key-free and never carry generated payloads or paths', () => {
+  assert.deepEqual(ACTIVE_INTEGRATION_ADAPTER_IDS, [
+    'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
+  ]);
   for (const adapterId of INTEGRATION_ADAPTER_IDS) {
     const view = createIntegrationAdapterView({
       adapterId, compatibilityState: 'supported', bindingState: 'not-installed',
@@ -68,28 +76,4 @@ test('Renderer adapter views are closed key-free and never carry generated paylo
   assert.throws(() => createIntegrationAdapterView({
     adapterId: 'unknown', compatibilityState: 'supported', bindingState: 'current',
   }), /unsupported/u);
-});
-
-test('persistent records retain only non-secret managed ownership and reject duplicate blocks', () => {
-  const binding = createIntegrationBinding(base);
-  const record = validateIntegrationRecord({
-    schemaVersion: 1,
-    adapterId: 'clash_yaml',
-    adapterVersion: 1,
-    profileId: 'school-a',
-    bindingDigest: binding.bindingDigest,
-    targetFile: '/Users/student/.config/campus-connect/clash.yaml',
-    installedRevision: 1,
-    installedDigest: digest('4'),
-    managedBlockId: 'campus-connect-school-a',
-    backupReference: 'backup-0001',
-    updatedAt: 1_800_000_000_000,
-  });
-  assert.equal(JSON.stringify(record).includes('accountKey'), false);
-  assert.equal(validateIntegrationRecordDocument({ schemaVersion: 1, records: [record] }).records.length, 1);
-  assert.throws(() => validateIntegrationRecordDocument({
-    schemaVersion: 1, records: [record, { ...record, targetFile: '/tmp/other' }],
-  }), /duplicate ownership/u);
-  assert.throws(() => validateIntegrationRecord({ ...record, targetFile: '../relative' }), /absolute/u);
-  assert.throws(() => validateIntegrationRecord({ ...record, installedDigest: digest('x') }), /invalid/u);
 });

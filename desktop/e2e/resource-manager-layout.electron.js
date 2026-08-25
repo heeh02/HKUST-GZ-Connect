@@ -145,12 +145,14 @@ function assertCustomResourceAddAndOpen(result) {
 }
 
 async function exerciseIntegrationCenter(window) {
+  window.setContentSize(500, 640);
+  await waitFor(window, 'window.innerWidth === 500 && window.innerHeight === 640', 'compact Integration Center size');
   await window.webContents.executeJavaScript(`document.querySelector('.nav[data-page="tower"]').click()`);
   await waitFor(window,
-    `document.querySelectorAll('[data-integration-adapter]').length === 6`,
+    `document.querySelectorAll('[data-integration-adapter]').length === 3`,
     'Integration Center rows');
   const prepared = await window.webContents.executeJavaScript(`(async () => {
-    document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="install"]').click();
+    document.querySelector('[data-integration-adapter="clash_yaml"] [data-integration-action="copy"]').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
     const dialog = document.getElementById('integrationDialog');
     const rect = dialog.getBoundingClientRect();
@@ -174,19 +176,111 @@ async function exerciseIntegrationCenter(window) {
     'Integration Center exposed a path or credential value to the renderer');
 
   await window.webContents.executeJavaScript(`document.getElementById('confirmIntegration').click()`);
-  await waitFor(window,
-    `document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] .integration-state').classList.contains('current')`,
-    'managed integration confirmation');
+  await waitFor(window, `document.getElementById('integrationDialog').open === false`,
+    'configuration export confirmation');
   const confirmed = await window.webContents.executeJavaScript(`({
     dialogOpen: document.getElementById('integrationDialog').open,
     status: document.getElementById('integrationStatus').textContent,
-    updateVisible: !!document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="update"]'),
-    removeVisible: !!document.querySelector('[data-integration-adapter="clash_verge_rev_managed"] [data-integration-action="remove"]'),
+    adapterCount: document.querySelectorAll('[data-integration-adapter]').length,
+    installVisible: !!document.querySelector('[data-integration-action="install"], [data-integration-action="update"], [data-integration-action="remove"]'),
+    vscodeSaveVisible: !!document.querySelector('[data-integration-adapter="vscode_remote_ssh"] [data-integration-action="save"]'),
   })`);
   assert.equal(confirmed.dialogOpen, false, 'confirmed Integration Center preview remained open');
   assert.ok(confirmed.status, 'confirmed Integration Center operation gave no visible result');
-  assert.equal(confirmed.updateVisible, true, 'managed integration did not expose update after install');
-  assert.equal(confirmed.removeVisible, true, 'managed integration did not expose removal after install');
+  assert.equal(confirmed.adapterCount, 3, 'production Integration Center exposed a historical adapter');
+  assert.equal(confirmed.installVisible, false, 'Integration Center exposed third-party installation controls');
+  assert.equal(confirmed.vscodeSaveVisible, false, 'VS Code snippet must remain copy-only');
+}
+
+async function exerciseBuiltinResourceRemoval(window) {
+  const result = await window.webContents.executeJavaScript(`(async () => {
+    const dialog = document.getElementById('resourceDialog');
+    if (!dialog.open) document.getElementById('manageResources').click();
+    document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
+    document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const removed = !document.querySelector('[data-resource-id="builtin-home"]');
+    document.getElementById('restoreBuiltinResources').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return {
+      removed,
+      restored: !!document.querySelector('[data-resource-id="builtin-home"]'),
+      error: document.getElementById('resourceFormError').textContent,
+    };
+  })()`);
+  assert.equal(result.removed, true, 'built-in website did not disappear after confirmation');
+  assert.equal(result.restored, true, 'restore did not return the built-in website');
+  assert.equal(result.error, '', 'built-in remove/restore reported an error');
+}
+
+async function assertStudentHome(window) {
+  for (const [width, expectedColumns] of [[420, 2], [960, 3]]) {
+    window.setContentSize(width, 720);
+    await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
+    const view = await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('.nav[data-page="connect"]').click();
+      const grid = document.querySelector('.resource-section .resource-grid');
+      const hero = document.getElementById('connTop').getBoundingClientRect();
+      const search = document.getElementById('resourceSearch').getBoundingClientRect();
+      const manual = document.querySelector('.custom-url-details').getBoundingClientRect();
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+      const content = document.querySelector('.content');
+      content.scrollTop = content.scrollHeight;
+      document.querySelector('.nav[data-page="settings"]').click();
+      return {
+        columns,
+        heroHeight: hero.height,
+        resourceSections: document.querySelectorAll('.resource-section').length,
+        searchBeforeManual: search.top < manual.top,
+        towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
+        diagnosticsClosed: !document.querySelector('.diagnostic-details').open,
+        scrollTopAfterPageSwitch: content.scrollTop,
+      };
+    })()`);
+    assert.equal(view.columns, expectedColumns, `${width}px: resource grid column count`);
+    assert.ok(view.heroHeight >= 110 && view.heroHeight <= 165,
+      `${width}px: connection card lost its balanced visual hierarchy`);
+    assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
+    assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
+    assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
+    assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);
+    assert.equal(view.scrollTopAfterPageSwitch, 0, `${width}px: page switch retained stale scroll`);
+  }
+}
+
+async function assertTwoHundredPercentReflow(window) {
+  window.setContentSize(620, 720);
+  window.webContents.setZoomFactor(2);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  try {
+    for (const page of ['connect', 'tower', 'notif', 'settings']) {
+      const view = await window.webContents.executeJavaScript(`(() => {
+        document.querySelector('.nav[data-page="${page}"]').click();
+        const viewport = document.documentElement.clientWidth;
+        const active = document.querySelector('.page.active').getBoundingClientRect();
+        const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+        return {
+          page: '${page}',
+          viewport,
+          scrollWidth: document.documentElement.scrollWidth,
+          activeLeft: active.left,
+          activeRight: active.right,
+          sidebarLeft: sidebar.left,
+          sidebarRight: sidebar.right,
+        };
+      })()`);
+      assert.ok(view.viewport > 0, `${page}: 200% viewport is unavailable`);
+      assert.ok(view.scrollWidth <= view.viewport + 1,
+        `${page}: 200% zoom introduced horizontal page overflow`);
+      assert.ok(view.sidebarLeft >= 0 && view.sidebarRight <= view.viewport,
+        `${page}: 200% zoom clipped the navigation`);
+      assert.ok(view.activeLeft >= view.sidebarRight - 1 && view.activeRight <= view.viewport + 1,
+        `${page}: 200% zoom clipped the active page`);
+    }
+  } finally {
+    window.webContents.setZoomFactor(1);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
 }
 
 async function main() {
@@ -201,12 +295,15 @@ async function main() {
   try {
     await window.loadFile(renderer);
     await waitFor(window, "document.getElementById('dash').hidden === false", 'dashboard initialization');
+    await assertStudentHome(window);
+    await assertTwoHundredPercentReflow(window);
     await exerciseIntegrationCenter(window);
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
       assertLayout(await measureAt(window, width, height), width, height);
     }
     assertCustomResourceSave(await saveCustomResource(window));
     assertCustomResourceAddAndOpen(await addAndOpenCustomResource(window));
+    await exerciseBuiltinResourceRemoval(window);
     process.stdout.write('resource manager layout: PASS\n');
   } finally {
     if (!window.isDestroyed()) window.destroy();

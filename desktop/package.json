@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "1.2.3",
+  "version": "2.0.0-beta.1",
   "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
@@ -74,7 +74,7 @@
           "ec-proxy-command.exe",
           "ec-gateway-probe-*",
           "ec-gateway-probe.exe",
-          "hkustgz.json"
+          "*.json"
         ]
       }
     ],

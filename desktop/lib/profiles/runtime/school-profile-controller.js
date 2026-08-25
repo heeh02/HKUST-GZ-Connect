@@ -221,17 +221,25 @@ function createController(context, options) {
         stdinFrame,
       });
     },
-    mergeResources(customResources = []) {
-      return mergeCampusResources(builtInResources, customResources);
+    mergeResources(customResources = [], hiddenBuiltinResourceIds = []) {
+      return mergeCampusResources(builtInResources, customResources, hiddenBuiltinResourceIds);
     },
-    mergeResourceLibrary(customResources = []) {
-      return mergeWebResourceLibrary(builtInResources, customResources);
+    mergeResourceLibrary(customResources = [], hiddenBuiltinResourceIds = []) {
+      return mergeWebResourceLibrary(
+        builtInResources,
+        customResources,
+        hiddenBuiltinResourceIds,
+      );
     },
-    projectResources(customResources = []) {
-      return projectCampusResources(builtInResources, customResources);
+    projectResources(customResources = [], hiddenBuiltinResourceIds = []) {
+      return projectCampusResources(builtInResources, customResources, hiddenBuiltinResourceIds);
     },
-    projectResourceLibrary(customResources = []) {
-      return projectWebResourceLibrary(builtInResources, customResources);
+    projectResourceLibrary(customResources = [], hiddenBuiltinResourceIds = []) {
+      return projectWebResourceLibrary(
+        builtInResources,
+        customResources,
+        hiddenBuiltinResourceIds,
+      );
     },
     createCapabilitySnapshot: capabilitySnapshotFromReport,
     observeCapabilityReport(report) {

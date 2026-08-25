@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { registerControlDataIpc } = require('../../../lib/ipc/control-data-ipc');
+const { registerCampusResourceIpc } = require('../../../lib/ipc/campus-resource-ipc');
 
 function fixture() {
   const handlers = new Map();
@@ -59,6 +60,8 @@ function fixture() {
         cancel: () => false,
       },
       getLocale: () => 'en',
+      isCustomGatewayEnabled: () => false,
+      deleteProfile: async () => ({ ok: true }),
       switchProfile: async () => ({ ok: true }),
     },
     integrations: {
@@ -66,6 +69,10 @@ function fixture() {
       prepare: async () => ({ confirmationHandle: 'integration-handle' }),
       confirm: async () => ({ ok: true }),
       cancel: () => false,
+    },
+    browser: {
+      clearSiteData: async () => true,
+      translate: (key) => key,
     },
   });
   return { handlers, get pins() { return pins; }, get rules() { return rules; } };
@@ -81,18 +88,27 @@ test('facade registers exact routing certificate resource and school channels', 
     'delete-certificate-pin',
     'save-resource',
     'delete-resource',
+    'restore-builtin-resources',
     'reorder-resources',
     'toggle-resource-favorite',
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',
     'cancel-custom-gateway',
+    'delete-school-profile',
     'switch-school-profile',
     'list-integrations',
     'prepare-integration',
     'confirm-integration',
     'cancel-integration',
+    'clear-browser-data',
   ]);
+});
+
+test('browser-data handler has no renderer payload and clears only its active workspace', async () => {
+  const f = fixture();
+  assert.deepEqual(await f.handlers.get('clear-browser-data')({}), { ok: true });
+  assert.equal((await f.handlers.get('clear-browser-data')({}, { profileId: 'forbidden' })).ok, false);
 });
 
 test('routing and certificate handlers validate exact identities before mutation', async () => {
@@ -134,4 +150,34 @@ test('resource handlers preserve transactional CRUD and reject unknown IPC field
   assert.equal(invalid.resources.length, 1);
   assert.equal((await f.handlers.get('reorder-resources')({}, [id])).ok, true);
   assert.equal((await f.handlers.get('delete-resource')({}, id)).ok, true);
+});
+
+test('built-in resources can be hidden persistently and restored without editing the reviewed list', async () => {
+  const handlers = new Map();
+  const builtin = Object.freeze({
+    id: 'home', name: '学校主页', description: '', url: 'https://example.edu/',
+    route: 'campus', builtin: true,
+  });
+  let settings = { customResources: [], hiddenBuiltinResourceIds: [] };
+  const resources = () => settings.hiddenBuiltinResourceIds.includes(builtin.id) ? [] : [builtin];
+  registerCampusResourceIpc({
+    register: (channel, handler) => handlers.set(channel, handler),
+    loadSettings: () => ({ ...settings, hiddenBuiltinResourceIds: [...settings.hiddenBuiltinResourceIds] }),
+    saveSettings: (next) => { settings = next; },
+    runTransaction: async (build) => build().commit(),
+    safeResources: resources,
+    activityStore: {
+      snapshot: () => ({ favorites: { schemaVersion: 1, entries: [] } }),
+      toggleFavorite: () => {},
+      replaceFavorites: () => {},
+    },
+  });
+  const deleted = await handlers.get('delete-resource')({}, 'home');
+  assert.equal(deleted.ok, true);
+  assert.deepEqual(settings.hiddenBuiltinResourceIds, ['home']);
+  assert.deepEqual(deleted.resources, []);
+  const restored = await handlers.get('restore-builtin-resources')();
+  assert.equal(restored.ok, true);
+  assert.deepEqual(settings.hiddenBuiltinResourceIds, []);
+  assert.equal(restored.resources[0].id, 'home');
 });

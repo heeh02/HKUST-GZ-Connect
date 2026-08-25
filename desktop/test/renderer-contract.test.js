@@ -23,15 +23,12 @@ test('login fields keep native keyboard and password-manager semantics', () => {
     html,
     /<script src="\.\.\/lib\/resources\/presentation\/resource-view\.js"><\/script>/,
   );
+  assert.match(html, /<script src="student-home\.js"><\/script>/);
   assert.match(appJs, /updateLoginProgress\(s\)/);
   assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
-  assert.match(
-    appJs,
-    /const \{ filteredResources, routeLabel, visibleResources \} = window\.resourceView/,
-  );
+  assert.match(appJs, /window\.studentHome\.renderStudentHome/u);
   assert.doesNotMatch(appJs, /function evaluateLoginProgress\(/);
-  assert.doesNotMatch(appJs, /function visibleResources\(/);
-  assert.doesNotMatch(appJs, /function routeLabel\(/);
+  assert.doesNotMatch(appJs, /function visibleResources\(|function routeLabel\(/);
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
 });
 
@@ -44,7 +41,8 @@ test('login owns a modular bilingual School selector with an explicit unreviewed
   const appScript = html.indexOf('<script src="app.js"></script>');
   assert.ok(selectorScript > 0 && selectorScript < appScript);
   assert.match(css, /@media\s*\(max-width:\s*459px\)/u);
-  assert.doesNotMatch(appJs, /probeCustomGateway|confirmCustomGateway|schoolProfileSelect/u,
+  assert.match(appJs, /expectedProfileId: expectedProfileId|expectedProfileId \}/u);
+  assert.doesNotMatch(appJs, /probeCustomGateway|confirmCustomGateway|getElementById\(['"]schoolProfileSelect/u,
     'School onboarding belongs to its renderer feature module');
 });
 
@@ -82,7 +80,10 @@ test('WebResource shelf supports ID-only open, search, categories, favorites and
 test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /@media\s*\(min-width:\s*620px\)/);
   assert.match(css, /@media\s*\(max-width:\s*619px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*379px\)[\s\S]*\.resource-grid\s*\{[^}]*grid-template-columns:\s*1fr/u);
+  assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
+  assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
 });
 
 test('connected status remains static instead of continuously repainting Electron', () => {

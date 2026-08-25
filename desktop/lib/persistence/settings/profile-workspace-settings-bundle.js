@@ -77,6 +77,7 @@ function projectRuntimeSettings(authorityValue, { accountLabel = '' } = {}) {
     updateCheckedAt: update.checkedAt,
     routeDomains: workspace.routeDomains,
     customResources: local.resources,
+    hiddenBuiltinResourceIds: local.hiddenBuiltinResourceIds,
   }, { defaultRouteDomains: profileRouteDomains(authority) }));
 }
 
@@ -108,6 +109,7 @@ function splitRuntimeSettings(authorityValue, settingsValue) {
     localResources: validateLocalResourcesDocument({
       schemaVersion: 1,
       resources: settings.customResources,
+      hiddenBuiltinResourceIds: settings.hiddenBuiltinResourceIds,
     }),
   });
 }

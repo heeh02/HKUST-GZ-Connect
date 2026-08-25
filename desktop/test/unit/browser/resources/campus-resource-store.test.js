@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   deleteCustomResource,
+  hideBuiltinResource,
   reorderCustomResources,
   upsertCustomResource,
 } = require('../../../../lib/browser/resources/campus-resource-store');
@@ -51,6 +52,9 @@ test('deleting and reordering only affect local shortcuts', () => {
   assert.throws(() => deleteCustomResource(reordered, 'home', {
     builtinResources: BUILTINS,
   }), /内置/);
+  assert.deepEqual(hideBuiltinResource([], 'home', { builtinResources: BUILTINS }), ['home']);
+  assert.deepEqual(hideBuiltinResource(['home'], 'home', { builtinResources: BUILTINS }), ['home']);
+  assert.throws(() => hideBuiltinResource([], 'missing', { builtinResources: BUILTINS }), /不存在/);
 });
 
 test('shortcut mutations reject invalid user input', () => {
@@ -66,4 +70,20 @@ test('shortcut mutations reject invalid user input', () => {
   assert.equal(upsertCustomResource([], {
     name: '校园 IP', url: 'https://103.189.154.10:4433', route: 'campus',
   }).resource.route, 'campus');
+});
+
+test('custom shortcuts strip ordinary queries and reject temporary login parameters', () => {
+  const saved = upsertCustomResource([], {
+    name: '教务入口',
+    url: 'https://portal.example.edu/start?view=student&lang=zh',
+    route: 'campus',
+  });
+  assert.equal(saved.resource.url, 'https://portal.example.edu/start');
+  for (const key of ['code', 'token', 'ticket', 'SAMLResponse', 'RelayState']) {
+    assert.throws(() => upsertCustomResource([], {
+      name: '临时登录链接',
+      url: `https://portal.example.edu/callback?${key}=secret-value`,
+      route: 'campus',
+    }), /临时登录链接/u);
+  }
 });

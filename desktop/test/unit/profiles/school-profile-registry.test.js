@@ -97,7 +97,77 @@ function fixture(t, {
   return { root, manifest, profile };
 }
 
-test('loads the reviewed single-HKUST packaged registry and bounded views', () => {
+function appendReviewedProfile(target, { makeDefault = false } = {}) {
+  const profile = clone(sourceProfile);
+  profile.profileId = 'example-university';
+  profile.branding.localizedSchoolName = { zh: '示例大学', en: 'Example University' };
+  profile.branding.shortName = 'Example';
+  profile.branding.bundledAssetKey = 'example-logo';
+  profile.gateway.origin = 'https://vpn.example.edu';
+  profile.gateway.engineConfigRef = 'example-university-engine-config';
+  profile.browser.homeUrl = 'https://www.example.edu/';
+  profile.browser.campusDomains = ['example.edu'];
+  profile.browser.directPartnerDomains = [];
+  profile.browser.builtinResourcesRef = 'example-university-builtin-resources';
+  profile.browser.healthTargets = [
+    { host: 'www.example.edu', port: 443 },
+    { host: 'library.example.edu', port: 443 },
+  ];
+  profile.policy.reviewedDnsFallback = [];
+  const profileData = Buffer.from(`${JSON.stringify(profile, null, 2)}\n`);
+  const config = JSON.parse(sourceEngineConfig.toString('utf8'));
+  config.base_url = 'https://vpn.example.edu';
+  config.dns_fallback = [];
+  const configData = Buffer.from(`${JSON.stringify(config, null, 2)}\n`);
+  const resources = JSON.parse(sourceResources.toString('utf8'));
+  resources.resources = resources.resources.slice(0, 2).map((resource, index) => ({
+    ...resource,
+    id: `example-service-${index + 1}`,
+    localizedName: { zh: `示例服务 ${index + 1}`, en: `Example Service ${index + 1}` },
+    localizedDescription: { zh: '示例审核服务', en: 'Example reviewed service' },
+    name: `示例服务 ${index + 1}`,
+    description: '示例审核服务',
+    url: `https://service-${index + 1}.example.edu/`,
+    route: 'campus',
+  }));
+  const resourceData = Buffer.from(`${JSON.stringify(resources, null, 2)}\n`);
+  writeFile(target.root, 'assets/profiles/example-university/school-profile.json', profileData);
+  writeFile(target.root, 'assets/profiles/example-university/engine-config.json', configData);
+  writeFile(target.root, 'assets/profiles/example-university/builtin-resources.json', resourceData);
+  if (makeDefault) target.manifest.profiles[0].default = false;
+  target.manifest.profiles.push({
+    profileId: profile.profileId,
+    default: makeDefault,
+    document: {
+      path: 'assets/profiles/example-university/school-profile.json',
+      sha256: digest(profileData),
+    },
+    assets: [
+      {
+        key: 'example-university-engine-config',
+        kind: 'engine-config',
+        path: 'assets/profiles/example-university/engine-config.json',
+        sha256: digest(configData),
+      },
+      {
+        key: 'example-logo',
+        kind: 'branding',
+        path: 'assets/logo.svg',
+        sha256: digest(sourceLogo),
+      },
+      {
+        key: 'example-university-builtin-resources',
+        kind: 'builtin-resources',
+        path: 'assets/profiles/example-university/builtin-resources.json',
+        sha256: digest(resourceData),
+      },
+    ],
+  });
+  writeFile(target.root, 'assets/profiles/manifest.json',
+    `${JSON.stringify(target.manifest, null, 2)}\n`);
+}
+
+test('loads the reviewed HKUST packaged registry and bounded views', () => {
   const registry = new SchoolProfileRegistry({ packageRoot: desktopRoot }).load();
   const profile = registry.getDefaultProfile();
   assert.equal(profile.profileId, 'hkustgz');
@@ -253,13 +323,13 @@ test('resource asset is the only content source and invalid reviewed entries fai
   );
 });
 
-test('manifest permits exactly one default hkustgz profile and known asset kinds', (t) => {
+test('manifest permits exactly one default reviewed profile and known asset kinds', (t) => {
   const noDefault = fixture(t, {
     mutateManifest: (manifest) => { manifest.profiles[0].default = false; },
   });
   assert.throws(
     () => new SchoolProfileRegistry({ packageRoot: noDefault.root }).load(),
-    /exactly one default hkustgz/u,
+    /exactly one default reviewed profile/u,
   );
 
   const secondProfile = fixture(t, {
@@ -277,6 +347,19 @@ test('manifest permits exactly one default hkustgz profile and known asset kinds
     () => new SchoolProfileRegistry({ packageRoot: unknownKind.root }).load(),
     /kind is unsupported/u,
   );
+});
+
+test('registry accepts multiple reviewed schools without a compiled HKUST default', (t) => {
+  const target = fixture(t);
+  appendReviewedProfile(target, { makeDefault: true });
+  const registry = new SchoolProfileRegistry({ packageRoot: target.root }).load();
+  assert.equal(registry.getDefaultProfile().profileId, 'example-university');
+  assert.deepEqual(registry.listViews({ locale: 'en', compatibility: 'reviewed' })
+    .map(({ profileId }) => profileId), ['hkustgz', 'example-university']);
+  assert.equal(registry.getBuiltinResources('example-university').length, 2);
+  assert.equal(registry.resolveAsset(
+    'example-university', 'example-university-engine-config', 'engine-config',
+  ).sha256, target.manifest.profiles[1].assets[0].sha256);
 });
 
 test('package-relative paths cannot escape the package root', (t) => {

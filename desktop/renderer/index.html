@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';" />
   <title>HKUST(GZ) Connect</title>
+  <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -19,7 +20,7 @@
     <h1 id="brandTitle" class="brand-title">HKUST<span class="paren">(GZ)</span> Connect</h1>
     <p id="brandSub" class="brand-sub" data-i18n="brand.sub">香港科技大学(广州) · 校园 VPN</p>
     <div class="lg-form">
-      <div class="school-picker" aria-labelledby="schoolPickerLabel">
+      <div id="schoolPicker" class="school-picker" aria-labelledby="schoolPickerLabel">
         <div class="school-picker-head">
           <label id="schoolPickerLabel" class="lbl school-picker-label" for="schoolProfileSelect" data-i18n="school.title">学校 / School</label>
           <span id="schoolProfileStatus" class="school-status" aria-live="polite"></span>
@@ -27,6 +28,7 @@
         <div class="school-picker-row">
           <select id="schoolProfileSelect" class="inp school-select" aria-describedby="schoolProfileError"></select>
           <button id="switchSchoolProfile" class="ghost sm school-switch" type="button" data-i18n="school.switch">切换</button>
+          <button id="deleteSchoolProfile" class="ghost sm school-delete" type="button" hidden data-i18n="school.delete">删除本地配置</button>
         </div>
         <div id="customSchoolPanel" class="custom-school-panel" hidden>
           <label class="lbl" for="customSchoolName" data-i18n="school.name">学校名称（可选）</label>
@@ -89,6 +91,7 @@
       <section class="page active" data-page="connect">
         <div class="hero-card" id="connTop">
           <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
+          <span id="profileTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
           <div class="conn-ip">IP <span id="connIp">—</span></div>
           <button class="switch" id="power" aria-label="连接开关" data-i18n-attr="aria-label:connect.powerLabel"><span class="knob"></span></button>
           <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
@@ -98,22 +101,12 @@
           <div class="quick-card">
             <div class="quick-head">
               <div>
-                <div class="quick-title" data-i18n="quick.title">打开校园网站</div>
-                <div class="quick-sub" data-i18n="quick.sub">应用内多标签浏览器，无需 Clash，不影响其他软件上网</div>
+                <div class="quick-title" data-i18n="resources.homeTitle">校园服务</div>
+                <div class="quick-sub" data-i18n="resources.homeSub">搜索、收藏并直接打开校园网页，需要时会自动连接。</div>
               </div>
-              <span class="quick-badge" data-i18n="quick.badge">推荐</span>
             </div>
-            <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"
-                   placeholder="可选：粘贴校内网址；留空打开学校主页" data-i18n-attr="placeholder:quick.urlPlaceholder" />
-            <div class="quick-actions">
-              <button id="quickCampus" class="primary quick-action">连接并打开校园网站</button>
-              <button id="quickAddCampus" class="quick-add-action" type="button" data-i18n="quick.addOpen">添加到常用并打开</button>
-            </div>
-            <p id="quickErr" class="quick-error"></p>
-            <p id="quickAddErr" class="quick-error"></p>
-            <p id="resourceSaved" class="quick-saved" aria-live="polite"></p>
             <div class="resource-toolbar">
-              <span class="resource-toolbar-title" data-i18n="resources.title">常用网站</span>
+              <span class="resource-toolbar-title" data-i18n="resources.title">校园网站</span>
               <span class="resource-toolbar-actions">
                 <button id="toggleResources" class="mini" type="button">展开全部</button>
                 <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
@@ -134,7 +127,21 @@
                 <option value="custom" data-i18n="resources.categoryCustom">自定义</option>
               </select>
             </div>
-            <div id="campusResources" class="resource-grid" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
+            <div id="campusResources" class="resource-sections" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
+            <details class="custom-url-details">
+              <summary data-i18n="resources.openOther">打开其他网址</summary>
+              <div class="custom-url-body">
+                <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"
+                       placeholder="粘贴网址" data-i18n-attr="placeholder:quick.urlPlaceholder" />
+                <div class="quick-actions">
+                  <button id="quickCampus" class="primary quick-action">打开网址</button>
+                  <button id="quickAddCampus" class="quick-add-action" type="button" data-i18n="quick.addOpen">添加到常用并打开</button>
+                </div>
+                <p id="quickErr" class="quick-error"></p>
+                <p id="quickAddErr" class="quick-error"></p>
+                <p id="resourceSaved" class="quick-saved" aria-live="polite"></p>
+              </div>
+            </details>
           </div>
           <div class="collapsible-panel" data-collapsible="stats" hidden>
             <div class="stat-grid" id="statGrid" hidden>
@@ -170,10 +177,23 @@
 
       <!-- CONTROL TOWER -->
       <section class="page" data-page="tower" hidden>
-        <h2 class="page-h" data-i18n="tower.title">控制塔</h2>
+        <div class="page-heading">
+          <div>
+            <h2 class="page-h" data-i18n="tower.title">控制塔</h2>
+            <p class="page-sub" data-i18n="tower.subtitle">连接参数、网站分流与高级工具集中管理。</p>
+          </div>
+          <span class="page-heading-chip" data-i18n="tower.advancedBadge">高级</span>
+        </div>
 
-        <div class="card">
-          <div class="card-title" data-i18n="tower.connectionPort">连接与端口</div>
+        <div class="tower-grid">
+        <div class="card tower-card tower-network-card">
+          <div class="card-heading">
+            <span class="card-heading-icon" aria-hidden="true">⌁</span>
+            <div>
+              <div class="card-title" data-i18n="tower.connectionPort">连接与端口</div>
+              <p class="card-sub" data-i18n="tower.connectionPortSub">管理本地入口与自动恢复策略。</p>
+            </div>
+          </div>
           <div class="frow"><span class="fk" data-i18n="tower.socksPort">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65535" /></div>
           <div class="proxy-auth-setting">
             <label class="sw" for="strictProxyAuth">
@@ -189,7 +209,7 @@
                 <span class="proxy-auth-less" data-i18n="tower.strictProxyAuthLess">收起功能说明</span>
                 <span class="proxy-auth-chevron" aria-hidden="true">⌄</span>
               </summary>
-              <p id="strictProxyAuthHint" class="hint" data-i18n="tower.strictProxyAuthHint">例如实验室多人共用一台电脑时，开启后可降低其他本机程序或登录用户直接借用你校园隧道的风险；个人电脑通常保持关闭即可。开启前请先点击“复制 Clash 节点”更新一次 Clash，SSH 复制一次配置即可。开关会立即保存，已连接时自动重连。</p>
+              <p id="strictProxyAuthHint" class="hint" data-i18n="tower.strictProxyAuthHint">新安装默认开启；校园浏览器会自动处理，外部工具可在下方生成配置。只有旧 SOCKS5 客户端无法认证时才需关闭。</p>
             </details>
             <div id="proxyAuthMigration" class="proxy-auth-migration" hidden>
               <p data-i18n="tower.proxyAuthMigration">升级前的兼容设置允许本机其他程序无需认证使用隧道。请选择启用认证，或明确继续兼容旧客户端。</p>
@@ -206,10 +226,16 @@
           <p class="hint" data-i18n="tower.portHint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
         </div>
 
-        <div class="card">
-          <div class="card-title" data-i18n="tower.routeDomains">默认分流网站</div>
+        <div class="card tower-card tower-routing-card">
+          <div class="card-heading">
+            <span class="card-heading-icon" aria-hidden="true">↗</span>
+            <div>
+              <div class="card-title" data-i18n="tower.routeDomains">默认分流网站</div>
+              <p class="card-sub" data-i18n="tower.routeDomainsSub">统一管理校园访问和普通网络的路径。</p>
+            </div>
+          </div>
           <textarea id="routeDomains" class="inp route-domains" rows="5" spellcheck="false" placeholder="每行一个域名，例如 hkust-gz.edu.cn" data-i18n-attr="placeholder:tower.routeDomainsPlaceholder"></textarea>
-          <p class="hint" data-i18n="tower.routeDomainsHint">此列表只用于外部应用的 PAC 分流。应用内校园浏览器会把自身流量隔离地送入隧道，不依赖该列表。</p>
+          <p class="hint" data-i18n="tower.routeDomainsHint">用于生成 Clash / Mihomo 等外部工具的校园分流规则；校园浏览器会自动分流。</p>
           <div class="manager-entry">
             <div>
               <div class="manager-entry-title" data-i18n="routing.title">网站网络规则</div>
@@ -219,9 +245,15 @@
           </div>
         </div>
 
-        <div class="card">
-          <div class="card-title" data-i18n="integration.title">外部工具集成</div>
-          <p class="hint integration-hint" data-i18n="integration.hint">为 Clash、Mihomo、Clash Verge Rev、OpenSSH / VS Code 和 PAC 生成与当前学校绑定的配置。所有写入都会先预览并再次确认。</p>
+        <div class="card tower-card tower-tools-card">
+          <div class="card-heading">
+            <span class="card-heading-icon" aria-hidden="true">⌘</span>
+            <div>
+              <div class="card-title" data-i18n="integration.title">外部工具集成</div>
+              <p class="card-sub" data-i18n="tower.toolsSub">按需生成配置，应用不会改动第三方软件。</p>
+            </div>
+          </div>
+          <p class="hint integration-hint" data-i18n="integration.hint">生成与当前学校绑定的 Clash、Mihomo 配置和 VS Code Remote-SSH 片段；应用不会安装或修改第三方软件。</p>
           <div id="integrationList" class="integration-list" aria-live="polite"></div>
           <p id="integrationStatus" class="integration-status" data-i18n="integration.loading">正在读取集成状态…</p>
           <p id="integrationError" class="dialog-error" role="alert"></p>
@@ -233,8 +265,9 @@
             <button class="mini" id="openLog2" data-i18n="tower.openLog">打开日志</button>
           </div>
         </div>
+        </div>
 
-        <div class="row">
+        <div class="row tower-actions">
           <button id="towerSave" class="primary sm" data-i18n="tower.save">保存</button>
           <button id="towerReconnect" class="ghost sm" data-i18n="tower.saveReconnect">保存并重连</button>
           <span id="towerSaved" class="saved-tip"></span>
@@ -243,22 +276,49 @@
 
       <!-- NOTIFICATIONS / LOGS -->
       <section class="page" data-page="notif" hidden>
-        <h2 class="page-h"><span data-i18n="notif.title">通知 / 日志</span> <button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></h2>
+        <div class="page-heading">
+          <div>
+            <h2 class="page-h"><span data-i18n="notif.title">通知与帮助</span></h2>
+            <p class="page-sub" data-i18n="notif.subtitle">查看当前连接状态；需要排错时再展开诊断日志。</p>
+          </div>
+        </div>
         <div id="settingsNotice" class="local-notice" hidden></div>
-        <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
+        <div id="notificationCard" class="notification-card">
+          <span class="notification-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </span>
+          <div class="notification-content">
+            <div id="notificationTitle" class="card-title" data-i18n="notif.currentStatus">当前状态</div>
+            <p id="notificationSummary" class="notification-summary"></p>
+          </div>
+          <button id="notificationAction" class="primary sm" type="button" data-i18n="notif.reconnect">重新连接</button>
+        </div>
+        <details class="diagnostic-details">
+          <summary data-i18n="notif.diagnostics">高级诊断日志</summary>
+          <div class="diagnostic-actions"><button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></div>
+          <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
+        </details>
       </section>
 
       <!-- SETTINGS -->
       <section class="page" data-page="settings" hidden>
-        <h2 class="page-h" data-i18n="settings.title">设置</h2>
-        <div class="card">
+        <div class="page-heading">
+          <div>
+            <h2 class="page-h" data-i18n="settings.title">设置</h2>
+            <p class="page-sub" data-i18n="settings.subtitle">账号、界面、隐私与更新选项。</p>
+          </div>
+        </div>
+        <div class="settings-grid">
+        <div class="card settings-card settings-identity-card">
           <div class="card-title" data-i18n="settings.account">当前账号</div>
           <div class="acct" id="acct">—</div>
           <div class="card-title gateway-title" data-i18n="settings.gateway">网关</div>
           <div id="settingsGateway" class="acct">remote.hkust-gz.edu.cn</div>
+          <span id="settingsTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
           <p class="hint" data-i18n="settings.gatewayHint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
         </div>
-        <div class="card">
+        <div class="card settings-card settings-language-card">
+          <div class="card-title" data-i18n="settings.appearance">语言与界面</div>
           <div class="frow">
             <label class="fk" for="language">语言 / Language</label>
             <select id="language" class="inp action-select">
@@ -268,7 +328,7 @@
             </select>
           </div>
         </div>
-        <div class="card">
+        <div class="card settings-card settings-window-card">
           <div class="card-title" data-i18n="settings.windowBehavior">窗口行为</div>
           <div class="frow">
             <label class="fk" for="closeAction" data-i18n="settings.closeAction">点击关闭按钮时</label>
@@ -279,7 +339,17 @@
             </select>
           </div>
         </div>
-        <div class="card">
+        <div class="card settings-card">
+          <div class="manager-entry">
+            <div>
+              <div class="card-title" data-i18n="settings.browserData">校园浏览器数据</div>
+              <p class="hint" data-i18n="settings.browserDataHint">清除当前学校的 Cookie、缓存和网站存储；收藏、网站密码和证书信任不会删除。</p>
+            </div>
+            <button id="clearBrowserData" class="mini" type="button" data-i18n="settings.clearBrowserData">清除数据</button>
+          </div>
+          <p id="browserDataStatus" class="settings-action-status" aria-live="polite"></p>
+        </div>
+        <div class="card settings-card">
           <div class="manager-entry">
             <div>
               <div class="card-title" data-i18n="certificates.title">证书信任</div>
@@ -288,7 +358,23 @@
             <button id="manageCertificatePins" class="mini" type="button" data-i18n="certificates.manage">管理信任</button>
           </div>
         </div>
-        <button id="logoutBtn" class="danger" data-i18n="settings.logout">退出登录 / 切换账号</button>
+        <div class="card settings-card">
+          <div class="manager-entry">
+            <div>
+              <div class="card-title" data-i18n="settings.advanced">高级设置</div>
+              <p class="hint" data-i18n="settings.advancedHint">SOCKS 端口、外部工具、网络规则和连接诊断。普通用户无需修改。</p>
+            </div>
+            <button id="openAdvancedSettings" class="mini" type="button" data-i18n="settings.openAdvanced">打开高级设置</button>
+          </div>
+        </div>
+        </div>
+        <div class="card danger-zone">
+          <div>
+            <div class="card-title" data-i18n="settings.credentialTitle">登录凭据</div>
+            <p class="hint logout-hint" data-i18n="settings.logoutHint">这不会同时删除校园浏览器的 Cookie、网站密码、收藏或记录。</p>
+          </div>
+          <button id="logoutBtn" class="danger" data-i18n="settings.logout">移除校园网络登录凭据</button>
+        </div>
         <div class="foot">
           <a id="openLogLink" href="#" data-i18n="settings.openFullLog">打开完整日志</a><span class="sep">·</span><span id="ver">—</span><span class="sep">·</span>
           <button id="checkUpdateBtn" class="mini" type="button" data-i18n="settings.checkUpdate">检查更新</button>
@@ -346,6 +432,7 @@
         <p id="resourceFormSaved" class="dialog-saved" aria-live="polite"></p>
       </div>
       <div class="dialog-actions">
+        <button id="restoreBuiltinResources" class="mini" type="button" data-i18n="dialog.restoreBuiltins">恢复内置网站</button>
         <span id="resourceEditHint" class="dialog-edit-hint"></span>
         <button id="cancelResource" class="ghost sm" type="button">清空</button>
         <button id="saveResource" class="primary sm" type="submit">添加网站</button>
@@ -447,6 +534,9 @@
   <script src="i18n.js"></script>
   <script src="../lib/browser/auth/login-flow.js"></script>
   <script src="../lib/resources/presentation/resource-view.js"></script>
+  <script src="student-home.js"></script>
+  <script src="notification-view.js"></script>
+  <script src="browser-data-settings.js"></script>
   <script src="manager-view.js"></script>
   <script src="routing-manager.js"></script>
   <script src="certificate-manager.js"></script>

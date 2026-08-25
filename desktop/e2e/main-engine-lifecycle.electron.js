@@ -91,6 +91,7 @@ async function run() {
   const savedCredential = await invoke(control, `window.api.save({
     username: 'synthetic-main-user',
     password: 'synthetic-main-password',
+    expectedProfileId: 'hkustgz',
   })`);
   assert.equal(savedCredential.ok, true);
   const savedPolicy = await invoke(control, `window.api.save({

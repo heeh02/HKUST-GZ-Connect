@@ -1,9 +1,10 @@
 'use strict';
 
-const DEFAULT_CAMPUS_HOME = 'https://www.hkust-gz.edu.cn/';
 const BLANK_CAMPUS_HOME = 'about:blank';
+const DEFAULT_CAMPUS_HOME = BLANK_CAMPUS_HOME;
 const {
   CAMPUS_PARTITION,
+  NEUTRAL_CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
 } = require('../../routing/policy/campus-route');
@@ -133,7 +134,7 @@ function redactedFailedUrl(value, fallback) {
   }
 }
 
-function errorPage(failedUrl, description, t = createT('zh')) {
+function errorPage(failedUrl, description, t = createT('zh'), route = ROUTE_CAMPUS) {
   const url = escapeHtml(redactedFailedUrl(failedUrl, t('errorPage.unknownUrl')));
   const reason = escapeHtml(description || t('errorPage.networkFailed'));
   const html = `<!doctype html><meta charset="utf-8">
@@ -147,9 +148,20 @@ function errorPage(failedUrl, description, t = createT('zh')) {
       code{display:block;margin-top:16px;padding:12px;background:#f4f7fb;border-radius:10px;word-break:break-all;color:#344054}
     </style>
     <main><h1>${escapeHtml(t('errorPage.heading'))}</h1>
-    <p>${escapeHtml(t('errorPage.body'))}</p>
+    <p>${escapeHtml(t(route === ROUTE_DIRECT ? 'errorPage.bodyDirect' : 'errorPage.bodyCampus'))}</p>
     <code>${url}</code><p>${reason}</p></main>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function neutralHomePage(profile, t = createT('zh')) {
+  const school = escapeHtml(profile?.schoolName || t('browser.workspace'));
+  const warning = profile?.unverified
+    ? `<p class="warning">${escapeHtml(t('browser.neutralHomeUnverified'))}</p>` : '';
+  return `<!doctype html><meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+    <title>${escapeHtml(t('browser.workspace'))}</title>
+    <style>body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}main{max-width:680px;margin:12vh auto;padding:36px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}h1{margin:0 0 10px;color:#0b2a5b;font-size:25px}p{line-height:1.7;color:#667085}.warning{color:#7a5200;background:#fff1cf;border-radius:10px;padding:10px 12px}</style>
+    <main><h1>${school}</h1>${warning}<p>${escapeHtml(t('browser.neutralHomeBody'))}</p></main>`;
 }
 
 class CampusBrowser {
@@ -164,6 +176,8 @@ class CampusBrowser {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    profilePresentation = null,
+    showItemInFolder = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
@@ -171,7 +185,7 @@ class CampusBrowser {
     locale,
     t,
     onError,
-    partition = CAMPUS_PARTITION,
+    partition = NEUTRAL_CAMPUS_PARTITION,
   }) {
     this.BrowserWindow = BrowserWindow;
     this.WebContentsView = WebContentsView;
@@ -189,6 +203,15 @@ class CampusBrowser {
     this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
+    this.profilePresentation = profilePresentation &&
+      typeof profilePresentation.schoolName === 'string' &&
+      typeof profilePresentation.unverified === 'boolean'
+      ? Object.freeze({
+        schoolName: profilePresentation.schoolName.slice(0, 160),
+        unverified: profilePresentation.unverified,
+      })
+      : Object.freeze({ schoolName: this.t('browser.workspace'), unverified: false });
+    this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
       : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
@@ -227,6 +250,7 @@ class CampusBrowser {
     // live exclusively in CertificateController.
     this.certificateDecisions = this.certificateController.decisions;
     this.downloadSessions = new Set();
+    this.downloadState = null;
     this.findOpen = false;
     this.lastFindQuery = '';
     this.scheduledLayout = null;
@@ -256,7 +280,10 @@ class CampusBrowser {
     this.locale = nextLocale === 'en' ? 'en' : 'zh';
     this.t = typeof nextT === 'function' ? nextT : createT(this.locale);
     if (!this.window || this.window.isDestroyed()) return;
-    this.window.setTitle(this.t('browser.windowTitle'));
+    this.window.setTitle(this.t('browser.windowTitleForSchool', {
+      school: this.profilePresentation.schoolName,
+      trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
+    }));
     this.window.webContents.send?.('campus-toolbar-locale', this.locale);
     this.updateToolbar();
   }
@@ -294,9 +321,39 @@ class CampusBrowser {
         return;
       }
       item.setSavePath(result.filePath);
-      item.once('done', (_event, state) => {
+      const filename = String(item.getFilename() || '').slice(0, 160);
+      const updateProgress = () => {
+        const total = Number(item.getTotalBytes?.());
+        const received = Number(item.getReceivedBytes?.());
+        const percent = Number.isFinite(total) && total > 0 && Number.isFinite(received)
+          ? Math.max(0, Math.min(100, Math.round(received * 100 / total))) : null;
+        this.downloadState = Object.freeze({ filename, status: 'downloading', percent });
+        this.scheduleToolbarUpdate();
+      };
+      item.on?.('updated', updateProgress);
+      updateProgress();
+      item.once('done', async (_event, state) => {
+        this.downloadState = Object.freeze({
+          filename,
+          status: state === 'completed' ? 'completed' : 'interrupted',
+          percent: state === 'completed' ? 100 : null,
+        });
+        this.scheduleToolbarUpdate();
         if (state === 'interrupted' && this.onError) {
           this.onError(this.t('download.interrupted', { filename: item.getFilename() }));
+        }
+        if (state === 'completed' && typeof this.dialog.showMessageBox === 'function') {
+          try {
+            const prompt = await this.dialog.showMessageBox(this.window, {
+              type: 'info',
+              message: this.t('download.completed', { filename }),
+              buttons: [this.t('download.showInFolder'), this.t('common.close')],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true,
+            });
+            if (prompt.response === 0) this.showItemInFolder(result.filePath);
+          } catch {}
         }
       });
     } catch {
@@ -467,6 +524,7 @@ class CampusBrowser {
         loading: tab.loading,
         route: tab.route,
       })),
+      download: this.downloadState,
     };
     const serialized = JSON.stringify(state);
     if (serialized === this.lastToolbarState) return;
@@ -496,6 +554,7 @@ class CampusBrowser {
     const navigation = navigationForContents(active?.view.webContents);
 
     if (command === 'new-tab') this.createTab(this.homeUrl);
+    else if (command === 'home' && active) this.navigate(this.homeUrl, active);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -634,7 +693,7 @@ class CampusBrowser {
       tab.renderingError = true;
       this.clearCredentialCandidate(tab);
       this.clearSlowTimer(tab);
-      contents.loadURL(errorPage(failedUrl, description, this.t)).catch(() => {});
+      contents.loadURL(errorPage(failedUrl, description, this.t, tab.route)).catch(() => {});
       this.scheduleToolbarUpdate();
     };
     contents.on('did-fail-load', handleLoadFailure);
@@ -734,6 +793,7 @@ class CampusBrowser {
       tab.failedUrl,
       this.t('errorPage.rendererCrash', { reason }),
       this.t,
+      tab.route,
     )).catch(() => {
       if (this.onError) this.onError(this.t('errorPage.rendererCrash', { reason }));
     });
@@ -950,7 +1010,10 @@ class CampusBrowser {
       height: 740,
       minWidth: 660,
       minHeight: 460,
-      title: this.t('browser.windowTitle'),
+      title: this.t('browser.windowTitleForSchool', {
+        school: this.profilePresentation.schoolName,
+        trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
+      }),
       backgroundColor: '#f7f9fc',
       autoHideMenuBar: true,
       ...campusWindowChrome(process.platform),
@@ -965,7 +1028,11 @@ class CampusBrowser {
         safeDialogs: true,
       },
     });
-    await this.window.loadFile(this.toolbarFile, { query: { lang: this.locale } });
+    await this.window.loadFile(this.toolbarFile, { query: {
+      lang: this.locale,
+      school: this.profilePresentation.schoolName,
+      unverified: this.profilePresentation.unverified ? '1' : '0',
+    } });
     this.window.webContents.on('ipc-message', (_event, channel, payload) => {
       if (channel === 'campus-toolbar-command') this.handleToolbarCommand(payload);
     });
@@ -999,7 +1066,13 @@ class CampusBrowser {
     tab.failedUrl = '';
     tab.renderingError = false;
     tab.crashed = false;
-    tab.view.webContents.loadURL(url).catch(() => {
+    const loading = tab.view.webContents.loadURL(url);
+    loading.then(() => {
+      if (url !== BLANK_CAMPUS_HOME || tab.view.webContents.isDestroyed()) return;
+      const source = neutralHomePage(this.profilePresentation, this.t);
+      const script = `document.open();document.write(${JSON.stringify(source)});document.close();`;
+      tab.view.webContents.executeJavaScript(script).catch(() => {});
+    }).catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
     });
@@ -1078,6 +1151,7 @@ module.exports = {
   CAMPUS_PARTITION,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
+  NEUTRAL_CAMPUS_PARTITION,
   BLANK_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
   MAX_TABS,
@@ -1087,6 +1161,7 @@ module.exports = {
   campusProxyConfig,
   campusWindowChrome,
   errorPage,
+  neutralHomePage,
   nextZoomFactor,
   navigationForContents,
   normalizeCampusUrl,

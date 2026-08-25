@@ -11,7 +11,7 @@ const {
   campusProxyConfig,
   pacDataUrl,
 } = require('../../../../lib/browser/session/browser-session-manager');
-const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../../../lib/routing/policy/campus-route');
+const { CAMPUS_PARTITION, NEUTRAL_CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../../../lib/routing/policy/campus-route');
 
 function validPac(port) {
   return {
@@ -62,7 +62,7 @@ test('one persistent Session carries both PAC routes without redundant reconfigu
   assert.equal(await manager.configure(6180), browserSession);
   assert.equal(calls.filter(([kind]) => kind === 'proxy').length, 1);
   assert.deepEqual(calls.filter(([kind]) => kind === 'partition').map((call) => call[1]), [
-    CAMPUS_PARTITION,
+    NEUTRAL_CAMPUS_PARTITION,
   ]);
   assert.equal(manager.sessionForRoute(ROUTE_CAMPUS), browserSession);
   assert.equal(manager.sessionForRoute(ROUTE_DIRECT), browserSession);

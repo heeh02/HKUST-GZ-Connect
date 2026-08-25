@@ -21,7 +21,7 @@ const {
   runCredentialSettingsMutation,
 } = require('./lib/persistence/credentials/credential-settings-transaction');
 const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
-const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, ResourceLibraryRuntime, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
+const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, customGatewayProductAvailability, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, ResourceLibraryRuntime, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -46,10 +46,9 @@ const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
 const { CampusBrowserManager } = require('./lib/browser/session/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
-  createControlStateSnapshot,
+  createControlStateSnapshot, createCustomProfileDeletionRuntime,
   createExternalIntegrationRuntime,
   createIntegrationTargetSelector,
-  createLegacyExternalProxyActions,
   createSchoolProfileOnboardingRuntime,
   registerControlDataIpc,
   registerCoreControlIpc,
@@ -183,7 +182,7 @@ let stableProxyCredential = null;
 let state = {
   clientIp: null,
   dnsMode: 'unknown',
-  lastError: null,
+  lastError: null, failureCode: null, failureKind: 'none',
   settingsError: null,
   recoveryError: null,
   notice: null,
@@ -275,12 +274,12 @@ const persistenceRuntime = new DesktopPersistenceRuntime({
     hasCredential: () => hasStoredPassword(CRED, process.platform),
   },
 });
-const initializeMultiSchoolStartup = createMultiSchoolStartupInitializer({ userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, desktopDir: __dirname });
-const schoolProfileOnboarding = createSchoolProfileOnboardingRuntime({
-  userData: DATA, probeLaunch: resolveGatewayProbeLaunch({ appIsPackaged: app.isPackaged, baseDirectory: __dirname, nativeProbe: gatewayProbePath(), execPath: process.execPath }), spawnProcess: spawn,
+const initializeMultiSchoolStartup = createMultiSchoolStartupInitializer({ userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, desktopDir: __dirname }); const customProfileDeletion = createCustomProfileDeletionRuntime({ userData: DATA, withCandidateDirectory: (callback) => initializeMultiSchoolStartup.withDirectory(callback), electronSession: session });
+const schoolProfileOnboarding = createSchoolProfileOnboardingRuntime({ userData: DATA, probeLaunch: resolveGatewayProbeLaunch({ appIsPackaged: app.isPackaged, baseDirectory: __dirname, nativeProbe: gatewayProbePath(), execPath: process.execPath }), spawnProcess: spawn,
   getActiveContext: () => activeSchoolProfile.activeContextBinding(), listProfiles: (options) => initializeMultiSchoolStartup.listViews(options),
   onDiagnostic: (code) => logWriter?.append(`[profile-onboarding] ${code}\n`),
 });
+const customGatewayOnboardingEnabled = customGatewayProductAvailability();
 function loadSettings() { return persistenceRuntime.loadSettings(); }
 function reportSettingsReadFailure(cause, { emitState = true } = {}) {
   if (cause?.code === 'SETTINGS_READ_FAILED') return cause;
@@ -439,7 +438,7 @@ function proxyHelperPath() {
   });
 }
 function campusResources(settings = loadSettingsOrReport()) {
-  return activeSchoolProfile.mergeResourceLibrary(settings.customResources);
+  return activeSchoolProfile.mergeResourceLibrary(settings.customResources, settings.hiddenBuiltinResourceIds);
 }
 function safeCampusResources(settings = null) {
   try { return campusResources(settings || loadSettingsOrReport()); }
@@ -449,7 +448,7 @@ function safeCampusResources(settings = null) {
   }
 }
 function safeCampusResourceLibrary(settings = null) {
-  return resourceLibraryRuntime.list(settings);
+  return resourceLibraryRuntime.listLocalized(settings, locale);
 }
 const certificateTrustStore = new CampusCertificateTrustStore({
   filePath: CAMPUS_CERTIFICATE_TRUST,
@@ -641,7 +640,7 @@ function handleEngineClose({ code, generation }, diagnosticTail,
     stopReason: structuredStopReason,
     diagnosticText: diagnosticTail,
   });
-  const terminalFailure = failureKind === 'terminal';
+  const terminalFailure = failureKind === 'terminal'; state.failureKind = failureKind; state.failureCode = structuredFatalCode || structuredStopReason || null;
   if (!structuredFatalCode && !state.lastError) {
     state.lastError = classifyEngineStopReason(structuredStopReason, stoppedSocksPort, t);
   }
@@ -737,7 +736,7 @@ async function connectOnce(isRetry, intent) {
   let username = '';
   let pw;
   let engineConfigBinding;
-  state.lastError = null;
+  state.lastError = null; state.failureCode = null; state.failureKind = 'none';
   state.clientIp = null;
   state.dnsMode = 'unknown'; activeSchoolProfile.clearCapabilitySnapshot();
   emit();
@@ -1276,6 +1275,7 @@ campusBrowserManager = new CampusBrowserManager({
   getSocksPort: socksPort,
   getLocale: () => locale,
   getTranslator: () => t,
+  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, showItemInFolder: (file) => shell.showItemInFolder(file),
   showRoutingRules: () => {
     desktopShell?.showWindow();
     desktopShell?.send('open-routing-rules');
@@ -1289,20 +1289,11 @@ campusBrowserManager = new CampusBrowserManager({
 const integrationTargetSelector = createIntegrationTargetSelector({ dialog, getParentWindow: () => desktopShell?.window || null, homeDirectory: app.getPath('home') });
 const externalIntegrationRuntime = createExternalIntegrationRuntime({
   enabled: preReadyStorage.mode === 'profile-workspace', workspaceRoot: preReadyStorage.authority?.layout?.workspace?.root,
-  recordFile: preReadyStorage.authority?.layout?.workspace?.externalIntegrations,
   getAuthority: () => persistenceRuntime.currentAuthority(), withProfileDocument: activeSchoolProfile.withProfileDocument,
   getSettings: loadSettingsOrReport, getUserRules: () => domainRoutePolicy.list(), getServerResources: () => serverCampusResources,
   getProxyCredential: loadStableProxyCredential, getPacSource: () => { const settings = loadSettingsOrReport(); return buildPac(settings.routeDomains, Number(settings.port), domainRoutePolicy.options()); },
   ensureSidecar: () => ensureExternalProxyAccess(socksPort()), writeClipboard: (text) => (clipboard.writeText(text), true),
   helperPath: proxyHelperPath(), credentialFile: PROXY_HELPER_CREDENTIAL, selectTarget: integrationTargetSelector,
-});
-const legacyExternalProxyActions = createLegacyExternalProxyActions({
-  getSettings: loadSettingsOrReport, ensureAccess: ensureExternalProxyAccess,
-  currentGeneration: () => engineSupervisor.currentGeneration, hasActiveEngine: () => engineSupervisor.hasActive,
-  activeAuthentication: (generation) => activeProxyCredential?.socksAuthentication(generation) || null,
-  reconnect, writeClipboard: (text) => clipboard.writeText(text), helperPath: proxyHelperPath,
-  credentialFile: () => PROXY_HELPER_CREDENTIAL, profileId: () => activeSchoolProfile.activeContextBinding().profileId,
-  errorText: () => t('error.proxyCredentialUnavailable'),
 });
 const profileSwitching = createMainProfileSwitchComposition({
   enabled: preReadyStorage.mode === 'profile-workspace',
@@ -1337,7 +1328,7 @@ async function connectAndOpenCampusBrowser(rawRequest) {
 async function openCampusResourceById({ resourceId } = {}) {
   try {
     return await runActiveContextTransaction(() => ({
-      commit: () => resourceLibraryRuntime.openById(resourceId),
+      commit: () => resourceLibraryRuntime.openById(resourceId, locale),
     }));
   }
   catch { return { ok: false, error: t('error.resourceUnavailable') }; }
@@ -1418,8 +1409,10 @@ registerControlDataIpc({
     activityStore: resourceLibraryRuntime,
   },
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
+    isCustomGatewayEnabled: () => customGatewayOnboardingEnabled,
+    deleteProfile: (request) => customProfileDeletion.deleteProfile({ ...request, activeProfileId: activeSchoolProfile.activeContextBinding().profileId }),
     switchProfile: switchSchoolProfile },
-  integrations: externalIntegrationRuntime,
+  integrations: externalIntegrationRuntime, browser: { clearSiteData: () => campusBrowserManager.clearSiteData(), translate: (key) => t(key) },
 });
 registerSettingsCredentialIpc({
   register: trustedHandle,
@@ -1450,14 +1443,20 @@ registerSettingsCredentialIpc({
   hasActiveEngine: () => engineSupervisor.hasActive,
   reconnect,
   disconnect,
+  getActiveProfileId: () => activeSchoolProfile.activeContextBinding().profileId,
 });
 registerCoreControlIpc({
   register: trustedHandle,
   getState: controlStateSnapshot,
+  getLoginAccount: () => {
+    try {
+      if (hasStoredCredential()) return { ok: false, username: '' };
+      return { ok: true, username: loadSettingsOrReport().username };
+    } catch { return { ok: false, username: '' }; }
+  },
   connect: async () => { const { intent: _intent, ...result } = await connect(); return result; },
   disconnect: () => disconnect(),
   reconnect: async () => { const { intent: _intent, ...result } = await reconnect(); return result; },
-  ...legacyExternalProxyActions,
   getLogs: async () => {
     await logWriter.flush().catch(reportLogFailure);
     return readLogTail(LOG);
@@ -1597,6 +1596,7 @@ app.whenReady().then(() => {
     return;
   }
   initializeMultiSchoolStartup(persistenceRuntime, activeSchoolProfile);
+  customProfileDeletion.recover().then((result) => { if (!result.ok) logWriter?.append('[profile-deletion] recovery incomplete\n'); });
   initializeLogWriter();
   writePersistenceE2EMarker({ application: app, environment: process.env, userData: DATA, mode: persistenceRuntime.mode }); writeProfileSwitchE2EMarker({ application: app, environment: process.env, userData: DATA, ...activeSchoolProfile.activeContextBinding() });
   try {

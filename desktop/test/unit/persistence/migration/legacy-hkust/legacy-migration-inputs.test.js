@@ -62,6 +62,38 @@ test('payload owner reads exact receipts through bounded private files and zeroi
   assert.equal(JSON.stringify(owner).includes('synthetic'), false);
 });
 
+test('empty regenerable diagnostic files remain receipt-bound migration inputs', (t) => {
+  const value = fixture(t);
+  fs.writeFileSync(value.paths.engineLogRotated, Buffer.alloc(0), { mode: 0o600 });
+  const expectedReceipts = collectLegacyFlatSourceReceipts({ userData: value.userData });
+  assert.deepEqual(expectedReceipts.engineLogRotated, {
+    present: true,
+    bytes: 0,
+    sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+  });
+  const owner = readLegacyMigrationPayloads({
+    userData: value.userData,
+    expectedReceipts,
+  });
+  owner.withPayloads((payloads) => {
+    assert.equal(Buffer.isBuffer(payloads.engineLogRotated), true);
+    assert.equal(payloads.engineLogRotated.length, 0);
+  });
+  owner.destroy();
+});
+
+test('empty authoritative migration payloads remain fail-closed', (t) => {
+  const value = fixture(t);
+  fs.writeFileSync(value.paths.routingRules, Buffer.alloc(0), { mode: 0o600 });
+  const expectedReceipts = collectLegacyFlatSourceReceipts({ userData: value.userData });
+  assert.equal(expectedReceipts.routingRules.present, true);
+  assert.equal(expectedReceipts.routingRules.bytes, 0);
+  assert.throws(() => readLegacyMigrationPayloads({
+    userData: value.userData,
+    expectedReceipts,
+  }), /could not be read: routingRules/u);
+});
+
 test('legacy credential decrypts only into a zeroizing callback owner', (t) => {
   const value = fixture(t);
   const settings = fs.readFileSync(value.paths.settings);

@@ -12,8 +12,8 @@ const {
   createIntegrationBinding,
 } = require('../../lib/integrations/integration-schema');
 const {
-  ManagedFileTransaction,
-} = require('../../lib/integrations/managed-file-transaction');
+  AtomicExportFileTransaction,
+} = require('../../lib/integrations/atomic-export-file-transaction');
 const {
   createProfileNetworkRules,
 } = require('../../lib/integrations/profile-network-rules');
@@ -43,16 +43,10 @@ function binding(adapterId = 'clash_yaml', patch = {}) {
 function fixture(t, { writeClipboard = null } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'generic-export-coordinator-'));
   fs.chmodSync(root, 0o700);
-  const workspace = path.join(root, 'workspace');
   const output = path.join(root, 'output');
-  fs.mkdirSync(workspace, { mode: 0o700 });
   fs.mkdirSync(output, { mode: 0o700 });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fileTransaction = new ManagedFileTransaction({
-    workspaceRoot: workspace,
-    backupRoot: path.join(workspace, 'backups'),
-    randomBytes: (length) => Buffer.alloc(length, 8),
-  });
+  const fileTransaction = new AtomicExportFileTransaction();
   let entropy = 0;
   const clipboard = [];
   const coordinator = createGenericExportCoordinator({

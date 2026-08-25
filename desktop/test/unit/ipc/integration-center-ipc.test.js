@@ -37,6 +37,9 @@ test('IPC registers four exact channels and accepts only closed adapter action h
   }), /未知字段/u);
   assert.throws(() => prepareIntegrationRequest({ adapterId: 'shell', action: 'launch' }),
     /集成类型/u);
+  assert.throws(() => prepareIntegrationRequest({
+    adapterId: 'clash_verge_rev_managed', action: 'install',
+  }), /集成类型/u);
   assert.deepEqual(confirmIntegrationRequest({ confirmationHandle: ' managed-1 ' }), {
     confirmationHandle: 'managed-1',
   });

@@ -86,6 +86,10 @@ function copyOrNull(value) {
   return value === null ? null : Buffer.from(value);
 }
 
+function copyNonEmptyOrNull(value) {
+  return value === null || value.length === 0 ? null : Buffer.from(value);
+}
+
 function parseLegacySettings(bytes, journal) {
   requireSourceReceipt(journal, 'settings', bytes);
   let parsed;
@@ -276,13 +280,14 @@ function createHkustMigrationDestinationPlan(options = {}) {
     localResources: jsonBuffer(validateLocalResourcesDocument({
       schemaVersion: 1,
       resources: settings.customResources,
+      hiddenBuiltinResourceIds: settings.hiddenBuiltinResourceIds,
     })),
     favorites: jsonBuffer({ schemaVersion: 1, entries: [] }),
     recentResources: jsonBuffer({ schemaVersion: 1, entries: [] }),
-    externalIntegrations: jsonBuffer({ schemaVersion: 1, entries: [] }),
-    engineLog: copyOrNull(payloads.engineLog),
-    engineLogRotated: copyOrNull(payloads.engineLogRotated),
-    engineLogRetention: copyOrNull(payloads.engineLogRetention),
+    externalIntegrations: jsonBuffer({ schemaVersion: 1, records: [] }),
+    engineLog: copyNonEmptyOrNull(payloads.engineLog),
+    engineLogRotated: copyNonEmptyOrNull(payloads.engineLogRotated),
+    engineLogRetention: copyNonEmptyOrNull(payloads.engineLogRetention),
   };
   const ids = Object.keys(files);
   if (ids.length !== DESTINATION_RECEIPT_IDS.length ||

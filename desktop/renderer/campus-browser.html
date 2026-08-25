@@ -5,13 +5,18 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; style-src 'self'; script-src 'self';" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HKUST(GZ) 校园浏览器</title>
+  <title>校园工作台</title>
+  <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="campus-browser.css" />
 </head>
 <body>
   <header class="browser-chrome">
     <div class="tabs-row">
       <div id="tabs" class="tabs" role="tablist" aria-label="网页标签" data-i18n-attr="aria-label:browser.tabs"></div>
+      <div id="browserProfileContext" class="browser-profile-context">
+        <span id="browserProfileName"></span>
+        <span id="browserProfileTrust" class="browser-profile-trust" hidden data-i18n="school.unverified">未审核</span>
+      </div>
       <button id="newTab" class="new-tab" title="新建标签页 (⌘T)" aria-label="新建标签页"
               data-i18n-attr="title:browser.newTabShortcut; aria-label:browser.newTab">+</button>
     </div>
@@ -28,6 +33,10 @@
               data-i18n-attr="title:browser.reload; aria-label:browser.reload">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2.3-5.6M20 3v5h-5"/></svg>
       </button>
+      <button id="home" class="icon" title="校园工作台主页" aria-label="校园工作台主页"
+              data-i18n-attr="title:browser.home; aria-label:browser.home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10M9 20v-6h6v6"/></svg>
+      </button>
       <button id="credential" class="icon credential" title="此网站保存的密码"
               aria-label="管理此网站保存的密码"
               data-i18n-attr="title:browser.credentialTitle; aria-label:browser.credentialLabel">
@@ -37,8 +46,8 @@
         </svg>
       </button>
       <form id="addressForm">
-        <span id="security" class="security" title="此标签通过 HKUST(GZ) Connect"
-              data-i18n-attr="title:browser.viaCampus">校</span>
+        <span id="routeBadge" class="route-badge" title="当前网络路径：校园访问"
+              data-i18n-attr="title:browser.viaCampus">校园访问</span>
         <input id="address" type="text" inputmode="url" spellcheck="false"
                aria-label="校园网站地址" placeholder="输入校园网站地址"
                data-i18n-attr="aria-label:browser.addressLabel; placeholder:browser.addressPlaceholder" />
@@ -56,6 +65,7 @@
         </svg>
       </button>
       <span id="state" class="state" data-i18n="browser.stateDefault">校园网络</span>
+      <span id="downloadStatus" class="download-status" hidden></span>
     </div>
     <div id="findBar" class="find-bar" hidden>
       <input id="findInput" type="text" spellcheck="false"

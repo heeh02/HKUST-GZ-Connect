@@ -165,7 +165,7 @@ function createCustomProfileProvisioningPlan({
     localResources: validateLocalResourcesDocument({ schemaVersion: 1, resources: [] }),
     favorites: Object.freeze({ schemaVersion: 1, entries: Object.freeze([]) }),
     recentResources: Object.freeze({ schemaVersion: 1, entries: Object.freeze([]) }),
-    externalIntegrations: Object.freeze({ schemaVersion: 1, entries: Object.freeze([]) }),
+    externalIntegrations: Object.freeze({ schemaVersion: 1, records: Object.freeze([]) }),
   };
   const paths = Object.freeze({
     schoolProfile: layout.profile.document,

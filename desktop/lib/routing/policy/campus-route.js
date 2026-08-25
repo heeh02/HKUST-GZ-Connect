@@ -4,6 +4,7 @@ const ROUTE_CAMPUS = 'campus';
 const ROUTE_DIRECT = 'direct';
 const CAMPUS_PARTITION = 'persist:hkustgz-campus-browser';
 const DIRECT_PARTITION = 'persist:hkustgz-direct-browser';
+const NEUTRAL_CAMPUS_PARTITION = 'persist:campus-workspace-neutral';
 
 const DIRECT_PARTNER_HOSTS = Object.freeze([
   'outlook.office.com',
@@ -71,6 +72,7 @@ module.exports = {
   CAMPUS_PARTITION,
   DIRECT_PARTNER_HOSTS,
   DIRECT_PARTITION,
+  NEUTRAL_CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
   SCHOOL_CAMPUS_HOSTS,

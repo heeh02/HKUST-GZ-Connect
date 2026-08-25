@@ -31,7 +31,9 @@ function view(adapterId, bindingState = 'not-installed') {
     schemaVersion: 1,
     adapterId,
     displayName: adapterId,
-    supportedActions: ['preview', 'copy', 'save', 'install', 'update', 'remove'],
+    supportedActions: adapterId === 'vscode_remote_ssh'
+      ? ['preview', 'copy']
+      : ['preview', 'copy', 'save'],
     compatibilityState: 'supported',
     bindingState,
     updatedAt: null,
@@ -47,8 +49,7 @@ function fixture(overrides = {}) {
     listIntegrations: async () => ({
       ok: true,
       integrations: overrides.views || [
-        view('clash_yaml'), view('clash_verge_rev_managed', 'current'),
-        view('openssh_proxy_command', 'stale'),
+        view('clash_yaml'), view('mihomo_yaml'), view('vscode_remote_ssh'),
       ],
     }),
     prepareIntegration: async (request) => {
@@ -57,7 +58,7 @@ function fixture(overrides = {}) {
         ok: true,
         preview: {
           schemaVersion: 1,
-          confirmationHandle: `managed-${'a'.repeat(32)}`,
+          confirmationHandle: `export-${'a'.repeat(32)}`,
           adapterId: request.adapterId,
           action: request.action,
           expiresAt: 1_800_000_020_000,
@@ -106,14 +107,15 @@ test('Renderer projections drop paths payloads keys and unknown adapters', () =>
   assert.equal(JSON.stringify(preview).includes('secret'), false);
 });
 
-test('list renders compact generic and managed actions without unavailable adapters', async () => {
+test('list renders only non-destructive exports without unavailable adapters', async () => {
   const f = fixture();
   f.feature.start();
   await f.feature.refresh();
   const rows = f.elements.get('integrationList').children;
   assert.equal(rows.length, 3);
   assert.equal(rows[0].children[1].children.length, 2, 'generic adapter has copy and save');
-  assert.equal(rows[1].children[1].children.length, 2, 'installed adapter has update and remove');
+  assert.equal(rows[1].children[1].children.length, 2, 'Mihomo has copy and save');
+  assert.equal(rows[2].children[1].children.length, 1, 'VS Code snippet is copy-only');
   assert.equal(f.elements.get('integrationError').textContent, '');
 });
 
@@ -121,14 +123,14 @@ test('prepare shows only a redacted preview and confirm consumes its exact handl
   const f = fixture();
   f.feature.start();
   await f.feature.refresh();
-  await f.feature.prepare('clash_verge_rev_managed', 'update');
+  await f.feature.prepare('vscode_remote_ssh', 'copy');
   assert.equal(f.elements.get('integrationDialog').open, true);
   assert.equal(JSON.stringify(f.elements.get('integrationPreviewSummary').children)
     .includes('/must-not-cross'), false);
   assert.equal(f.elements.get('integrationPreviewWarnings').children.length, 1);
   await f.feature.confirm();
   assert.deepEqual(f.calls.find(([name]) => name === 'confirm'), ['confirm', {
-    confirmationHandle: `managed-${'a'.repeat(32)}`,
+    confirmationHandle: `export-${'a'.repeat(32)}`,
   }]);
   assert.equal(f.elements.get('integrationDialog').open, false);
   assert.equal(f.elements.get('integrationStatus').textContent, 'integration.success:');
@@ -137,7 +139,7 @@ test('prepare shows only a redacted preview and confirm consumes its exact handl
 test('expiry and failed confirmation close stale material and surface stable messages', async () => {
   let f = fixture();
   f.feature.start();
-  await f.feature.prepare('clash_verge_rev_managed', 'install');
+  await f.feature.prepare('vscode_remote_ssh', 'copy');
   f.expire();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(f.elements.get('integrationDialog').open, false);
@@ -145,7 +147,7 @@ test('expiry and failed confirmation close stale material and surface stable mes
 
   f = fixture({ confirmResult: { ok: false, code: 'INTEGRATION_TARGET_CHANGED' } });
   f.feature.start();
-  await f.feature.prepare('clash_verge_rev_managed', 'install');
+  await f.feature.prepare('vscode_remote_ssh', 'copy');
   await f.feature.confirm();
   assert.equal(f.elements.get('integrationDialog').open, false);
   assert.equal(f.elements.get('integrationError').textContent,

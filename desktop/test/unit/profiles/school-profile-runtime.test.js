@@ -9,6 +9,7 @@ const test = require('node:test');
 const { SchoolProfileRegistry } = require('../../../lib/profiles/registry/school-profile-registry');
 const {
   createActiveSchoolProfileContext,
+  engineConfigCandidate,
   readRegularFileNoFollow,
   verifyEngineConfigBinding,
 } = require('../../../lib/profiles/runtime/school-profile-runtime');
@@ -54,6 +55,24 @@ test('packaged path uses only the compiled config filename', (t) => {
     desktopDir: desktopRoot,
   });
   assert.equal(context.engineConfigPath, packaged.target);
+});
+
+test('reviewed Profile runtime paths derive from bounded Profile identity instead of HKUST constants', () => {
+  const profile = {
+    profileId: 'example-university',
+    gateway: { engineConfigRef: 'example-university-engine-config' },
+  };
+  assert.equal(engineConfigCandidate({
+    profile,
+    isPackaged: true,
+    resourcesPath: '/Applications/Campus Connect/Resources',
+    desktopDir: desktopRoot,
+  }), path.join('/Applications/Campus Connect/Resources', 'engine', 'example-university.json'));
+  assert.throws(() => engineConfigCandidate({
+    profile: { ...profile, profileId: '../hkustgz' },
+    isPackaged: false,
+    desktopDir: desktopRoot,
+  }), /not compiled/u);
 });
 
 test('tampered, malformed, wrong-origin and symlink configs fail closed', {

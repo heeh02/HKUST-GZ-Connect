@@ -8,7 +8,11 @@ const {
   validateProfileId,
   validateProtocolFamily,
 } = require('../../profiles/schema/school-profile-schema');
-const { isValidPort, PROXY_SECURITY_VERSION } = require('../settings/settings-store');
+const {
+  PROXY_SECURITY_VERSION,
+  isValidPort,
+  normalizeHiddenBuiltinResourceIds,
+} = require('../settings/settings-store');
 
 const PROFILE_WORKSPACE_DOCUMENT_VERSION = 1;
 
@@ -148,7 +152,15 @@ function validateWorkspaceSettingsDocument(value) {
 }
 
 function validateLocalResourcesDocument(value) {
-  const source = exactKeys(value, ['schemaVersion', 'resources'], 'local resources');
+  const input = plainObject(value, 'local resources');
+  const legacy = Object.keys(input).sort().join(',') === 'resources,schemaVersion';
+  const source = legacy
+    ? { ...input, hiddenBuiltinResourceIds: [] }
+    : exactKeys(
+      input,
+      ['schemaVersion', 'resources', 'hiddenBuiltinResourceIds'],
+      'local resources',
+    );
   const resources = validateCustomResourceDocument(source.resources).map((resource) => Object.freeze({
     id: resource.id,
     name: resource.name,
@@ -158,9 +170,18 @@ function validateLocalResourcesDocument(value) {
     category: resource.category,
     keywords: resource.keywords,
   }));
+  const hiddenBuiltinResourceIds = normalizeHiddenBuiltinResourceIds(
+    source.hiddenBuiltinResourceIds,
+  );
+  if (!Array.isArray(source.hiddenBuiltinResourceIds) ||
+      hiddenBuiltinResourceIds.length !== source.hiddenBuiltinResourceIds.length ||
+      hiddenBuiltinResourceIds.some((id, index) => id !== source.hiddenBuiltinResourceIds[index])) {
+    throw new TypeError('hidden builtin resource IDs are not canonical');
+  }
   return Object.freeze({
     schemaVersion: documentVersion(source.schemaVersion, 'local resources'),
     resources: Object.freeze(resources),
+    hiddenBuiltinResourceIds: Object.freeze(hiddenBuiltinResourceIds),
   });
 }
 

@@ -2,6 +2,7 @@
 
 const { planReconnect } = require('./reconnect-policy');
 const { ConnectionWaitRegistry } = require('./connection-wait-registry');
+const { connectionRecoveryPresentation } = require('./connection-recovery-presentation');
 
 const CONNECTION_PHASE = Object.freeze({
   IDLE: 'idle',
@@ -39,7 +40,10 @@ function projectConnectionStatus(state, presentation, connectedAt) {
     .filter(Boolean).join('\n') || null;
   const lastError = [state?.lastError, state?.settingsError, state?.recoveryError]
     .filter(Boolean).join('\n') || null;
-  return Object.freeze({ ...state, notice, lastError, ...presentation, connectedAt });
+  return Object.freeze({
+    ...state, notice, lastError, ...presentation, connectedAt,
+    recovery: connectionRecoveryPresentation({ ...state, lastError }, presentation),
+  });
 }
 
 function validGeneration(value) {

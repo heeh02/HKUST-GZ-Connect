@@ -21,19 +21,26 @@ function fixture() {
     register: (channel, handler) => handlers.set(channel, handler),
     onboarding,
     getLocale: () => 'zh',
+    isCustomGatewayEnabled: () => true,
+    deleteProfile: (value) => { calls.push(['delete', value]); return { ok: true }; },
   });
   return { calls, handlers };
 }
 
-test('onboarding IPC exposes four exact channels with bounded schemas', async () => {
+test('onboarding IPC exposes five exact channels with bounded schemas', async () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',
     'cancel-custom-gateway',
+    'delete-school-profile',
   ]);
-  await f.handlers.get('list-school-profiles')({});
+  assert.deepEqual(await f.handlers.get('list-school-profiles')({}), {
+    ok: true,
+    profiles: [],
+    customGatewayEnabled: true,
+  });
   await f.handlers.get('probe-custom-gateway')({}, {
     origin: ' https://vpn.example.edu ',
     schoolLabel: ' Example University ',
@@ -45,11 +52,15 @@ test('onboarding IPC exposes four exact channels with bounded schemas', async ()
     ok: true,
     cancelled: true,
   });
+  assert.deepEqual(await f.handlers.get('delete-school-profile')({}, {
+    profileId: 'custom-profile-1',
+  }), { ok: true });
   assert.deepEqual(f.calls, [
     ['list', { locale: 'zh' }],
     ['probe', { origin: 'https://vpn.example.edu', schoolLabel: 'Example University' }],
     ['confirm', { confirmationHandle: 'confirmation-123' }],
     ['cancel'],
+    ['delete', { profileId: 'custom-profile-1' }],
   ]);
 });
 
@@ -76,10 +87,37 @@ test('profile list failures collapse without exposing Main error text', () => {
       cancel: () => false,
     },
     getLocale: () => 'en',
+    isCustomGatewayEnabled: () => false,
+    deleteProfile: () => ({ ok: false }),
   });
   assert.deepEqual(handlers.get('list-school-profiles')({}), {
     ok: false,
     code: 'PROFILE_LIST_FAILED',
     profiles: [],
+    customGatewayEnabled: false,
   });
+});
+
+test('disabled packaged onboarding rejects probe and confirmation before the coordinator', async () => {
+  const f = fixture();
+  const disabled = new Map();
+  registerSchoolProfileOnboardingIpc({
+    register: (channel, handler) => disabled.set(channel, handler),
+    onboarding: {
+      list: () => [],
+      probe: () => { throw new Error('must not run'); },
+      confirm: () => { throw new Error('must not run'); },
+      cancel: () => false,
+    },
+    getLocale: () => 'zh',
+    isCustomGatewayEnabled: () => false,
+    deleteProfile: () => ({ ok: false }),
+  });
+  assert.deepEqual(disabled.get('probe-custom-gateway')({}, {
+    origin: 'https://vpn.example.edu', schoolLabel: '',
+  }), { ok: false, code: 'PROFILE_ONBOARDING_DISABLED' });
+  assert.deepEqual(disabled.get('confirm-custom-gateway')({}, {
+    confirmationHandle: 'confirmation-123',
+  }), { ok: false, code: 'PROFILE_ONBOARDING_DISABLED' });
+  assert.ok(f.handlers.has('probe-custom-gateway'));
 });

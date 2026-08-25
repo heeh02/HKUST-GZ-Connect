@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use flate2::read::GzDecoder;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -272,6 +272,98 @@ pub fn inspect_package(path: &Path) -> Result<Value> {
     }))
 }
 
+pub fn diff_package_reports(old: &Value, new: &Value) -> Result<Value> {
+    for (name, report) in [("old", old), ("new", new)] {
+        if report["schema_version"].as_u64() != Some(1)
+            || !report["package"].is_object()
+            || !report["binaries"].is_object()
+            || report["binaries"].as_object().map_or(usize::MAX, Map::len) > 32
+        {
+            return Err(Error(format!("{name} binary report has an invalid schema")));
+        }
+    }
+    let mut changes = Vec::new();
+    let mut change = |category: &str, key: &str, before: &Value, after: &Value, severity: &str| {
+        if before != after {
+            changes.push(json!({
+                "category": category,
+                "key": key,
+                "before": before,
+                "after": after,
+                "severity": severity,
+            }));
+        }
+    };
+    for key in ["package", "version", "architecture", "size", "sha256"] {
+        change(
+            "package",
+            key,
+            &old["package"][key],
+            &new["package"][key],
+            if matches!(key, "architecture") {
+                "critical"
+            } else {
+                "warning"
+            },
+        );
+    }
+    let old_binaries = old["binaries"].as_object().expect("validated object");
+    let new_binaries = new["binaries"].as_object().expect("validated object");
+    let binary_names = old_binaries
+        .keys()
+        .chain(new_binaries.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for name in binary_names {
+        let before = old_binaries.get(&name).unwrap_or(&Value::Null);
+        let after = new_binaries.get(&name).unwrap_or(&Value::Null);
+        if before.is_null() || after.is_null() {
+            change("binary", &name, before, after, "critical");
+            continue;
+        }
+        for key in ["size", "sha256"] {
+            change(
+                "binary",
+                &format!("{name}.{key}"),
+                &before[key],
+                &after[key],
+                "warning",
+            );
+        }
+        let before_capabilities = before["capabilities"].as_object();
+        let after_capabilities = after["capabilities"].as_object();
+        let capability_names = before_capabilities
+            .into_iter()
+            .flat_map(Map::keys)
+            .chain(after_capabilities.into_iter().flat_map(Map::keys))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for capability in capability_names {
+            change(
+                "capability",
+                &format!("{name}.{capability}"),
+                &before["capabilities"][&capability],
+                &after["capabilities"][&capability],
+                "critical",
+            );
+        }
+    }
+    let mut summary = json!({"warning": 0, "critical": 0});
+    for item in &changes {
+        let severity = item["severity"].as_str().unwrap_or("warning");
+        summary[severity] = Value::from(summary[severity].as_u64().unwrap_or(0) + 1);
+    }
+    Ok(json!({
+        "schema_version": 1,
+        "old_package_sha256": old["package"]["sha256"].as_str().unwrap_or_default(),
+        "new_package_sha256": new["package"]["sha256"].as_str().unwrap_or_default(),
+        "changed": !changes.is_empty(),
+        "review_required": summary["critical"].as_u64().unwrap_or(0) > 0,
+        "summary": summary,
+        "changes": changes,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +474,24 @@ mod tests {
             let members = tar_members(name, data, &["control"]).unwrap();
             assert_eq!(members["control"], b"Package: test\n");
         }
+    }
+
+    #[test]
+    fn binary_report_diff_is_sanitized_and_capability_changes_require_review() {
+        let old = json!({
+            "schema_version": 1,
+            "package": {"package": "easyconnect", "version": "1", "architecture": "amd64", "size": 10, "sha256": "a"},
+            "binaries": {"svpnservice": {"size": 5, "sha256": "b", "capabilities": {"l3.reconnect": true}}},
+        });
+        let mut new = old.clone();
+        new["package"]["version"] = json!("2");
+        new["package"]["sha256"] = json!("c");
+        new["binaries"]["svpnservice"]["capabilities"]["l3.reconnect"] = json!(false);
+        let receipt = diff_package_reports(&old, &new).unwrap();
+        assert_eq!(receipt["changed"], true);
+        assert_eq!(receipt["review_required"], true);
+        assert_eq!(receipt["summary"]["critical"], 1);
+        assert!(receipt.to_string().contains("l3.reconnect"));
+        assert!(!receipt.to_string().contains("WriteV ssl syn"));
     }
 }

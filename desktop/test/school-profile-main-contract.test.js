@@ -29,7 +29,7 @@ test('composition root resolves one active Profile before credential recovery', 
 });
 
 test('profile drives reviewed resources, routes, Browser home and health targets', () => {
-  assert.match(main, /activeSchoolProfile\.mergeResourceLibrary\(settings\.customResources\)/u);
+  assert.match(main, /activeSchoolProfile\.mergeResourceLibrary\(settings\.customResources, settings\.hiddenBuiltinResourceIds\)/u);
   assert.match(main, /defaultRouteDomains: activeSchoolProfile\.defaultRouteDomains/u);
   assert.match(main, /directPartnerDomains: \(\) => activeSchoolProfile\.directPartnerDomains/u);
   assert.match(main, /homeUrl: activeSchoolProfile\.browserHomeUrl/u);

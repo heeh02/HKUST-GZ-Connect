@@ -15,7 +15,7 @@ const {
 const {
   assertMacAppIcon,
   assertNoTestOnlyEngineMarker,
-  assertPackagedSchoolProfile,
+  assertPackagedSchoolProfiles,
 } = require('./verify-package');
 
 function architectureName(arch) {
@@ -127,10 +127,7 @@ exports.default = async function afterPack(context) {
   const gatewayProbePath = assertGatewayProbePresent(
     packagedEngineDirectory, context.electronPlatformName, context.arch,
   );
-  assertPackagedSchoolProfile(
-    path.join(resourcesDir, 'app.asar'),
-    path.join(packagedEngineDirectory, 'hkustgz.json'),
-  );
+  assertPackagedSchoolProfiles(path.join(resourcesDir, 'app.asar'), packagedEngineDirectory);
   if (context.electronPlatformName !== 'darwin') return;
   assertMacAppIcon(appPath);
   if (shouldDelegateSigning(process.env)) {

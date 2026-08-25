@@ -4,7 +4,6 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 // Active UI language. Chinese until get-state reports the real system locale.
 let t = window.I18N.createT('zh');
 const { evaluateLoginProgress } = window.loginFlow;
-const { filteredResources, routeLabel, visibleResources } = window.resourceView;
 let st = {
   connected: false,
   connecting: false,
@@ -15,7 +14,6 @@ let st = {
 let settings = {};
 let connectedAt = null;
 let durTimer = null;
-let pacUrl = '';
 let campusActionBusy = false;
 let campusResources = [];
 let resourcesExpanded = false;
@@ -26,6 +24,10 @@ let towerSaving = false;
 let loginPending = false;
 let resourceEditorManager = null;
 let proxyAuthFeature = null;
+
+function activeLoginProfileId() {
+  return window.schoolProfileSelectorFeature?.credentialProfileId?.() || null;
+}
 
 function show(view) { $('login').hidden = view !== 'login'; $('dash').hidden = view !== 'dash'; }
 
@@ -46,6 +48,8 @@ function applyLocale(rawLocale) {
 function setPage(page) {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n.dataset.page === page));
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
+  const content = document.querySelector('.content');
+  if (content) content.scrollTop = 0;
   if (page === 'notif') loadLogs();
   if (page === 'settings') runUpdateCheck(false);
 }
@@ -65,7 +69,7 @@ function dnsModeLabel(mode) {
 function updateLoginProgress(s) {
   if (!loginPending) return;
   const next = evaluateLoginProgress(loginPending, s, t);
-  $('lgBtn').disabled = next.pending;
+  $('lgBtn').disabled = next.pending || activeLoginProfileId() === null;
   $('lgBtn').textContent = next.pending ? t('connect.connecting') : t('login.submit');
   $('lgErr').textContent = next.error;
   if (next.pending) return;
@@ -92,7 +96,7 @@ function renderConnect(s) {
   $('connTop').classList.toggle('connected', s.connected);
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('settingsNotice').hidden = !s.notice;
-  $('settingsNotice').textContent = s.notice || '';
+  $('settingsNotice').textContent = s.notice || ''; window.notificationView.render({ card: $('notificationCard'), title: $('notificationTitle'), summary: $('notificationSummary'), action: $('notificationAction'), state: s, translate: t });
   $('quickCampus').disabled = campusActionBusy;
   $('quickAddCampus').disabled = campusActionBusy;
   $('quickCampus').textContent = campusActionBusy
@@ -118,25 +122,17 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
-  const filtered = filteredResources(campusResources, {
+  const rendered = window.studentHome.renderStudentHome({
+    resources: campusResources,
     query: resourceQuery,
     view: resourceView,
+    expanded: resourcesExpanded,
+    translate: t,
+    escapeHtml: esc,
   });
-  const focused = resourceQuery.length > 0 || resourceView !== 'all';
-  const visible = visibleResources(filtered, resourcesExpanded || focused);
-  $('campusResources').innerHTML = visible.length ? visible.map((resource) =>
-    `<div class="resource-card" data-campus-id="${esc(resource.id)}">`
-    + `<button class="resource-link" type="button" data-resource-action="open" title="${esc(resource.url)}">`
-    + `<span class="resource-name">${esc(resource.name)}</span>`
-    + `<span class="resource-desc">${esc(resource.description || resource.url)}</span>`
-    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource, t))}</span></button>`
-    + `<button class="resource-favorite${resource.favorite ? ' active' : ''}" type="button" data-resource-action="favorite"`
-    + ` aria-label="${esc(resource.favorite ? t('resources.unfavorite') : t('resources.favorite'))}"`
-    + ` title="${esc(resource.favorite ? t('resources.unfavorite') : t('resources.favorite'))}">★</button></div>`).join('')
-    : `<div class="resource-empty">${esc(t('resources.empty'))}</div>`;
+  $('campusResources').innerHTML = rendered.html;
   const toggle = $('toggleResources');
-  const hasMore = !focused && filtered.length > 4;
-  toggle.hidden = !hasMore;
+  toggle.hidden = !rendered.hasMore;
   toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
   toggle.setAttribute('aria-expanded', String(resourcesExpanded));
 }
@@ -169,7 +165,7 @@ async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
   applyLocale(s.locale);
   document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn } }));
-  settings = s.settings || {}; pacUrl = s.pacUrl || '';
+  settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   renderConnect(s);
   renderResources();
@@ -229,19 +225,27 @@ async function loadLogs() {
 
 async function init() {
   const s = await refreshState();
-  $('lgUser').value = settings.username || '';
+  if (!s.loggedIn) {
+    const account = await window.api.getLoginAccount().catch(() => null);
+    $('lgUser').value = account?.ok ? account.username : '';
+  }
   show(s.loggedIn ? 'dash' : 'login');
 }
 
 // login
 $('lgBtn').addEventListener('click', async () => {
   if (loginPending) return;
+  const expectedProfileId = activeLoginProfileId();
+  if (!expectedProfileId) {
+    $('lgErr').textContent = t('school.activateBeforeLogin');
+    return;
+  }
   const u = $('lgUser').value.trim(), p = $('lgPass').value;
   if (!u) { $('lgErr').textContent = t('login.needAccount'); return; }
   if (!p) { $('lgErr').textContent = t('login.needPassword'); return; }
   let saved;
   try {
-    saved = await window.api.save({ username: u, password: p });
+    saved = await window.api.save({ username: u, password: p, expectedProfileId });
   } catch (error) {
     $('lgErr').textContent = error?.message || t('login.passwordSaveFailed');
     return;
@@ -256,7 +260,7 @@ $('lgBtn').addEventListener('click', async () => {
     await refreshState();
   } catch (error) {
     loginPending = false;
-    $('lgBtn').disabled = false;
+    $('lgBtn').disabled = activeLoginProfileId() === null;
     $('lgBtn').textContent = t('login.submit');
     $('lgErr').textContent = error?.message || t('login.connectFailed');
   }
@@ -472,23 +476,10 @@ document.addEventListener('visibilitychange', () => {
 
 // copy + tools
 document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
-  const w = b.dataset.copy;
   try {
-    if ((w === 'clash' || w === 'ssh') && towerDirty) {
-      const saved = await saveTower();
-      if (!saved?.ok) return;
-    }
-    if (w === 'clash') {
-      const result = await window.api.copyClashNode();
-      if (!result?.ok) throw new Error(result?.error || t('tower.copyFailed'));
-    } else {
-      let txt = '';
-      if (w === 'socks') txt = '127.0.0.1:' + (Number(settings.port) || 1080);
-      else if (w === 'pac') txt = pacUrl;
-      else if (w === 'ssh') txt = await window.api.sshConfig();
-      if (!txt) throw new Error(t('tower.copyFailed'));
-      await window.api.copy(txt);
-    }
+    if (b.dataset.copy !== 'socks') throw new Error(t('tower.copyFailed'));
+    const text = '127.0.0.1:' + (Number(settings.port) || 1080);
+    await window.api.copy(text);
     const old = b.textContent;
     b.textContent = t('tower.copied');
     b.classList.add('done');
@@ -499,9 +490,11 @@ document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('clic
 }));
 $('openBrowser').addEventListener('click', openCampus);
 $('openLog2').addEventListener('click', () => window.api.openLog());
+$('openAdvancedSettings').addEventListener('click', () => setPage('tower'));
 
 // notifications / settings
 $('logRefresh').addEventListener('click', loadLogs);
+$('notificationAction').addEventListener('click', () => window.notificationView.runAction($('notificationAction').dataset.action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }));
 $('logoutBtn').addEventListener('click', async () => {
   loginPending = false;
   const result = await window.api.logout();
@@ -509,10 +502,10 @@ $('logoutBtn').addEventListener('click', async () => {
     const message = result?.error || t('settings.logoutFailed');
     const refreshed = await refreshState({ preserveTower: true });
     if (refreshed.loggedIn === false) {
-      $('lgUser').value = settings.username || '';
+      $('lgUser').value = '';
       $('lgPass').value = '';
       $('lgErr').textContent = message;
-      $('lgBtn').disabled = false;
+      $('lgBtn').disabled = activeLoginProfileId() === null;
       $('lgBtn').textContent = t('login.submit');
       show('login');
     } else {
@@ -522,7 +515,7 @@ $('logoutBtn').addEventListener('click', async () => {
   }
   await refreshState();
   $('lgPass').value = '';
-  $('lgBtn').disabled = false;
+  $('lgBtn').disabled = activeLoginProfileId() === null;
   $('lgBtn').textContent = t('login.submit');
   show('login');
 });
@@ -551,7 +544,7 @@ proxyAuthFeature.start();
 window.routingManager.start({
   openTower: () => { show('dash'); setPage('tower'); },
 });
-window.certificateManager.start();
+window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) });
 resourceEditorManager = window.resourceManager.start({
   getResources: () => campusResources,
   setResources: (resources) => {

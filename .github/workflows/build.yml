@@ -117,7 +117,7 @@ jobs:
           Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
           Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
           Copy-Item target/release/ec-gateway-probe.exe ../desktop/engine/ec-gateway-probe-windows-amd64.exe
-          Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
+          node ../desktop/scripts/stage-reviewed-profile-configs.js
 
       - name: Build independent engines (Linux x86_64)
         if: matrix.platform == 'linux'
@@ -128,7 +128,7 @@ jobs:
           cp target/release/ec-engine ../desktop/engine/ec-engine-linux-amd64
           cp target/release/ec-proxy-command ../desktop/engine/ec-proxy-command-linux-amd64
           cp target/release/ec-gateway-probe ../desktop/engine/ec-gateway-probe-linux-amd64
-          cp config/hkustgz.json ../desktop/engine/hkustgz.json
+          node ../desktop/scripts/stage-reviewed-profile-configs.js
 
       # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
       # makes electron-builder try (and fail) to read "" as a cert file.
@@ -172,7 +172,7 @@ jobs:
               "engine/ec-proxy-command-darwin-${package_arch}"
             cp "../independent/target/${cargo_target}/release/ec-gateway-probe" \
               "engine/ec-gateway-probe-darwin-${package_arch}"
-            cp ../independent/config/hkustgz.json engine/hkustgz.json
+            node scripts/stage-reviewed-profile-configs.js
             echo "staged exact macOS ${build_arch} native resources"
           }
           build_mac_dmg() {

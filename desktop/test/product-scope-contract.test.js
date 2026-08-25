@@ -24,11 +24,11 @@ test('2.0 keeps Web resources and external tool integration as separate product 
   assert.doesNotMatch(resources, /^A `LaunchHandle` is:/mu);
   assert.doesNotMatch(resources, /^ResourceLaunchBroker/mu);
 
-  assert.match(integrations, /Clash Verge Rev managed extension/u);
-  assert.match(integrations, /Include ~\/\.ssh\/campus-connect\/\*\.conf/u);
-  assert.match(integrations, /remote SSH service port/u);
+  assert.match(integrations, /only generates three non-destructive configuration artifacts/u);
+  assert.match(integrations, /never downloads, installs, launches, detects, or updates third-party software/u);
+  assert.match(integrations, /VS Code Remote-SSH output is a standard SSH host template/u);
   assert.match(integrations, /must not be uploaded, synchronized or shared/u);
-  assert.match(integrations, /BEGIN CAMPUS-CONNECT MANAGED <profileId>/u);
+  assert.match(integrations, /trusted IPC rejects every historical or unknown adapter ID/u);
 });
 
 test('2.0 phase order keeps isolated school selection before integrations and Web work', () => {
@@ -56,4 +56,39 @@ test('the first Beta has no built-in SSH HPC Jupyter database or forwarding work
   ]) {
     assert.equal(fs.existsSync(path.join(root, ...relativePath.split('/'))), false, relativePath);
   }
+});
+
+test('production contains no retired third-party installer or managed-config module', () => {
+  for (const relativePath of [
+    'desktop/lib/integrations/clash-verge-managed-coordinator.js',
+    'desktop/lib/integrations/clash-verge-script.js',
+    'desktop/lib/integrations/integration-record-store.js',
+    'desktop/lib/integrations/managed-adapter-transaction.js',
+    'desktop/lib/integrations/managed-file-transaction.js',
+    'desktop/lib/integrations/managed-text-block.js',
+    'desktop/lib/integrations/openssh-managed-config.js',
+    'desktop/lib/integrations/openssh-managed-coordinator.js',
+  ]) {
+    assert.equal(fs.existsSync(path.join(root, ...relativePath.split('/'))), false, relativePath);
+  }
+  const preload = read('desktop/preload.js');
+  const coreIpc = read('desktop/lib/ipc/core-control-ipc.js');
+  assert.doesNotMatch(`${preload}\n${coreIpc}`, /copy-clash-node|ssh-config/u);
+});
+
+test('generic Campus Browser contains no HKUST default home title or partition fallback', () => {
+  const sources = [
+    read('desktop/lib/browser/session/campus-browser.js'),
+    read('desktop/lib/browser/session/campus-browser-manager.js'),
+    read('desktop/renderer/campus-browser.html'),
+    read('desktop/renderer/campus-browser.js'),
+  ].join('\n');
+  assert.doesNotMatch(sources, /hkust|HKUST/u);
+  assert.match(sources, /campus-workspace-neutral|BLANK_CAMPUS_HOME/u);
+});
+
+test('2.0 product exposes safe other-school onboarding instead of packaging it away', () => {
+  const mainSource = read('desktop/main.js');
+  assert.match(mainSource, /customGatewayProductAvailability\(\)/u);
+  assert.doesNotMatch(mainSource, /customGatewayOnboardingEnabled\s*=\s*!app\.isPackaged/u);
 });

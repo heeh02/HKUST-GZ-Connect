@@ -6,7 +6,6 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
-  buildClashProxyYaml,
   buildSshProxyCommand,
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,
@@ -22,22 +21,6 @@ const credential = {
     return callback(material.username, material.password);
   },
 };
-
-test('Clash node is valid bounded YAML with strict credentials and UDP disabled', () => {
-  const yaml = buildClashProxyYaml({ port: 6180, credential });
-  assert.match(yaml, /^proxies:\n/);
-  assert.match(yaml, /name: "HKUST\(GZ\) Connect"/);
-  assert.match(yaml, /type: "socks5"/);
-  assert.match(yaml, /server: "127\.0\.0\.1"/);
-  assert.match(yaml, /port: 6180/);
-  assert.match(yaml, new RegExp(`username: ${JSON.stringify(material.username)}`));
-  assert.match(yaml, new RegExp(`password: ${JSON.stringify(material.password)}`));
-  assert.match(yaml, /udp: false\n$/);
-
-  const compatibility = buildClashProxyYaml({ port: 6180 });
-  assert.doesNotMatch(compatibility, /username:|password:/);
-  assert.match(compatibility, /udp: false/);
-});
 
 test('helper sidecar is owner-only, exactly three lines, and not rewritten when unchanged', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-proxy-sidecar-'));

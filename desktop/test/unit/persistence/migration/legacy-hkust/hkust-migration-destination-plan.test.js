@@ -40,7 +40,7 @@ function safeStorage() {
   };
 }
 
-function fixture({ withCredential = true } = {}) {
+function fixture({ withCredential = true, emptyRotatedLog = false } = {}) {
   const settings = normalizeSettings({
     username: withCredential ? 'synthetic-user' : '',
     port: 6180,
@@ -65,7 +65,9 @@ function fixture({ withCredential = true } = {}) {
   const legacyCredential = withCredential ? Buffer.from('legacy-encrypted-password') : null;
   const payloads = Object.fromEntries(LEGACY_COPY_SOURCE_IDS.map((id) => [
     id,
-    Buffer.from(`legacy-${id}`, 'utf8'),
+    id === 'engineLogRotated' && emptyRotatedLog
+      ? Buffer.alloc(0)
+      : Buffer.from(`legacy-${id}`, 'utf8'),
   ]));
   const sources = {};
   for (const id of LEGACY_SOURCE_IDS) {
@@ -100,6 +102,17 @@ function fixture({ withCredential = true } = {}) {
   };
 }
 
+test('planner retires an empty rotated diagnostic log without materializing an empty destination', () => {
+  const value = fixture({ emptyRotatedLog: true });
+  const plan = createHkustMigrationDestinationPlan({
+    ...value,
+    now: () => 1_700_000_000_100,
+    platform: 'darwin',
+  });
+  assert.equal(plan.files.engineLogRotated, null);
+  assert.equal(Buffer.isBuffer(plan.files.engineLog), true);
+});
+
 function parseJson(buffer) { return JSON.parse(buffer.toString('utf8')); }
 
 test('planner produces every exact destination without plaintext identity leakage', () => {
@@ -129,7 +142,7 @@ test('planner produces every exact destination without plaintext identity leakag
   assert.equal(Object.hasOwn(parseJson(plan.files.localResources).resources[0], 'builtin'), false);
   assert.equal(parseJson(plan.files.favorites).entries.length, 0);
   assert.equal(parseJson(plan.files.recentResources).entries.length, 0);
-  assert.equal(parseJson(plan.files.externalIntegrations).entries.length, 0);
+  assert.equal(parseJson(plan.files.externalIntegrations).records.length, 0);
 
   const rollback = validateLegacyCredentialRollbackState(
     parseJson(plan.files.legacyCredentialRollbackState),

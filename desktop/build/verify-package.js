@@ -50,54 +50,68 @@ function parsePackagedJson(data, name) {
   catch { throw new Error(`packaged ${name} is not valid JSON`); }
 }
 
-function assertPackagedSchoolProfile(archive, externalEngineConfig) {
+function assertPackagedSchoolProfiles(archive, externalEngineDirectory) {
   const manifestData = extractBoundedArchiveFile(
     archive,
     'assets/profiles/manifest.json',
     MAX_PACKAGED_PROFILE_BYTES,
   );
   const manifest = normalizeManifest(parsePackagedJson(manifestData, 'profile manifest'));
-  const entry = manifest.profiles[0];
-  const profileData = extractBoundedArchiveFile(
-    archive,
-    entry.document.path,
-    MAX_PACKAGED_PROFILE_BYTES,
-  );
-  if (sha256(profileData) !== entry.document.sha256) {
-    throw new Error('packaged school profile document hash mismatch');
+  if (typeof externalEngineDirectory !== 'string' || !path.isAbsolute(externalEngineDirectory)) {
+    throw new TypeError('packaged Engine config directory is invalid');
   }
-  const profileDocument = parsePackagedJson(profileData, 'school profile');
-  const profile = validateSchoolProfileDocument(profileDocument);
-  if (profile.profileId !== entry.profileId || profile.evidenceClass !== 'builtin-reviewed') {
-    throw new Error('packaged school profile identity mismatch');
-  }
-
-  const assets = new Map();
-  for (const asset of entry.assets) {
-    const data = extractBoundedArchiveFile(archive, asset.path, MAX_PACKAGED_PROFILE_ASSET_BYTES);
-    if (sha256(data) !== asset.sha256) {
-      throw new Error(`packaged school profile asset hash mismatch: ${asset.key}`);
+  return Object.freeze(manifest.profiles.map((entry) => {
+    const profileData = extractBoundedArchiveFile(
+      archive,
+      entry.document.path,
+      MAX_PACKAGED_PROFILE_BYTES,
+    );
+    if (sha256(profileData) !== entry.document.sha256) {
+      throw new Error(`packaged school profile document hash mismatch: ${entry.profileId}`);
     }
-    assets.set(asset.key, { ...asset, data });
-  }
-  const engineAsset = assets.get(profile.gateway.engineConfigRef);
-  const brandingAsset = assets.get(profile.branding.bundledAssetKey);
-  const resourceAsset = assets.get(profile.browser.builtinResourcesRef);
-  if (assets.size !== 3 || engineAsset?.kind !== 'engine-config' ||
-      brandingAsset?.kind !== 'branding' || resourceAsset?.kind !== 'builtin-resources') {
-    throw new Error('packaged school profile asset binding is incomplete');
-  }
-  parseBuiltinResourceDocument(resourceAsset.data);
+    const profileDocument = parsePackagedJson(profileData, 'school profile');
+    const profile = validateSchoolProfileDocument(profileDocument);
+    if (profile.profileId !== entry.profileId || profile.evidenceClass !== 'builtin-reviewed') {
+      throw new Error(`packaged school profile identity mismatch: ${entry.profileId}`);
+    }
 
-  const externalConfigData = fs.readFileSync(externalEngineConfig);
-  if (!externalConfigData.equals(engineAsset.data) || sha256(externalConfigData) !== engineAsset.sha256) {
-    throw new Error('packaged external Engine config differs from its profile binding');
+    const assets = new Map();
+    for (const asset of entry.assets) {
+      const data = extractBoundedArchiveFile(archive, asset.path, MAX_PACKAGED_PROFILE_ASSET_BYTES);
+      if (sha256(data) !== asset.sha256) {
+        throw new Error(`packaged school profile asset hash mismatch: ${entry.profileId}/${asset.key}`);
+      }
+      assets.set(asset.key, { ...asset, data });
+    }
+    const engineAsset = assets.get(profile.gateway.engineConfigRef);
+    const brandingAsset = assets.get(profile.branding.bundledAssetKey);
+    const resourceAsset = assets.get(profile.browser.builtinResourcesRef);
+    if (assets.size !== 3 || engineAsset?.kind !== 'engine-config' ||
+        brandingAsset?.kind !== 'branding' || resourceAsset?.kind !== 'builtin-resources') {
+      throw new Error(`packaged school profile asset binding is incomplete: ${entry.profileId}`);
+    }
+    parseBuiltinResourceDocument(resourceAsset.data);
+
+    const externalEngineConfig = path.join(externalEngineDirectory, `${profile.profileId}.json`);
+    const externalConfigData = fs.readFileSync(externalEngineConfig);
+    if (!externalConfigData.equals(engineAsset.data) ||
+        sha256(externalConfigData) !== engineAsset.sha256) {
+      throw new Error(`packaged external Engine config differs from its profile binding: ${entry.profileId}`);
+    }
+    const engineConfig = parsePackagedJson(externalConfigData, 'external Engine config');
+    if (normalizeGatewayOrigin(engineConfig.base_url).origin !== profile.gateway.origin.origin) {
+      throw new Error(`packaged Engine config Gateway differs from its school profile: ${entry.profileId}`);
+    }
+    return profile;
+  }));
+}
+
+function assertPackagedSchoolProfile(archive, externalEngineConfig) {
+  const profiles = assertPackagedSchoolProfiles(archive, path.dirname(externalEngineConfig));
+  if (profiles.length !== 1 || path.basename(externalEngineConfig) !== `${profiles[0].profileId}.json`) {
+    throw new Error('single-profile package verifier received a multi-profile package');
   }
-  const engineConfig = parsePackagedJson(externalConfigData, 'external Engine config');
-  if (normalizeGatewayOrigin(engineConfig.base_url).origin !== profile.gateway.origin.origin) {
-    throw new Error('packaged Engine config Gateway differs from its school profile');
-  }
-  return profile;
+  return profiles[0];
 }
 
 function resolveResourcesDirectory(input) {
@@ -370,6 +384,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/connection/engine/engine-control-client.js',
     '/lib/connection/engine/engine-auth-control-client.js',
     '/lib/connection/engine/engine-connection-runtime.js',
+    '/lib/connection/state/connection-recovery-presentation.js',
     '/lib/connection/engine/engine-control-suite.js',
     '/lib/platform/shell/desktop-shell.js',
     '/lib/platform/storage/windows-private-file.js',
@@ -382,6 +397,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/profiles/registry/school-profile-registry.js',
     '/lib/profiles/runtime/school-profile-runtime.js',
     '/lib/profiles/runtime/school-profile-controller.js',
+    '/lib/profiles/deletion/custom-profile-deletion-runtime.js',
+    '/lib/integrations/atomic-export-file-transaction.js',
     '/lib/ipc/control-state-snapshot.js',
     '/lib/connection/telemetry/connection-telemetry-coordinator.js',
     '/lib/connection/engine/engine-protocol-session.js',
@@ -393,6 +410,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/ipc/routing-rule-ipc.js',
     '/lib/ipc/certificate-pin-ipc.js',
     '/lib/ipc/campus-resource-ipc.js',
+    '/lib/ipc/browser-data-ipc.js',
     '/lib/persistence/settings/settings-update.js',
     '/lib/connection/recovery/tunnel-health.js',
     '/lib/platform/update/update-check.js',
@@ -402,8 +420,12 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/routing-manager.js',
     '/renderer/certificate-manager.js',
     '/renderer/resource-manager.js',
+    '/renderer/student-home.js',
+    '/renderer/notification-view.js',
+    '/renderer/browser-data-settings.js',
     '/renderer/proxy-auth-migration.js',
     '/renderer/i18n.js',
+    '/renderer/design-tokens.css',
     '/renderer/campus-browser.html',
     '/renderer/campus-browser.js',
     '/renderer/campus-browser.css',
@@ -418,6 +440,20 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   if (entries.has('/assets/campus-resources.json')) {
     throw new Error('legacy duplicate campus resource asset entered the package');
   }
+  for (const retiredEntry of [
+    '/lib/integrations/clash-verge-managed-coordinator.js',
+    '/lib/integrations/clash-verge-script.js',
+    '/lib/integrations/integration-record-store.js',
+    '/lib/integrations/managed-adapter-transaction.js',
+    '/lib/integrations/managed-file-transaction.js',
+    '/lib/integrations/managed-text-block.js',
+    '/lib/integrations/openssh-managed-config.js',
+    '/lib/integrations/openssh-managed-coordinator.js',
+  ]) {
+    if (entries.has(retiredEntry)) {
+      throw new Error(`retired third-party installer entered the package: ${retiredEntry}`);
+    }
+  }
   assertNoTestOnlyPackageEntries(entries);
 
   const packagedIndex = extractArchiveFile(archive, 'renderer/index.html').toString('utf8');
@@ -430,9 +466,23 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     .toString('utf8');
   const packagedResourceManager = extractArchiveFile(archive, 'renderer/resource-manager.js')
     .toString('utf8');
+  const packagedStudentHome = extractArchiveFile(archive, 'renderer/student-home.js')
+    .toString('utf8');
   if (!packagedMain.includes("'--profile-binding-v1-stdin'") ||
       packagedMain.includes("'--config-sha256'")) {
     throw new Error('packaged Desktop does not enforce private Engine profile binding');
+  }
+  if (!packagedMain.includes('customGatewayProductAvailability()') ||
+      /customGatewayOnboardingEnabled\s*=\s*!app\.isPackaged/u.test(packagedMain)) {
+    throw new Error('packaged product does not expose safe Other-school onboarding');
+  }
+  for (const [name, source] of [
+    ['Main', packagedMain], ['Preload', packagedPreload], ['Core IPC',
+      extractArchiveFile(archive, 'lib/ipc/core-control-ipc.js').toString('utf8')],
+  ]) {
+    if (/copy-clash-node|ssh-config|legacyExternalProxyActions/u.test(source)) {
+      throw new Error(`packaged ${name} exposes a retired external-tool control`);
+    }
   }
   for (const [helper, source] of [
     ['login-flow', '../lib/browser/auth/login-flow.js'],
@@ -444,7 +494,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   }
   for (const feature of [
     'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
-    'proxy-auth-migration',
+    'proxy-auth-migration', 'student-home', 'notification-view', 'browser-data-settings',
   ]) {
     const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);
     const appScript = packagedIndex.indexOf('src="app.js"');
@@ -458,7 +508,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
   if (!packagedRenderer.includes('window.loginFlow') ||
-      !packagedRenderer.includes('window.resourceView')) {
+      !packagedRenderer.includes('window.studentHome') ||
+      !packagedStudentHome.includes('root.resourceView')) {
     throw new Error('renderer does not consume the packaged shared helper APIs');
   }
   assertCustomResourceManager({
@@ -480,11 +531,12 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const engine = path.join(resources, 'engine', engineName);
   const proxyCommand = path.join(resources, 'engine', proxyCommandName);
   const gatewayProbe = path.join(resources, 'engine', gatewayProbeName);
+  const packagedProfiles = assertPackagedSchoolProfiles(archive, path.join(resources, 'engine'));
   assertExactNativeResources(path.join(resources, 'engine'), [
     engineName,
     proxyCommandName,
     gatewayProbeName,
-    'hkustgz.json',
+    ...packagedProfiles.map(({ profileId }) => `${profileId}.json`),
   ]);
   for (const [label, executable] of [
     ['engine', engine], ['SSH proxy helper', proxyCommand], ['Gateway probe', gatewayProbe],
@@ -494,8 +546,6 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
   assertNoTestOnlyEngineMarker(engine);
-  assertPackagedSchoolProfile(archive, path.join(resources, 'engine', 'hkustgz.json'));
-
   if (platformName === 'windows') {
     for (const executable of [engine, proxyCommand, gatewayProbe]) {
       const header = fs.readFileSync(executable);
@@ -553,6 +603,7 @@ module.exports = {
   assertExactNativeResources,
   assertNoTestOnlyEngineMarker,
   assertPackagedSchoolProfile,
+  assertPackagedSchoolProfiles,
   assertNoTestOnlyNativeResources,
   assertNoTestOnlyPackageEntries,
   parseArguments,

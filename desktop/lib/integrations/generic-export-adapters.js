@@ -1,11 +1,11 @@
 'use strict';
 
-const {
-  validateProfileNetworkRules,
-} = require('./profile-network-rules');
+const path = require('node:path');
+const { buildSshProxyCommand } = require('./external-proxy-config');
+const { validateProfileNetworkRules } = require('./profile-network-rules');
 
 const GENERIC_EXPORT_ADAPTERS = Object.freeze([
-  'clash_yaml', 'mihomo_yaml', 'pac', 'manual_export',
+  'clash_yaml', 'mihomo_yaml', 'vscode_remote_ssh',
 ]);
 const MAX_GENERIC_EXPORT_BYTES = 512 * 1024;
 const LOCAL_PROXY_SECRET = /^[A-Za-z0-9_-]{16,128}$/u;
@@ -84,31 +84,30 @@ function buildClashCompatibleYaml({ adapterId, port: rawPort, credential, networ
   });
 }
 
-function buildManualProxyExport({ port: rawPort, credential, networkRules } = {}) {
-  const rules = validateProfileNetworkRules(networkRules);
-  return withCredential(credential, (username, password) => `${JSON.stringify({
-    schemaVersion: 1,
-    profileId: rules.profileId,
-    profileRevision: rules.profileRevision,
-    rulesDigest: rules.rulesDigest,
-    proxy: {
-      type: 'socks5', host: '127.0.0.1', port: port(rawPort), username, password, udp: false,
-    },
-  }, null, 2)}\n`);
-}
-
-function validatePacSource(value) {
-  if (typeof value !== 'string' || !value.includes('function FindProxyForURL') ||
-      Buffer.byteLength(value, 'utf8') < 32 ||
-      Buffer.byteLength(value, 'utf8') > MAX_GENERIC_EXPORT_BYTES) {
-    throw new TypeError('PAC export source is invalid');
+function normalizedLocalPath(value, name) {
+  if (typeof value !== 'string' || !path.isAbsolute(value) || path.normalize(value) !== value ||
+      value === path.parse(value).root || /[\r\n\0]/u.test(value)) {
+    throw new TypeError(`${name} is invalid`);
   }
   return value;
 }
 
-function exactKeys(value, keys) {
-  return value && typeof value === 'object' && !Array.isArray(value) &&
-    JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
+function buildVscodeRemoteSshSnippet({ helperPath, credentialFile, networkRules } = {}) {
+  const rules = validateProfileNetworkRules(networkRules);
+  const command = buildSshProxyCommand({
+    helperPath: normalizedLocalPath(helperPath, 'VS Code helper path'),
+    credentialFile: normalizedLocalPath(credentialFile, 'VS Code credential path'),
+    profileId: rules.profileId,
+  }).split('\n').at(-1);
+  return [
+    '# Campus Connect VS Code Remote-SSH snippet',
+    '# Replace Host, HostName and User before pasting this block into ~/.ssh/config.',
+    'Host campus-connect-server',
+    '    HostName replace-with-campus-host',
+    '    User replace-with-campus-user',
+    `    ${command}`,
+    '',
+  ].join('\n');
 }
 
 function validateClashCompatibleText(text) {
@@ -129,8 +128,7 @@ function validateClashCompatibleText(text) {
   } catch { return false; }
   const profileId = lines[1].match(/^# Profile: ([a-z0-9-]{1,64});/u)?.[1];
   if (name !== `Campus Connect - ${profileId}` ||
-      !/^    port: (?:[1-9][0-9]{3,4})$/u.test(lines[6]) ||
-      proxyPort < 1025 ||
+      !/^    port: (?:[1-9][0-9]{3,4})$/u.test(lines[6]) || proxyPort < 1025 ||
       !LOCAL_PROXY_SECRET.test(username) || !LOCAL_PROXY_SECRET.test(password) ||
       username === password || lines[9] !== '    udp: false') return false;
   for (const line of lines.slice(11)) {
@@ -138,28 +136,23 @@ function validateClashCompatibleText(text) {
     let rule;
     try { rule = JSON.parse(line.slice(4)); } catch { return false; }
     const fields = String(rule).split(',');
-    if (!['DOMAIN', 'DOMAIN-SUFFIX', 'IP-CIDR'].includes(fields[0]) ||
-        !fields[1] || !['DIRECT', name].includes(fields[2]) ||
+    if (!['DOMAIN', 'DOMAIN-SUFFIX', 'IP-CIDR'].includes(fields[0]) || !fields[1] ||
+        !['DIRECT', name].includes(fields[2]) ||
         (fields.length === 4 && (fields[0] !== 'IP-CIDR' || fields[3] !== 'no-resolve')) ||
         fields.length < 3 || fields.length > 4) return false;
   }
   return true;
 }
 
-function validateManualText(text) {
-  let value;
-  try { value = JSON.parse(text); } catch { return false; }
-  if (!exactKeys(value, ['schemaVersion', 'profileId', 'profileRevision', 'rulesDigest', 'proxy']) ||
-      value.schemaVersion !== 1 || !/^[a-z0-9-]{1,64}$/u.test(value.profileId) ||
-      !Number.isSafeInteger(value.profileRevision) || value.profileRevision <= 0 ||
-      !/^[a-f0-9]{64}$/u.test(value.rulesDigest) ||
-      !exactKeys(value.proxy, ['type', 'host', 'port', 'username', 'password', 'udp']) ||
-      value.proxy.type !== 'socks5' || value.proxy.host !== '127.0.0.1' ||
-      value.proxy.udp !== false || !LOCAL_PROXY_SECRET.test(value.proxy.username) ||
-      !LOCAL_PROXY_SECRET.test(value.proxy.password) ||
-      value.proxy.username === value.proxy.password) return false;
-  try { port(value.proxy.port); } catch { return false; }
-  return true;
+function validateVscodeRemoteSshText(text) {
+  const lines = String(text).trimEnd().split('\n');
+  return lines.length === 6 &&
+    lines[0] === '# Campus Connect VS Code Remote-SSH snippet' &&
+    lines[1] === '# Replace Host, HostName and User before pasting this block into ~/.ssh/config.' &&
+    lines[2] === 'Host campus-connect-server' &&
+    lines[3] === '    HostName replace-with-campus-host' &&
+    lines[4] === '    User replace-with-campus-user' &&
+    /^    ProxyCommand "[^"\r\n]+ec-proxy-command[^"\r\n]*" --profile-id "[a-z0-9-]{1,64}" --credential-file "[^"\r\n]+" -- %h %p$/u.test(lines[5]);
 }
 
 function validateGenericExportPayload(adapterId, payload) {
@@ -170,8 +163,7 @@ function validateGenericExportPayload(adapterId, payload) {
   if (adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml') {
     return validateClashCompatibleText(text);
   }
-  if (adapterId === 'manual_export') return validateManualText(text);
-  try { return validatePacSource(text) === text; } catch { return false; }
+  return adapterId === 'vscode_remote_ssh' && validateVscodeRemoteSshText(text);
 }
 
 function buildGenericExport({
@@ -179,22 +171,15 @@ function buildGenericExport({
   port: rawPort,
   credential = null,
   networkRules,
-  pacSource = null,
+  helperPath = null,
+  credentialFile = null,
 } = {}) {
   if (!GENERIC_EXPORT_ADAPTERS.includes(adapterId)) {
     throw new TypeError('generic export adapter is unsupported');
   }
-  let source;
-  if (adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml') {
-    source = buildClashCompatibleYaml({
-      adapterId, port: rawPort, credential, networkRules,
-    });
-  } else if (adapterId === 'manual_export') {
-    source = buildManualProxyExport({ port: rawPort, credential, networkRules });
-  } else {
-    validateProfileNetworkRules(networkRules);
-    source = validatePacSource(pacSource);
-  }
+  const source = adapterId === 'clash_yaml' || adapterId === 'mihomo_yaml'
+    ? buildClashCompatibleYaml({ adapterId, port: rawPort, credential, networkRules })
+    : buildVscodeRemoteSshSnippet({ helperPath, credentialFile, networkRules });
   const payload = Buffer.from(source, 'utf8');
   if (!payload.length || payload.length > MAX_GENERIC_EXPORT_BYTES) {
     payload.fill(0);
@@ -203,8 +188,11 @@ function buildGenericExport({
   return Object.freeze({
     adapterId,
     payload,
-    containsLocalProxyCredential: adapterId !== 'pac',
-    ruleCount: adapterId === 'pac'
+    containsLocalProxyCredential: adapterId !== 'vscode_remote_ssh',
+    warningCode: adapterId === 'vscode_remote_ssh'
+      ? 'INTEGRATION_CREDENTIAL_SIDECAR_PRIVATE'
+      : 'INTEGRATION_LOCAL_CREDENTIAL_PRIVATE',
+    ruleCount: adapterId === 'vscode_remote_ssh'
       ? 0
       : clashRuleLines(networkRules, nodeName(networkRules.profileId)).length,
   });
@@ -215,7 +203,7 @@ module.exports = {
   MAX_GENERIC_EXPORT_BYTES,
   buildClashCompatibleYaml,
   buildGenericExport,
-  buildManualProxyExport,
+  buildVscodeRemoteSshSnippet,
   clashRuleLines,
   validateGenericExportPayload,
   withIntegrationCredential: withCredential,

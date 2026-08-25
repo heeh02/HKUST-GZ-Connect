@@ -3,6 +3,7 @@
 const { resolveResourceById } = require('./campus-resources');
 const { projectResourceActivity } = require('./resource-activity');
 const { ResourceActivityStore } = require('./resource-activity-store');
+const { localizeResources } = require('../presentation/localized-resource-view');
 
 class ResourceLibraryRuntime {
   constructor({
@@ -41,6 +42,10 @@ class ResourceLibraryRuntime {
     }
   }
 
+  listLocalized(settings = null, locale = 'zh') {
+    return localizeResources(this.list(settings), locale);
+  }
+
   snapshot() { return this.activityStore.snapshot(); }
 
   toggleFavorite(resourceId, resources) {
@@ -51,7 +56,7 @@ class ResourceLibraryRuntime {
     return this.activityStore.replaceFavorites(document);
   }
 
-  async openById(resourceId) {
+  async openById(resourceId, locale = 'zh') {
     const resource = resolveResourceById(this.loadResources(), resourceId);
     const context = this.captureContext();
     if (!this.isContextCurrent(context)) throw new Error('resource context is stale');
@@ -64,7 +69,7 @@ class ResourceLibraryRuntime {
       ok: true,
       route: result.route === 'direct' ? 'direct' : 'campus',
       resourceId: resource.id,
-      resources: this.list(),
+      resources: this.listLocalized(null, locale),
     });
   }
 }

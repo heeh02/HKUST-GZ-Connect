@@ -14,7 +14,7 @@ The first Beta does not define or implement:
 - `ResourceDescriptor`, `resourceHandle`, `LaunchHandle`, `ResourceLaunchBroker` or `ForwardLease`;
 - an SSH client, terminal, scheduler/HPC manager or application-specific forwarding workbench.
 
-External Clash/OpenSSH/VS Code/PAC configuration belongs to the independent
+External Clash/Mihomo YAML and VS Code Remote-SSH snippet generation belongs to the independent
 [`External Tool Integration Center`](../adr/0005-external-tool-integration-center.md), not this model.
 
 ## 2. Current evidence

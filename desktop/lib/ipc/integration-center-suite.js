@@ -8,10 +8,6 @@ const {
 const {
   createIntegrationRuntimeContext,
 } = require('../integrations/integration-runtime-context');
-const {
-  buildClashProxyYaml,
-  buildSshProxyCommand,
-} = require('../integrations/external-proxy-config');
 
 function selectedFile(result) {
   if (!result || result.canceled === true) return null;
@@ -26,7 +22,7 @@ function createIntegrationTargetSelector({
   homeDirectory,
 } = {}) {
   if (!dialog || typeof dialog.showSaveDialog !== 'function' ||
-      typeof dialog.showOpenDialog !== 'function' || typeof getParentWindow !== 'function' ||
+      typeof getParentWindow !== 'function' ||
       typeof homeDirectory !== 'string' || !path.isAbsolute(homeDirectory)) {
     throw new TypeError('integration target selector dependencies are invalid');
   }
@@ -39,8 +35,6 @@ function createIntegrationTargetSelector({
       const names = {
         clash_yaml: ['campus-connect-clash.yaml', [{ name: 'YAML', extensions: ['yaml', 'yml'] }]],
         mihomo_yaml: ['campus-connect-mihomo.yaml', [{ name: 'YAML', extensions: ['yaml', 'yml'] }]],
-        pac: ['campus-connect.pac', [{ name: 'PAC', extensions: ['pac'] }]],
-        manual_export: ['campus-connect.json', [{ name: 'JSON', extensions: ['json'] }]],
       };
       const selected = names[adapterId];
       if (!selected) return null;
@@ -51,23 +45,13 @@ function createIntegrationTargetSelector({
         properties: ['showOverwriteConfirmation', 'createDirectory'],
       }));
     }
-    const openSsh = adapterId === 'openssh_proxy_command';
-    if (!openSsh && adapterId !== 'clash_verge_rev_managed') return null;
-    return selectedFile(await invoke('showOpenDialog', {
-      title: openSsh ? 'Select your OpenSSH .ssh/config' : 'Select Clash Verge Rev global Script.js',
-      defaultPath: openSsh ? path.join(homeDirectory, '.ssh', 'config') : homeDirectory,
-      filters: openSsh
-        ? [{ name: 'OpenSSH config', extensions: ['config', '*'] }]
-        : [{ name: 'JavaScript', extensions: ['js'] }],
-      properties: ['openFile'],
-    }));
+    return null;
   };
 }
 
 function createExternalIntegrationRuntime({
   enabled,
   workspaceRoot,
-  recordFile,
   getAuthority,
   withProfileDocument,
   getSettings,
@@ -96,7 +80,6 @@ function createExternalIntegrationRuntime({
   }
   return createIntegrationCenterRuntime({
     workspaceRoot,
-    recordFile,
     helperPath,
     credentialFile,
     ensureSidecar,
@@ -119,56 +102,8 @@ function createExternalIntegrationRuntime({
   });
 }
 
-function createLegacyExternalProxyActions({
-  getSettings,
-  ensureAccess,
-  currentGeneration,
-  hasActiveEngine,
-  activeAuthentication,
-  reconnect,
-  writeClipboard,
-  helperPath,
-  credentialFile,
-  profileId,
-  errorText,
-} = {}) {
-  for (const dependency of [
-    getSettings, ensureAccess, currentGeneration, hasActiveEngine, activeAuthentication,
-    reconnect, writeClipboard, helperPath, credentialFile, profileId, errorText,
-  ]) {
-    if (typeof dependency !== 'function') {
-      throw new TypeError('legacy external proxy action dependencies are incomplete');
-    }
-  }
-  return Object.freeze({
-    sshConfig: () => {
-      try {
-        const settings = getSettings();
-        ensureAccess(Number(settings.port));
-        return buildSshProxyCommand({
-          helperPath: helperPath(), credentialFile: credentialFile(), profileId: profileId(),
-        });
-      } catch { throw new Error(errorText()); }
-    },
-    copyClashNode: async () => {
-      try {
-        const settings = getSettings();
-        const credential = ensureAccess(Number(settings.port));
-        const generation = currentGeneration();
-        if (hasActiveEngine() && !activeAuthentication(generation)) {
-          const switched = await reconnect();
-          if (!switched?.ok) return { ok: false, error: errorText() };
-        }
-        writeClipboard(buildClashProxyYaml({ port: settings.port, credential }));
-        return { ok: true };
-      } catch { return { ok: false, error: errorText() }; }
-    },
-  });
-}
-
 module.exports = {
   createExternalIntegrationRuntime,
   createIntegrationTargetSelector,
-  createLegacyExternalProxyActions,
   selectedIntegrationTargetFile: selectedFile,
 };

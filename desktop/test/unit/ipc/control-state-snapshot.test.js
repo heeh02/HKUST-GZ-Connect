@@ -4,7 +4,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { validateBuiltinResourceDocument } = require('../../../lib/resources/schema/campus-resource-contract');
 const { projectCampusResources } = require('../../../lib/resources/runtime/campus-resources');
-const { createControlStateSnapshot } = require('../../../lib/ipc/control-state-snapshot');
+const {
+  createControlStateSnapshot,
+  maskedAccountLabel,
+} = require('../../../lib/ipc/control-state-snapshot');
 
 function fixture(overrides = {}) {
   const calls = [];
@@ -44,6 +47,7 @@ test('projects settings, resources and key-free profile compatibility views', ()
   assert.equal(value.connected, true);
   assert.equal(value.loggedIn, true);
   assert.equal(value.hasPassword, true);
+  assert.equal(value.settings.username, 'stu****');
   assert.equal(value.capabilitySnapshot, null);
   assert.deepEqual(value.campusResources.map(({ id }) => id), ['home', 'hpc']);
   assert.deepEqual(calls, [{
@@ -56,6 +60,12 @@ test('projects settings, resources and key-free profile compatibility views', ()
   for (const forbidden of ['engineConfigRef', 'reviewedDnsFallback', 'accountKey', 'workspaceKey']) {
     assert.equal(JSON.stringify(value).includes(forbidden), false);
   }
+});
+
+test('account labels are masked before entering ordinary Renderer state', () => {
+  assert.equal(maskedAccountLabel('jhe000'), 'jhe***');
+  assert.equal(maskedAccountLabel('ab'), 'ab***');
+  assert.equal(maskedAccountLabel(''), '');
 });
 
 test('settings failure returns the bounded fallback without probing credentials', () => {

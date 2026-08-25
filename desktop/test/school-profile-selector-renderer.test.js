@@ -15,6 +15,8 @@ const IDS = [
   'customGatewaySummary', 'confirmCustomGateway', 'backCustomGateway',
   'schoolProfileError', 'brandLogo', 'brandFallback', 'brandTitle', 'brandSub',
   'titlebarText', 'connectSchoolName', 'gatewaySchoolName', 'gwName', 'settingsGateway',
+  'schoolPicker', 'lgUser', 'lgPass', 'lgBtn', 'profileTrustBadge', 'settingsTrustBadge',
+  'deleteSchoolProfile',
 ];
 
 function element() {
@@ -58,7 +60,11 @@ function fixture(overrides = {}) {
     view(`custom-${'a'.repeat(32)}`, { custom: true }),
   ];
   const api = {
-    listSchoolProfiles: async () => ({ ok: true, profiles }),
+    listSchoolProfiles: async () => ({
+      ok: true,
+      profiles,
+      customGatewayEnabled: overrides.customGatewayEnabled !== false,
+    }),
     probeCustomGateway: async (request) => {
       calls.push(['probe', request]);
       return overrides.probeResult || {
@@ -80,6 +86,10 @@ function fixture(overrides = {}) {
     switchSchoolProfile: async (request) => {
       calls.push(['switch', request]);
       return overrides.switchResult || { ok: true, relaunching: true };
+    },
+    deleteSchoolProfile: async (request) => {
+      calls.push(['delete', request]);
+      return overrides.deleteResult || { ok: true };
     },
   };
   const document = {
@@ -117,6 +127,7 @@ test('selector lists active and candidate schools and switches only an inactive 
   assert.equal(select.children.length, 3);
   assert.equal(select.value, 'hkustgz');
   assert.equal(f.elements.get('switchSchoolProfile').disabled, true);
+  assert.equal(f.elements.get('lgBtn').disabled, false);
   assert.equal(f.document.title, 'HKUST(GZ) Connect');
   assert.equal(f.elements.get('brandLogo').hidden, false);
   assert.deepEqual(f.elements.get('brandTitle').children.map((child) => child.textContent), [
@@ -126,6 +137,8 @@ test('selector lists active and candidate schools and switches only an inactive 
   select.value = `custom-${'a'.repeat(32)}`;
   select.listeners.get('change')();
   assert.equal(f.elements.get('switchSchoolProfile').disabled, false);
+  assert.equal(f.elements.get('lgUser').disabled, true);
+  assert.equal(f.feature.credentialProfileId(), null);
   await f.feature.switchExisting();
   assert.deepEqual(f.calls.at(-1), ['switch', { profileId: `custom-${'a'.repeat(32)}` }]);
   assert.equal(f.elements.get('schoolProfileStatus').textContent, 'school.switching');
@@ -168,13 +181,46 @@ test('expired confirmation is erased locally and cancelled in Main', async () =>
     'school.error.PROFILE_CONFIRMATION_STALE');
 });
 
-test('custom active Profile replaces HKUST branding with bounded local text', async () => {
+test('custom active Profile keeps product identity and continuously shows unreviewed status', async () => {
   const custom = view(`custom-${'d'.repeat(32)}`, { active: true, custom: true });
   const f = fixture({ profiles: [custom] });
   await f.feature.refresh();
   assert.equal(f.elements.get('brandLogo').hidden, true);
   assert.equal(f.elements.get('brandFallback').hidden, false);
-  assert.equal(f.elements.get('brandTitle').textContent, 'Example Connect');
+  assert.equal(f.document.title, 'HKUST(GZ) Connect');
+  assert.deepEqual(f.elements.get('brandTitle').children.map((child) => child.textContent), [
+    'HKUST', '(GZ)', ' Connect',
+  ]);
+  assert.match(f.elements.get('brandSub').textContent, /school\.unverified/u);
+  assert.equal(f.elements.get('profileTrustBadge').hidden, false);
+  assert.equal(f.elements.get('settingsTrustBadge').hidden, false);
   assert.equal(f.elements.get('settingsGateway').textContent, 'https://vpn.example.edu');
   assert.equal(f.elements.get('connectSchoolName').textContent, 'Example University');
+});
+
+test('first-beta mode hides Other and the selector when only HKUST is available', async () => {
+  const f = fixture({
+    profiles: [view('hkustgz', { active: true })],
+    customGatewayEnabled: false,
+  });
+  await f.feature.refresh();
+  assert.equal(f.elements.get('schoolProfileSelect').children.length, 1);
+  assert.equal(f.elements.get('schoolPicker').hidden, true);
+  assert.equal(f.elements.get('customSchoolPanel').hidden, true);
+  assert.equal(f.feature.credentialProfileId(), 'hkustgz');
+});
+
+test('inactive custom Profile requires two clicks before local deletion', async () => {
+  const f = fixture();
+  f.feature.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  f.elements.get('schoolProfileSelect').value = `custom-${'a'.repeat(32)}`;
+  f.elements.get('schoolProfileSelect').listeners.get('change')();
+  assert.equal(f.elements.get('deleteSchoolProfile').hidden, false);
+  await f.feature.deleteExisting();
+  assert.equal(f.calls.some(([name]) => name === 'delete'), false);
+  await f.feature.deleteExisting();
+  assert.deepEqual(f.calls.find(([name]) => name === 'delete'), ['delete', {
+    profileId: `custom-${'a'.repeat(32)}`,
+  }]);
 });

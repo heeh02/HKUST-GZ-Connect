@@ -16,6 +16,7 @@ const MAX_RESOURCE_DESCRIPTION_LENGTH = 80;
 const MAX_RESOURCE_URL_LENGTH = 2048;
 const MAX_RESOURCE_KEYWORDS = 12;
 const MAX_RESOURCE_KEYWORD_LENGTH = 40;
+const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|id_token|relaystate|samlresponse|session|state|ticket|token)$/iu;
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
 const RESOURCE_CATEGORIES = Object.freeze([
@@ -78,6 +79,19 @@ function normalizedWebUrl(value, { reviewed = false } = {}) {
   return canonical;
 }
 
+function sanitizeCustomResourceUrl(value, { rejectSensitive = false } = {}) {
+  const canonical = normalizedWebUrl(value, { reviewed: false });
+  const parsed = new URL(canonical);
+  const sensitive = [...parsed.searchParams.keys()].some((key) => (
+    SENSITIVE_RESOURCE_QUERY_KEY.test(key)
+  ));
+  if (rejectSensitive && sensitive) {
+    throw new TypeError('临时登录链接不能保存到常用网站');
+  }
+  parsed.search = '';
+  return parsed.href;
+}
+
 function normalizedResource(value, {
   builtin,
   reviewed,
@@ -85,7 +99,7 @@ function normalizedResource(value, {
   defaultRoute = ROUTE_CAMPUS,
 } = {}) {
   const source = exact
-    ? exactKeys(value, ['id', 'name', 'description', 'url', 'route', 'category', 'keywords'],
+    ? exactKeys(value, ['id', 'name', 'description', 'localizedName', 'localizedDescription', 'url', 'route', 'category', 'keywords'],
       ['id', 'name', 'description', 'url'], 'WebResource')
     : plainObject(value, 'WebResource');
   const id = boundedText(source.id, MAX_RESOURCE_ID_LENGTH, 'resource id');
@@ -121,11 +135,29 @@ function normalizedResource(value, {
     'resource description',
     { allowEmpty: true },
   );
+  const localized = (value, fallback, maxLength, name, allowEmpty = false) => {
+    if (value == null) return deepFreeze({ zh: fallback, en: fallback });
+    const sourceValue = exactKeys(value, ['zh', 'en'], ['zh', 'en'], name);
+    return deepFreeze({
+      zh: boundedText(sourceValue.zh, maxLength, `${name}.zh`, { allowEmpty }),
+      en: boundedText(sourceValue.en, maxLength, `${name}.en`, { allowEmpty }),
+    });
+  };
+  const localizedName = localized(
+    source.localizedName, name, MAX_RESOURCE_NAME_LENGTH, 'localizedName',
+  );
+  const localizedDescription = localized(
+    source.localizedDescription, description, MAX_RESOURCE_DESCRIPTION_LENGTH,
+    'localizedDescription', true,
+  );
+  if (builtin === true && (localizedName.zh !== name || localizedDescription.zh !== description)) {
+    throw new TypeError('reviewed resource Chinese compatibility text drifted');
+  }
   return deepFreeze({
     schemaVersion: WEB_RESOURCE_SCHEMA_VERSION,
     id,
-    localizedName: { zh: name, en: name },
-    localizedDescription: { zh: description, en: description },
+    localizedName,
+    localizedDescription,
     name,
     description,
     url,
@@ -183,15 +215,16 @@ function validateRuntimeBuiltinResources(value) {
     );
     if (source.schemaVersion !== WEB_RESOURCE_SCHEMA_VERSION || source.builtin !== true ||
         source.reviewed !== true || source.iconKey !== null ||
-        source.localizedName?.zh !== source.name || source.localizedName?.en !== source.name ||
-        source.localizedDescription?.zh !== source.description ||
-        source.localizedDescription?.en !== source.description) {
+        source.localizedName?.zh !== source.name ||
+        source.localizedDescription?.zh !== source.description) {
       throw new TypeError('runtime builtin resource lost its version or origin');
     }
     return normalizedResource({
       id: source.id,
       name: source.name,
       description: source.description,
+      localizedName: source.localizedName,
+      localizedDescription: source.localizedDescription,
       url: source.url,
       route: source.route,
       category: source.category,
@@ -258,11 +291,14 @@ function normalizeResource(value) {
       route = ROUTE_CAMPUS;
     }
   } catch {}
+  let url;
+  try { url = sanitizeCustomResourceUrl(String(value.url || '').trim()); }
+  catch { return null; }
   return normalizeLegacyCustomResource({
     id: String(value.id || '').trim(),
     name: String(value.name || '').trim(),
     description: String(value.description || '').trim(),
-    url: String(value.url || '').trim(),
+    url,
     route,
     category: value.category,
     keywords: value.keywords,
@@ -310,6 +346,7 @@ module.exports = {
   normalizeCustomResources,
   normalizeLegacyCustomResource,
   normalizeResource,
+  sanitizeCustomResourceUrl,
   parseBuiltinResourceDocument,
   validateBuiltinResourceDocument,
   validateBuiltinResourcesRef,

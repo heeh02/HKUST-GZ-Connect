@@ -81,12 +81,14 @@ class GenericExportTransactionOwner {
     networkRules: rulesValue,
     port,
     credential = null,
-    pacSource = null,
+    helperPath = null,
+    credentialFile = null,
     targetFile = null,
   } = {}) {
     this.cancel();
     if (!GENERIC_EXPORT_ADAPTERS.includes(adapterId) || !ACTIONS.includes(action) ||
-        bindingValue?.adapterId !== adapterId) {
+        bindingValue?.adapterId !== adapterId ||
+        (adapterId === 'vscode_remote_ssh' && action !== 'copy')) {
       throw new GenericExportError('INTEGRATION_ADAPTER_UNAVAILABLE');
     }
     const binding = validateIntegrationBinding(bindingValue);
@@ -100,7 +102,14 @@ class GenericExportTransactionOwner {
     const target = normalizedTarget(targetFile, action);
     let generated;
     try {
-      generated = buildGenericExport({ adapterId, port, credential, networkRules: rules, pacSource });
+      generated = buildGenericExport({
+        adapterId,
+        port,
+        credential,
+        networkRules: rules,
+        helperPath,
+        credentialFile,
+      });
     } catch (cause) {
       throw new GenericExportError('INTEGRATION_EXPORT_PREPARE_FAILED', cause);
     }
@@ -146,9 +155,7 @@ class GenericExportTransactionOwner {
       byteLength: generated.payload.length,
       ruleCount: generated.ruleCount,
       containsLocalProxyCredential: generated.containsLocalProxyCredential,
-      warningCode: generated.containsLocalProxyCredential
-        ? 'INTEGRATION_LOCAL_CREDENTIAL_PRIVATE'
-        : 'INTEGRATION_PAC_AUTH_COMPATIBILITY',
+      warningCode: generated.warningCode,
     });
   }
 

@@ -2,7 +2,10 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { CampusBrowserManager } = require('../../../../lib/browser/session/campus-browser-manager');
+const {
+  CampusBrowserManager,
+  browserProfilePresentation,
+} = require('../../../../lib/browser/session/campus-browser-manager');
 
 class FakeVault {
   constructor(options) { this.options = options; }
@@ -40,6 +43,7 @@ function fixture(overrides = {}) {
     toolbarFile: '/fixture/campus-browser.html',
     toolbarPreload: '/fixture/toolbar.js',
     campusPreload: '/fixture/preload.js',
+    browserPartition: 'persist:campus-workspace-test',
     routingPolicy: {},
     ensureCampusReady: async () => true,
     resolveRoute: () => ({ route: 'campus' }),
@@ -47,6 +51,8 @@ function fixture(overrides = {}) {
     getSocksPort: () => 6180,
     getLocale: () => 'zh',
     getTranslator: () => (key, vars) => vars?.message ? `${key}:${vars.message}` : key,
+    getProfilePresentation: () => ({ schoolName: 'Example University', unverified: false }),
+    showItemInFolder: () => {},
     showRoutingRules: () => {},
     reportError: (message) => errors.push(message),
     CampusBrowserClass: FakeBrowser,
@@ -66,7 +72,19 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.deepEqual(browser.opens, [['https://campus.example.test/x', 6180, 'campus']]);
   assert.equal(f.manager.getOrCreate(), browser);
   assert.equal(browser.options.credentialVault.options.filePath, '/fixture/campus-credentials.json');
+  assert.deepEqual(browser.options.profilePresentation, {
+    schoolName: 'Example University', unverified: false,
+  });
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
+});
+
+test('Browser presentation keeps only bounded school and trust display fields', () => {
+  assert.deepEqual(browserProfilePresentation({
+    schoolName: ' Example University ', unverified: true, profileKey: 'must-not-cross',
+  }), { schoolName: 'Example University', unverified: true });
+  assert.throws(() => browserProfilePresentation({
+    schoolName: '<script>', unverified: false,
+  }), /presentation/u);
 });
 
 test('custom Profile uses its isolated partition and a local blank home without network fallback', async () => {
@@ -143,4 +161,34 @@ test('context switch close retains ownership until Browser confirms closed', asy
   assert.equal(await f.manager.closeForContextSwitch(), true);
   assert.equal(browser.contextClosed, true);
   assert.equal(f.manager.browser, null);
+});
+
+test('clearing site data closes the active Browser and clears only its bound partition', async () => {
+  const calls = [];
+  const partition = {
+    closeAllConnections: async () => { calls.push('connections'); },
+    clearStorageData: async () => { calls.push('storage'); },
+    clearCache: async () => { calls.push('cache'); },
+  };
+  const f = fixture({
+    session: {
+      fromPartition(value) {
+        calls.push(['partition', value]);
+        return partition;
+      },
+    },
+  });
+  const browser = f.manager.getOrCreate();
+  assert.equal(await f.manager.clearSiteData(), true);
+  assert.equal(browser.contextClosed, true);
+  assert.equal(f.manager.browser, null);
+  assert.deepEqual(calls, [
+    ['partition', 'persist:campus-workspace-test'],
+    'connections', 'storage', 'cache',
+  ]);
+});
+
+test('site-data clearing fails closed when the bound Session cannot clear storage', async () => {
+  const f = fixture({ session: { fromPartition: () => ({ clearCache() {} }) } });
+  assert.equal(await f.manager.clearSiteData(), false);
 });
