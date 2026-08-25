@@ -7,7 +7,7 @@ const {
   EphemeralProxyCredential,
   RANDOM_SECRET_BYTES,
   cleanupProxyAccessForEngineClose,
-} = require('../lib/proxy-credential');
+} = require('../../../../lib/persistence/credentials/proxy-credential');
 
 function deterministicCredential() {
   let value = 0;

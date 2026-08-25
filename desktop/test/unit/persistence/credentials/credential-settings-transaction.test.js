@@ -10,7 +10,7 @@ const {
   commitCredentialSettingsTransaction,
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
-} = require('../lib/credential-settings-transaction');
+} = require('../../../../lib/persistence/credentials/credential-settings-transaction');
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-credential-tx-'));

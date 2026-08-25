@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('../../credential-store');
+const { atomicWritePrivateFile } = require('../../platform/storage/atomic-private-file');
 const { collectPrivateFileReceipt } = require('../migration/legacy-hkust/legacy-flat-source-receipts');
 const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const { splitRuntimeSettings } = require('./profile-workspace-settings-bundle');

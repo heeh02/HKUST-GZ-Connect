@@ -2,8 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { applySettingsPatch, parseCredentialField, parsePort } = require('../lib/settings-update');
-const { PROXY_SECURITY_VERSION, normalizeSettings } = require('../lib/settings-store');
+const { applySettingsPatch, parseCredentialField, parsePort } = require('../../../../lib/persistence/settings/settings-update');
+const { PROXY_SECURITY_VERSION, normalizeSettings } = require('../../../../lib/persistence/settings/settings-store');
 
 test('numeric-string Windows port is preserved as an integer', () => {
   const result = applySettingsPatch({ port: 1080 }, { port: '6180' });

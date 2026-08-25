@@ -9,7 +9,7 @@ const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
 const { createLegacyCredentialRollbackStoreForAuthority } =
   require('../../../../lib/persistence/migration/legacy-hkust/legacy-credential-rollback-store');
-const { ProfileWorkspaceCredentialStore } = require('../../../../lib/profile-workspace-credential-store');
+const { ProfileWorkspaceCredentialStore } = require('../../../../lib/persistence/credentials/profile-workspace-credential-store');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
@@ -18,7 +18,7 @@ const { ProfileWorkspaceSettingsStore } = require('../../../../lib/persistence/s
 const { ProfileWorkspaceStartupRuntime } = require('../../../../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { createLegacyFlatSourcePaths } = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const { projectRuntimeSettings } = require('../../../../lib/persistence/settings/profile-workspace-settings-bundle');
-const { normalizeSettings } = require('../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../lib/persistence/settings/settings-store');
 
 function profile() {
   return JSON.parse(fs.readFileSync(

@@ -11,8 +11,8 @@ const {
   loadSettings,
   normalizeSettings,
   saveSettings,
-} = require('../lib/settings-store');
-const { protectedStorageAvailable } = require('../lib/credential-store');
+} = require('../../../../lib/persistence/settings/settings-store');
+const { protectedStorageAvailable } = require('../../../../lib/persistence/credentials/credential-store');
 
 test('settings normalization drops obsolete keys and bounds values', () => {
   assert.deepEqual(

@@ -12,7 +12,7 @@ const {
 } = require('../../../../lib/persistence/runtime/profile-workspace-pre-ready-selection');
 const { ProfileWorkspaceStartupRuntime } = require('../../../../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { createLegacyFlatSourcePaths } = require('../../../../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../lib/persistence/settings/settings-store');
 
 function profile() {
   return JSON.parse(fs.readFileSync(

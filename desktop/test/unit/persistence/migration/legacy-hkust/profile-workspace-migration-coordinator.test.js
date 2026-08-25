@@ -33,7 +33,7 @@ const {
   LEGACY_COPY_SOURCE_IDS,
   createHkustMigrationDestinationPlan,
 } = require('../../../../../lib/persistence/migration/legacy-hkust/hkust-migration-destination-plan');
-const { normalizeSettings } = require('../../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../../lib/persistence/settings/settings-store');
 
 function receipt(seed) {
   return Object.freeze({

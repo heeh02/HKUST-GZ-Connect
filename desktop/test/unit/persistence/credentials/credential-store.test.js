@@ -14,7 +14,7 @@ const {
   restorePasswordSnapshot,
   savePassword,
   snapshotPasswordFile,
-} = require('../lib/credential-store');
+} = require('../../../../lib/persistence/credentials/credential-store');
 
 const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
 

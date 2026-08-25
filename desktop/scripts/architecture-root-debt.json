@@ -3,25 +3,15 @@
   "rootFiles": [
     "app-connection-enumerator.js",
     "credential-controller.js",
-    "credential-settings-transaction.js",
-    "credential-store.js",
     "desktop-shell.js",
     "external-proxy-config.js",
-    "external-proxy-credential-store.js",
     "i18n.js",
     "log-writer.js",
     "login-flow.js",
     "multi-school-startup-runtime.js",
     "private-log-file.js",
-    "profile-workspace-credential-store.js",
-    "profile-workspace-credential-transaction.js",
-    "proxy-credential.js",
-    "settings-store.js",
-    "settings-update.js",
     "tray-icon.js",
     "update-check.js",
-    "vpn-credential-envelope-store.js",
-    "vpn-credential-envelope.js",
     "window-layout.js"
   ]
 }

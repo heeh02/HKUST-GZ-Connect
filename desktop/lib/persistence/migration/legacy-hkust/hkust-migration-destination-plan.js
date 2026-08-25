@@ -1,8 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { normalizeSettings } = require('../../../settings-store');
-const { parseCredentialField } = require('../../../settings-update');
+const { normalizeSettings } = require('../../settings/settings-store');
+const { parseCredentialField } = require('../../settings/settings-update');
 const {
   DESTINATION_RECEIPT_IDS,
   validateMigrationJournal,
@@ -22,7 +22,7 @@ const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,
 } = require('../../../profiles/schema/school-profile-schema');
-const { encryptVpnCredentialEnvelope } = require('../../../vpn-credential-envelope');
+const { encryptVpnCredentialEnvelope } = require('../../credentials/vpn-credential-envelope');
 
 const LEGACY_COPY_SOURCE_IDS = Object.freeze([
   'proxyCredential',

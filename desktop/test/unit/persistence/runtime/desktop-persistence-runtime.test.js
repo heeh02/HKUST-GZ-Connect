@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   DesktopPersistenceRuntime,
 } = require('../../../../lib/persistence/runtime/desktop-persistence-runtime');
-const { normalizeSettings } = require('../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../lib/persistence/settings/settings-store');
 
 function owner(username = 'synthetic-user', password = 'synthetic-password') {
   let destroyed = false;

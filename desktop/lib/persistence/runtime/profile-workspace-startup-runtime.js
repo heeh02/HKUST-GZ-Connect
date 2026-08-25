@@ -7,7 +7,7 @@ const {
 } = require('../migration/legacy-hkust/legacy-credential-rollback-store');
 const {
   ProfileWorkspaceCredentialStore,
-} = require('../../profile-workspace-credential-store');
+} = require('../credentials/profile-workspace-credential-store');
 const {
   ProfileWorkspaceMigrationRuntime,
 } = require('../migration/legacy-hkust/profile-workspace-migration-runtime');

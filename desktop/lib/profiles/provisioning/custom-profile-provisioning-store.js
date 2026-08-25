@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('../../credential-store');
+const { atomicWritePrivateFile } = require('../../platform/storage/atomic-private-file');
 const {
   validateCustomProfileProvisioningJournal,
 } = require('./custom-profile-provisioning-journal');

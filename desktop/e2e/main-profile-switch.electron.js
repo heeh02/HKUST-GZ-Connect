@@ -15,7 +15,7 @@ const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-
 const { ProfileSwitchRuntime } = require('../lib/switching/runtime/profile-switch-runtime');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
-const { saveSettings } = require('../lib/settings-store');
+const { saveSettings } = require('../lib/persistence/settings/settings-store');
 
 const DESKTOP = path.join(__dirname, '..');
 const MARKER = 'profile-switch-e2e-ready.json';

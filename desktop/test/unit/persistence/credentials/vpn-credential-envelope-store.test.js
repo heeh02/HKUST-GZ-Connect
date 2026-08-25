@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   VpnCredentialEnvelopeStore,
-} = require('../lib/vpn-credential-envelope-store');
+} = require('../../../../lib/persistence/credentials/vpn-credential-envelope-store');
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-vpn-envelope-'));

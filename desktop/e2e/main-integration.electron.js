@@ -7,7 +7,7 @@ const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { projectRuntimeSettings } = require('../lib/persistence/settings/profile-workspace-settings-bundle');
-const { saveSettings } = require('../lib/settings-store');
+const { saveSettings } = require('../lib/persistence/settings/settings-store');
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-main-e2e-'));
 process.env.HKUSTGZ_USER_DATA_DIR = profile;

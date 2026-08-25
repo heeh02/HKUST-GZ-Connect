@@ -7,19 +7,19 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
-const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
-const { parseCredentialField } = require('./lib/settings-update');
+const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/persistence/settings/settings-store');
+const { parseCredentialField } = require('./lib/persistence/settings/settings-update');
 const {
   credentialLoadErrorKey,
   hasStoredPassword,
   loadPasswordResult: readPasswordResult,
   restorePasswordSnapshot,
   savePassword: writePassword,
-} = require('./lib/credential-store');
+} = require('./lib/persistence/credentials/credential-store');
 const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
-} = require('./lib/credential-settings-transaction');
+} = require('./lib/persistence/credentials/credential-settings-transaction');
 const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
 const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
@@ -61,10 +61,10 @@ const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/st
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
 const { ConnectivityRecovery } = require('./lib/connection/recovery/connectivity-recovery');
 const { createNetworkStartupSystem } = require('./lib/connection/telemetry/network-status-monitor');
-const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/proxy-credential');
+const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/persistence/credentials/proxy-credential');
 const {
   ExternalProxyCredentialStore,
-} = require('./lib/external-proxy-credential-store');
+} = require('./lib/persistence/credentials/external-proxy-credential-store');
 const {
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,

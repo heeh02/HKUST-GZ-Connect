@@ -4,8 +4,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('./credential-store');
-const { collectPrivateFileReceipt } = require('./persistence/migration/legacy-hkust/legacy-flat-source-receipts');
-const { readPrivateFileBounded } = require('./platform/storage/private-file');
+const { collectPrivateFileReceipt } = require('../migration/legacy-hkust/legacy-flat-source-receipts');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   decryptVpnCredentialEnvelope,
   encryptVpnCredentialEnvelope,
@@ -27,7 +27,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./platform/storage/windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 function fsyncDirectory(directory, fileSystem, platform) {
   let descriptor = null;

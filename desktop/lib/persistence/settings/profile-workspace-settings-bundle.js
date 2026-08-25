@@ -1,8 +1,8 @@
 'use strict';
 
 const { isDeepStrictEqual } = require('node:util');
-const { parseCredentialField } = require('../../settings-update');
-const { DEFAULTS, normalizeSettings } = require('../../settings-store');
+const { parseCredentialField } = require('./settings-update');
+const { DEFAULTS, normalizeSettings } = require('./settings-store');
 const {
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,

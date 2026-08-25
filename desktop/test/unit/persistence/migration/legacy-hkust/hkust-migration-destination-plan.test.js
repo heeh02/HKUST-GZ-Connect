@@ -9,7 +9,7 @@ const {
   REQUIRED_ABSENT_LEGACY_SOURCE_IDS,
   createPreparedMigrationJournal,
 } = require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-journal');
-const { normalizeSettings } = require('../../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../../lib/persistence/settings/settings-store');
 const {
   LEGACY_COPY_SOURCE_IDS,
   createHkustMigrationDestinationPlan,

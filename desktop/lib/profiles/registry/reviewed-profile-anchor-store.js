@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('../../credential-store');
+const { atomicWritePrivateFile } = require('../../platform/storage/atomic-private-file');
 const { ensurePrivateDirectoryChain } = require('../../platform/storage/private-directory');
 const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {

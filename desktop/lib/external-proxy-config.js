@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('./persistence/credentials/credential-store');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('./platform/storage/private-file');
 const { validateProfileId } = require('./profiles/schema/school-profile-schema');
 const {

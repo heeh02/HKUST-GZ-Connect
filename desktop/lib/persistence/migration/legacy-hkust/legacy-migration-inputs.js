@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const util = require('node:util');
-const { protectedStorageAvailable } = require('../../../credential-store');
+const { protectedStorageAvailable } = require('../../credentials/credential-store');
 const { LEGACY_SOURCE_MAX_BYTES } = require('./legacy-flat-source-receipts');
 const { readPrivateFileBounded } = require('../../../platform/storage/private-file');
 const {
@@ -11,8 +11,8 @@ const {
   legacySourceReceiptDigest,
 } = require('./profile-workspace-migration-journal');
 const { createLegacyFlatSourcePaths } = require('../../paths/profile-workspace-layout');
-const { normalizeSettings } = require('../../../settings-store');
-const { parseCredentialField } = require('../../../settings-update');
+const { normalizeSettings } = require('../../settings/settings-store');
+const { parseCredentialField } = require('../../settings/settings-update');
 const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
 
 function sameReceipt(expected, data) {

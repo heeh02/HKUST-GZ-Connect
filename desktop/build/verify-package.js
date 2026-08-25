@@ -370,7 +370,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/ipc/routing-rule-ipc.js',
     '/lib/ipc/certificate-pin-ipc.js',
     '/lib/ipc/campus-resource-ipc.js',
-    '/lib/settings-update.js',
+    '/lib/persistence/settings/settings-update.js',
     '/lib/connection/recovery/tunnel-health.js',
     '/lib/update-check.js',
     '/renderer/app.js',

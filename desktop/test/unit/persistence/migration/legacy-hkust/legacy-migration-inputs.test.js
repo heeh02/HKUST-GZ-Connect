@@ -11,7 +11,7 @@ const {
   readLegacyMigrationPayloads,
 } = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-migration-inputs');
 const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../../../../../lib/settings-store');
+const { normalizeSettings } = require('../../../../../lib/persistence/settings/settings-store');
 
 function safeStorage() {
   return {

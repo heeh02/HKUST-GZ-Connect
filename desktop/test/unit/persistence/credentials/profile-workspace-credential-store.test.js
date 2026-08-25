@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createProfileAccountWorkspaceLayout } = require('../lib/persistence/paths/profile-workspace-layout');
+const { createProfileAccountWorkspaceLayout } = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
-} = require('../lib/persistence/runtime/profile-workspace-runtime-authority');
+} = require('../../../../lib/persistence/runtime/profile-workspace-runtime-authority');
 const {
   ProfileWorkspaceCredentialStore,
-} = require('../lib/profile-workspace-credential-store');
+} = require('../../../../lib/persistence/credentials/profile-workspace-credential-store');
 
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;
@@ -20,7 +20,11 @@ const WORKSPACE_KEY = `workspace-${'33'.repeat(16)}`;
 
 function profile() {
   return JSON.parse(fs.readFileSync(
-    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    path.join(
+      __dirname,
+      '..', '..', '..', '..',
+      'assets', 'profiles', 'hkustgz', 'school-profile.json',
+    ),
     'utf8',
   ));
 }

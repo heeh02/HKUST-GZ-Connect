@@ -2,9 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('./platform/storage/private-file');
-const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./routing/pac/pac');
-const { normalizeCustomResources } = require('./resources/runtime/campus-resources');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('../../platform/storage/private-file');
+const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('../../routing/pac/pac');
+const { normalizeCustomResources } = require('../../resources/schema/campus-resource-contract');
 
 const BACKUP_SUFFIX = '.bak';
 // Version 3 makes strict authentication the new-install default. Version 2

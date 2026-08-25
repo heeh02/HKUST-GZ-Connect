@@ -8,7 +8,7 @@ const test = require('node:test');
 const util = require('node:util');
 const {
   ExternalProxyCredentialStore,
-} = require('../lib/external-proxy-credential-store');
+} = require('../../../../lib/persistence/credentials/external-proxy-credential-store');
 
 const HOST_PRIVATE_FILE_PLATFORM = process.platform === 'win32' ? 'win32' : 'darwin';
 

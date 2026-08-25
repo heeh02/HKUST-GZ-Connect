@@ -1,6 +1,6 @@
 'use strict';
 
-const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../routing/policy/campus-route');
+const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('../../routing/policy/campus-route');
 const { isIsolatedNetworkHost } = require('../../routing/policy/host-safety');
 
 const MAX_BUILTIN_RESOURCES = 32;
@@ -181,6 +181,41 @@ function normalizeLegacyCustomResource(value, defaultRoute) {
   }
 }
 
+function normalizeResource(value) {
+  if (!value || typeof value !== 'object') return null;
+  let route = value.route === ROUTE_DIRECT || value.route === ROUTE_CAMPUS
+    ? value.route
+    : routeForUrl(value.url);
+  try {
+    if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(value.url).hostname)) {
+      route = ROUTE_CAMPUS;
+    }
+  } catch {}
+  return normalizeLegacyCustomResource({
+    id: String(value.id || '').trim(),
+    name: String(value.name || '').trim(),
+    description: String(value.description || '').trim(),
+    url: String(value.url || '').trim(),
+    route,
+  }, route);
+}
+
+function normalizeCustomResources(input) {
+  if (!Array.isArray(input)) return [];
+  const seenIds = new Set();
+  const seenUrls = new Set();
+  return input
+    .slice(0, MAX_CUSTOM_RESOURCES)
+    .map((value) => normalizeResource(value))
+    .filter((resource) => {
+      if (!resource || seenIds.has(resource.id) || seenUrls.has(resource.url)) return false;
+      seenIds.add(resource.id);
+      seenUrls.add(resource.url);
+      return true;
+    })
+    .map(({ builtin, ...resource }) => resource);
+}
+
 module.exports = {
   MAX_BUILTIN_RESOURCES,
   MAX_CUSTOM_RESOURCES,
@@ -190,7 +225,9 @@ module.exports = {
   MAX_RESOURCE_ID_LENGTH,
   MAX_RESOURCE_NAME_LENGTH,
   MAX_RESOURCE_URL_LENGTH,
+  normalizeCustomResources,
   normalizeLegacyCustomResource,
+  normalizeResource,
   parseBuiltinResourceDocument,
   validateBuiltinResourceDocument,
   validateBuiltinResourcesRef,

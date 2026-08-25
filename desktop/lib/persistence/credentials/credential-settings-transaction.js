@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { readPrivateFileBounded } = require('./platform/storage/private-file');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 
 const TRANSACTION_VERSION = 1;
 const MAX_SETTINGS_BYTES = 512 * 1024;

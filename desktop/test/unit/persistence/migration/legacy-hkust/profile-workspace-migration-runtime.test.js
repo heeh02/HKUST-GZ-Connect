@@ -10,8 +10,8 @@ const { LEGACY_COPY_SOURCE_IDS } = require('../../../../../lib/persistence/migra
 const { ProfileWorkspaceMigrationRuntime } =
   require('../../../../../lib/persistence/migration/legacy-hkust/profile-workspace-migration-runtime');
 const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../../../../../lib/settings-store');
-const { decryptVpnCredentialEnvelope } = require('../../../../../lib/vpn-credential-envelope');
+const { normalizeSettings } = require('../../../../../lib/persistence/settings/settings-store');
+const { decryptVpnCredentialEnvelope } = require('../../../../../lib/persistence/credentials/vpn-credential-envelope');
 
 function profile() {
   return JSON.parse(fs.readFileSync(

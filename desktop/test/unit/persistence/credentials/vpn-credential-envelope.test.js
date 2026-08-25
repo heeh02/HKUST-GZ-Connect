@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   decryptVpnCredentialEnvelope,
   encryptVpnCredentialEnvelope,
-} = require('../lib/vpn-credential-envelope');
+} = require('../../../../lib/persistence/credentials/vpn-credential-envelope');
 
 function fakeSafeStorage() {
   return {
