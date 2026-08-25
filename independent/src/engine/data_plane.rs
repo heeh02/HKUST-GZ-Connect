@@ -1,4 +1,5 @@
 use crate::engine::ip_packet::{push_and_extract_ipv4, validate_ipv4_packet};
+use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::modern::{
     ModernCommand, ModernControlRequest, ModernTokenAcquisition, parse_address_reply,
     validate_channel_reply,
@@ -86,6 +87,7 @@ impl EasyConnectDataPlane {
         let peer = acquisition.peer_address();
         let verified_leaf = acquisition.verified_leaf_sha256();
         let mut lease_stream = connect_tls(
+            acquisition.connector(),
             peer,
             gateway_host,
             timeout,
@@ -110,6 +112,7 @@ impl EasyConnectDataPlane {
         }
 
         let mut send_stream = connect_tls(
+            acquisition.connector(),
             peer,
             gateway_host,
             timeout,
@@ -141,6 +144,7 @@ impl EasyConnectDataPlane {
             .map_err(|error| data_plane_stage_error("modern send socket", error))?;
 
         let mut receive_stream = connect_tls(
+            acquisition.connector(),
             peer,
             gateway_host,
             timeout,
@@ -205,13 +209,24 @@ impl EasyConnectDataPlane {
 }
 
 fn connect_tls(
+    connector: Option<&GatewayConnectorGeneration>,
     peer: SocketAddr,
     host: &str,
     timeout: Duration,
     verified_leaf: &[u8; 32],
     configured_pin: Option<&[u8; 32]>,
 ) -> Result<SpecialTls11Stream> {
-    SpecialTls11Stream::connect(peer, host, timeout, verified_leaf, configured_pin)
+    match connector {
+        Some(connector) => SpecialTls11Stream::connect_with_connector(
+            connector,
+            peer,
+            host,
+            timeout,
+            verified_leaf,
+            configured_pin,
+        ),
+        None => SpecialTls11Stream::connect(peer, host, timeout, verified_leaf, configured_pin),
+    }
 }
 
 pub struct AddressLease {

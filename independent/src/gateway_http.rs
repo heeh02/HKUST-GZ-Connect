@@ -142,6 +142,10 @@ impl GatewaySession {
         self.connector.as_deref()
     }
 
+    pub(crate) fn connector_handle(&self) -> Option<Arc<GatewayConnectorGeneration>> {
+        self.connector.clone()
+    }
+
     pub fn request(
         &self,
         path: &str,

@@ -123,6 +123,29 @@ fn production_gateway_http_is_bound_before_credentials_and_owned_by_one_session(
 }
 
 #[test]
+fn production_modern_transport_consumes_the_authenticated_connector_generation() {
+    let session = source("src/engine/session.rs");
+    assert!(session.contains("session.http.connector_handle()"));
+    assert!(session.contains("request_modern_token_with_connector"));
+
+    let modern = source("src/modern.rs");
+    assert!(modern.contains("connector: Option<Arc<GatewayConnectorGeneration>>"));
+    assert!(modern.contains(".connect_tcp(timeout)"));
+
+    let data_plane = source("src/engine/data_plane.rs");
+    assert_eq!(
+        data_plane.matches("acquisition.connector()").count(),
+        3,
+        "address, send and receive channels must consume the token connector"
+    );
+    assert!(data_plane.contains("SpecialTls11Stream::connect_with_connector"));
+
+    let special_tls = source("src/special_tls11.rs");
+    assert!(special_tls.contains("connect_gateway_tcp_to_connector(connector, peer, timeout)"));
+    assert!(special_tls.contains("connector.host() != host"));
+}
+
+#[test]
 fn credential_input_is_neutral_to_gateway_and_protocol_layers() {
     let credentials = source("src/credentials.rs");
     for forbidden in [

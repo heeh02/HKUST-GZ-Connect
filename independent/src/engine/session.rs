@@ -10,7 +10,7 @@ use crate::engine::provider::{
 use crate::gateway_auth::AuthenticatedSessionId;
 use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::gateway_http::{DEFAULT_TIMEOUT_SECONDS, GatewaySession};
-use crate::modern::{parse_sha256_pin, request_modern_token};
+use crate::modern::{parse_sha256_pin, request_modern_token, request_modern_token_with_connector};
 use crate::xml::{first_descendant_text, parse_xml};
 use crate::{Error, ErrorKind, Result};
 use reqwest::Method;
@@ -303,8 +303,16 @@ impl ModernL3TransportBackend {
             }
         }
         ensure_transport_active(cancellation)?;
-        let acquisition =
-            request_modern_token(&self.base_url, &session.session_identifier, self.timeout)?;
+        let acquisition = match session.http.connector_handle() {
+            Some(connector) => request_modern_token_with_connector(
+                connector,
+                &session.session_identifier,
+                self.timeout,
+            )?,
+            None => {
+                request_modern_token(&self.base_url, &session.session_identifier, self.timeout)?
+            }
+        };
         ensure_transport_active(cancellation)?;
         let data_plane_not_before = Instant::now() + MODERN_ADDRESS_SETTLE_DELAY;
         let mut attempt = 1;

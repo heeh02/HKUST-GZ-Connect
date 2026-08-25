@@ -9,7 +9,7 @@
 use crate::{Error, ErrorKind, Result};
 use reqwest::blocking::ClientBuilder;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use url::{Host, Url};
 
 const MAX_PROFILE_ID_BYTES: usize = 64;
@@ -307,19 +307,18 @@ impl GatewayConnectorGeneration {
                 "Gateway connector timeout must be nonzero",
             ));
         }
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| configuration_error("Gateway connector timeout is too large"))?;
         let mut last_error = None;
         for address in &self.addresses {
-            match TcpStream::connect_timeout(address, timeout) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match TcpStream::connect_timeout(address, remaining) {
                 Ok(stream) => {
-                    let peer = stream.peer_addr().map_err(|error| {
-                        connector_error(format!("cannot inspect Gateway peer: {error}"))
-                    })?;
-                    if !self.peer_allowed(peer) {
-                        return Err(Error::classified(
-                            ErrorKind::GatewayProtocolInvalid,
-                            "connected Gateway peer is outside the connector generation",
-                        ));
-                    }
+                    self.verify_connected_peer(&stream)?;
                     return Ok(stream);
                 }
                 Err(error) => last_error = Some(error),
@@ -331,6 +330,40 @@ impl GatewayConnectorGeneration {
                 .map(|error| error.to_string())
                 .unwrap_or_else(|| "no address".to_owned())
         )))
+    }
+
+    pub fn connect_tcp_to(&self, peer: SocketAddr, timeout: Duration) -> Result<TcpStream> {
+        if timeout.is_zero() {
+            return Err(configuration_error(
+                "Gateway connector timeout must be nonzero",
+            ));
+        }
+        if !self.peer_allowed(peer) {
+            return Err(Error::classified(
+                ErrorKind::GatewayProtocolInvalid,
+                "requested Gateway peer is outside the connector generation",
+            ));
+        }
+        let stream = TcpStream::connect_timeout(&peer, timeout).map_err(|error| {
+            connector_error(format!(
+                "cannot connect to the selected Gateway peer: {error}"
+            ))
+        })?;
+        self.verify_connected_peer(&stream)?;
+        Ok(stream)
+    }
+
+    fn verify_connected_peer(&self, stream: &TcpStream) -> Result<()> {
+        let peer = stream
+            .peer_addr()
+            .map_err(|error| connector_error(format!("cannot inspect Gateway peer: {error}")))?;
+        if !self.peer_allowed(peer) {
+            return Err(Error::classified(
+                ErrorKind::GatewayProtocolInvalid,
+                "connected Gateway peer is outside the connector generation",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -371,6 +404,10 @@ mod tests {
             .apply_to_reqwest_builder(Client::builder())
             .build()
             .unwrap();
+        let rejected = connector
+            .connect_tcp_to(public("9.9.9.9"), Duration::from_millis(1))
+            .unwrap_err();
+        assert_eq!(rejected.kind(), ErrorKind::GatewayProtocolInvalid);
     }
 
     #[test]
