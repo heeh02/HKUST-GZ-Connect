@@ -139,6 +139,28 @@ test('a crashed visible control renderer is destroyed and recreated once', () =>
   assert.equal(f.calls.filter((entry) => entry[0] === 'renderer-lost').length, 1);
 });
 
+test('repeated control renderer crashes trip a recovery circuit breaker', () => {
+  let now = 100_000;
+  const f = fixture({ now: () => now });
+  const first = f.shell.createWindow();
+  first.webContents.emit('render-process-gone');
+  const recovery = f.shell.window;
+
+  recovery.webContents.emit('render-process-gone');
+  assert.equal(f.shell.window, null,
+    'a recovery renderer that also crashes must not be recreated indefinitely');
+  assert.deepEqual(f.calls.filter((entry) => entry[0] === 'error'), [
+    ['error', 'error.controlRendererCrashLoop'],
+  ]);
+
+  now += 30_000;
+  assert.equal(f.shell.showWindow(), true);
+  const later = f.shell.window;
+  later.webContents.emit('render-process-gone');
+  assert.notEqual(f.shell.window, later,
+    'a later isolated crash may receive one automatic recovery');
+});
+
 test('a crashed hidden renderer is recreated on the next show request', () => {
   const f = fixture();
   const first = f.shell.createWindow();

@@ -189,6 +189,8 @@ jobs:
         run: npm ci
       - name: Exercise the real Electron main process
         run: npm run test:main-integration
+      - name: Exercise control renderer crash-loop recovery
+        run: npm run test:control-renderer-recovery
       - name: Exercise Main with a synthetic Engine lifecycle
         run: npm run test:main-engine-lifecycle
       - name: Exercise initially-offline Main startup recovery
