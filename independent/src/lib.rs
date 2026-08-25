@@ -7,6 +7,7 @@ pub mod engine;
 pub mod gateway_auth;
 pub mod gateway_connector;
 pub mod gateway_http;
+pub mod gateway_probe;
 pub mod modern;
 pub mod probe;
 pub mod protocol_map;

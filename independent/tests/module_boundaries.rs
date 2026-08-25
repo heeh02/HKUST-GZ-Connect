@@ -146,6 +146,31 @@ fn production_modern_transport_consumes_the_authenticated_connector_generation()
 }
 
 #[test]
+fn public_gateway_probe_is_credential_free_fixed_and_non_promoting() {
+    let probe = source("src/gateway_probe.rs");
+    for forbidden in [
+        "crate::credentials",
+        "crate::gateway_auth",
+        "crate::engine::session",
+        "password_login",
+        "cookie_store(true)",
+        "Policy::limited",
+        "Policy::custom",
+    ] {
+        assert!(
+            !probe.contains(forbidden),
+            "public probe contains {forbidden}"
+        );
+    }
+    assert!(probe.contains("/por/login_auth.csp?apiversion=1"));
+    assert!(probe.contains("Policy::none()"));
+    assert!(probe.contains("cookie_store(false)"));
+    assert!(probe.contains("MAX_PUBLIC_PROBE_BODY_BYTES"));
+    assert!(probe.contains("PublicGatewayCompatibility::RecognizedCandidate"));
+    assert!(!probe.contains("AuthenticatedGatewaySession"));
+}
+
+#[test]
 fn credential_input_is_neutral_to_gateway_and_protocol_layers() {
     let credentials = source("src/credentials.rs");
     for forbidden in [
