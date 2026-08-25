@@ -46,6 +46,9 @@ const { CampusBrowserManager } = require('./lib/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/school-profile-controller');
 const {
   createControlStateSnapshot,
+  createExternalIntegrationRuntime,
+  createIntegrationTargetSelector,
+  createLegacyExternalProxyActions,
   createSchoolProfileOnboardingRuntime,
   registerControlDataIpc,
   registerCoreControlIpc,
@@ -62,8 +65,6 @@ const {
   ExternalProxyCredentialStore,
 } = require('./lib/external-proxy-credential-store');
 const {
-  buildClashProxyYaml,
-  buildSshProxyCommand,
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,
 } = require('./lib/external-proxy-config');
@@ -1269,6 +1270,24 @@ campusBrowserManager = new CampusBrowserManager({
   },
 });
 
+const integrationTargetSelector = createIntegrationTargetSelector({ dialog, getParentWindow: () => desktopShell?.window || null, homeDirectory: app.getPath('home') });
+const externalIntegrationRuntime = createExternalIntegrationRuntime({
+  enabled: preReadyStorage.mode === 'profile-workspace', workspaceRoot: preReadyStorage.authority?.layout?.workspace?.root,
+  recordFile: preReadyStorage.authority?.layout?.workspace?.externalIntegrations,
+  getAuthority: () => persistenceRuntime.currentAuthority(), withProfileDocument: activeSchoolProfile.withProfileDocument,
+  getSettings: loadSettingsOrReport, getUserRules: () => domainRoutePolicy.list(), getServerResources: () => serverCampusResources,
+  getProxyCredential: loadStableProxyCredential, getPacSource: () => { const settings = loadSettingsOrReport(); return buildPac(settings.routeDomains, Number(settings.port), domainRoutePolicy.options()); },
+  ensureSidecar: () => ensureExternalProxyAccess(socksPort()), writeClipboard: (text) => (clipboard.writeText(text), true),
+  helperPath: proxyHelperPath(), credentialFile: PROXY_HELPER_CREDENTIAL, selectTarget: integrationTargetSelector,
+});
+const legacyExternalProxyActions = createLegacyExternalProxyActions({
+  getSettings: loadSettingsOrReport, ensureAccess: ensureExternalProxyAccess,
+  currentGeneration: () => engineSupervisor.currentGeneration, hasActiveEngine: () => engineSupervisor.hasActive,
+  activeAuthentication: (generation) => activeProxyCredential?.socksAuthentication(generation) || null,
+  reconnect, writeClipboard: (text) => clipboard.writeText(text), helperPath: proxyHelperPath,
+  credentialFile: () => PROXY_HELPER_CREDENTIAL, profileId: () => activeSchoolProfile.activeContextBinding().profileId,
+  errorText: () => t('error.proxyCredentialUnavailable'),
+});
 const profileSwitching = createMainProfileSwitchComposition({
   enabled: preReadyStorage.mode === 'profile-workspace',
   directoryOptions: { userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged,
@@ -1276,7 +1295,7 @@ const profileSwitching = createMainProfileSwitchComposition({
   userData: DATA, journalFile: ACTIVE_CONTEXT_SWITCH, activeAuthority: preReadyStorage.authority,
   application: app, argv: process.argv, isPackaged: app.isPackaged, developmentEntry: __dirname,
   owners: { activeContextLease, browserManager: campusBrowserManager,
-    authChallenges: authChallengeCoordinator, onboarding: schoolProfileOnboarding,
+    authChallenges: authChallengeCoordinator, onboarding: { cancel: () => { schoolProfileOnboarding.cancel(); externalIntegrationRuntime.cancel(); } },
     networkStartup: networkStartupCoordinator, connectivityRecovery,
     mutationQueue: routingPolicyTransactions, engineSupervisor, connectionState },
   effects: {
@@ -1374,6 +1393,7 @@ registerControlDataIpc({
   },
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
     switchProfile: switchSchoolProfile },
+  integrations: externalIntegrationRuntime,
 });
 registerSettingsCredentialIpc({
   register: trustedHandle,
@@ -1411,39 +1431,7 @@ registerCoreControlIpc({
   connect: async () => { const { intent: _intent, ...result } = await connect(); return result; },
   disconnect: () => disconnect(),
   reconnect: async () => { const { intent: _intent, ...result } = await reconnect(); return result; },
-  sshConfig: () => {
-    try {
-      const port = socksPort();
-      ensureExternalProxyAccess(port);
-      return buildSshProxyCommand({
-        helperPath: proxyHelperPath(),
-        credentialFile: PROXY_HELPER_CREDENTIAL, profileId: activeSchoolProfile.activeContextBinding().profileId,
-      });
-    } catch {
-      throw new Error(t('error.proxyCredentialUnavailable'));
-    }
-  },
-  copyClashNode: async () => {
-    try {
-      const settings = loadSettingsOrReport();
-      const credential = ensureExternalProxyAccess(Number(settings.port));
-      const generation = engineSupervisor.currentGeneration;
-      if (engineSupervisor.hasActive &&
-          !activeProxyCredential?.socksAuthentication(generation)) {
-        const switched = await reconnect();
-        if (!switched?.ok) {
-          return { ok: false, error: t('error.proxyCredentialUnavailable') };
-        }
-      }
-      clipboard.writeText(buildClashProxyYaml({
-        port: settings.port,
-        credential,
-      }));
-      return { ok: true };
-    } catch {
-      return { ok: false, error: t('error.proxyCredentialUnavailable') };
-    }
-  },
+  ...legacyExternalProxyActions,
   getLogs: async () => {
     await logWriter.flush().catch(reportLogFailure);
     return readLogTail(LOG);
@@ -1496,7 +1484,7 @@ desktopShell = new DesktopShell({
   openCampusBrowser: () => connectAndOpenCampusBrowser(),
   rememberCloseAction,
   disposeLifecycle: () => {
-    schoolProfileOnboarding.cancel();
+    schoolProfileOnboarding.cancel(); externalIntegrationRuntime.cancel();
     networkStartupCoordinator.dispose(); connectionWaitRegistry.dispose();
     connectivityRecovery.dispose();
     networkStatusMonitor.dispose();
@@ -1507,7 +1495,7 @@ desktopShell = new DesktopShell({
     stableProxyCredential?.destroy();
     stableProxyCredential = null;
   },
-  onControlRendererUnavailable: () => (schoolProfileOnboarding.cancel(), authChallengeCoordinator.cancelForLifecycle()),
+  onControlRendererUnavailable: () => (schoolProfileOnboarding.cancel(), externalIntegrationRuntime.cancel(), authChallengeCoordinator.cancelForLifecycle()),
   onWindowError: (error) => {
     state.settingsError = error.userMessage || error.message;
     emit();

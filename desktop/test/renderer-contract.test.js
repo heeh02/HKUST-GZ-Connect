@@ -42,6 +42,17 @@ test('login owns a modular bilingual School selector with an explicit unreviewed
     'School onboarding belongs to its renderer feature module');
 });
 
+test('Control Tower owns a modular Integration Center instead of scattered secret copy buttons', () => {
+  assert.match(html, /id="integrationList"/u);
+  assert.match(html, /id="integrationDialog"/u);
+  assert.match(html, /id="confirmIntegration"/u);
+  assert.doesNotMatch(html, /data-copy="(?:pac|clash|ssh)"/u);
+  const integrationScript = html.indexOf('<script src="integration-center.js"></script>');
+  const appScript = html.indexOf('<script src="app.js"></script>');
+  assert.ok(integrationScript > 0 && integrationScript < appScript);
+  assert.doesNotMatch(appJs, /prepareIntegration|confirmIntegration|listIntegrations/u);
+});
+
 test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="stats"/);
   assert.match(html, /data-collapsible="gateway"/);

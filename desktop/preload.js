@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('api', {
   confirmCustomGateway: (request) => ipcRenderer.invoke('confirm-custom-gateway', request),
   cancelCustomGateway: () => ipcRenderer.invoke('cancel-custom-gateway'),
   switchSchoolProfile: (request) => ipcRenderer.invoke('switch-school-profile', request),
+  listIntegrations: () => ipcRenderer.invoke('list-integrations'),
+  prepareIntegration: (request) => ipcRenderer.invoke('prepare-integration', request),
+  confirmIntegration: (request) => ipcRenderer.invoke('confirm-integration', request),
+  cancelIntegration: () => ipcRenderer.invoke('cancel-integration'),
   resize: (height) => ipcRenderer.invoke('resize', height),
   onOpenRoutingRules: (cb) => {
     if (typeof cb !== 'function') return () => {};
