@@ -7,43 +7,44 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
-const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/settings-store');
-const { parseCredentialField } = require('./lib/settings-update');
+const { loadSettings: readSettings, saveSettings: writeSettings } = require('./lib/persistence/settings/settings-store');
+const { parseCredentialField } = require('./lib/persistence/settings/settings-update');
 const {
   credentialLoadErrorKey,
   hasStoredPassword,
   loadPasswordResult: readPasswordResult,
   restorePasswordSnapshot,
   savePassword: writePassword,
-} = require('./lib/credential-store');
+} = require('./lib/persistence/credentials/credential-store');
 const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
-} = require('./lib/credential-settings-transaction');
-const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = require('./lib/app-data-dir');
+} = require('./lib/persistence/credentials/credential-settings-transaction');
+const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
+const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,
   classifyEngineStopReason, formatEngineEventDiagnostic,
   resolveEngineFailureKind,
-} = require('./lib/engine-output');
-const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
-const { EngineConnectionRuntime } = require('./lib/engine-connection-runtime');
-const { DesktopShell } = require('./lib/desktop-shell');
-const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
+} = require('./lib/connection/engine/engine-output');
+const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/connection/engine/engine-control-suite');
+const { EngineConnectionRuntime } = require('./lib/connection/engine/engine-connection-runtime');
+const { DesktopShell } = require('./lib/platform/shell/desktop-shell');
+const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/connection/engine/engine-process');
 const {
   EngineSupervisor,
   cleanupOrphanedEngine,
   removeEngineOwnerRecord,
   writeEngineOwnerRecord,
-} = require('./lib/engine-supervisor');
-const { ConnectionTelemetryCoordinator } = require('./lib/connection-telemetry-coordinator');
-const { buildPac } = require('./lib/pac');
-const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
-const { savePacFile } = require('./lib/pac-file');
-const { pacDataUrl } = require('./lib/browser-session-manager');
-const { CampusBrowserManager } = require('./lib/campus-browser-manager');
-const { createPreReadySchoolProfileController } = require('./lib/school-profile-controller');
+} = require('./lib/connection/engine/engine-supervisor');
+const { ConnectionTelemetryCoordinator } = require('./lib/connection/telemetry/connection-telemetry-coordinator');
+const { buildPac } = require('./lib/routing/pac/pac');
+const { DomainRoutePolicyStore } = require('./lib/routing/policy/domain-route-policy');
+const { savePacFile } = require('./lib/routing/pac/pac-file');
+const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
+const { CampusBrowserManager } = require('./lib/browser/session/campus-browser-manager');
+const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
   createControlStateSnapshot,
   createExternalIntegrationRuntime,
@@ -53,30 +54,30 @@ const {
   registerControlDataIpc,
   registerCoreControlIpc,
   registerSettingsCredentialIpc,
-} = require('./lib/control-ipc-suite');
-const { ensureOwnerOnly } = require('./lib/private-file');
-const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
-const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/stop-policy');
-const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
-const { ConnectivityRecovery } = require('./lib/connectivity-recovery');
-const { createNetworkStartupSystem } = require('./lib/network-status-monitor');
-const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/proxy-credential');
+} = require('./lib/ipc/control-ipc-suite');
+const { ensureOwnerOnly } = require('./lib/platform/storage/private-file');
+const { BufferedLogWriter, readLogTail } = require('./lib/diagnostics/logging/log-writer');
+const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/stop-policy');
+const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/platform/update/update-check');
+const { ConnectivityRecovery } = require('./lib/connection/recovery/connectivity-recovery');
+const { createNetworkStartupSystem } = require('./lib/connection/telemetry/network-status-monitor');
+const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/persistence/credentials/proxy-credential');
 const {
   ExternalProxyCredentialStore,
-} = require('./lib/external-proxy-credential-store');
+} = require('./lib/persistence/credentials/external-proxy-credential-store');
 const {
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,
-} = require('./lib/external-proxy-config');
+} = require('./lib/integrations/external-proxy-config');
 const {
   CampusCertificateTrustStore,
-} = require('./lib/campus-certificate-trust');
-const { routeCertificateError } = require('./lib/certificate-error-boundary');
-const { createT, effectiveLocale } = require('./lib/i18n');
-const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
-const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
-const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
-const { ActiveContextLease, ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
+} = require('./lib/browser/certificates/campus-certificate-trust');
+const { routeCertificateError } = require('./lib/browser/certificates/certificate-error-boundary');
+const { createT, effectiveLocale } = require('./lib/platform/i18n/i18n');
+const { registerTrustedIpcHandlers } = require('./lib/ipc/ipc-handlers');
+const { RoutingPolicyTransactionQueue } = require('./lib/routing/rules/routing-policy-transaction');
+const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');
+const { ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection/state/connection-state-machine');
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone
 // permission and Chromium may otherwise send ICE/STUN UDP directly, bypassing
@@ -1241,7 +1242,7 @@ campusBrowserManager = new CampusBrowserManager({
   },
   parentWindow: () => desktopShell?.window || null,
   toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
-  toolbarPreload: path.join(__dirname, 'lib', 'campus-toolbar-contract.js'),
+  toolbarPreload: path.join(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
   homeUrl: activeSchoolProfile.browserHomeUrl,
   browserPartition: preReadyStorage.authority?.layout?.browserPartition || activeSchoolProfile.browserPartition,

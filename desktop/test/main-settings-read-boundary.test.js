@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 const shellSource = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'desktop-shell.js'),
+  path.join(__dirname, '..', 'lib', 'platform', 'shell', 'desktop-shell.js'),
   'utf8',
 );
 

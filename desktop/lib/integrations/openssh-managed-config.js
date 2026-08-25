@@ -4,7 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {
   buildSshProxyCommand,
-} = require('../external-proxy-config');
+} = require('./external-proxy-config');
 const {
   inspectManagedBlock,
   managedBlockMatches,

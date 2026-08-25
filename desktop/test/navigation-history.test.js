@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { navigationForContents } = require('../lib/campus-browser');
+const { navigationForContents } = require('../lib/browser/session/campus-browser');
 
 test('Electron navigationHistory is preferred without touching deprecated WebContents APIs', () => {
   const calls = [];
@@ -69,7 +69,10 @@ test('missing or throwing history methods fail closed', () => {
 });
 
 test('CampusBrowser no longer invokes deprecated navigation methods directly', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'campus-browser.js'), 'utf8');
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'browser', 'session', 'campus-browser.js'),
+    'utf8',
+  );
   assert.doesNotMatch(source, /webContents\.(?:canGoBack|canGoForward|goBack|goForward)\(/);
   assert.doesNotMatch(source, /\bcontents\.(?:canGoBack|canGoForward|goBack|goForward)\(/);
   assert.match(source, /navigationForContents\(active\?\.view\.webContents\)/);

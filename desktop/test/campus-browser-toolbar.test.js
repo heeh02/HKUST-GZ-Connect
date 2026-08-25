@@ -22,6 +22,20 @@ test('browser toolbar uses a typed preload channel and never encodes commands in
   assert.match(js, /window\.campusToolbar\?\.command/);
   assert.match(js, /window\.campusToolbar\?\.onState/);
   assert.doesNotMatch(js, /window\.location\.hash|location\.hash\s*=/);
-  const browserSource = fs.readFileSync(path.join(__dirname, '..', 'lib', 'campus-browser.js'), 'utf8');
+  const browserSource = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'browser', 'session', 'campus-browser.js'),
+    'utf8',
+  );
   assert.doesNotMatch(browserSource, /URLSearchParams|parsed\.hash|typeof input === 'string'/);
+});
+
+test('production Main points Electron at the packaged toolbar preload', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(
+    main,
+    /path\.join\(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract\.js'\)/u,
+  );
+  assert.ok(fs.existsSync(
+    path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
+  ));
 });

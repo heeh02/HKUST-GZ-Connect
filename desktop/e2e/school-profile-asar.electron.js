@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const asar = require('@electron/asar');
 const { app } = require('electron');
-const { SchoolProfileRegistry } = require('../lib/school-profile-registry');
+const { SchoolProfileRegistry } = require('../lib/profiles/registry/school-profile-registry');
 
 const desktopRoot = path.join(__dirname, '..');
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-profile-asar-'));
@@ -53,8 +53,8 @@ run().then(
   () => app.quit(),
   (error) => {
     process.stderr.write(`${error.stack || error}\n`);
-    app.exitCode = 1;
-    app.quit();
+    process.exitCode = 1;
+    app.exit(1);
   },
 );
 

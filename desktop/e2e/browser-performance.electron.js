@@ -20,8 +20,8 @@ const {
   CampusBrowser,
   MAX_TABS,
   SLOW_LOADING_HINT_MS,
-} = require('../lib/campus-browser');
-const { CAMPUS_PARTITION } = require('../lib/campus-route');
+} = require('../lib/browser/session/campus-browser');
+const { CAMPUS_PARTITION } = require('../lib/routing/policy/campus-route');
 const {
   PERFORMANCE_REPORT_SCHEMA,
   writePerformanceReport,
@@ -374,7 +374,7 @@ async function run() {
     credentialVault: null,
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
-    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     onError: (message) => errors.push(message),
   });

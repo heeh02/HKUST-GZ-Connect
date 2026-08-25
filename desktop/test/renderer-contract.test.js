@@ -18,8 +18,11 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgPass"[^>]*autocomplete="current-password"/);
   assert.doesNotMatch(html, /id="lgPass"[^>]*(?:disabled|readonly)/);
   assert.match(css, /\.inp\s*\{[^}]*-webkit-user-select:\s*text/);
-  assert.match(html, /<script src="\.\.\/lib\/login-flow\.js"><\/script>/);
-  assert.match(html, /<script src="\.\.\/lib\/resource-view\.js"><\/script>/);
+  assert.match(html, /<script src="\.\.\/lib\/browser\/auth\/login-flow\.js"><\/script>/);
+  assert.match(
+    html,
+    /<script src="\.\.\/lib\/resources\/presentation\/resource-view\.js"><\/script>/,
+  );
   assert.match(appJs, /updateLoginProgress\(s\)/);
   assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
   assert.match(appJs, /const \{ routeLabel, visibleResources \} = window\.resourceView/);

@@ -99,10 +99,10 @@ async function runParent() {
 
 function electronDependencies() {
   const electron = require('electron');
-  const { CampusBrowser } = require('../lib/campus-browser');
-  const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/campus-route');
-  const { DomainRoutePolicyStore } = require('../lib/domain-route-policy');
-  const { pacDataUrl } = require('../lib/browser-session-manager');
+  const { CampusBrowser } = require('../lib/browser/session/campus-browser');
+  const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing/policy/campus-route');
+  const { DomainRoutePolicyStore } = require('../lib/routing/policy/domain-route-policy');
+  const { pacDataUrl } = require('../lib/browser/session/browser-session-manager');
   return {
     ...electron,
     CampusBrowser,
@@ -180,7 +180,7 @@ function createBrowser(dependencies, routingPolicy, errors) {
     credentialVault: null,
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
-    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     routingPolicy,
     ensureCampusReady: async () => {

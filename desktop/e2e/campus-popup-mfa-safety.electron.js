@@ -9,8 +9,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
-const { CampusBrowser } = require('../lib/campus-browser');
-const { CAMPUS_PARTITION } = require('../lib/campus-route');
+const { CampusBrowser } = require('../lib/browser/session/campus-browser');
+const { CAMPUS_PARTITION } = require('../lib/routing/policy/campus-route');
 
 const TEST_TIMEOUT_MS = 20_000;
 const WAIT_TIMEOUT_MS = 5_000;
@@ -104,7 +104,7 @@ async function run() {
     },
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
-    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     ensureCampusReady: async () => true,
     onError: (message) => errors.push(message),

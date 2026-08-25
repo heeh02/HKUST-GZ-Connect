@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 const runtime = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'engine-connection-runtime.js'),
+  path.join(__dirname, '..', 'lib', 'connection', 'engine', 'engine-connection-runtime.js'),
   'utf8',
 );
 

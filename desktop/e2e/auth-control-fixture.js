@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const {
   AuthChallengeCoordinator,
   EngineControlRegistry,
-} = require('../lib/engine-control-suite');
+} = require('../lib/connection/engine/engine-control-suite');
 
 const repositoryRoot = path.resolve(__dirname, '..', '..');
 const fixtureName = process.platform === 'win32' ? 'ec-auth-fixture.exe' : 'ec-auth-fixture';

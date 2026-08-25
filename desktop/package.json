@@ -7,6 +7,8 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "check:architecture": "node scripts/check-architecture.js",
+    "check:install-scripts": "node scripts/check-install-scripts.js",
+    "check:syntax": "node scripts/check-javascript-syntax.js",
     "check:secrets": "node scripts/check-sensitive-patterns.js",
     "test": "node --test",
     "test:browser-performance": "electron e2e/browser-performance.electron.js",

@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, dialog, session, webContents } = require('electron');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { CustomGatewayConfirmationOwner } = require('../lib/profiles/onboarding/custom-gateway-onboarding');
+const { CustomProfileProvisioningRuntime } = require('../lib/profiles/provisioning/custom-profile-provisioning-runtime');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-custom-main-e2e-'));
 fs.chmodSync(userData, 0o700);

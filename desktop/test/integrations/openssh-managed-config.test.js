@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { customProfileDocument } = require('../../lib/custom-gateway-onboarding');
+const { customProfileDocument } = require('../../lib/profiles/onboarding/custom-gateway-onboarding');
 const {
   assertOpenSshMainTarget,
   buildOpenSshProfileBlock,

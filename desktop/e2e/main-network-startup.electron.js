@@ -11,9 +11,9 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, safeStorage } = require('electron');
-const { savePassword } = require('../lib/credential-store');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/app-data-dir');
-const { saveSettings } = require('../lib/settings-store');
+const { savePassword } = require('../lib/persistence/credentials/credential-store');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
+const { saveSettings } = require('../lib/persistence/settings/settings-store');
 
 const TEST_TIMEOUT_MS = 20_000;
 const WAIT_TIMEOUT_MS = 10_000;

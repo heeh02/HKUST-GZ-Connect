@@ -3,7 +3,7 @@
 - Status: Accepted as a non-activating P3k composition
 - Production Main activation: deferred to the next gate
 - Parent contracts: [`ADR-0010`](0010-p3-destination-and-retirement.md),
-  [`ADR-0016`](0016-p3-runtime-storage-path-seam.md)
+  [`ADR-0030`](0030-p3-runtime-storage-path-seam.md)
 
 ## Context
 

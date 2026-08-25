@@ -3,9 +3,9 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('../credential-store');
-const { ensurePrivateDirectoryChain } = require('../private-directory');
-const { readPrivateFileBounded } = require('../private-file');
+const { atomicWritePrivateFile } = require('../platform/storage/atomic-private-file');
+const { ensurePrivateDirectoryChain } = require('../platform/storage/private-directory');
+const { readPrivateFileBounded } = require('../platform/storage/private-file');
 const {
   INTEGRATION_SCHEMA_VERSION,
   validateIntegrationRecord,
@@ -14,7 +14,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../windows-private-file');
+} = require('../platform/storage/windows-private-file');
 
 const MAX_INTEGRATION_RECORD_BYTES = 1024 * 1024;
 

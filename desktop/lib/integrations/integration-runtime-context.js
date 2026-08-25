@@ -11,7 +11,7 @@ const {
   validateCampusAccountDocument,
   validateSchoolProfileDocument,
   validateWorkspaceScopeDocument,
-} = require('../school-profile-schema');
+} = require('../profiles/schema/school-profile-schema');
 
 function pacDigest(value) {
   if (typeof value !== 'string' || !value.includes('function FindProxyForURL') ||

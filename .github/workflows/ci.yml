@@ -158,11 +158,10 @@ jobs:
         run: npm run check:architecture
       - name: Audit dependencies
         run: npm audit --audit-level=high
+      - name: Audit dependency install scripts
+        run: npm run check:install-scripts
       - name: Check syntax of every entry point
-        run: |
-          while IFS= read -r source_file; do
-            node --check "$source_file"
-          done < <(rg --files -g '*.js' -g '!node_modules/**' -g '!release/**')
+        run: npm run check:syntax -- --tree "$GITHUB_SHA"
       - name: Check shell entry points
         run: |
           bash -n ../hkustgzconnect
@@ -243,7 +242,10 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: npm ci
       - name: Verify current-user-only helper credential DACL
-        run: node --test test/windows-private-file.test.js test/external-proxy-config.test.js
+        run: >-
+          node --test
+          test/unit/platform/storage/windows-private-file.test.js
+          test/unit/integrations/external-proxy-config.test.js
 
   engine:
     timeout-minutes: 20

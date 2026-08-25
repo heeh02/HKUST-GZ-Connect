@@ -76,7 +76,7 @@ test('package verifier rejects fake gateways, test PKI and private-key formats',
     );
   }
   assert.doesNotThrow(() => assertNoTestOnlyPackageEntries([
-    '/main.js', '/lib/auth-challenge-coordinator.js',
+    '/main.js', '/lib/connection/auth/auth-challenge-coordinator.js',
     '/assets/profiles/hkustgz/builtin-resources.json',
   ]));
 

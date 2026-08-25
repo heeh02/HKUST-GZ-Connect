@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { createT } = require('../lib/i18n');
+const { createT } = require('../lib/platform/i18n/i18n');
 
 const desktopRoot = path.join(__dirname, '..');
 const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');

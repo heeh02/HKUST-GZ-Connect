@@ -5,15 +5,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { MultiSchoolStartupRuntime } = require('../lib/multi-school-startup-runtime');
+const { CustomGatewayConfirmationOwner } = require('../lib/profiles/onboarding/custom-gateway-onboarding');
+const { CustomProfileProvisioningRuntime } = require('../lib/profiles/provisioning/custom-profile-provisioning-runtime');
+const { MultiSchoolStartupRuntime } = require('../lib/app/startup/multi-school-startup-runtime');
 const { loadProfileWorkspaceAuthorityByKeys } =
-  require('../lib/profile-workspace-runtime-authority');
+  require('../lib/persistence/runtime/profile-workspace-runtime-authority');
 const { selectProfileWorkspacePreReadyStorage } =
-  require('../lib/profile-workspace-pre-ready-selection');
-const { createPreReadySchoolProfileController } = require('../lib/school-profile-controller');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+  require('../lib/persistence/runtime/profile-workspace-pre-ready-selection');
+const { createPreReadySchoolProfileController } = require('../lib/profiles/runtime/school-profile-controller');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 const DESKTOP = path.join(__dirname, '..');
 

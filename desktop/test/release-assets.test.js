@@ -15,14 +15,19 @@ const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent
 const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
 const repositoryAttributes = fs.readFileSync(path.join(desktopRoot, '..', '.gitattributes'), 'utf8');
 
-test('cross-platform desktop checks explicitly run under Bash', () => {
+test('cross-platform desktop checks use repository-owned source gates', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
   const end = workflow.indexOf('- name: Test independent Rust engine', start);
   assert.ok(start >= 0 && end > start);
   const step = workflow.slice(start, end);
   assert.match(step, /shell:\s*bash/,
-    'Windows otherwise parses process substitution and shell loops as PowerShell');
-  assert.match(step, /done < <\(/, 'the step still contains Bash-only process substitution');
+    'the remaining shell entry-point checks require Bash on every release runner');
+  for (const source of [step, ciWorkflow]) {
+    assert.match(source, /npm run check:syntax -- --tree "\$GITHUB_SHA"/u);
+    assert.match(source, /npm run check:install-scripts/u);
+    assert.doesNotMatch(source, /rg --files|done < <\(/u,
+      'source gates must not silently depend on runner-provided ripgrep or process substitution');
+  }
 });
 
 test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux AppImages', () => {
@@ -94,7 +99,11 @@ test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', (
   );
   assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
-  assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
+  assert.match(
+    ciWorkflow,
+    /test\/unit\/platform\/storage\/windows-private-file\.test\.js/u,
+  );
+  assert.match(ciWorkflow, /test\/unit\/integrations\/external-proxy-config\.test\.js/u);
   assert.match(
     ciWorkflow,
     /cargo clippy --locked --all-targets --no-default-features --features engine-lifecycle-fixture -- -D warnings/u,
@@ -119,13 +128,25 @@ test('package verification binds the reviewed school profile before signing', ()
   assert.match(packageVerifier, /assertPackagedSchoolProfile\(archive,/u);
   assert.match(packageVerifier, /packaged external Engine config differs from its profile binding/u);
   assert.match(packageVerifier, /assets\/profiles\/manifest\.json/u);
-  assert.match(packageVerifier, /lib\/school-profile-runtime\.js/u);
-  assert.match(packageVerifier, /lib\/school-profile-controller\.js/u);
-  assert.match(packageVerifier, /lib\/control-state-snapshot\.js/u);
-  assert.match(packageVerifier, /lib\/campus-resource-contract\.js/u);
+  assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-runtime\.js/u);
+  assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-controller\.js/u);
+  assert.match(packageVerifier, /lib\/ipc\/control-state-snapshot\.js/u);
+  assert.match(packageVerifier, /lib\/resources\/schema\/campus-resource-contract\.js/u);
+  assert.match(packageVerifier, /lib\/browser\/toolbar\/campus-toolbar-contract\.js/u);
   assert.match(packageVerifier, /assets\/profiles\/hkustgz\/builtin-resources\.json/u);
   assert.match(packageVerifier, /legacy duplicate campus resource asset entered the package/u);
   assert.match(packageVerifier, /packaged Desktop does not enforce private Engine profile binding/u);
+});
+
+test('Electron gates exit nonzero on assertion failure', () => {
+  for (const relativePath of [
+    'e2e/main-engine-lifecycle.electron.js',
+    'e2e/school-profile-asar.electron.js',
+  ]) {
+    const source = fs.readFileSync(path.join(desktopRoot, relativePath), 'utf8');
+    assert.doesNotMatch(source, /app\.exitCode/u, relativePath);
+    assert.match(source, /app\.exit\(1\)/u, relativePath);
+  }
 });
 
 test('every byte-bound profile asset has deterministic LF checkout semantics', () => {

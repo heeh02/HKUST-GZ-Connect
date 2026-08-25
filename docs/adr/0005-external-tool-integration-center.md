@@ -1,8 +1,8 @@
 # ADR-0005: External Tool Integration Center
 
-- Status: Accepted P7 product/architecture direction
+- Status: Accepted and implemented in P7 / PR #50
 - Decision owner: project maintainer
-- Production activation: requires the P7 integration gates below
+- Production activation: current Main/IPC/UI path; real third-party-client use remains independent canary evidence
 
 ## Context
 
@@ -296,9 +296,11 @@ and Profile/Account scope. Neither domain implies SSH/HPC/Jupyter/database launc
 
 ## Multi-school rollout
 
-P6 adds the school selector and second reviewed Profile before P7 activation. Integration credential rotation,
-stale-export and zero-cross-profile tests run with two real reviewed Profiles. Advanced custom-domain onboarding
-is a separately gated P6b step and receives no inherited integration record or proxy credential.
+P6 adds the school selector and isolated experimental custom-local Profiles before P7 activation. Integration
+credential rotation, stale-export and zero-cross-profile tests run across isolated synthetic/custom contexts;
+formal second-school support still requires real reviewed Profiles. Advanced custom-domain onboarding
+receives no inherited integration record or proxy credential. A second reviewed Profile remains a formal
+multi-school support gate rather than a prerequisite for this isolation invariant.
 
 ## Rollback
 

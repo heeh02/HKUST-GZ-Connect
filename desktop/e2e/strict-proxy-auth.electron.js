@@ -14,10 +14,10 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
-const { CampusBrowser } = require('../lib/campus-browser');
-const { buildDomainRoutePac } = require('../lib/domain-route-policy');
-const { pacDataUrl } = require('../lib/browser-session-manager');
-const { EphemeralProxyCredential } = require('../lib/proxy-credential');
+const { CampusBrowser } = require('../lib/browser/session/campus-browser');
+const { buildDomainRoutePac } = require('../lib/routing/policy/domain-route-policy');
+const { pacDataUrl } = require('../lib/browser/session/browser-session-manager');
+const { EphemeralProxyCredential } = require('../lib/persistence/credentials/proxy-credential');
 
 const HTTP_TARGET = 'http://strict-proxy-http.invalid/authenticated';
 const WS_TARGET = 'ws://strict-proxy-ws.invalid/socket';
@@ -292,7 +292,7 @@ async function run() {
     credentialVault: null,
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
-    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     routingPolicy: strictRoutingPolicy(),
     onError: (message) => errors.push(String(message)),
