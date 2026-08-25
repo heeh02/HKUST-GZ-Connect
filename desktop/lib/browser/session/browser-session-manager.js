@@ -104,6 +104,7 @@ function applyCampusRequestBoundary(campusSession, ensureRequestReady = null) {
   }
   const gate = {
     blocked: false,
+    epoch: 1,
     ensureRequestReady: typeof ensureRequestReady === 'function' ? ensureRequestReady : null,
   };
   campusSession.webRequest.onBeforeRequest(CAMPUS_REQUEST_FILTER, (details, callback) => {
@@ -115,8 +116,11 @@ function applyCampusRequestBoundary(campusSession, ensureRequestReady = null) {
       callback({ cancel: false });
       return;
     }
+    const epoch = gate.epoch;
     Promise.resolve().then(() => gate.ensureRequestReady(details?.url)).then(
-      (ready) => callback({ cancel: ready !== true }),
+      (ready) => callback({
+        cancel: ready !== true || gate.blocked || gate.epoch !== epoch,
+      }),
       () => callback({ cancel: true }),
     );
   });
@@ -127,6 +131,7 @@ function applyCampusRequestBoundary(campusSession, ensureRequestReady = null) {
 function setCampusRequestBlocked(campusSession, blocked) {
   const gate = requestBoundaryGates.get(campusSession);
   if (!gate) return false;
+  gate.epoch += 1;
   gate.blocked = blocked === true;
   return true;
 }

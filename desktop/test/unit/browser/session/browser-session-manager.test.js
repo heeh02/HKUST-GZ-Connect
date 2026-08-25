@@ -142,7 +142,9 @@ test('Session request boundary blocks every implicit-bypass target for every res
 test('request boundary waits for an on-demand campus Engine without replaying the request', async () => {
   let requestHandler = null;
   let releaseCampus;
+  let releaseLateCampus;
   const campusReady = new Promise((resolve) => { releaseCampus = resolve; });
+  const lateCampusReady = new Promise((resolve) => { releaseLateCampus = resolve; });
   const checked = [];
   const browserSession = {
     webRequest: { onBeforeRequest: (_filter, handler) => { requestHandler = handler; } },
@@ -155,6 +157,7 @@ test('request boundary waits for an on-demand campus Engine without replaying th
     routingPolicy: { proxyConfig: async (port) => validPac(port) },
     ensureRequestReady: async (url) => {
       checked.push(url);
+      if (url.includes('late-campus')) return lateCampusReady;
       if (url.includes('campus')) return campusReady;
       if (url.includes('failed')) throw new Error('offline');
       return true;
@@ -171,10 +174,18 @@ test('request boundary waits for an on-demand campus Engine without replaying th
   await pendingCampus;
   assert.deepEqual(campusDecision, { cancel: false });
   assert.deepEqual(await decision('https://failed.example/'), { cancel: true });
+  const lateDecision = decision('https://late-campus.example/');
+  await Promise.resolve();
+  const suspension = manager.suspend();
+  releaseLateCampus(true);
+  assert.deepEqual(await lateDecision, { cancel: true },
+    'a request waiting on Engine readiness cannot outlive a closed request gate');
+  await suspension;
   assert.deepEqual(checked, [
     'https://direct.example/',
     'https://campus.example/',
     'https://failed.example/',
+    'https://late-campus.example/',
   ]);
 });
 
