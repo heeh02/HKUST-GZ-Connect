@@ -56,6 +56,8 @@ test('stable credential is generated once, encrypted, and reused after restart',
   };
   const first = new ExternalProxyCredentialStore(options).loadOrCreate();
   const firstMaterial = reveal(first);
+  const firstReference = first.reference();
+  assert.match(firstReference, /^credential-[a-f0-9]{32}$/u);
   first.destroy();
 
   assert.equal(safeStorage.calls.encrypt, 1);
@@ -68,6 +70,7 @@ test('stable credential is generated once, encrypted, and reused after restart',
 
   const second = new ExternalProxyCredentialStore(options).loadOrCreate();
   assert.deepEqual(reveal(second), firstMaterial);
+  assert.equal(second.reference(), firstReference);
   assert.equal(safeStorage.calls.encrypt, 1, 'reconnect/restart must not rotate or rewrite');
   assert.equal(safeStorage.calls.decrypt, 1);
   assert.doesNotMatch(util.inspect(second), new RegExp(firstMaterial.password));

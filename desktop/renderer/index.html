@@ -205,12 +205,15 @@
         </div>
 
         <div class="card">
-          <div class="card-title" data-i18n="tower.advanced">高级接入与工具</div>
+          <div class="card-title" data-i18n="integration.title">外部工具集成</div>
+          <p class="hint integration-hint" data-i18n="integration.hint">为 Clash、Mihomo、Clash Verge Rev、OpenSSH / VS Code 和 PAC 生成与当前学校绑定的配置。所有写入都会先预览并再次确认。</p>
+          <div id="integrationList" class="integration-list" aria-live="polite"></div>
+          <p id="integrationStatus" class="integration-status" data-i18n="integration.loading">正在读取集成状态…</p>
+          <p id="integrationError" class="dialog-error" role="alert"></p>
+          <div class="integration-divider"></div>
+          <div class="card-title" data-i18n="integration.quickTools">快速工具</div>
           <div class="frow"><span class="fk" data-i18n="tower.socksProxy">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks" data-i18n="tower.copy">复制</button></div>
           <div class="tools">
-            <button class="mini" data-copy="pac" data-i18n="tower.copyPac">复制 PAC 地址</button>
-            <button class="mini" data-copy="clash" data-i18n="tower.copyClash">复制 Clash 节点</button>
-            <button class="mini" data-copy="ssh" data-i18n="tower.copySsh">复制 SSH 配置</button>
             <button class="mini" id="openBrowser" data-i18n="tower.openBrowser">打开应用内校园浏览器</button>
             <button class="mini" id="openLog2" data-i18n="tower.openLog">打开日志</button>
           </div>
@@ -279,6 +282,29 @@
       </section>
     </main>
   </div>
+
+  <dialog id="integrationDialog" class="manager-dialog integration-dialog" aria-labelledby="integrationDialogTitle" aria-describedby="integrationDialogDescription">
+    <div class="manager-shell">
+      <div class="dialog-head">
+        <div>
+          <h3 id="integrationDialogTitle" data-i18n="integration.dialogTitle">确认外部工具操作</h3>
+          <p id="integrationDialogDescription" data-i18n="integration.dialogDescription">应用只会执行下方已预览的操作，不会扫描或修改其他配置。</p>
+        </div>
+        <button id="closeIntegrationDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:integration.cancel">×</button>
+      </div>
+      <div class="manager-body integration-preview-body">
+        <div id="integrationPreviewName" class="integration-preview-name"></div>
+        <div id="integrationPreviewSummary" class="integration-preview-summary"></div>
+        <div id="integrationPreviewWarnings" class="integration-warning-list"></div>
+        <p id="integrationDialogError" class="dialog-error" role="alert"></p>
+      </div>
+      <div class="dialog-actions">
+        <span class="dialog-edit-hint" data-i18n="integration.localOnly">配置和记录只保存在这台电脑上。</span>
+        <button id="cancelIntegration" class="ghost sm" type="button" data-i18n="integration.cancel">取消</button>
+        <button id="confirmIntegration" class="primary sm" type="button" data-i18n="integration.confirm">确认执行</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="resourceDialog" class="resource-dialog">
     <form method="dialog" id="resourceForm" class="resource-form">
@@ -412,6 +438,7 @@
   <script src="resource-manager.js"></script>
   <script src="proxy-auth-migration.js"></script>
   <script src="school-profile-selector.js"></script>
+  <script src="integration-center.js"></script>
   <script src="app.js"></script>
   <script src="auth-challenge.js"></script>
 </body>

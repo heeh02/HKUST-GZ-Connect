@@ -84,6 +84,8 @@ function createProfileAccountRoots(root, keys) {
       root: accountRoot,
       document: path.join(accountRoot, 'account.json'),
       vpnCredential: path.join(accountRoot, 'vpn-credential.bin'),
+      proxyCredential: path.join(accountRoot, 'proxy-credential.bin'),
+      proxyHelperCredential: path.join(accountRoot, 'proxy-helper-credential.txt'),
       legacyCredentialRollbackBlob: path.join(accountRoot, 'legacy-vpn-credential-rollback.bin'),
       legacyCredentialRollbackState: path.join(accountRoot, 'legacy-vpn-credential-rollback.json'),
       legacyCredentialRollbackRetirement: path.join(

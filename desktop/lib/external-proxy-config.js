@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('./credential-store');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+const { validateProfileId } = require('./school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
@@ -34,11 +35,14 @@ function credentialText(credential, callback) {
   });
 }
 
-function sidecarContents(port, credential) {
+function sidecarContents(port, credential, profileId = null) {
   const endpoint = `${LOOPBACK_HOST}:${validPort(port)}`;
   return credentialText(
     credential,
-    (username, password) => Buffer.from(`${endpoint}\n${username}\n${password}`, 'utf8'),
+    (username, password) => Buffer.from([
+      ...(profileId == null ? [] : [validateProfileId(profileId)]),
+      endpoint, username, password,
+    ].join('\n'), 'utf8'),
   );
 }
 
@@ -62,6 +66,7 @@ function ensureProxyCredentialSidecar({
   filePath,
   port,
   credential,
+  profileId = null,
   platform = process.platform,
   fileSystem,
   windowsAcl = {
@@ -72,7 +77,7 @@ function ensureProxyCredentialSidecar({
   if (typeof filePath !== 'string' || !filePath) {
     throw new TypeError('proxy credential sidecar path is invalid');
   }
-  const contents = sidecarContents(port, credential);
+  const contents = sidecarContents(port, credential, profileId);
   try {
     if (existingSidecarMatches(filePath, contents, { platform, fileSystem })) {
       if (platform === 'win32' &&
@@ -128,10 +133,13 @@ function quoteSshArgument(value) {
   return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function buildSshProxyCommand({ helperPath, credentialFile }) {
+function buildSshProxyCommand({ helperPath, credentialFile, profileId = null }) {
+  const profile = profileId == null
+    ? ''
+    : ` --profile-id ${quoteSshArgument(validateProfileId(profileId))}`;
   return [
     '# Direct Host blocks only; do not combine with ProxyJump.',
-    `ProxyCommand ${quoteSshArgument(helperPath)} --credential-file ` +
+    `ProxyCommand ${quoteSshArgument(helperPath)}${profile} --credential-file ` +
       `${quoteSshArgument(credentialFile)} -- %h %p`,
   ].join('\n');
 }

@@ -7,9 +7,17 @@ const { createControlStateSnapshot } = require('./control-state-snapshot');
 const {
   createSchoolProfileOnboardingRuntime,
 } = require('./school-profile-onboarding-suite');
+const {
+  createExternalIntegrationRuntime,
+  createIntegrationTargetSelector,
+  createLegacyExternalProxyActions,
+} = require('./integration-center-suite');
 
 module.exports = {
   createControlStateSnapshot,
+  createExternalIntegrationRuntime,
+  createIntegrationTargetSelector,
+  createLegacyExternalProxyActions,
   createSchoolProfileOnboardingRuntime,
   registerControlDataIpc,
   registerCoreControlIpc,

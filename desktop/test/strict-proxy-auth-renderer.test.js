@@ -10,7 +10,11 @@ const html = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(renderer, 'styles.css'), 'utf8');
 const app = fs.readFileSync(path.join(renderer, 'app.js'), 'utf8');
 const proxyFeature = fs.readFileSync(path.join(renderer, 'proxy-auth-migration.js'), 'utf8');
+const integrationFeature = fs.readFileSync(path.join(renderer, 'integration-center.js'), 'utf8');
 const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+const integrationSuite = fs.readFileSync(
+  path.join(__dirname, '..', 'lib', 'integration-center-suite.js'), 'utf8',
+);
 const i18n = require('../renderer/i18n');
 
 test('strict proxy authentication is settings-driven rather than hardcoded in markup', () => {
@@ -76,13 +80,16 @@ test('bilingual help states the secure default, explicit compatibility downgrade
 });
 
 test('Clash credentials never cross into renderer JavaScript', () => {
-  assert.match(html, /data-copy="clash"[^>]*data-i18n="tower\.copyClash"/);
-  assert.match(app, /window\.api\.copyClashNode\(\)/);
+  assert.match(html, /id="integrationList"/u);
+  assert.doesNotMatch(html, /data-copy="clash"/u);
+  assert.match(integrationFeature, /api\.prepareIntegration\(\{ adapterId, action \}\)/u);
+  assert.match(integrationFeature, /api\.confirmIntegration\(\{ confirmationHandle: handle \}\)/u);
+  assert.doesNotMatch(integrationFeature, /username|password|buildClashProxyYaml/u);
   assert.doesNotMatch(app, /buildClashProxyYaml|username:\s*.*Clash|password:\s*.*Clash/);
   assert.match(main, /registerCoreControlIpc\(\{/);
-  assert.match(main, /copyClashNode: async \(\) =>/);
-  assert.match(main, /clipboard\.writeText\(buildClashProxyYaml/);
-  assert.match(main, /return \{ ok: true \}/);
+  assert.match(integrationSuite, /copyClashNode: async \(\) =>/);
+  assert.match(integrationSuite, /writeClipboard\(buildClashProxyYaml/);
+  assert.match(integrationSuite, /return \{ ok: true \}/);
 });
 
 test('strict proxy authentication card wraps safely in narrow windows', () => {

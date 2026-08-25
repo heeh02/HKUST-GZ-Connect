@@ -86,6 +86,7 @@ test('legacy mode preserves existing settings and credential behavior', () => {
     legacy: legacyStore,
   });
   assert.equal(persistence.initialize().ready, true);
+  assert.equal(persistence.currentAuthority(), null);
   assert.equal(persistence.loadSettings().username, 'legacy-user');
   assert.equal(persistence.hasAccountIdentity(), true);
   const credential = persistence.openCredential();
@@ -128,6 +129,7 @@ test('Profile Workspace mode routes settings and credentials only through scoped
     }),
   });
   assert.equal(persistence.initialize().ready, true);
+  assert.equal(persistence.currentAuthority(), current);
   assert.equal(persistence.hasAccountIdentity(), true);
   assert.equal(persistence.loadSettings().username, 'workspace-user');
   assert.equal(persistence.saveCredential('next-password', 'next-user'), true);

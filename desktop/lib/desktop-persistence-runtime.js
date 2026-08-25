@@ -154,6 +154,13 @@ class DesktopPersistenceRuntime {
     return this.hasCredential();
   }
 
+  currentAuthority() {
+    this.#requireReady();
+    if (this.mode !== 'profile-workspace') return null;
+    this.authority = this.runtime.reloadAuthority();
+    return this.authority;
+  }
+
   #requireReady() {
     if (!this.ready) throw new Error('desktop persistence runtime is not ready');
   }

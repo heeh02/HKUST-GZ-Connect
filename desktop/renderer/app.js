@@ -156,7 +156,7 @@ function populateTowerForm() {
 async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
   applyLocale(s.locale);
-  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile } }));
+  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn } }));
   settings = s.settings || {}; pacUrl = s.pacUrl || '';
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   renderConnect(s);

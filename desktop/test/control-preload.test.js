@@ -114,6 +114,24 @@ test('Clash copy is a value-free trusted IPC and never returns YAML through the 
   }]);
 });
 
+test('Integration Center preload exposes only list prepare confirm and cancel schemas', async () => {
+  const { api, invocations } = loadPreload();
+  await api.listIntegrations();
+  await api.prepareIntegration({ adapterId: 'clash_yaml', action: 'copy' });
+  await api.confirmIntegration({ confirmationHandle: 'export-123' });
+  await api.cancelIntegration();
+  assert.deepEqual(invocations.map(({ channel }) => channel), [
+    'list-integrations', 'prepare-integration', 'confirm-integration', 'cancel-integration',
+  ]);
+  assert.equal(invocations[0].argumentCount, 1);
+  assert.deepEqual(invocations[1].payload, { adapterId: 'clash_yaml', action: 'copy' });
+  assert.deepEqual(invocations[2].payload, { confirmationHandle: 'export-123' });
+  assert.equal(invocations[3].argumentCount, 1);
+  for (const forbidden of ['getIntegrationPayload', 'getProxyPassword', 'getIntegrationTarget']) {
+    assert.equal(typeof api[forbidden], 'undefined');
+  }
+});
+
 test('routing manager open event is value-free and removable', () => {
   const { api, listeners } = loadPreload();
   let opened = 0;

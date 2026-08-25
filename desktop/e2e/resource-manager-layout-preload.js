@@ -12,6 +12,27 @@ let resources = Array.from({ length: 18 }, (_, index) => ({
 }));
 let lastOpenRequest = null;
 let nextCustomId = 1;
+let pendingIntegration = null;
+let managedIntegrationState = 'not-installed';
+
+const integrationAdapters = [
+  'clash_yaml', 'mihomo_yaml', 'clash_verge_rev_managed',
+  'openssh_proxy_command', 'pac', 'manual_export',
+];
+
+function integrationViews() {
+  return integrationAdapters.map((adapterId) => ({
+    schemaVersion: 1,
+    adapterId,
+    compatibilityState: 'supported',
+    bindingState: adapterId === 'clash_verge_rev_managed'
+      ? managedIntegrationState : 'not-installed',
+    supportedActions: adapterId === 'clash_verge_rev_managed'
+      ? (managedIntegrationState === 'not-installed' ? ['install'] : ['update', 'remove'])
+      : ['copy', 'save'],
+    updatedAt: managedIntegrationState === 'current' ? 1_800_000_000_000 : null,
+  }));
+}
 
 function normalizeFixtureUrl(value) {
   const source = String(value || '').trim();
@@ -64,6 +85,43 @@ contextBridge.exposeInMainWorld('api', {
   },
   deleteResource: async () => ({ ok: true, resources }),
   reorderResources: async () => ({ ok: true, resources }),
+  listIntegrations: async () => ({ ok: true, integrations: integrationViews() }),
+  prepareIntegration: async ({ adapterId, action }) => {
+    if (!integrationAdapters.includes(adapterId)) {
+      return { ok: false, code: 'INTEGRATION_ADAPTER_UNAVAILABLE' };
+    }
+    const confirmationHandle = `export-${'ab'.repeat(16)}`;
+    pendingIntegration = { adapterId, action, confirmationHandle };
+    return {
+      ok: true,
+      preview: {
+        schemaVersion: 1,
+        adapterId,
+        action,
+        confirmationHandle,
+        expiresAt: Date.now() + 10_000,
+        changes: { create: action === 'install' ? 1 : 0, replace: 0, remove: 0, unchanged: 0 },
+        byteLength: 512,
+        ruleCount: 2,
+        containsLocalProxyCredential: true,
+        warningCodes: ['INTEGRATION_LOCAL_PROXY_CREDENTIAL'],
+      },
+    };
+  },
+  confirmIntegration: async ({ confirmationHandle }) => {
+    if (!pendingIntegration || pendingIntegration.confirmationHandle !== confirmationHandle) {
+      return { ok: false, code: 'INTEGRATION_TARGET_CHANGED' };
+    }
+    if (pendingIntegration.adapterId === 'clash_verge_rev_managed') {
+      managedIntegrationState = pendingIntegration.action === 'remove' ? 'not-installed' : 'current';
+    }
+    pendingIntegration = null;
+    return { ok: true };
+  },
+  cancelIntegration: async () => {
+    pendingIntegration = null;
+    return { ok: true, cancelled: true };
+  },
   resize: async () => ({ ok: true }),
   onStatus: () => {},
   onTelemetry: () => {},
