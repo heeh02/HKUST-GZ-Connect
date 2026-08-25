@@ -54,6 +54,7 @@ class ResourceLibraryRuntime {
   async openById(resourceId) {
     const resource = resolveResourceById(this.loadResources(), resourceId);
     const context = this.captureContext();
+    if (!this.isContextCurrent(context)) throw new Error('resource context is stale');
     const result = await this.openRequest({ url: resource.url, route: resource.route });
     if (!result?.ok) return result;
     if (this.isContextCurrent(context)) {

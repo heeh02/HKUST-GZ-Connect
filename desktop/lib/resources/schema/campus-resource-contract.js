@@ -17,6 +17,7 @@ const MAX_RESOURCE_URL_LENGTH = 2048;
 const MAX_RESOURCE_KEYWORDS = 12;
 const MAX_RESOURCE_KEYWORD_LENGTH = 40;
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
+const WEB_RESOURCE_SCHEMA_VERSION = 1;
 const RESOURCE_CATEGORIES = Object.freeze([
   'common',
   'academic',
@@ -113,19 +114,26 @@ function normalizedResource(value, {
   if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(url).hostname)) {
     throw new TypeError('private or local resources cannot use the Direct route');
   }
+  const name = boundedText(source.name, MAX_RESOURCE_NAME_LENGTH, 'resource name');
+  const description = boundedText(
+    source.description,
+    MAX_RESOURCE_DESCRIPTION_LENGTH,
+    'resource description',
+    { allowEmpty: true },
+  );
   return deepFreeze({
+    schemaVersion: WEB_RESOURCE_SCHEMA_VERSION,
     id,
-    name: boundedText(source.name, MAX_RESOURCE_NAME_LENGTH, 'resource name'),
-    description: boundedText(
-      source.description,
-      MAX_RESOURCE_DESCRIPTION_LENGTH,
-      'resource description',
-      { allowEmpty: true },
-    ),
+    localizedName: { zh: name, en: name },
+    localizedDescription: { zh: description, en: description },
+    name,
+    description,
     url,
     route,
     category,
     keywords: deepFreeze(keywords),
+    iconKey: null,
+    reviewed: reviewed === true,
     builtin: builtin === true,
   });
 }
@@ -163,13 +171,32 @@ function validateRuntimeBuiltinResources(value) {
   return validateUniqueResources(value.map((resource) => {
     const source = exactKeys(
       resource,
-      ['id', 'name', 'description', 'url', 'route', 'category', 'keywords', 'builtin'],
-      ['id', 'name', 'description', 'url', 'route', 'category', 'keywords', 'builtin'],
+      [
+        'schemaVersion', 'id', 'localizedName', 'localizedDescription', 'name', 'description',
+        'url', 'route', 'category', 'keywords', 'iconKey', 'reviewed', 'builtin',
+      ],
+      [
+        'schemaVersion', 'id', 'localizedName', 'localizedDescription', 'name', 'description',
+        'url', 'route', 'category', 'keywords', 'iconKey', 'reviewed', 'builtin',
+      ],
       'RuntimeWebResource',
     );
-    if (source.builtin !== true) throw new TypeError('runtime builtin resource lost its origin');
-    const { builtin: _builtin, ...document } = source;
-    return normalizedResource(document, {
+    if (source.schemaVersion !== WEB_RESOURCE_SCHEMA_VERSION || source.builtin !== true ||
+        source.reviewed !== true || source.iconKey !== null ||
+        source.localizedName?.zh !== source.name || source.localizedName?.en !== source.name ||
+        source.localizedDescription?.zh !== source.description ||
+        source.localizedDescription?.en !== source.description) {
+      throw new TypeError('runtime builtin resource lost its version or origin');
+    }
+    return normalizedResource({
+      id: source.id,
+      name: source.name,
+      description: source.description,
+      url: source.url,
+      route: source.route,
+      category: source.category,
+      keywords: source.keywords,
+    }, {
       builtin: true,
       reviewed: true,
       exact: true,
@@ -255,7 +282,15 @@ function normalizeCustomResources(input) {
       seenUrls.add(resource.url);
       return true;
     })
-    .map(({ builtin, ...resource }) => resource);
+    .map(({
+      builtin: _builtin,
+      schemaVersion: _schemaVersion,
+      localizedName: _localizedName,
+      localizedDescription: _localizedDescription,
+      iconKey: _iconKey,
+      reviewed: _reviewed,
+      ...resource
+    }) => resource);
 }
 
 module.exports = {
@@ -271,6 +306,7 @@ module.exports = {
   MAX_RESOURCE_KEYWORDS,
   MAX_RESOURCE_KEYWORD_LENGTH,
   RESOURCE_CATEGORIES,
+  WEB_RESOURCE_SCHEMA_VERSION,
   normalizeCustomResources,
   normalizeLegacyCustomResource,
   normalizeResource,

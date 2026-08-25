@@ -46,6 +46,37 @@ function mergeCampusResources(builtIns, custom) {
   return projectCampusResources(builtIns, custom).resources;
 }
 
+function projectWebResourceLibrary(builtIns, custom) {
+  const reviewed = validateRuntimeBuiltinResources(builtIns);
+  const local = validateCustomResourceDocument(custom);
+  const resources = [...reviewed];
+  const seenIds = new Set(reviewed.map(({ id }) => id));
+  const seenUrls = new Set(reviewed.map(({ url }) => url));
+  let conflictCount = 0;
+  for (const resource of local) {
+    if (seenIds.has(resource.id) || seenUrls.has(resource.url)) {
+      conflictCount += 1;
+      continue;
+    }
+    seenIds.add(resource.id);
+    seenUrls.add(resource.url);
+    resources.push(resource);
+  }
+  return Object.freeze({
+    resources: Object.freeze(resources),
+    receipt: Object.freeze({
+      sourceCount: reviewed.length + local.length,
+      visibleCount: resources.length,
+      conflictCount,
+      hiddenCount: 0,
+    }),
+  });
+}
+
+function mergeWebResourceLibrary(builtIns, custom) {
+  return projectWebResourceLibrary(builtIns, custom).resources;
+}
+
 function resourceRoute(resource) {
   return resource?.route === ROUTE_DIRECT ? ROUTE_DIRECT : ROUTE_CAMPUS;
 }
@@ -69,9 +100,11 @@ function resolveResourceById(resources, resourceId) {
 module.exports = {
   MAX_CUSTOM_RESOURCES,
   mergeCampusResources,
+  mergeWebResourceLibrary,
   normalizeCustomResources,
   normalizeResource,
   projectCampusResources,
+  projectWebResourceLibrary,
   resourceRoute,
   resolveResourceById,
 };

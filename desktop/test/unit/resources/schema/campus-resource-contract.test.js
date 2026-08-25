@@ -41,6 +41,10 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
   assert.equal(resources[4].route, 'direct');
   assert.equal(resources[0].category, 'campus-service');
   assert.deepEqual(resources[5].keywords, ['Canvas', '课程', '作业', '教学']);
+  assert.equal(resources[0].schemaVersion, 1);
+  assert.equal(resources[0].reviewed, true);
+  assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: '学校主页' });
+  assert.equal(resources[0].iconKey, null);
   assert.equal(Object.isFrozen(resources), true);
   assert.equal(Object.isFrozen(resources[0]), true);
   assert.equal(validateBuiltinResourcesRef('hkustgz-builtin-resources'), 'hkustgz-builtin-resources');

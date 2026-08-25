@@ -53,11 +53,27 @@ test('failed or stale opens never record recent activity', async () => {
     platform: 'darwin',
     loadResources: () => resources,
     captureContext: () => ({ epoch: 1 }),
-    isContextCurrent: () => false,
+    isContextCurrent: () => true,
     openRequest: async () => ({ ok: false, error: 'offline' }),
     ActivityStoreClass: FakeActivityStore,
   });
   assert.deepEqual(await runtime.openById('outlook'), { ok: false, error: 'offline' });
   assert.deepEqual(runtime.snapshot().recent.entries, []);
   await assert.rejects(() => runtime.openById('missing'), /unavailable/u);
+});
+
+test('an already stale Profile context opens no page', async () => {
+  let openCalls = 0;
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json',
+    recentFile: '/fixture/recent.json',
+    platform: 'darwin',
+    loadResources: () => resources,
+    captureContext: () => ({ epoch: 1 }),
+    isContextCurrent: () => false,
+    openRequest: async () => { openCalls += 1; return { ok: true }; },
+    ActivityStoreClass: FakeActivityStore,
+  });
+  await assert.rejects(() => runtime.openById('outlook'), /stale/u);
+  assert.equal(openCalls, 0);
 });

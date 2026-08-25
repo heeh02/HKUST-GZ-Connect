@@ -439,13 +439,13 @@ function proxyHelperPath() {
   });
 }
 function campusResources(settings = loadSettingsOrReport()) {
-  return activeSchoolProfile.mergeResources(settings.customResources);
+  return activeSchoolProfile.mergeResourceLibrary(settings.customResources);
 }
 function safeCampusResources(settings = null) {
   try { return campusResources(settings || loadSettingsOrReport()); }
   catch (error) {
     reportSettingsReadFailure(error);
-    return activeSchoolProfile.mergeResources();
+    return activeSchoolProfile.mergeResourceLibrary();
   }
 }
 function safeCampusResourceLibrary(settings = null) {
@@ -1335,7 +1335,11 @@ async function connectAndOpenCampusBrowser(rawRequest) {
   return result;
 }
 async function openCampusResourceById({ resourceId } = {}) {
-  try { return await resourceLibraryRuntime.openById(resourceId); }
+  try {
+    return await runActiveContextTransaction(() => ({
+      commit: () => resourceLibraryRuntime.openById(resourceId),
+    }));
+  }
   catch { return { ok: false, error: t('error.resourceUnavailable') }; }
 }
 

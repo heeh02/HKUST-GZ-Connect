@@ -9,7 +9,7 @@ const path = require('node:path');
 const BASELINE = Object.freeze({
   mainDirectDependencies: 35,
   mainTransitiveDependencies: 153,
-  mainLines: 1655,
+  mainLines: 1659,
   rendererLines: 564,
   libMaxFanIn: 45,
   libMaxFanOut: 14,
