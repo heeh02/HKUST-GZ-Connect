@@ -18,6 +18,7 @@ function fixture(t, overrides = {}) {
   fs.mkdirSync(exports, { mode: 0o700 });
   fs.mkdirSync(workspace, { mode: 0o700 });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let entropy = 6;
   return {
     root,
     exports,
@@ -25,7 +26,7 @@ function fixture(t, overrides = {}) {
     transaction: new ManagedFileTransaction({
       workspaceRoot: workspace,
       backupRoot: backup,
-      randomBytes: (length) => Buffer.alloc(length, 7),
+      randomBytes: (length) => Buffer.alloc(length, ++entropy),
       ...overrides,
     }),
   };
@@ -140,4 +141,57 @@ test('simulated Windows applies protection and verification to backup and target
   f.transaction.apply(f.transaction.inspect(target, payload), payload);
   assert.ok(calls.some(([action, name]) => action === 'protect' && name.includes('backup-')));
   assert.ok(calls.some(([action, name]) => action === 'verify' && name === 'windows.yaml'));
+});
+
+test('multiple staged files can roll back all-old or finalize all-new before record commit', (t) => {
+  const f = fixture(t);
+  const first = path.join(f.exports, 'first.conf');
+  const second = path.join(f.exports, 'second.conf');
+  fs.writeFileSync(first, 'first-old\n', { mode: 0o600 });
+  fs.writeFileSync(second, 'second-old\n', { mode: 0o600 });
+  let firstPayload = Buffer.from('first-new\n');
+  let secondPayload = Buffer.from('second-new\n');
+  let firstToken = f.transaction.stage(
+    f.transaction.inspect(first, firstPayload), firstPayload,
+  );
+  let secondToken = f.transaction.stage(
+    f.transaction.inspect(second, secondPayload), secondPayload,
+  );
+  assert.equal(fs.readFileSync(first, 'utf8'), 'first-new\n');
+  assert.equal(fs.readFileSync(second, 'utf8'), 'second-new\n');
+  assert.equal(f.transaction.rollback(secondToken), true);
+  assert.equal(f.transaction.rollback(firstToken), true);
+  assert.equal(fs.readFileSync(first, 'utf8'), 'first-old\n');
+  assert.equal(fs.readFileSync(second, 'utf8'), 'second-old\n');
+
+  firstPayload = Buffer.from('first-final\n');
+  secondPayload = Buffer.from('second-final\n');
+  firstToken = f.transaction.stage(f.transaction.inspect(first, firstPayload), firstPayload);
+  secondToken = f.transaction.stage(f.transaction.inspect(second, secondPayload), secondPayload);
+  assert.equal(f.transaction.finalize(firstToken), true);
+  assert.equal(f.transaction.finalize(secondToken), true);
+  assert.throws(() => f.transaction.finalize(firstToken), /invalid or settled/u);
+  assert.equal(fs.readFileSync(first, 'utf8'), 'first-final\n');
+  assert.equal(fs.readFileSync(second, 'utf8'), 'second-final\n');
+  assert.deepEqual(fs.readdirSync(f.backup), []);
+});
+
+test('an explicitly owned missing parent is created only at stage and removed on rollback', (t) => {
+  const f = fixture(t);
+  const managedRoot = path.join(f.exports, 'campus-connect');
+  const target = path.join(managedRoot, 'school-a.conf');
+  const payload = Buffer.from('managed\n');
+  const plan = f.transaction.inspect(target, payload, { ownedParentRoot: managedRoot });
+  assert.equal(plan.createParent, true);
+  assert.equal(fs.existsSync(managedRoot), false, 'preview is read-only');
+  const token = f.transaction.stage(plan, payload);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'managed\n');
+  assert.equal(f.transaction.rollback(token), true);
+  assert.equal(fs.existsSync(managedRoot), false);
+
+  const finalPayload = Buffer.from('final\n');
+  const finalPlan = f.transaction.inspect(target, finalPayload, { ownedParentRoot: managedRoot });
+  const finalToken = f.transaction.stage(finalPlan, finalPayload);
+  assert.equal(f.transaction.finalize(finalToken), true);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'final\n');
 });

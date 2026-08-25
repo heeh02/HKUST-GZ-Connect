@@ -400,7 +400,7 @@ function ensureExternalProxyAccess(port) {
   ensureProxyCredentialSidecar({
     filePath: PROXY_HELPER_CREDENTIAL,
     port,
-    credential,
+    credential, profileId: activeSchoolProfile.activeContextBinding().profileId,
     platform: process.platform,
   });
   return credential;
@@ -1417,7 +1417,7 @@ registerCoreControlIpc({
       ensureExternalProxyAccess(port);
       return buildSshProxyCommand({
         helperPath: proxyHelperPath(),
-        credentialFile: PROXY_HELPER_CREDENTIAL,
+        credentialFile: PROXY_HELPER_CREDENTIAL, profileId: activeSchoolProfile.activeContextBinding().profileId,
       });
     } catch {
       throw new Error(t('error.proxyCredentialUnavailable'));

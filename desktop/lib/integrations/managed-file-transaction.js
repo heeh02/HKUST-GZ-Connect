@@ -126,18 +126,30 @@ class ManagedFileTransaction {
     Object.assign(this, {
       workspaceRoot, backupRoot, fileSystem, platform, randomBytes, windowsAcl,
     });
+    this.tokens = new WeakSet();
   }
 
-  inspect(targetFileValue, payload) {
+  inspect(targetFileValue, payload, { ownedParentRoot = null } = {}) {
     const targetFile = normalizedIntegrationTargetFile(targetFileValue);
     if (!Buffer.isBuffer(payload) || !payload.length || payload.length > MAX_MANAGED_FILE_BYTES) {
       throw new TypeError('managed file payload is invalid');
     }
     const parent = path.dirname(targetFile);
     let parentStat;
+    let createParent = false;
     try { parentStat = this.fileSystem.lstatSync(parent); }
-    catch (error) { throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT', error); }
-    if (!parentStat.isDirectory() || parentStat.isSymbolicLink()) {
+    catch (error) {
+      if (error?.code !== 'ENOENT' || ownedParentRoot !== parent) {
+        throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT', error);
+      }
+      const owner = this.fileSystem.lstatSync(path.dirname(parent));
+      if (!owner.isDirectory() || owner.isSymbolicLink() ||
+          (this.platform !== 'win32' && (owner.mode & 0o077) !== 0)) {
+        throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT');
+      }
+      createParent = true;
+    }
+    if (!createParent && (!parentStat.isDirectory() || parentStat.isSymbolicLink())) {
       throw new ManagedFileError('INTEGRATION_EXPORT_CONFLICT');
     }
     let before = null;
@@ -149,6 +161,7 @@ class ManagedFileTransaction {
       const afterReceipt = receipt(payload);
       return Object.freeze({
         targetFile,
+        createParent,
         before: beforeReceipt,
         after: afterReceipt,
         change: sameReceipt(beforeReceipt, afterReceipt)
@@ -159,6 +172,19 @@ class ManagedFileTransaction {
   }
 
   apply(plan, payload, validatePayload = () => true) {
+    const token = this.stage(plan, payload, validatePayload);
+    try {
+      this.finalize(token);
+      return Object.freeze({ changed: token.changed, receipt: token.after });
+    } catch (error) {
+      if (!this.rollback(token)) {
+        throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE', error);
+      }
+      throw error;
+    }
+  }
+
+  stage(plan, payload, validatePayload = () => true) {
     if (!plan || typeof plan !== 'object' || typeof validatePayload !== 'function' ||
         !Buffer.isBuffer(payload) || !sameReceipt(receipt(payload), plan.after)) {
       throw new TypeError('managed file apply plan is invalid');
@@ -168,14 +194,34 @@ class ManagedFileTransaction {
     let backup = null;
     let backupPath = null;
     let mutationAttempted = false;
+    let createdParent = false;
     try {
+      if (plan.createParent === true) {
+        try { this.fileSystem.lstatSync(path.dirname(targetFile)); }
+        catch (error) {
+          if (error?.code !== 'ENOENT') throw new ManagedFileError('INTEGRATION_TARGET_CHANGED', error);
+          this.fileSystem.mkdirSync(path.dirname(targetFile), { mode: 0o700 });
+          createdParent = true;
+        }
+        if (!createdParent) throw new ManagedFileError('INTEGRATION_TARGET_CHANGED');
+      } else {
+        let parent;
+        try { parent = this.fileSystem.lstatSync(path.dirname(targetFile)); }
+        catch (error) { throw new ManagedFileError('INTEGRATION_TARGET_CHANGED', error); }
+        if (!parent.isDirectory() || parent.isSymbolicLink()) {
+          throw new ManagedFileError('INTEGRATION_TARGET_CHANGED');
+        }
+      }
       current = readRegularFile(targetFile, {
         fileSystem: this.fileSystem, platform: this.platform, missing: true,
       });
       if (!sameReceipt(receipt(current), plan.before)) {
         throw new ManagedFileError('INTEGRATION_TARGET_CHANGED');
       }
-      if (plan.change === 'unchanged') return Object.freeze({ changed: false, receipt: plan.after });
+      if (plan.change === 'unchanged') return this.#token({
+        targetFile, before: plan.before, after: plan.after,
+        backupPath: null, backupReceipt: null, changed: false, createdParent,
+      });
       if (validatePayload(payload) !== true) {
         throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
       }
@@ -196,12 +242,16 @@ class ManagedFileTransaction {
           throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
         }
       } finally { verified?.fill(0); }
-      if (backupPath && !safeRemove(backupPath, receipt(backup), this.#dependencies())) {
-        throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE');
-      }
-      return Object.freeze({ changed: true, receipt: plan.after });
+      return this.#token({
+        targetFile, before: plan.before, after: plan.after,
+        backupPath, backupReceipt: backup === null ? null : receipt(backup), changed: true,
+        createdParent,
+      });
     } catch (error) {
-      if (!mutationAttempted) throw error;
+      if (!mutationAttempted) {
+        if (createdParent) this.#removeEmptyParent(path.dirname(targetFile));
+        throw error;
+      }
       let observed = null;
       try {
         observed = readRegularFile(targetFile, {
@@ -211,14 +261,16 @@ class ManagedFileTransaction {
           if (backupPath && !safeRemove(backupPath, receipt(backup), this.#dependencies())) {
             throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE', error);
           }
+          if (createdParent) this.#removeEmptyParent(path.dirname(targetFile));
           throw error;
         }
         if (!sameReceipt(receipt(observed), plan.after)) {
           throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE', error);
         }
       } finally { observed?.fill(0); }
-      const rolledBack = this.#rollback(targetFile, plan, backupPath, backup);
+      const rolledBack = this.#rollbackWithBuffer(targetFile, plan, backupPath, backup);
       if (!rolledBack) throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE', error);
+      if (createdParent) this.#removeEmptyParent(path.dirname(targetFile));
       if (error instanceof ManagedFileError) throw error;
       throw new ManagedFileError('INTEGRATION_EXPORT_FAILED', error);
     } finally {
@@ -228,23 +280,59 @@ class ManagedFileTransaction {
     }
   }
 
+  finalize(token) {
+    this.#assertToken(token);
+    if (token.backupPath &&
+        !safeRemove(token.backupPath, token.backupReceipt, this.#dependencies())) {
+      throw new ManagedFileError('INTEGRATION_ROLLBACK_INCOMPLETE');
+    }
+    this.tokens.delete(token);
+    return true;
+  }
+
+  rollback(token) {
+    this.#assertToken(token);
+    let backup = null;
+    try {
+      if (!token.changed) { this.tokens.delete(token); return true; }
+      if (token.before.present) {
+        if (!token.backupPath) return false;
+        backup = readRegularFile(token.backupPath, {
+          fileSystem: this.fileSystem, platform: this.platform,
+        });
+        if (!sameReceipt(receipt(backup), token.backupReceipt) ||
+            !sameReceipt(receipt(backup), token.before)) return false;
+      }
+      const result = this.#rollbackWithBuffer(token.targetFile, token, token.backupPath, backup);
+      if (result && token.createdParent) this.#removeEmptyParent(path.dirname(token.targetFile));
+      if (result) this.tokens.delete(token);
+      return result;
+    } catch { return false; }
+    finally { backup?.fill(0); }
+  }
+
   #writeBackup(data) {
     ensurePrivateDirectoryChain(this.workspaceRoot, this.backupRoot, {
       fileSystem: this.fileSystem, platform: this.platform,
     });
-    let bytes = this.randomBytes(16);
-    if (!Buffer.isBuffer(bytes) || bytes.length !== 16) {
-      bytes?.fill?.(0);
-      throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      let bytes = this.randomBytes(16);
+      if (!Buffer.isBuffer(bytes) || bytes.length !== 16) {
+        bytes?.fill?.(0);
+        throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
+      }
+      let reference;
+      try { reference = `backup-${bytes.toString('hex')}.bin`; }
+      finally { bytes.fill(0); bytes = null; }
+      const file = path.join(this.backupRoot, reference);
+      try { this.fileSystem.lstatSync(file); continue; }
+      catch (error) { if (error?.code !== 'ENOENT') throw error; }
+      if (!this.#writePrivate(file, data)) {
+        throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
+      }
+      return file;
     }
-    let reference;
-    try { reference = `backup-${bytes.toString('hex')}.bin`; }
-    finally { bytes.fill(0); bytes = null; }
-    const file = path.join(this.backupRoot, reference);
-    if (!this.#writePrivate(file, data)) {
-      throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
-    }
-    return file;
+    throw new ManagedFileError('INTEGRATION_EXPORT_FAILED');
   }
 
   #writePrivate(file, data) {
@@ -256,7 +344,7 @@ class ManagedFileTransaction {
     return atomicWritePrivateFile(file, data, this.fileSystem, options);
   }
 
-  #rollback(targetFile, plan, backupPath, backup) {
+  #rollbackWithBuffer(targetFile, plan, backupPath, backup) {
     if (plan.before.present === false) {
       return safeRemove(targetFile, plan.after, this.#dependencies());
     }
@@ -273,8 +361,28 @@ class ManagedFileTransaction {
     return safeRemove(backupPath, plan.before, this.#dependencies());
   }
 
+  #token(value) {
+    const token = Object.freeze(value);
+    this.tokens.add(token);
+    return token;
+  }
+
+  #assertToken(token) {
+    if (!token || typeof token !== 'object' || !this.tokens.has(token)) {
+      throw new TypeError('managed file transaction token is invalid or settled');
+    }
+  }
+
   #dependencies() {
     return { fileSystem: this.fileSystem, platform: this.platform };
+  }
+
+  #removeEmptyParent(directory) {
+    try {
+      if (this.fileSystem.readdirSync(directory).length !== 0) return false;
+      this.fileSystem.rmdirSync(directory);
+      return true;
+    } catch { return false; }
   }
 }
 

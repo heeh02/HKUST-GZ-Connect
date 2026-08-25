@@ -21,7 +21,7 @@ Introduce an **External Tool Integration Center** as a domain independent from t
 The first Beta supports explicit preview plus export or managed install/update/remove for:
 
 - generic Clash-compatible YAML export, with separately tested labels for Clash and Mihomo;
-- a Clash Verge Rev managed extension with install, update and remove lifecycle;
+- a Clash Verge Rev managed global extension-script block with install, update and remove lifecycle;
 - OpenSSH through a one-time managed `Include` plus profile-scoped configuration using the packaged
   `ProxyCommand` helper;
 - VS Code Remote-SSH guidance/configuration that reuses the managed OpenSSH boundary;
@@ -197,14 +197,21 @@ Node names and rules come only from the active Profile's shared network rules. T
 hardcodes HKUST domains, and `udp` remains disabled unless the selected frontend explicitly proves compatible
 authenticated UDP support.
 
-### Clash Verge Rev managed extension
+### Clash Verge Rev managed extension script
 
-The adapter owns a dedicated Campus Connect extension/provider fragment under a documented Clash Verge Rev
-integration point. Install creates only that owned fragment/reference; update changes only the same recorded
-object; remove deletes only the exact object whose ownership marker and digest match the IntegrationRecord. It
-never overwrites subscriptions, mode/rule groups or unrelated user configuration. Every action shows a redacted
-diff, creates a backup where an existing file changes, atomically applies, parses/reads back and rolls back on
-failure.
+Current Clash Verge Rev documentation and source distinguish YAML extension configuration from JavaScript
+extension scripts. YAML array fields such as `proxies` and `rules` may replace an existing array rather than
+prepend to it, so the P7 adapter must not install a generated YAML merge that could erase subscription entries.
+The managed adapter instead owns one marked block in the exact global extension `Script.js` selected by the
+user. The block wraps the pre-existing `main(config, profileName)`, retains its returned object, prepends one
+Profile-bound node and the previewed rules, and preserves unrelated proxies/rules and the rest of the script.
+
+Install/update/remove never discovers a path by scanning. It accepts only a user-selected global `Script.js`
+whose parent is the selected Clash Verge Rev profiles directory, shows a redacted diff, creates a private backup,
+atomically applies and parses/reads back the complete script. Remove deletes only the exact owned block whose
+installed digest matches the IntegrationRecord. It never edits `profiles.yaml`, subscriptions, mode/rule groups
+or an unmarked user block. If a future reviewed Clash Verge Rev API exposes a stable registration transaction,
+that API requires a new adapter version rather than silently changing this file contract.
 
 ### OpenSSH and VS Code
 
@@ -276,7 +283,8 @@ The Integration Center is complete only when:
 - owner-only POSIX modes and Windows ACLs are package-tested;
 - Renderer, argv, logs, telemetry and crash output contain zero generated secret payloads;
 - Browser domain rules never silently route Clash/Mihomo/OpenSSH/VS Code integrations Direct;
-- Clash Verge Rev install/update/remove changes only its owned extension and never a subscription;
+- Clash Verge Rev install/update/remove changes only its owned global extension-script block and never a
+  subscription or YAML rule/proxy array;
 - OpenSSH install is one idempotent managed Include plus profile config; its `Port` remains the remote port and
   Campus access uses only `ProxyCommand`;
 - other managed adapters require an explicit user-selected target and change only their owned block;
@@ -300,9 +308,10 @@ silently deleted; its profile-bound credential is revoked so it cannot authorize
 
 ## References
 
-- [Clash Verge Rev extension configuration](https://www.clashverge.dev/guide/extend.html) documents merge/script
-  extensions and their global/subscription scopes. The adapter still requires a version-pinned compatibility
-  test; this link is not authority to edit an arbitrary client file.
+- [Clash Verge Rev extension configuration](https://www.clashverge.dev/guide/extend.html) documents YAML
+  configuration versus JavaScript scripts and their global/subscription scopes. The adapter is pinned to the
+  independently recorded source observation in `docs/research/clash-verge-rev/`; this link is not authority to
+  edit an arbitrary client file.
 - [VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh) uses a local OpenSSH-compatible client and
   SSH configuration, so Campus Connect reuses OpenSSH rather than defining a VS Code-specific tunnel format.
 - [OpenSSH `ssh_config`](https://man.openbsd.org/ssh_config) defines `Include`, `ProxyCommand` and `Port`; `Port`

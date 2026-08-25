@@ -80,4 +80,11 @@ test('CIDR v1 is exact canonical IPv4 and custom Profiles inherit no HKUST rule'
   assert.deepEqual(rules.domainPolicy.builtinSubdomains, []);
   assert.deepEqual(rules.gatewayBypass, ['vpn.example.edu']);
   assert.equal(JSON.stringify(rules).includes('hkust'), false);
+  const configured = createProfileNetworkRules({
+    profileDocument: custom,
+    accountCampusDomains: ['internal.example.edu'],
+  });
+  assert.deepEqual(configured.domainPolicy.builtinSubdomains, [{
+    host: 'internal.example.edu', route: 'campus',
+  }]);
 });

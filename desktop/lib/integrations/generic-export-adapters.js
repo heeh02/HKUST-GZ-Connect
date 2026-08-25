@@ -218,4 +218,5 @@ module.exports = {
   buildManualProxyExport,
   clashRuleLines,
   validateGenericExportPayload,
+  withIntegrationCredential: withCredential,
 };

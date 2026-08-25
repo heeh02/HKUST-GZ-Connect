@@ -77,12 +77,24 @@ function canonicalResources(value, name) {
   return value;
 }
 
+function canonicalAccountCampusDomains(value) {
+  if (!Array.isArray(value) || value.length > 64) {
+    throw new TypeError('account campus domains must be a bounded array');
+  }
+  const domains = value.map((entry) => normalizeRuleHost(entry));
+  if (new Set(domains).size !== domains.length) {
+    throw new TypeError('account campus domains are duplicated');
+  }
+  return domains;
+}
+
 function sha256(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
 
 function createProfileNetworkRules({
   profileDocument,
+  accountCampusDomains = [],
   userRules = [],
   customResources = [],
   serverResources = [],
@@ -90,10 +102,14 @@ function createProfileNetworkRules({
 } = {}) {
   const profile = validateSchoolProfileDocument(profileDocument);
   const gateway = normalizeGatewayOrigin(profileDocument.gateway.origin);
+  const schoolDomains = [...new Set([
+    ...profile.browser.campusDomains,
+    ...canonicalAccountCampusDomains(accountCampusDomains),
+  ])];
   const domainPolicy = normalizeDomainRoutePolicy({
     userRules: canonicalUserRules(userRules),
     customResources: canonicalResources(customResources, 'custom resources'),
-    schoolDomains: profile.browser.campusDomains,
+    schoolDomains,
     directPartnerDomains: profile.browser.directPartnerDomains,
     serverResources: canonicalResources(serverResources, 'server resources'),
   });

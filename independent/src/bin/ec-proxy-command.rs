@@ -45,7 +45,9 @@ enum CommandError {
 impl Display for CommandError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let message = match self {
-            Self::Usage => "usage: ec-proxy-command --credential-file <file> -- <host> <port>",
+            Self::Usage => {
+                "usage: ec-proxy-command [--profile-id <id>] --credential-file <file> -- <host> <port>"
+            }
             Self::UnsafeCredentialFile => "proxy credential file is unavailable or unsafe",
             Self::InvalidCredentialFile => "proxy credential file has an invalid format",
             Self::InvalidDestination => "proxy destination is invalid or unsupported",
@@ -62,11 +64,13 @@ impl Display for CommandError {
 type Result<T> = std::result::Result<T, CommandError>;
 
 struct CommandArguments {
+    expected_profile_id: Option<String>,
     credential_path: PathBuf,
     destination: Destination,
 }
 
 struct ProxyCredentials {
+    profile_id: Option<String>,
     endpoint: SocketAddrV4,
     username: Zeroizing<Vec<u8>>,
     password: Zeroizing<Vec<u8>>,
@@ -83,25 +87,54 @@ struct Destination {
 }
 
 fn parse_arguments(arguments: &[OsString]) -> Result<CommandArguments> {
-    if arguments.len() != 5
-        || arguments[0] != "--credential-file"
-        || arguments[2] != "--"
-        || arguments[1].is_empty()
+    let (expected_profile_id, credential_index, host_index, port_index) = if arguments.len() == 5
+        && arguments[0] == "--credential-file"
+        && arguments[2] == "--"
+        && !arguments[1].is_empty()
     {
+        (None, 1, 3, 4)
+    } else if arguments.len() == 7
+        && arguments[0] == "--profile-id"
+        && arguments[2] == "--credential-file"
+        && arguments[4] == "--"
+        && !arguments[3].is_empty()
+    {
+        let profile_id = arguments[1]
+            .to_str()
+            .filter(|value| valid_profile_id(value));
+        (
+            Some(profile_id.ok_or(CommandError::Usage)?.to_owned()),
+            3,
+            5,
+            6,
+        )
+    } else {
         return Err(CommandError::Usage);
-    }
-    let host = arguments[3]
+    };
+    let host = arguments[host_index]
         .to_str()
         .ok_or(CommandError::InvalidDestination)?;
-    let port = arguments[4]
+    let port = arguments[port_index]
         .to_str()
         .and_then(|value| value.parse::<u16>().ok())
         .filter(|port| *port != 0)
         .ok_or(CommandError::InvalidDestination)?;
     Ok(CommandArguments {
-        credential_path: PathBuf::from(&arguments[1]),
+        expected_profile_id,
+        credential_path: PathBuf::from(&arguments[credential_index]),
         destination: Destination::parse(host, port)?,
     })
+}
+
+fn valid_profile_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 64
+        && bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
 }
 
 impl Destination {
@@ -160,12 +193,20 @@ fn parse_credential_payload(payload: &[u8]) -> Result<ProxyCredentials> {
     }
     let payload = payload.strip_suffix(b"\n").unwrap_or(payload);
     let lines = payload.split(|byte| *byte == b'\n').collect::<Vec<_>>();
-    if lines.len() != 3 {
-        return Err(CommandError::InvalidCredentialFile);
-    }
-    let endpoint = normalized_ascii_line(lines[0])?;
-    let username = normalized_ascii_line(lines[1])?;
-    let password = normalized_ascii_line(lines[2])?;
+    let (profile_id, offset) = match lines.len() {
+        3 => (None, 0),
+        4 => {
+            let value = std::str::from_utf8(normalized_ascii_line(lines[0])?)
+                .ok()
+                .filter(|value| valid_profile_id(value))
+                .ok_or(CommandError::InvalidCredentialFile)?;
+            (Some(value.to_owned()), 1)
+        }
+        _ => return Err(CommandError::InvalidCredentialFile),
+    };
+    let endpoint = normalized_ascii_line(lines[offset])?;
+    let username = normalized_ascii_line(lines[offset + 1])?;
+    let password = normalized_ascii_line(lines[offset + 2])?;
 
     let endpoint = std::str::from_utf8(endpoint)
         .ok()
@@ -174,6 +215,7 @@ fn parse_credential_payload(payload: &[u8]) -> Result<ProxyCredentials> {
         .ok_or(CommandError::InvalidCredentialFile)?;
 
     Ok(ProxyCredentials {
+        profile_id,
         endpoint,
         username: Zeroizing::new(username.to_vec()),
         password: Zeroizing::new(password.to_vec()),
@@ -238,7 +280,7 @@ fn open_credential_file(path: &Path) -> Result<File> {
     Ok(file)
 }
 
-fn read_credentials(path: &Path) -> Result<ProxyCredentials> {
+fn read_credentials(path: &Path, expected_profile_id: Option<&str>) -> Result<ProxyCredentials> {
     let mut file = open_credential_file(path)?;
     let mut payload = Zeroizing::new(Vec::with_capacity(256));
     Read::by_ref(&mut file)
@@ -248,7 +290,11 @@ fn read_credentials(path: &Path) -> Result<ProxyCredentials> {
     if payload.len() > MAX_CREDENTIAL_FILE_BYTES {
         return Err(CommandError::UnsafeCredentialFile);
     }
-    parse_credential_payload(payload.as_slice())
+    let credentials = parse_credential_payload(payload.as_slice())?;
+    if expected_profile_id.is_some() && credentials.profile_id.as_deref() != expected_profile_id {
+        return Err(CommandError::InvalidCredentialFile);
+    }
+    Ok(credentials)
 }
 
 fn establish_proxy_tunnel(
@@ -393,7 +439,10 @@ where
 fn run() -> Result<()> {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
     let arguments = parse_arguments(&arguments)?;
-    let credentials = read_credentials(&arguments.credential_path)?;
+    let credentials = read_credentials(
+        &arguments.credential_path,
+        arguments.expected_profile_id.as_deref(),
+    )?;
     let stream = establish_proxy_tunnel(&credentials, &arguments.destination)?;
     let mut stdout = io::stdout().lock();
     relay_streams(stream, io::stdin(), &mut stdout)
@@ -414,6 +463,7 @@ mod tests {
 
     fn test_credentials(endpoint: SocketAddrV4) -> ProxyCredentials {
         ProxyCredentials {
+            profile_id: None,
             endpoint,
             username: Zeroizing::new(b"proxy-user".to_vec()),
             password: Zeroizing::new(b"proxy-pass".to_vec()),
@@ -447,6 +497,34 @@ mod tests {
             parsed.destination.host,
             DestinationHost::Domain(_)
         ));
+        assert_eq!(parsed.expected_profile_id, None);
+
+        let profile_bound = [
+            "--profile-id",
+            "school-a",
+            "--credential-file",
+            "/private/credential",
+            "--",
+            "campus.example",
+            "22",
+        ]
+        .map(OsString::from);
+        let parsed = parse_arguments(&profile_bound).unwrap();
+        assert_eq!(parsed.expected_profile_id.as_deref(), Some("school-a"));
+        let invalid_profile = [
+            "--profile-id",
+            "School_A",
+            "--credential-file",
+            "/private/credential",
+            "--",
+            "campus.example",
+            "22",
+        ]
+        .map(OsString::from);
+        assert_eq!(
+            parse_arguments(&invalid_profile).err(),
+            Some(CommandError::Usage)
+        );
 
         let ipv6 = [
             "--credential-file",
@@ -467,18 +545,24 @@ mod tests {
     }
 
     #[test]
-    fn credential_payload_requires_three_bounded_private_fields() {
+    fn credential_payload_accepts_legacy_or_profile_bound_private_fields() {
         let credentials =
             parse_credential_payload(b"127.0.0.1:6180\r\nproxy-user\r\nproxy-pass\r\n").unwrap();
+        assert_eq!(credentials.profile_id, None);
         assert_eq!(credentials.endpoint.port(), 6180);
         assert_eq!(credentials.username.as_slice(), b"proxy-user");
         assert_eq!(credentials.password.as_slice(), b"proxy-pass");
+        let profile =
+            parse_credential_payload(b"school-a\n127.0.0.1:6180\nproxy-user\nproxy-pass\n")
+                .unwrap();
+        assert_eq!(profile.profile_id.as_deref(), Some("school-a"));
 
         for invalid in [
             b"127.0.0.1:1024\nuser\npass\n".as_slice(),
             b"0.0.0.0:6180\nuser\npass\n".as_slice(),
             b"127.0.0.1:6180\n\npass\n".as_slice(),
             b"127.0.0.1:6180\nuser\npass\nextra\n".as_slice(),
+            b"School_A\n127.0.0.1:6180\nuser\npass\n".as_slice(),
             b"127.0.0.1:6180\nuser\np\0ass\n".as_slice(),
         ] {
             assert_eq!(
@@ -662,11 +746,22 @@ mod tests {
             .unwrap();
         file.write_all(b"127.0.0.1:6180\nuser\npass\n").unwrap();
         drop(file);
-        assert!(read_credentials(&credential).is_ok());
+        assert!(read_credentials(&credential, None).is_ok());
+        std::fs::write(&credential, b"school-a\n127.0.0.1:6180\nuser\npass\n").unwrap();
+        assert!(read_credentials(&credential, Some("school-a")).is_ok());
+        assert_eq!(
+            read_credentials(&credential, Some("school-b")).err(),
+            Some(CommandError::InvalidCredentialFile)
+        );
+        std::fs::write(&credential, b"127.0.0.1:6180\nuser\npass\n").unwrap();
+        assert_eq!(
+            read_credentials(&credential, Some("school-a")).err(),
+            Some(CommandError::InvalidCredentialFile)
+        );
 
         std::fs::set_permissions(&credential, std::fs::Permissions::from_mode(0o640)).unwrap();
         assert_eq!(
-            read_credentials(&credential).err(),
+            read_credentials(&credential, None).err(),
             Some(CommandError::UnsafeCredentialFile)
         );
         std::fs::set_permissions(&credential, std::fs::Permissions::from_mode(0o600)).unwrap();
@@ -674,14 +769,14 @@ mod tests {
         let link = directory.join("credential-link");
         symlink(&credential, &link).unwrap();
         assert_eq!(
-            read_credentials(&link).err(),
+            read_credentials(&link, None).err(),
             Some(CommandError::UnsafeCredentialFile)
         );
 
         let hard_link = directory.join("credential-hard-link");
         std::fs::hard_link(&credential, &hard_link).unwrap();
         assert_eq!(
-            read_credentials(&credential).err(),
+            read_credentials(&credential, None).err(),
             Some(CommandError::UnsafeCredentialFile)
         );
         std::fs::remove_dir_all(&directory).unwrap();

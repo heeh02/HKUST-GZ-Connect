@@ -65,6 +65,26 @@ test('helper sidecar is owner-only, exactly three lines, and not rewritten when 
   assert.equal(fs.readFileSync(filePath, 'utf8').split('\n')[0], '127.0.0.1:6280');
 });
 
+test('Profile-bound sidecar and SSH command carry identity but never credential values in argv', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-proxy-sidecar-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'proxy-helper-credential.txt');
+  ensureProxyCredentialSidecar({
+    filePath, port: 6180, credential, profileId: 'school-a',
+  });
+  assert.deepEqual(fs.readFileSync(filePath, 'utf8').split('\n'), [
+    'school-a', '127.0.0.1:6180', material.username, material.password,
+  ]);
+  const command = buildSshProxyCommand({
+    helperPath: '/Applications/Campus Connect.app/helper',
+    credentialFile: filePath,
+    profileId: 'school-a',
+  });
+  assert.match(command, /--profile-id "school-a" --credential-file/u);
+  assert.doesNotMatch(command, new RegExp(material.username, 'u'));
+  assert.doesNotMatch(command, new RegExp(material.password, 'u'));
+});
+
 test('Windows sidecar is ACL-protected before commit and reverified when unchanged', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-proxy-sidecar-win-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
