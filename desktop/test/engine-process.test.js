@@ -9,6 +9,7 @@ const {
   SYNTHETIC_ENGINE_E2E_ENV,
   exactExecutablePattern,
   resolveEngineLaunch,
+  resolveNativeResourcePath,
 } = require('../lib/engine-process');
 
 test('orphan cleanup matches only the resolved engine executable', () => {
@@ -16,6 +17,24 @@ test('orphan cleanup matches only the resolved engine executable', () => {
   assert.equal(pattern.test('/tmp/build+test/ec-engine --config profile.json'), true);
   assert.equal(pattern.test('cargo build --bin ec-engine'), false);
   assert.equal(pattern.test('/other/ec-engine --config profile.json'), false);
+});
+
+test('native resource resolver selects exact platform architecture and kind', () => {
+  const baseDirectory = '/app/desktop';
+  const resourcesPath = '/app/resources';
+  const existing = new Set(['/app/resources/engine/ec-gateway-probe-darwin-arm64']);
+  assert.equal(resolveNativeResourcePath({
+    kind: 'ec-gateway-probe',
+    appIsPackaged: true,
+    baseDirectory,
+    resourcesPath,
+    platform: 'darwin',
+    architecture: 'arm64',
+    fileSystem: { existsSync: (file) => existing.has(file) },
+  }), '/app/resources/engine/ec-gateway-probe-darwin-arm64');
+  assert.throws(() => resolveNativeResourcePath({
+    kind: 'unknown', appIsPackaged: true, baseDirectory, resourcesPath,
+  }), /native resource/u);
 });
 
 test('synthetic Engine launch is a fixed dev-only fixture and packaged apps ignore it', (t) => {

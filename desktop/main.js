@@ -30,8 +30,7 @@ const {
 const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
 const { EngineConnectionRuntime } = require('./lib/engine-connection-runtime');
 const { DesktopShell } = require('./lib/desktop-shell');
-const { SYNTHETIC_ENGINE_E2E_ENV, exactExecutablePattern, resolveEngineLaunch } =
-  require('./lib/engine-process');
+const { SYNTHETIC_ENGINE_E2E_ENV, exactExecutablePattern, resolveEngineLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
 const {
   EngineSupervisor,
   loadEngineOwnerRecord,
@@ -48,6 +47,7 @@ const { CampusBrowserManager } = require('./lib/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/school-profile-controller');
 const {
   createControlStateSnapshot,
+  createSchoolProfileOnboardingRuntime,
   registerControlDataIpc,
   registerCoreControlIpc,
   registerSettingsCredentialIpc,
@@ -263,6 +263,11 @@ const persistenceRuntime = new DesktopPersistenceRuntime({
   },
 });
 const initializeMultiSchoolStartup = createMultiSchoolStartupInitializer({ userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, desktopDir: __dirname });
+const schoolProfileOnboarding = createSchoolProfileOnboardingRuntime({
+  userData: DATA, executablePath: gatewayProbePath(), spawnProcess: spawn,
+  getActiveContext: () => activeSchoolProfile.activeContextBinding(), listProfiles: (options) => initializeMultiSchoolStartup.listViews(options),
+  onDiagnostic: (code) => logWriter?.append(`[profile-onboarding] ${code}\n`),
+});
 function loadSettings() { return persistenceRuntime.loadSettings(); }
 function reportSettingsReadFailure(cause, { emitState = true } = {}) {
   if (cause?.code === 'SETTINGS_READ_FAILED') return cause;
@@ -441,19 +446,12 @@ const domainRoutePolicy = new DomainRoutePolicyStore({
   serverResources: () => serverCampusResources,
 });
 // ---------- engine ----------
-function enginePath() {
-  const plat = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
-  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-  const ext = plat === 'windows' ? '.exe' : '';
-  const named = `ec-engine-${plat}-${arch}${ext}`;
-  const dir = app.isPackaged ? path.join(process.resourcesPath, 'engine') : path.join(__dirname, 'engine');
-  const candidates = [
-    path.join(dir, named),
-    path.join(dir, plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
-    path.join(__dirname, '..', 'independent', 'target', 'release', plat === 'windows' ? 'ec-engine.exe' : 'ec-engine'),
-  ];
-  return candidates.find((p) => fs.existsSync(p)) || candidates[0];
+function nativeResourcePath(kind) {
+  return resolveNativeResourcePath({ kind, appIsPackaged: app.isPackaged,
+    baseDirectory: __dirname, resourcesPath: process.resourcesPath });
 }
+function enginePath() { return nativeResourcePath('ec-engine'); }
+function gatewayProbePath() { return nativeResourcePath('ec-gateway-probe'); }
 function emit() {
   state.pacUrl = pacUrl();
   connectionWaitRegistry.observe(connectionState.snapshot());
@@ -1380,6 +1378,7 @@ registerControlDataIpc({
     runTransaction: runDomainPolicyTransaction,
     safeResources: safeCampusResources,
   },
+  schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale },
 });
 registerSettingsCredentialIpc({
   register: trustedHandle,
@@ -1502,6 +1501,7 @@ desktopShell = new DesktopShell({
   openCampusBrowser: () => connectAndOpenCampusBrowser(),
   rememberCloseAction,
   disposeLifecycle: () => {
+    schoolProfileOnboarding.cancel();
     networkStartupCoordinator.dispose(); connectionWaitRegistry.dispose();
     connectivityRecovery.dispose();
     networkStatusMonitor.dispose();
@@ -1512,7 +1512,7 @@ desktopShell = new DesktopShell({
     stableProxyCredential?.destroy();
     stableProxyCredential = null;
   },
-  onControlRendererUnavailable: () => authChallengeCoordinator.cancelForLifecycle(),
+  onControlRendererUnavailable: () => (schoolProfileOnboarding.cancel(), authChallengeCoordinator.cancelForLifecycle()),
   onWindowError: (error) => {
     state.settingsError = error.userMessage || error.message;
     emit();

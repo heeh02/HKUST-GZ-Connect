@@ -36,11 +36,20 @@ function fixture() {
       runTransaction,
       safeResources: () => settings.customResources,
     },
+    schools: {
+      onboarding: {
+        list: () => [],
+        probe: () => ({ ok: true }),
+        confirm: () => ({ ok: true }),
+        cancel: () => false,
+      },
+      getLocale: () => 'en',
+    },
   });
   return { handlers, get pins() { return pins; }, get rules() { return rules; } };
 }
 
-test('facade registers exact routing, certificate and resource channels', () => {
+test('facade registers exact routing certificate resource and school channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
     'list-routing-rules',
@@ -51,6 +60,10 @@ test('facade registers exact routing, certificate and resource channels', () => 
     'save-resource',
     'delete-resource',
     'reorder-resources',
+    'list-school-profiles',
+    'probe-custom-gateway',
+    'confirm-custom-gateway',
+    'cancel-custom-gateway',
   ]);
 });
 

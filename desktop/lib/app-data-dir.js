@@ -23,11 +23,13 @@ function resolveUserDataOverride(rawValue) {
 
 function createMultiSchoolStartupInitializer(options) {
   const runtime = new MultiSchoolStartupRuntime(options);
-  return (persistenceRuntime, activeSchoolProfile) => runtime.initialize({
+  const initialize = (persistenceRuntime, activeSchoolProfile) => runtime.initialize({
     mode: persistenceRuntime.mode,
     authority: persistenceRuntime.authority,
     withProfileDocument: (callback) => activeSchoolProfile.withProfileDocument(callback),
   });
+  initialize.listViews = (viewOptions) => runtime.listViews(viewOptions);
+  return Object.freeze(initialize);
 }
 
 module.exports = {

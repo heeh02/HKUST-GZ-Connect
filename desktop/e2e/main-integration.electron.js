@@ -93,6 +93,12 @@ async function run() {
     includeSubdomains: false,
     route: 'direct',
   }]);
+  const profiles = await invoke(control, 'window.api.listSchoolProfiles()');
+  assert.equal(profiles.ok, true);
+  assert.equal(profiles.profiles.length, 1);
+  assert.equal(profiles.profiles[0].profileId, 'hkustgz');
+  assert.equal(profiles.profiles[0].active, true);
+  assert.equal(Object.hasOwn(profiles.profiles[0], 'profileKey'), false);
 
   const savedResource = await invoke(control, `window.api.saveResource({
     name: '测试 IP 服务',
