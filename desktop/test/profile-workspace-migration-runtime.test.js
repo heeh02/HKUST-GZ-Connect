@@ -8,7 +8,7 @@ const test = require('node:test');
 const { LEGACY_COPY_SOURCE_IDS } = require('../lib/hkust-migration-destination-plan');
 const { ProfileWorkspaceMigrationRuntime } =
   require('../lib/profile-workspace-migration-runtime');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
 const { normalizeSettings } = require('../lib/settings-store');
 const { decryptVpnCredentialEnvelope } = require('../lib/vpn-credential-envelope');
 

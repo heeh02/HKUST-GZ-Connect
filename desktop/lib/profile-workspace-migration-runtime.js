@@ -17,7 +17,7 @@ const {
   destinationPathMap,
   materializeDestinationFiles,
   verifyDestinationFiles,
-} = require('./profile-workspace-destination-files');
+} = require('./persistence/paths/profile-workspace-destination-files');
 const {
   createPreparedMigrationJournal,
   LEGACY_SOURCE_IDS,
@@ -28,12 +28,12 @@ const { ProfileWorkspaceMigrationJournalStore } =
   require('./profile-workspace-migration-store');
 const {
   loadActiveProfileWorkspaceAuthority,
-} = require('./profile-workspace-runtime-authority');
-const { validateUserDataRoot } = require('./profile-workspace-layout');
+} = require('./persistence/runtime/profile-workspace-runtime-authority');
+const { validateUserDataRoot } = require('./persistence/paths/profile-workspace-layout');
 const {
   createLegacyRuntimeStoragePaths,
   createProfileWorkspaceRuntimeStoragePaths,
-} = require('./runtime-storage-paths');
+} = require('./persistence/paths/runtime-storage-paths');
 const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,

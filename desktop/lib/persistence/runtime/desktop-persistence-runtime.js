@@ -1,7 +1,7 @@
 'use strict';
 
 const util = require('node:util');
-const { projectRuntimeSettings } = require('./profile-workspace-settings-bundle');
+const { projectRuntimeSettings } = require('../settings/profile-workspace-settings-bundle');
 
 class ObservedCredentialOwner {
   #owner;

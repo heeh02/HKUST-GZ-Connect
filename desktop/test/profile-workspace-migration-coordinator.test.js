@@ -27,8 +27,8 @@ const {
   destinationPathMap,
   materializeDestinationFiles,
   verifyDestinationFiles,
-} = require('../lib/profile-workspace-destination-files');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+} = require('../lib/persistence/paths/profile-workspace-destination-files');
+const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
 const {
   LEGACY_COPY_SOURCE_IDS,
   createHkustMigrationDestinationPlan,

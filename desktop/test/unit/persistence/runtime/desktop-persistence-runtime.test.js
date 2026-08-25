@@ -4,8 +4,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   DesktopPersistenceRuntime,
-} = require('../lib/desktop-persistence-runtime');
-const { normalizeSettings } = require('../lib/settings-store');
+} = require('../../../../lib/persistence/runtime/desktop-persistence-runtime');
+const { normalizeSettings } = require('../../../../lib/settings-store');
 
 function owner(username = 'synthetic-user', password = 'synthetic-password') {
   let destroyed = false;

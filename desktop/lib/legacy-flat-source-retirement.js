@@ -11,7 +11,7 @@ const {
   LEGACY_SOURCE_IDS,
   legacySourceReceiptDigest,
 } = require('./profile-workspace-migration-journal');
-const { createLegacyFlatSourcePaths } = require('./profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('./persistence/paths/profile-workspace-layout');
 const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
 
 function sameReceipt(left, right) {

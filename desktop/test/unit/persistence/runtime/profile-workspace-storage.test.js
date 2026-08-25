@@ -4,11 +4,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const {
   LEGACY_HKUST_BROWSER_PARTITION,
   createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
-} = require('../lib/profile-workspace-layout');
+} = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   DESTINATION_RECEIPT_IDS,
   LEGACY_SOURCE_IDS,
@@ -16,7 +17,7 @@ const {
   commitMigrationJournal,
   createPreparedMigrationJournal,
   validateMigrationJournal,
-} = require('../lib/profile-workspace-migration-journal');
+} = require('../../../../lib/profile-workspace-migration-journal');
 
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;
@@ -260,7 +261,7 @@ test('journal generation fails closed on weak entropy, missing receipts and unsa
 });
 
 test('P3 foundation is packaged but does not activate migration in production Main', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');
   for (const moduleName of [
     'profile-workspace-layout',
     'profile-workspace-migration-journal',

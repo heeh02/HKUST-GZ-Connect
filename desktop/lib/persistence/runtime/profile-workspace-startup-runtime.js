@@ -4,27 +4,27 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   createLegacyCredentialRollbackStoreForAuthority,
-} = require('./legacy-credential-rollback-store');
+} = require('../../legacy-credential-rollback-store');
 const {
   ProfileWorkspaceCredentialStore,
-} = require('./profile-workspace-credential-store');
+} = require('../../profile-workspace-credential-store');
 const {
   ProfileWorkspaceMigrationRuntime,
-} = require('./profile-workspace-migration-runtime');
+} = require('../../profile-workspace-migration-runtime');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
 } = require('./profile-workspace-runtime-authority');
 const {
   ProfileWorkspaceSettingsStore,
-} = require('./profile-workspace-settings-store');
-const { validateUserDataRoot } = require('./profile-workspace-layout');
-const { createProfileWorkspaceRuntimeStoragePaths } = require('./runtime-storage-paths');
-const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
+} = require('../settings/profile-workspace-settings-store');
+const { validateUserDataRoot } = require('../paths/profile-workspace-layout');
+const { createProfileWorkspaceRuntimeStoragePaths } = require('../paths/runtime-storage-paths');
+const { validateSchoolProfileDocument } = require('../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;

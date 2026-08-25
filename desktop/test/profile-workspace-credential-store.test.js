@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
+const { createProfileAccountWorkspaceLayout } = require('../lib/persistence/paths/profile-workspace-layout');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
-} = require('../lib/profile-workspace-runtime-authority');
+} = require('../lib/persistence/runtime/profile-workspace-runtime-authority');
 const {
   ProfileWorkspaceCredentialStore,
 } = require('../lib/profile-workspace-credential-store');

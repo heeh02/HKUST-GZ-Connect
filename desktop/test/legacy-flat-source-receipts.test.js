@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
 const {
   collectLegacyFlatSourceReceipts,
 } = require('../lib/legacy-flat-source-receipts');

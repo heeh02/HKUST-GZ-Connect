@@ -8,7 +8,7 @@ const { mergeCampusResources, projectCampusResources } = require('../../campus-r
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
 const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
 const { verifyPrivateDirectoryChain } = require('../../private-directory');
-const { validateGlobalSettingsDocument } = require('../../profile-workspace-documents');
+const { validateGlobalSettingsDocument } = require('../../persistence/schema/profile-workspace-documents');
 const { readPrivateFileBounded } = require('../../private-file');
 const {
   protectWindowsFileOwnerOnly,

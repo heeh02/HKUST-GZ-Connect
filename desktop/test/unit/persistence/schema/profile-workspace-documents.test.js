@@ -8,7 +8,7 @@ const {
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
-} = require('../lib/profile-workspace-documents');
+} = require('../../../../lib/persistence/schema/profile-workspace-documents');
 
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;

@@ -9,9 +9,9 @@ const { CustomGatewayConfirmationOwner } = require('../lib/profiles/onboarding/c
 const { CustomProfileProvisioningRuntime } = require('../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const { MultiSchoolStartupRuntime } = require('../lib/multi-school-startup-runtime');
 const { loadProfileWorkspaceAuthorityByKeys } =
-  require('../lib/profile-workspace-runtime-authority');
+  require('../lib/persistence/runtime/profile-workspace-runtime-authority');
 const { selectProfileWorkspacePreReadyStorage } =
-  require('../lib/profile-workspace-pre-ready-selection');
+  require('../lib/persistence/runtime/profile-workspace-pre-ready-selection');
 const { createPreReadySchoolProfileController } = require('../lib/profiles/runtime/school-profile-controller');
 const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 

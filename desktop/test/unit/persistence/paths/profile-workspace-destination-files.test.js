@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { DESTINATION_RECEIPT_IDS } = require('../lib/profile-workspace-migration-journal');
-const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
+const { DESTINATION_RECEIPT_IDS } = require('../../../../lib/profile-workspace-migration-journal');
+const { createProfileAccountWorkspaceLayout } = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   destinationPathMap,
   materializeDestinationFiles,
   verifyDestinationFiles,
-} = require('../lib/profile-workspace-destination-files');
+} = require('../../../../lib/persistence/paths/profile-workspace-destination-files');
 
 const ABSENT_IDS = new Set([
   'globalProxyHelperCredential',

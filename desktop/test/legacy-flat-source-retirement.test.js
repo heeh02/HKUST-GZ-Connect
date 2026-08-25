@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { collectLegacyFlatSourceReceipts } = require('../lib/legacy-flat-source-receipts');
 const { retireLegacyFlatSources } = require('../lib/legacy-flat-source-retirement');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
 
 function fixture(t) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-legacy-retirement-'));

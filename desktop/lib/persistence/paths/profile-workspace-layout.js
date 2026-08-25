@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { validateOpaqueKey } = require('./profiles/schema/school-profile-schema');
+const { validateOpaqueKey } = require('../../profiles/schema/school-profile-schema');
 
 const LEGACY_HKUST_BROWSER_PARTITION = 'persist:hkustgz-campus-browser';
 

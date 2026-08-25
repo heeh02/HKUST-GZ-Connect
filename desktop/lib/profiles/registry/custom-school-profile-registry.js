@@ -8,8 +8,8 @@ const { verifyPrivateDirectoryChain } = require('../../private-directory');
 const { readPrivateFileBounded } = require('../../private-file');
 const {
   loadProfileWorkspaceAuthorityByKeys,
-} = require('../../profile-workspace-runtime-authority');
-const { validateProfileSettingsDocument } = require('../../profile-workspace-documents');
+} = require('../../persistence/runtime/profile-workspace-runtime-authority');
+const { validateProfileSettingsDocument } = require('../../persistence/schema/profile-workspace-documents');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,

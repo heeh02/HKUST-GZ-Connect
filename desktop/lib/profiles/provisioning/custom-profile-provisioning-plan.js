@@ -7,10 +7,10 @@ const {
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
-} = require('../../profile-workspace-documents');
+} = require('../../persistence/schema/profile-workspace-documents');
 const {
   createProfileAccountWorkspaceLayout,
-} = require('../../profile-workspace-layout');
+} = require('../../persistence/paths/profile-workspace-layout');
 const {
   PROTOCOL_FAMILY,
   validateCampusAccountDocument,

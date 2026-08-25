@@ -2,13 +2,13 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { collectPrivateFileReceipt } = require('./legacy-flat-source-receipts');
-const { readPrivateFileBounded } = require('./private-file');
+const { collectPrivateFileReceipt } = require('../../legacy-flat-source-receipts');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
   validateUserDataRoot,
-} = require('./profile-workspace-layout');
+} = require('../paths/profile-workspace-layout');
 const {
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,
@@ -16,16 +16,16 @@ const {
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
-} = require('./profile-workspace-documents');
+} = require('../schema/profile-workspace-documents');
 const {
   validateCampusAccountDocument,
   validateSchoolProfileDocument,
   validateWorkspaceScopeDocument,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_RUNTIME_DOCUMENT_BYTES = 512 * 1024;
 const MAX_RUNTIME_CREDENTIAL_BYTES = 64 * 1024;

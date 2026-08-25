@@ -1,14 +1,14 @@
 'use strict';
 
 const { isDeepStrictEqual } = require('node:util');
-const { parseCredentialField } = require('./settings-update');
-const { DEFAULTS, normalizeSettings } = require('./settings-store');
+const { parseCredentialField } = require('../../settings-update');
+const { DEFAULTS, normalizeSettings } = require('../../settings-store');
 const {
   validateGlobalSettingsDocument,
   validateGlobalUpdateStateDocument,
   validateLocalResourcesDocument,
   validateWorkspaceSettingsDocument,
-} = require('./profile-workspace-documents');
+} = require('../schema/profile-workspace-documents');
 
 const LEGACY_SETTINGS_KEYS = Object.freeze(Object.keys(DEFAULTS).sort());
 

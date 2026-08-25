@@ -1,14 +1,14 @@
 'use strict';
 
-const { validateCustomResourceDocument } = require('./campus-resource-contract');
-const { normalizeRouteDomains } = require('./pac');
+const { validateCustomResourceDocument } = require('../../campus-resource-contract');
+const { normalizeRouteDomains } = require('../../pac');
 const {
   normalizeGatewayOrigin,
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./profiles/schema/school-profile-schema');
-const { isValidPort, PROXY_SECURITY_VERSION } = require('./settings-store');
+} = require('../../profiles/schema/school-profile-schema');
+const { isValidPort, PROXY_SECURITY_VERSION } = require('../../settings-store');
 
 const PROFILE_WORKSPACE_DOCUMENT_VERSION = 1;
 

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const {
   createLegacyFlatSourcePaths,
   validateUserDataRoot,
-} = require('./profile-workspace-layout');
+} = require('./persistence/paths/profile-workspace-layout');
 const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
 const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
 

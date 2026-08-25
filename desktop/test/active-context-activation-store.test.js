@@ -12,7 +12,7 @@ const {
 } = require('../lib/active-context-switch-journal');
 const {
   createProfileAccountWorkspaceLayout,
-} = require('../lib/profile-workspace-layout');
+} = require('../lib/persistence/paths/profile-workspace-layout');
 
 function key(name, seed) { return `${name}-${String(seed).repeat(32)}`; }
 

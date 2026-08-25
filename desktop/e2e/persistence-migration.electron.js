@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, safeStorage } = require('electron');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
 const { normalizeSettings } = require('../lib/settings-store');
 
 const WAIT_MS = 30_000;

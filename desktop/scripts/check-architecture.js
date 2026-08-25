@@ -18,18 +18,19 @@ const BASELINE = Object.freeze({
 
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'release']);
 const DOMAIN_DEPENDENCIES = Object.freeze({
-  app: Object.freeze(['app', 'connection', 'profiles', 'persistence', 'switching', 'browser',
+  app: Object.freeze(['app', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
     'routing', 'integrations', 'ipc', 'platform', 'diagnostics', 'legacy']),
-  connection: Object.freeze(['connection', 'profiles', 'platform', 'diagnostics', 'legacy']),
-  profiles: Object.freeze(['profiles', 'platform', 'diagnostics', 'legacy']),
-  persistence: Object.freeze(['persistence', 'profiles', 'platform', 'diagnostics', 'legacy']),
-  switching: Object.freeze(['switching', 'persistence', 'connection', 'browser', 'profiles',
+  connection: Object.freeze(['connection', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  'profile-core': Object.freeze(['profile-core', 'platform', 'diagnostics', 'legacy']),
+  profiles: Object.freeze(['profiles', 'profile-core', 'persistence', 'platform', 'diagnostics', 'legacy']),
+  persistence: Object.freeze(['persistence', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  switching: Object.freeze(['switching', 'persistence', 'connection', 'browser', 'profiles', 'profile-core',
     'platform', 'diagnostics', 'legacy']),
-  browser: Object.freeze(['browser', 'routing', 'profiles', 'platform', 'diagnostics', 'legacy']),
-  routing: Object.freeze(['routing', 'profiles', 'platform', 'diagnostics', 'legacy']),
-  integrations: Object.freeze(['integrations', 'routing', 'profiles', 'connection', 'platform',
+  browser: Object.freeze(['browser', 'routing', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  routing: Object.freeze(['routing', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  integrations: Object.freeze(['integrations', 'routing', 'profiles', 'profile-core', 'connection', 'platform',
     'diagnostics', 'legacy']),
-  ipc: Object.freeze(['ipc', 'connection', 'profiles', 'persistence', 'switching', 'browser',
+  ipc: Object.freeze(['ipc', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
     'routing', 'integrations', 'platform', 'diagnostics', 'legacy']),
   platform: Object.freeze(['platform', 'diagnostics', 'legacy']),
   diagnostics: Object.freeze(['diagnostics', 'platform', 'legacy']),
@@ -181,6 +182,7 @@ function rootLibraryDebtErrors(current, expected) {
 
 function productionDomain(relativePath) {
   const normalized = String(relativePath).replaceAll('\\', '/');
+  if (normalized.startsWith('lib/profiles/schema/')) return 'profile-core';
   const match = normalized.match(/^lib\/([^/]+)\//u);
   if (!match) return normalized.startsWith('lib/') ? 'legacy' : null;
   return Object.hasOwn(DOMAIN_DEPENDENCIES, match[1]) ? match[1] : 'unknown';

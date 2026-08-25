@@ -5,13 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const {
   createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
-} = require('../lib/profile-workspace-layout');
+} = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   loadActiveProfileWorkspaceAuthority,
-} = require('../lib/profile-workspace-runtime-authority');
+} = require('../../../../lib/persistence/runtime/profile-workspace-runtime-authority');
 
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;
@@ -20,7 +21,7 @@ const MIGRATION_ID = `migration-${'44'.repeat(16)}`;
 
 function profile() {
   return JSON.parse(fs.readFileSync(
-    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    path.join(desktopRoot, 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
     'utf8',
   ));
 }

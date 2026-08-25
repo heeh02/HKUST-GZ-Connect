@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
-const { projectRuntimeSettings } = require('../lib/profile-workspace-settings-bundle');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
+const { projectRuntimeSettings } = require('../lib/persistence/settings/profile-workspace-settings-bundle');
 const { saveSettings } = require('../lib/settings-store');
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-main-e2e-'));

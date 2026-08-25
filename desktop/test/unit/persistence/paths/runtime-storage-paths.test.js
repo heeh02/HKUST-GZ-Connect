@@ -4,12 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
+const { createProfileAccountWorkspaceLayout } = require('../../../../lib/persistence/paths/profile-workspace-layout');
 const {
   RUNTIME_PATH_KEYS,
   createLegacyRuntimeStoragePaths,
   createProfileWorkspaceRuntimeStoragePaths,
-} = require('../lib/runtime-storage-paths');
+} = require('../../../../lib/persistence/paths/runtime-storage-paths');
 
 const USER_DATA = path.resolve('/tmp/campus-runtime-storage');
 
@@ -68,7 +69,7 @@ test('path seam rejects missing duplicate and escaping runtime targets', () => {
 });
 
 test('production Main obtains all legacy paths through the seam', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');
   assert.equal(main.includes('createLegacyRuntimeStoragePaths(DATA)'), true);
   assert.equal(main.includes("path.join(DATA, 'settings.json')"), false);
   assert.equal(main.includes("path.join(DATA, 'cred.bin')"), false);

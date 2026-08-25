@@ -10,7 +10,7 @@ const {
   LEGACY_SOURCE_IDS,
   legacySourceReceiptDigest,
 } = require('./profile-workspace-migration-journal');
-const { createLegacyFlatSourcePaths } = require('./profile-workspace-layout');
+const { createLegacyFlatSourcePaths } = require('./persistence/paths/profile-workspace-layout');
 const { normalizeSettings } = require('./settings-store');
 const { parseCredentialField } = require('./settings-update');
 const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');

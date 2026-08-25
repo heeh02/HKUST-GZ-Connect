@@ -13,7 +13,7 @@ const { CustomGatewayConfirmationOwner } = require('../lib/profiles/onboarding/c
 const { CustomProfileProvisioningRuntime } = require('../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('../lib/profile-switch-runtime');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 const { saveSettings } = require('../lib/settings-store');
 

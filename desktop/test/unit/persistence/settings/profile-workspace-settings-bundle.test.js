@@ -5,7 +5,7 @@ const test = require('node:test');
 const {
   projectRuntimeSettings,
   splitRuntimeSettings,
-} = require('../lib/profile-workspace-settings-bundle');
+} = require('../../../../lib/persistence/settings/profile-workspace-settings-bundle');
 
 function authority() {
   return {

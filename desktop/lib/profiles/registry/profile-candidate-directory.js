@@ -5,7 +5,7 @@ const path = require('node:path');
 const { CustomSchoolProfileRegistry } = require('./custom-school-profile-registry');
 const {
   loadProfileWorkspaceAuthorityByKeys,
-} = require('../../profile-workspace-runtime-authority');
+} = require('../../persistence/runtime/profile-workspace-runtime-authority');
 const { ReviewedProfileAnchorStore } = require('./reviewed-profile-anchor-store');
 const { SchoolProfileRegistry } = require('./school-profile-registry');
 const { verifyEngineConfigBinding } = require('../runtime/school-profile-runtime');

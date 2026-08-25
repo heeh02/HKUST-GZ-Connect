@@ -5,15 +5,15 @@ const path = require('node:path');
 const {
   loadActiveProfileAccountAuthority,
 } = require('./profile-workspace-runtime-authority');
-const { validateUserDataRoot } = require('./profile-workspace-layout');
+const { validateUserDataRoot } = require('../paths/profile-workspace-layout');
 const {
   createLegacyRuntimeStoragePaths,
   createProfileWorkspaceRuntimeStoragePaths,
-} = require('./runtime-storage-paths');
+} = require('../paths/runtime-storage-paths');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 function exists(file, fileSystem) {
   try {

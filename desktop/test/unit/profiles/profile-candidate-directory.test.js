@@ -15,7 +15,7 @@ const { ProfileSwitchRuntime } = require('../../../lib/profile-switch-runtime');
 const {
   createSchoolProfileControllerFromCandidate,
 } = require('../../../lib/profiles/runtime/school-profile-controller');
-const { createProfileAccountWorkspaceLayout } = require('../../../lib/profile-workspace-layout');
+const { createProfileAccountWorkspaceLayout } = require('../../../lib/persistence/paths/profile-workspace-layout');
 const { ReviewedProfileAnchorStore } = require('../../../lib/profiles/registry/reviewed-profile-anchor-store');
 const { PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
 

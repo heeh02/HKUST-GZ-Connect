@@ -17,7 +17,7 @@ const {
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
-} = require('./profile-workspace-documents');
+} = require('./persistence/schema/profile-workspace-documents');
 const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,

@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const electron = require('electron');
 const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-candidate-directory');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { saveSettings } = require('../lib/settings-store');
 
 const DESKTOP = path.join(__dirname, '..');

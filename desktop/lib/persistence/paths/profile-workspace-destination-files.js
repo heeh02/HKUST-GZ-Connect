@@ -3,15 +3,15 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('../../credential-store');
 const {
   collectPrivateFileReceipt,
-} = require('./legacy-flat-source-receipts');
-const { DESTINATION_RECEIPT_IDS } = require('./profile-workspace-migration-journal');
+} = require('../../legacy-flat-source-receipts');
+const { DESTINATION_RECEIPT_IDS } = require('../../profile-workspace-migration-journal');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_DESTINATION_FILE_BYTES = 16 * 1024 * 1024;
 

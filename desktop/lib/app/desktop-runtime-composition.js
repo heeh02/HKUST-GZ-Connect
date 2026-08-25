@@ -2,15 +2,15 @@
 
 const path = require('path');
 const { assertActiveContextSwitchStartupClear } = require('../active-context-switch-startup');
-const { DesktopPersistenceRuntime } = require('../desktop-persistence-runtime');
+const { DesktopPersistenceRuntime } = require('../persistence/runtime/desktop-persistence-runtime');
 const { LegacyMigrationCredentialOwner } = require('../legacy-migration-inputs');
 const { MultiSchoolStartupRuntime } = require('../multi-school-startup-runtime');
 const {
   createMainProfileSwitchComposition,
 } = require('../main-profile-switch-composition');
 const { selectProfileWorkspacePreReadyStorage } =
-  require('../profile-workspace-pre-ready-selection');
-const { ProfileWorkspaceStartupRuntime } = require('../profile-workspace-startup-runtime');
+  require('../persistence/runtime/profile-workspace-pre-ready-selection');
+const { ProfileWorkspaceStartupRuntime } = require('../persistence/runtime/profile-workspace-startup-runtime');
 const { relaunchAfterPersistenceMigration, writePersistenceE2EMarker } =
   require('../persistence-relaunch');
 const { createProfileSwitchBarrierEffects } = require('../profile-switch-main-effects');
@@ -18,7 +18,7 @@ const { createMainProfileSwitchRuntime } = require('../profile-switch-main-runti
 const { relaunchAfterProfileSwitch, scheduleProfileSwitchRelaunch,
   writeProfileSwitchE2EMarker } =
   require('../profile-switch-relaunch');
-const { createLegacyRuntimeStoragePaths } = require('../runtime-storage-paths');
+const { createLegacyRuntimeStoragePaths } = require('../persistence/paths/runtime-storage-paths');
 
 function resolveUserDataOverride(rawValue) {
   if (rawValue == null || String(rawValue).trim() === '') return null;

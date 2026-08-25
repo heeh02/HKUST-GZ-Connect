@@ -5,23 +5,24 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { LEGACY_COPY_SOURCE_IDS } = require('../lib/hkust-migration-destination-plan');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
+const { LEGACY_COPY_SOURCE_IDS } = require('../../../../lib/hkust-migration-destination-plan');
 const { createLegacyCredentialRollbackStoreForAuthority } =
-  require('../lib/legacy-credential-rollback-store');
-const { ProfileWorkspaceCredentialStore } = require('../lib/profile-workspace-credential-store');
+  require('../../../../lib/legacy-credential-rollback-store');
+const { ProfileWorkspaceCredentialStore } = require('../../../../lib/profile-workspace-credential-store');
 const {
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
-} = require('../lib/profile-workspace-runtime-authority');
-const { ProfileWorkspaceSettingsStore } = require('../lib/profile-workspace-settings-store');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
-const { createLegacyFlatSourcePaths } = require('../lib/profile-workspace-layout');
-const { projectRuntimeSettings } = require('../lib/profile-workspace-settings-bundle');
-const { normalizeSettings } = require('../lib/settings-store');
+} = require('../../../../lib/persistence/runtime/profile-workspace-runtime-authority');
+const { ProfileWorkspaceSettingsStore } = require('../../../../lib/persistence/settings/profile-workspace-settings-store');
+const { ProfileWorkspaceStartupRuntime } = require('../../../../lib/persistence/runtime/profile-workspace-startup-runtime');
+const { createLegacyFlatSourcePaths } = require('../../../../lib/persistence/paths/profile-workspace-layout');
+const { projectRuntimeSettings } = require('../../../../lib/persistence/settings/profile-workspace-settings-bundle');
+const { normalizeSettings } = require('../../../../lib/settings-store');
 
 function profile() {
   return JSON.parse(fs.readFileSync(
-    path.join(__dirname, '..', 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
+    path.join(desktopRoot, 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
     'utf8',
   ));
 }

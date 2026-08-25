@@ -11,10 +11,10 @@ const { readPrivateFileBounded } = require('./private-file');
 const {
   createProfileAccountWorkspaceLayout,
   validateUserDataRoot,
-} = require('./profile-workspace-layout');
+} = require('./persistence/paths/profile-workspace-layout');
 const {
   validateGlobalSettingsDocument,
-} = require('./profile-workspace-documents');
+} = require('./persistence/schema/profile-workspace-documents');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,

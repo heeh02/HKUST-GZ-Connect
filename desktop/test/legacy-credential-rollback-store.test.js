@@ -13,7 +13,7 @@ const {
   retireLegacyCredentialRollbackState,
   validateLegacyCredentialRollbackState,
 } = require('../lib/legacy-credential-rollback-state');
-const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
+const { createProfileAccountWorkspaceLayout } = require('../lib/persistence/paths/profile-workspace-layout');
 
 function migrationJournal() {
   return {
