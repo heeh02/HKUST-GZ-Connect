@@ -73,3 +73,24 @@ code. The gate exposed and removed a reverse Profile-to-IPC dependency during th
 The credential store also mixed generic atomic private-file replacement with VPN credential behavior. The shared
 write primitive now lives under `platform/storage`; Profile, Integration and Switch stores consume that primitive
 without depending on credential policy. Credential envelopes and settings remain under `persistence`.
+
+The final Electron gate found one production path that a CommonJS dependency graph cannot see: Main and the
+browser E2E harnesses still passed the old Toolbar preload filename to Electron after that preload moved. This
+would leave the Campus Browser chrome alive but unable to receive typed state. The runtime path is corrected,
+the package verifier requires the relocated preload, and a source contract now proves Main names an existing
+packaged file.
+
+## Final verification
+
+- Desktop unit/contract suite: 977 tests, 976 passed, one Windows-only skip, zero failures.
+- Architecture Gate v2: 372 JavaScript files, 744 edges, zero cycles, zero root debt and zero unresolved
+  production imports.
+- Exact-tree JavaScript syntax, tracked-secret and dependency install-script gates: passed.
+- `npm audit`: zero vulnerabilities.
+- All named Electron/desktop scenarios passed, including authentication control, MFA and popup safety, renderer
+  recovery, custom Profile, Engine lifecycle, initial network startup, Profile switch, onboarding, persistence
+  migration, ASAR Profile, layout, routing restart and strict proxy authentication.
+- Campus Browser 20-tab offline performance gate: switch p95 0.7 ms; 30-cycle soak left no tab, view, slow-timer
+  or credential-timer residue.
+- Rust fmt and Clippy `-D warnings`: passed. Rust tests: 297 passed, two explicit performance matrices ignored,
+  zero failures.
