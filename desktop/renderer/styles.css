@@ -113,8 +113,6 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 .conn-status.on { color: var(--ok); }
 .conn-status.busy { color: var(--gold); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 0 currentColor; }
-.conn-status.on .dot { animation: ping 2s infinite; }
-@keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(26,165,104,.5); } 70% { box-shadow: 0 0 0 6px rgba(26,165,104,0); } 100% { box-shadow: 0 0 0 0 rgba(26,165,104,0); } }
 .conn-err { color: var(--err); font-size: 12.5px; margin-top: 8px; min-height: 0; line-height: 1.4; }
 .conn-body { display: flex; flex-direction: column; gap: 10px; }
 .collapsible-panel { display: flex; flex-direction: column; gap: 10px; }

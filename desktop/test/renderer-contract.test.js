@@ -41,6 +41,12 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
 });
 
+test('connected status remains static instead of continuously repainting Electron', () => {
+  assert.match(css, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
+  assert.doesNotMatch(css, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
+  assert.doesNotMatch(css, /@keyframes\s+ping/);
+});
+
 test('update download uses one stable delegated listener', () => {
   assert.match(appJs, /\$\('updateHint'\)\.addEventListener\('click'/);
   assert.match(appJs, /event\.target\?\.closest\?\.\('#updateDownload'\)/);
