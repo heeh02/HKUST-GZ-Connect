@@ -242,7 +242,10 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: npm ci
       - name: Verify current-user-only helper credential DACL
-        run: node --test test/windows-private-file.test.js test/external-proxy-config.test.js
+        run: >-
+          node --test
+          test/unit/platform/storage/windows-private-file.test.js
+          test/unit/integrations/external-proxy-config.test.js
 
   engine:
     timeout-minutes: 20

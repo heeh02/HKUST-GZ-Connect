@@ -99,7 +99,11 @@ test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', (
   );
   assert.match(workflow, /check:secrets -- --tree "\$GITHUB_SHA"/u);
   assert.match(ciWorkflow, /windows-private-file:[\s\S]*runs-on: windows-latest/u);
-  assert.match(ciWorkflow, /test\/windows-private-file\.test\.js/u);
+  assert.match(
+    ciWorkflow,
+    /test\/unit\/platform\/storage\/windows-private-file\.test\.js/u,
+  );
+  assert.match(ciWorkflow, /test\/unit\/integrations\/external-proxy-config\.test\.js/u);
   assert.match(
     ciWorkflow,
     /cargo clippy --locked --all-targets --no-default-features --features engine-lifecycle-fixture -- -D warnings/u,
