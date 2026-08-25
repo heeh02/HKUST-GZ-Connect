@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { verifyCustomEngineConfigFile } = require('../../custom-engine-config');
+const { verifyCustomEngineConfigFile } = require('../provisioning/custom-engine-config');
 const { CustomProfileIndexStore } = require('./custom-profile-index');
 const { verifyPrivateDirectoryChain } = require('../../private-directory');
 const { readPrivateFileBounded } = require('../../private-file');

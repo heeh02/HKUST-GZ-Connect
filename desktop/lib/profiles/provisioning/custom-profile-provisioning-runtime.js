@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const {
   CustomProfileIndexStore,
   sameCustomProfileIndexReceipt,
-} = require('./profiles/registry/custom-profile-index');
+} = require('../registry/custom-profile-index');
 const { CustomProfileMaterializer, sameCustomProfileFileReceipt } =
   require('./custom-profile-materializer');
 const {
@@ -20,7 +20,7 @@ const {
 const {
   CustomProfileProvisioningJournalStore,
 } = require('./custom-profile-provisioning-store');
-const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
+const { validateSchoolProfileDocument } = require('../schema/school-profile-schema');
 
 class CustomProfileProvisioningRuntime {
   constructor({

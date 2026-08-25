@@ -5,18 +5,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileIndexStore } = require('../lib/profiles/registry/custom-profile-index');
-const { CustomProfileMaterializer } = require('../lib/custom-profile-materializer');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
+const { CustomGatewayConfirmationOwner } = require('../../../../lib/profiles/onboarding/custom-gateway-onboarding');
+const { CustomProfileIndexStore } = require('../../../../lib/profiles/registry/custom-profile-index');
+const { CustomProfileMaterializer } = require('../../../../lib/profiles/provisioning/custom-profile-materializer');
+const { CustomProfileProvisioningRuntime } = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const {
   CustomProfileProvisioningJournalStore,
-} = require('../lib/custom-profile-provisioning-store');
+} = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-store');
 const {
   createCustomProfileProvisioningIdentity,
   createCustomProfileProvisioningPlan,
-} = require('../lib/custom-profile-provisioning-plan');
-const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
+} = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-plan');
+const { PROTOCOL_FAMILY } = require('../../../../lib/profiles/schema/school-profile-schema');
 
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-profile-storage-'));

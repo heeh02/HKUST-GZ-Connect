@@ -2,16 +2,16 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('../../credential-store');
 const {
   validateCustomProfileProvisioningJournal,
 } = require('./custom-profile-provisioning-journal');
-const { ensurePrivateDirectoryChain, fsyncPrivateDirectory } = require('./private-directory');
-const { readPrivateFileBounded } = require('./private-file');
+const { ensurePrivateDirectoryChain, fsyncPrivateDirectory } = require('../../private-directory');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_CUSTOM_PROFILE_PROVISIONING_JOURNAL_BYTES = 256 * 1024;
 

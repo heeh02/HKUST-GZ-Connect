@@ -1,7 +1,7 @@
 'use strict';
 
 const { CustomGatewayConfirmationOwner } = require('./custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('./custom-profile-provisioning-runtime');
+const { CustomProfileProvisioningRuntime } = require('../provisioning/custom-profile-provisioning-runtime');
 const { GatewayProbeRunner } = require('./gateway-probe-runner');
 const { SchoolProfileOnboardingCoordinator } = require('./school-profile-onboarding');
 

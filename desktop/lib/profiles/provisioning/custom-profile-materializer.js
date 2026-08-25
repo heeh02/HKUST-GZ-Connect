@@ -3,17 +3,17 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('../../credential-store');
 const {
   CUSTOM_PROFILE_FILE_IDS,
   CUSTOM_PROFILE_PROVISIONING_VERSION,
 } = require('./custom-profile-provisioning-plan');
-const { ensurePrivateDirectoryChain } = require('./private-directory');
-const { readPrivateFileBounded } = require('./private-file');
+const { ensurePrivateDirectoryChain } = require('../../private-directory');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_CUSTOM_PROFILE_FILE_BYTES = 512 * 1024;
 

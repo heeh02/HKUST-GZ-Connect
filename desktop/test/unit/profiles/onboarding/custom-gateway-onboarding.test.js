@@ -5,8 +5,8 @@ const test = require('node:test');
 const {
   CustomGatewayConfirmationOwner,
   customProfileDocument,
-} = require('../lib/custom-gateway-onboarding');
-const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
+} = require('../../../../lib/profiles/onboarding/custom-gateway-onboarding');
+const { PROTOCOL_FAMILY } = require('../../../../lib/profiles/schema/school-profile-schema');
 
 function context(overrides = {}) {
   return {

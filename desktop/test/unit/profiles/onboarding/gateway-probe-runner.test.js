@@ -7,7 +7,7 @@ const {
   GatewayProbeRunner,
   MAX_GATEWAY_PROBE_OUTPUT_BYTES,
   privateProbeEnvironment,
-} = require('../lib/gateway-probe-runner');
+} = require('../../../../lib/profiles/onboarding/gateway-probe-runner');
 
 function child() {
   const value = new EventEmitter();

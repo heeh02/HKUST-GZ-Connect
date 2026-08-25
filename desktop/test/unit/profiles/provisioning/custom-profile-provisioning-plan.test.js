@@ -7,12 +7,12 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   CustomGatewayConfirmationOwner,
-} = require('../lib/custom-gateway-onboarding');
+} = require('../../../../lib/profiles/onboarding/custom-gateway-onboarding');
 const {
   createCustomProfileProvisioningIdentity,
   createCustomProfileProvisioningPlan,
-} = require('../lib/custom-profile-provisioning-plan');
-const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
+} = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-plan');
+const { PROTOCOL_FAMILY } = require('../../../../lib/profiles/schema/school-profile-schema');
 
 function activeContext() {
   return {

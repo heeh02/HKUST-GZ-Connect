@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../../../lib/custom-gateway-onboarding');
+const { CustomGatewayConfirmationOwner } = require('../../../lib/profiles/onboarding/custom-gateway-onboarding');
 const { ActiveContextActivationStore } = require('../../../lib/active-context-activation-store');
 const { ActiveContextSwitchBarrier } = require('../../../lib/active-context-switch-barrier');
 const { ActiveContextSwitchJournalStore } = require('../../../lib/active-context-switch-store');
-const { CustomProfileProvisioningRuntime } = require('../../../lib/custom-profile-provisioning-runtime');
+const { CustomProfileProvisioningRuntime } = require('../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const { ProfileCandidateDirectory } = require('../../../lib/profiles/registry/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('../../../lib/profile-switch-runtime');
 const {

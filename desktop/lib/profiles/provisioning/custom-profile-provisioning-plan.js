@@ -7,17 +7,17 @@ const {
   validateProfileSettingsDocument,
   validateProfileStateDocument,
   validateWorkspaceSettingsDocument,
-} = require('./profile-workspace-documents');
+} = require('../../profile-workspace-documents');
 const {
   createProfileAccountWorkspaceLayout,
-} = require('./profile-workspace-layout');
+} = require('../../profile-workspace-layout');
 const {
   PROTOCOL_FAMILY,
   validateCampusAccountDocument,
   validateProfileId,
   validateSchoolProfileDocument,
   validateWorkspaceScopeDocument,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../schema/school-profile-schema');
 
 const CUSTOM_PROFILE_PROVISIONING_VERSION = 1;
 const CUSTOM_PROFILE_FILE_IDS = Object.freeze([

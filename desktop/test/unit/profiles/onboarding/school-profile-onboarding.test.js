@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-candidate-directory');
+const { CustomGatewayConfirmationOwner } = require('../../../../lib/profiles/onboarding/custom-gateway-onboarding');
+const { CustomProfileProvisioningRuntime } = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
+const { ProfileCandidateDirectory } = require('../../../../lib/profiles/registry/profile-candidate-directory');
 const {
   SchoolProfileOnboardingCoordinator,
-} = require('../lib/school-profile-onboarding');
-const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
+} = require('../../../../lib/profiles/onboarding/school-profile-onboarding');
+const { PROTOCOL_FAMILY } = require('../../../../lib/profiles/schema/school-profile-schema');
 
 function context(epoch = 7) {
   return {
@@ -190,7 +190,7 @@ test('confirmed onboarding materializes a restart-readable custom candidate', as
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'school-onboarding-real-'));
   fs.chmodSync(userData, 0o700);
   t.after(() => fs.rmSync(userData, { recursive: true, force: true }));
-  const desktop = path.join(__dirname, '..');
+  const desktop = path.resolve(__dirname, '..', '..', '..', '..');
   const directory = new ProfileCandidateDirectory({
     userData,
     packageRoot: desktop,

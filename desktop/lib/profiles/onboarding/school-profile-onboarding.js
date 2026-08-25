@@ -4,7 +4,7 @@ const {
   normalizeGatewayOrigin,
   validateAccountHandle,
   validateProfileId,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../schema/school-profile-schema');
 
 const ONBOARDING_ERROR_CODES = new Set([
   'GATEWAY_PROBE_ALREADY_RUNNING',

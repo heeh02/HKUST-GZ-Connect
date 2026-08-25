@@ -9,8 +9,8 @@ const {
   createCustomEngineConfigDocument,
   serializeCustomEngineConfig,
   verifyCustomEngineConfigFile,
-} = require('../lib/custom-engine-config');
-const { customProfileDocument } = require('../lib/custom-gateway-onboarding');
+} = require('../../../../lib/profiles/provisioning/custom-engine-config');
+const { customProfileDocument } = require('../../../../lib/profiles/onboarding/custom-gateway-onboarding');
 
 function profile(origin = 'https://vpn.example.edu') {
   return customProfileDocument({

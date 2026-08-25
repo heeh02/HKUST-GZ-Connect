@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../../../lib/custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('../../../lib/custom-profile-provisioning-runtime');
+const { CustomGatewayConfirmationOwner } = require('../../../lib/profiles/onboarding/custom-gateway-onboarding');
+const { CustomProfileProvisioningRuntime } = require('../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const { CustomSchoolProfileRegistry } = require('../../../lib/profiles/registry/custom-school-profile-registry');
 const { PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
 
