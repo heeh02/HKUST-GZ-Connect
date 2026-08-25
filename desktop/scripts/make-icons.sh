@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
-# Generate app icons (build/icon.icns, icon.ico, icon.png) from assets/logo.svg.
-# Run on macOS after placing the logo. Then re-add the "icon" keys to package.json
-# (mac:build/icon.icns, win:build/icon.ico, linux:build/icon.png).
-# Requires: rsvg-convert (brew install librsvg) for SVG→PNG; iconutil (built-in) for icns.
+# Generate the macOS icon from the checked-in transparent rounded artwork.
+# Do not use Quick Look to render the raw crest SVG: it adds an opaque white
+# canvas and makes older macOS versions display a square Dock icon.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-SVG="assets/logo.svg"
-[ -f "$SVG" ] || { echo "missing $SVG — place the HKUST(GZ) logo there first"; exit 1; }
-mkdir -p build build/icon.iconset
+[[ "$(uname -s)" == "Darwin" ]] || { echo "macOS is required"; exit 1; }
+command -v sips >/dev/null || { echo "missing sips"; exit 1; }
+command -v iconutil >/dev/null || { echo "missing iconutil"; exit 1; }
 
-render() { # size out
-  if command -v rsvg-convert >/dev/null; then rsvg-convert -w "$1" -h "$1" "$SVG" -o "$2"
-  elif command -v inkscape >/dev/null; then inkscape "$SVG" -w "$1" -h "$1" -o "$2"
-  else qlmanage -t -s "$1" -o /tmp "$SVG" >/dev/null 2>&1 && cp "/tmp/$(basename "$SVG").png" "$2"; fi
-}
+work_root="$(mktemp -d "${TMPDIR:-/tmp}/campus-connect-icon.XXXXXX")"
+iconset="$work_root/icon.iconset"
+source_png="assets/hkust-gz-favicon.png"
+trap 'find "$work_root" -depth -delete' EXIT
+mkdir -p "$iconset"
 
-for s in 16 32 64 128 256 512 1024; do render "$s" "build/icon.iconset/icon_${s}x${s}.png"; done
-cp build/icon.iconset/icon_512x512.png build/icon.png
-# retina @2x variants for icns
-for s in 16 32 128 256 512; do cp "build/icon.iconset/icon_$((s*2))x$((s*2)).png" "build/icon.iconset/icon_${s}x${s}@2x.png" 2>/dev/null || true; done
-iconutil -c icns build/icon.iconset -o build/icon.icns && echo "✓ build/icon.icns"
+for size in 16 32 64 128 256 512 1024; do
+  sips -z "$size" "$size" "$source_png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+done
+cp "$iconset/icon_256x256.png" build/icon.png
+for size in 16 32 128 256 512; do
+  cp "$iconset/icon_$((size*2))x$((size*2)).png" "$iconset/icon_${size}x${size}@2x.png"
+done
+iconutil -c icns "$iconset" -o build/icon.icns
+echo "✓ build/icon.icns"
 # .ico (needs imagemagick); skip gracefully
 if command -v magick >/dev/null || command -v convert >/dev/null; then
   bin=$(command -v magick || command -v convert)
@@ -27,6 +30,6 @@ if command -v magick >/dev/null || command -v convert >/dev/null; then
          build/icon.iconset/icon_64x64.png build/icon.iconset/icon_128x128.png \
          build/icon.iconset/icon_256x256.png build/icon.ico && echo "✓ build/icon.ico"
 else
-  echo "⚠ no imagemagick → build/icon.ico not made (win build will use default icon)"
+  echo "• Windows icon unchanged (ImageMagick unavailable)"
 fi
-echo "done. Re-add icon keys to package.json to use them."
+echo "done"

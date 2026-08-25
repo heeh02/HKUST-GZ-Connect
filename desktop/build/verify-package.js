@@ -184,6 +184,25 @@ function assertMacSystemOnlyDylibs(executable) {
   return dependencies;
 }
 
+function assertMacAppIcon(appPath) {
+  const icon = path.join(appPath, 'Contents', 'Resources', 'icon.icns');
+  if (!fs.existsSync(icon) || !fs.statSync(icon).isFile() || fs.statSync(icon).size === 0) {
+    throw new Error(`missing packaged macOS icon: ${icon}`);
+  }
+  const verifier = path.join(__dirname, 'verify-macos-icon.swift');
+  const result = spawnSync('xcrun', ['swift', verifier, icon], {
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `packaged macOS icon is incompatible: ${String(result.stderr || result.stdout || '').trim()}`,
+    );
+  }
+  return String(result.stdout || '').trim();
+}
+
 function assertNoTestOnlyEngineMarker(executable) {
   const descriptor = fs.openSync(executable, 'r');
   let overlap = Buffer.alloc(0);
@@ -512,7 +531,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
 
   let signature = 'not-applicable';
   const appPath = platformName === 'darwin' ? resolveMacAppPath(resourcesArgument) : null;
-  if (appPath) signature = readMacSignature(appPath);
+  if (appPath) {
+    assertMacAppIcon(appPath);
+    signature = readMacSignature(appPath);
+  }
   if (requireAppleSignature && signature !== 'apple') {
     throw new Error(`package requires an Apple signature, found signature=${signature}`);
   }
@@ -524,6 +546,7 @@ module.exports = {
   TEST_ONLY_ENGINE_MARKER,
   archiveEntryPath,
   assertMacDylibDependenciesAllowed,
+  assertMacAppIcon,
   assertMacSystemOnlyDylibs,
   assertLinuxElfArchitecture,
   assertCustomResourceManager,

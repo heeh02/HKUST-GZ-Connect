@@ -12,7 +12,11 @@ const {
   selectLocalAppleIdentity,
   shouldDelegateSigning,
 } = require('./macos-signing');
-const { assertNoTestOnlyEngineMarker, assertPackagedSchoolProfile } = require('./verify-package');
+const {
+  assertMacAppIcon,
+  assertNoTestOnlyEngineMarker,
+  assertPackagedSchoolProfile,
+} = require('./verify-package');
 
 function architectureName(arch) {
   return arch === 'arm64' || arch === 3 ? 'arm64' : 'amd64';
@@ -128,6 +132,7 @@ exports.default = async function afterPack(context) {
     path.join(packagedEngineDirectory, 'hkustgz.json'),
   );
   if (context.electronPlatformName !== 'darwin') return;
+  assertMacAppIcon(appPath);
   if (shouldDelegateSigning(process.env)) {
     console.log('[afterPack] release signing configured — leaving signing to electron-builder');
     return;

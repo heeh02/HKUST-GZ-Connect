@@ -31,6 +31,7 @@ test('cross-platform desktop checks use repository-owned source gates', () => {
 });
 
 test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux AppImages', () => {
+  assert.equal(manifest.build.mac.icon, 'build/icon.icns');
   assert.deepEqual(
     manifest.build.mac.target,
     [{ target: 'dmg', arch: ['arm64', 'x64'] }],
@@ -85,6 +86,11 @@ test('electron-builder never publishes implicitly from build jobs or local scrip
   }
   assert.match(workflow, /release:[\s\S]*permissions:[\s\S]*contents: write/u);
   assert.match(workflow, /release:[\s\S]*softprops\/action-gh-release@/u);
+  assert.match(
+    localMacRebuild,
+    /--config\.electronDist="\$HERE\/node_modules\/electron\/dist"/u,
+    'local rebuilds must reuse the installed Electron runtime instead of downloading it again',
+  );
 });
 
 test('ordinary CI gates popup MFA, exact-tree secrets and real Windows DACLs', () => {
@@ -212,6 +218,17 @@ test('macOS native release binaries cannot depend on Homebrew libraries', () => 
   );
   assert.match(packageVerifier, /assertMacSystemOnlyDylibs\(executable\)/u);
   assert.match(packageVerifier, /packaged macOS native executable depends on a non-system dylib/u);
+});
+
+test('macOS packages verify every legacy and Retina icon layer has transparent corners', () => {
+  assert.match(packageVerifier, /assertMacAppIcon\(appPath\)/u);
+  assert.match(packageVerifier, /verify-macos-icon\.swift/u);
+  const iconGenerator = fs.readFileSync(
+    path.join(desktopRoot, 'scripts', 'make-icons.sh'),
+    'utf8',
+  );
+  assert.match(iconGenerator, /assets\/hkust-gz-favicon\.png/u);
+  assert.doesNotMatch(iconGenerator, /qlmanage/u);
 });
 
 test('initially-offline Main recovery is a named ordinary and tag-build Electron gate', () => {
