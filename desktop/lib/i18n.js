@@ -82,6 +82,7 @@ const dictionaries = {
     'error.settingsRestored': '检测到设置文件损坏，已从本机备份恢复；请检查端口和偏好设置',
     'error.settingsDefaults': '设置文件损坏且备份不可用，已恢复安全默认值；请重新检查端口和偏好设置',
     'error.startupTitle': 'HKUST(GZ) Connect 启动失败',
+    'error.controlRendererCrashLoop': '控制界面连续异常退出，已停止自动重启。校园连接和托盘仍会保留；请稍后从托盘重新打开窗口。',
 
     'engine.authFailed': '登录处理失败，无法确认是否为密码问题；已停止自动重试',
     'engine.authRejected': '登录未通过：账号或密码未被网关接受，已停止自动重试',
@@ -227,6 +228,7 @@ const dictionaries = {
     'error.settingsRestored': 'The settings file was damaged and restored from a local backup; review the port and preferences',
     'error.settingsDefaults': 'The settings file and backup were unusable; safe defaults were restored. Review the port and preferences',
     'error.startupTitle': 'HKUST(GZ) Connect failed to start',
+    'error.controlRendererCrashLoop': 'The control window exited repeatedly, so automatic restart was stopped. The campus connection and tray remain available; reopen the window from the tray later.',
 
     'engine.authFailed': 'Login processing failed and could not be attributed to the password. Automatic retries stopped.',
     'engine.authRejected': 'Login was rejected: the gateway did not accept the account or password; automatic retries stopped',

@@ -4,6 +4,12 @@ const path = require('node:path');
 const { loadTrayImage } = require('./tray-icon');
 const { CONTROL_WINDOW, clampWindowSize } = require('./window-layout');
 
+// A transient Chromium renderer failure may be recovered once, but a broken
+// preload/renderer must never turn into an unbounded create-crash-create loop.
+// Keep the main/tray process alive so the user can retry after the underlying
+// condition changes.
+const CONTROL_RENDERER_RECOVERY_WINDOW_MS = 30_000;
+
 class DesktopShell {
   constructor({
     app,
@@ -27,11 +33,12 @@ class DesktopShell {
     cleanupQuit,
     onControlRendererUnavailable,
     onWindowError,
+    now = Date.now,
   } = {}) {
     for (const dependency of [
       BrowserWindow, Tray, translate, getConnectionState, getCloseAction, connect, disconnect,
       openCampusBrowser, rememberCloseAction, disposeLifecycle, cleanupQuit,
-      onControlRendererUnavailable, onWindowError,
+      onControlRendererUnavailable, onWindowError, now,
     ]) {
       if (typeof dependency !== 'function') {
         throw new TypeError('desktop shell dependencies are incomplete');
@@ -63,6 +70,7 @@ class DesktopShell {
     this.cleanupQuit = cleanupQuit;
     this.onControlRendererUnavailable = onControlRendererUnavailable;
     this.onWindowError = onWindowError;
+    this.now = now;
     this.window = null;
     this.windowInvalid = false;
     this.tray = null;
@@ -70,6 +78,7 @@ class DesktopShell {
     this.quitAllowed = false;
     this.quitInFlight = null;
     this.closePromptOpen = false;
+    this.lastAutomaticRendererRecoveryAt = null;
   }
 
   get webContents() {
@@ -284,7 +293,17 @@ class DesktopShell {
       this.windowInvalid = true;
       this.window = null;
       try { window.destroy(); } catch {}
-      if (wasVisible && this.app.isReady()) this.createWindow();
+      if (!wasVisible || !this.app.isReady()) return;
+      const observedAt = this.now();
+      const previous = this.lastAutomaticRendererRecoveryAt;
+      if (previous === null || observedAt - previous >= CONTROL_RENDERER_RECOVERY_WINDOW_MS) {
+        this.lastAutomaticRendererRecoveryAt = observedAt;
+        this.createWindow();
+        return;
+      }
+      const error = new Error(this.translate('error.controlRendererCrashLoop'));
+      error.code = 'CONTROL_RENDERER_CRASH_LOOP_BLOCKED';
+      this.onWindowError(error);
     });
     contents.on('destroyed', () => {
       reportRendererUnavailable('destroyed');
