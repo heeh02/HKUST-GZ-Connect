@@ -1,40 +1,55 @@
-[
-  {
-    "id": "home",
-    "name": "学校主页",
-    "description": "新闻、院系与校园信息",
-    "url": "https://www.hkust-gz.edu.cn/"
-  },
-  {
-    "id": "one-stop",
-    "name": "一站式办事大厅",
-    "description": "师生事务与在线申请",
-    "url": "https://onestop-online.hkust-gz.edu.cn/"
-  },
-  {
-    "id": "library",
-    "name": "图书馆",
-    "description": "馆藏、数据库与学习资源",
-    "url": "https://library.hkust-gz.edu.cn/"
-  },
-  {
-    "id": "new-student",
-    "name": "迎新系统",
-    "description": "新生任务与入学指引",
-    "url": "https://nso.hkust-gz.edu.cn/"
-  },
-  {
-    "id": "outlook",
-    "name": "Outlook 邮箱",
-    "description": "Microsoft 365 邮件与日历 · 直连",
-    "url": "https://outlook.office.com/owa/",
-    "route": "direct"
-  },
-  {
-    "id": "canvas",
-    "name": "Canvas 教学平台",
-    "description": "课程、作业与教学资料 · 直连",
-    "url": "https://hkust-gz.instructure.com/",
-    "route": "direct"
-  }
-]
+{
+  "schemaVersion": 1,
+  "resources": [
+    {
+      "id": "home",
+      "name": "学校主页",
+      "description": "新闻、院系与校园信息",
+      "url": "https://www.hkust-gz.edu.cn/",
+      "category": "campus-service",
+      "keywords": ["学校", "主页", "新闻", "HKUST(GZ)"]
+    },
+    {
+      "id": "one-stop",
+      "name": "一站式办事大厅",
+      "description": "师生事务与在线申请",
+      "url": "https://onestop-online.hkust-gz.edu.cn/",
+      "category": "common",
+      "keywords": ["一站式", "办事", "申请", "服务大厅"]
+    },
+    {
+      "id": "library",
+      "name": "图书馆",
+      "description": "馆藏、数据库与学习资源",
+      "url": "https://library.hkust-gz.edu.cn/",
+      "category": "academic",
+      "keywords": ["图书馆", "数据库", "馆藏", "学习"]
+    },
+    {
+      "id": "new-student",
+      "name": "迎新系统",
+      "description": "新生任务与入学指引",
+      "url": "https://nso.hkust-gz.edu.cn/",
+      "category": "campus-service",
+      "keywords": ["迎新", "新生", "入学"]
+    },
+    {
+      "id": "outlook",
+      "name": "Outlook 邮箱",
+      "description": "Microsoft 365 邮件与日历 · 直连",
+      "url": "https://outlook.office.com/owa/",
+      "route": "direct",
+      "category": "common",
+      "keywords": ["Outlook", "邮箱", "邮件", "Microsoft 365"]
+    },
+    {
+      "id": "canvas",
+      "name": "Canvas 教学平台",
+      "description": "课程、作业与教学资料 · 直连",
+      "url": "https://hkust-gz.instructure.com/",
+      "route": "direct",
+      "category": "academic",
+      "keywords": ["Canvas", "课程", "作业", "教学"]
+    }
+  ]
+}

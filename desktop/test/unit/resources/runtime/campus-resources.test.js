@@ -99,7 +99,8 @@ test('custom resources are bounded, normalized, and merged after built-ins', () 
   const merged = mergeCampusResources([
     {
       id: 'home', name: '学校主页', description: '',
-      url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS, builtin: true,
+      url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS,
+      category: 'common', keywords: [], builtin: true,
     },
   ], custom);
   assert.deepEqual(merged.map((resource) => resource.id), ['home', 'portal']);

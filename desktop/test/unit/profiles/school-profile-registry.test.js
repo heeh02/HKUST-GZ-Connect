@@ -245,7 +245,7 @@ test('document and asset hash changes fail closed', (t) => {
 
 test('resource asset is the only content source and invalid reviewed entries fail closed', (t) => {
   const changed = fixture(t, {
-    mutateResources: (resources) => { resources[0].name = 'n'.repeat(41); },
+    mutateResources: (document) => { document.resources[0].name = 'n'.repeat(41); },
   });
   assert.throws(
     () => new SchoolProfileRegistry({ packageRoot: changed.root }).load(),

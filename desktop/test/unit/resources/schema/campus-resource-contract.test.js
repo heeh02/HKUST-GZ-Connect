@@ -39,6 +39,8 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
   assert.equal(resources.length, 6);
   assert.equal(resources[0].route, 'campus');
   assert.equal(resources[4].route, 'direct');
+  assert.equal(resources[0].category, 'campus-service');
+  assert.deepEqual(resources[5].keywords, ['Canvas', '课程', '作业', '教学']);
   assert.equal(Object.isFrozen(resources), true);
   assert.equal(Object.isFrozen(resources[0]), true);
   assert.equal(validateBuiltinResourcesRef('hkustgz-builtin-resources'), 'hkustgz-builtin-resources');
@@ -59,6 +61,11 @@ test('reviewed resource errors are explicit and never truncate or filter', () =>
   ]) assert.throws(() => validateBuiltinResourceDocument([resource(1, overrides)]));
   assert.throws(() => validateBuiltinResourceDocument([resource(1), resource(1)]), /duplicate/u);
   assert.throws(() => parseBuiltinResourceDocument('{not-json}'), /valid JSON/u);
+  assert.throws(
+    () => parseBuiltinResourceDocument(JSON.stringify({ schemaVersion: 2, resources: [] })),
+    /version/u,
+  );
+  assert.throws(() => parseBuiltinResourceDocument(JSON.stringify([])), /plain object/u);
   assert.throws(() => validateBuiltinResourcesRef('../resources.json'), /invalid/u);
   assert.throws(() => validateBuiltinResourceDocument([
     resource(1, { url: `https://resource.example.edu/${'界'.repeat(600)}` }),
