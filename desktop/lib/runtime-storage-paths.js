@@ -88,8 +88,8 @@ function createProfileWorkspaceRuntimeStoragePaths(authority) {
     engineOwner: layout.global.engineOwner,
     credentialTransaction: layout.account.credentialTransaction,
     activeContextSwitch: layout.global.activeContextSwitch,
-    proxyCredential: layout.global.proxyCredential,
-    proxyHelperCredential: layout.global.proxyHelperCredential,
+    proxyCredential: layout.account.proxyCredential,
+    proxyHelperCredential: layout.account.proxyHelperCredential,
   });
 }
 

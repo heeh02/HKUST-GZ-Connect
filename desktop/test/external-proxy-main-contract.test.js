@@ -45,3 +45,9 @@ test('SSH config contains a helper and credential-file path while sidecar follow
   assert.match(source.slice(exitStart, exitEnd), /removeExternalProxySidecar\(\)/);
   assert.match(source, /stableProxyCredential\?\.destroy\(\)/);
 });
+
+test('Profile switch revokes in-memory and sidecar access before the next Account activates', () => {
+  assert.match(source, /function revokeExternalProxyAccess\(\) \{ clearActiveProxyCredential\(\);/u);
+  assert.match(source, /stableProxyCredential\?\.destroy\(\); stableProxyCredential = null;/u);
+  assert.match(source, /revokeProxyAccess: revokeExternalProxyAccess/u);
+});

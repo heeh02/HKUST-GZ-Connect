@@ -394,6 +394,7 @@ function removeExternalProxySidecar() {
     return error?.code === 'ENOENT';
   }
 }
+function revokeExternalProxyAccess() { clearActiveProxyCredential(); const removed = removeExternalProxySidecar(); stableProxyCredential?.destroy(); stableProxyCredential = null; return removed && activeProxyCredential === null; }
 function ensureExternalProxyAccess(port) {
   const credential = loadStableProxyCredential();
   ensureProxyCredentialSidecar({
@@ -1281,8 +1282,7 @@ const profileSwitching = createMainProfileSwitchComposition({
   effects: {
     clearProxyCredential: clearActiveProxyCredential, clearConnectionPresentation,
     ensureEngineStopped, cleanupOrphanedEngine: () => killStrayEngines(enginePath()),
-    revokeProxyAccess: () => (clearActiveProxyCredential(),
-      removeExternalProxySidecar() && activeProxyCredential === null),
+    revokeProxyAccess: revokeExternalProxyAccess,
     clearServerState: () => { serverCampusResources = []; state.lastError = null;
       state.browserNotice = null; clearConnectionPresentation(); return true; },
     closeLog: () => logWriter?.close().catch(reportLogFailure),

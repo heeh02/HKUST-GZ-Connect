@@ -40,7 +40,8 @@ test('Profile Workspace path seam assigns every service to its owner scope', () 
   assert.equal(paths.mode, 'profile-workspace');
   assert.equal(paths.vpnCredential, layout.account.vpnCredential);
   assert.equal(paths.engineOwner, layout.global.engineOwner);
-  assert.equal(paths.proxyCredential, layout.global.proxyCredential);
+  assert.equal(paths.proxyCredential, layout.account.proxyCredential);
+  assert.equal(paths.proxyHelperCredential, layout.account.proxyHelperCredential);
   assert.equal(paths.routingRules, layout.workspace.routingRules);
   assert.equal(paths.siteCredentials, layout.workspace.siteCredentials);
   assert.equal(paths.settingsBackup, layout.global.settingsTransaction);

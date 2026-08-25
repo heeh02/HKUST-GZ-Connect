@@ -64,6 +64,11 @@ test('profile/account/workspace paths use only opaque keys beneath one absolute 
   );
   assert.equal(layout.workspace.root, path.join(layout.account.root, 'workspace'));
   assert.equal(layout.account.vpnCredential, path.join(layout.account.root, 'vpn-credential.bin'));
+  assert.equal(layout.account.proxyCredential, path.join(layout.account.root, 'proxy-credential.bin'));
+  assert.equal(
+    layout.account.proxyHelperCredential,
+    path.join(layout.account.root, 'proxy-helper-credential.txt'),
+  );
   assert.equal(
     layout.account.legacyCredentialRollbackState,
     path.join(layout.account.root, 'legacy-vpn-credential-rollback.json'),
@@ -98,6 +103,26 @@ test('only the migrated HKUST primary workspace adopts the legacy Browser partit
     ...input,
     adoptLegacyHkustBrowserPartition: true,
   }).browserPartition, LEGACY_HKUST_BROWSER_PARTITION);
+});
+
+test('each Profile Account owns a distinct external proxy credential and helper sidecar', () => {
+  const userData = path.resolve('/tmp/campus-connect-user-data');
+  const first = createProfileAccountWorkspaceLayout({
+    userData,
+    profileKey: PROFILE_KEY,
+    accountKey: ACCOUNT_KEY,
+    workspaceKey: WORKSPACE_KEY,
+  });
+  const second = createProfileAccountWorkspaceLayout({
+    userData,
+    profileKey: `profile-${'44'.repeat(16)}`,
+    accountKey: `account-${'55'.repeat(16)}`,
+    workspaceKey: `workspace-${'66'.repeat(16)}`,
+  });
+  assert.notEqual(first.account.proxyCredential, second.account.proxyCredential);
+  assert.notEqual(first.account.proxyHelperCredential, second.account.proxyHelperCredential);
+  assert.equal(first.account.proxyCredential.startsWith(first.account.root), true);
+  assert.equal(second.account.proxyCredential.startsWith(second.account.root), true);
 });
 
 test('bootstrap layout discovers Account authority before the Workspace key is known', () => {
