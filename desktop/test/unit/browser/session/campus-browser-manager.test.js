@@ -85,6 +85,21 @@ test('custom Profile uses its isolated partition and a local blank home without 
   assert.equal(connectionCalls, 0);
 });
 
+test('a Direct WebResource opens without starting or requiring the campus Engine', async () => {
+  let connectionCalls = 0;
+  const f = fixture({
+    resolveRoute: () => ({ route: 'direct' }),
+    ensureConnected: async () => { connectionCalls += 1; return { ok: false, error: 'offline' }; },
+  });
+  const result = await f.manager.open({ url: 'https://outlook.office.com/owa/', route: 'direct' });
+  assert.equal(result.ok, true);
+  assert.equal(result.route, 'direct');
+  assert.equal(connectionCalls, 0);
+  assert.deepEqual(f.manager.browser.opens, [[
+    'https://outlook.office.com/owa/', 6180, 'direct',
+  ]]);
+});
+
 test('route, connection and browser failures return bounded UI results', async () => {
   const route = fixture({ resolveRoute: () => { throw new Error('route-failed'); } });
   assert.deepEqual(await route.manager.open('https://x.test'), {

@@ -104,11 +104,9 @@ async function run() {
 
   const opening = invoke(control, `window.api.openCampusBrowser({
     url: 'https://waiter.example.invalid/',
-    route: 'campus',
   })`);
   const secondOpening = invoke(control, `window.api.openCampusBrowser({
     url: 'https://second-waiter.example.invalid/',
-    route: 'campus',
   })`);
   const phases = new Set();
   await waitFor(async () => {
@@ -119,7 +117,6 @@ async function run() {
   assert.ok(phases.has('retry-wait'), 'the first synthetic failure must enter retry-wait');
   const thirdOpening = invoke(control, `window.api.openCampusBrowser({
     url: 'https://mid-retry-waiter.example.invalid/',
-    route: 'campus',
   })`);
   await waitFor(() => attemptCount() >= 2, 'automatic retry', 12_000);
 

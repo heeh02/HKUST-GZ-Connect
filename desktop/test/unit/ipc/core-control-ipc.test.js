@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   campusOpenRequestFromIpc,
   registerCoreControlIpc,
+  resourceOpenRequestFromIpc,
 } = require('../../../lib/ipc/core-control-ipc');
 
 function fixture() {
@@ -26,6 +27,7 @@ function fixture() {
     openLog: operation('open-log'),
     copyText: operation('copy'),
     openCampusBrowser: operation('browser'),
+    openResource: operation('resource'),
     checkUpdate: operation('update'),
     openExternal: operation('external'),
     resize: operation('resize'),
@@ -37,18 +39,30 @@ test('core facade registers the exact narrow control channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
     'get-state', 'connect', 'disconnect', 'reconnect', 'ssh-config',
-    'copy-clash-node', 'get-logs', 'open-log', 'copy', 'open-campus-browser',
+    'copy-clash-node', 'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-resource',
     'check-update', 'open-external', 'resize',
   ]);
 });
 
-test('Campus Browser IPC accepts only bounded URL/route fields', () => {
-  assert.deepEqual(campusOpenRequestFromIpc({ url: 'https://x.test', route: 'direct' }), {
-    url: 'https://x.test', route: 'direct',
+test('WebResource open accepts only one bounded opaque ID', () => {
+  assert.deepEqual(resourceOpenRequestFromIpc({ resourceId: 'canvas' }), {
+    resourceId: 'canvas',
+  });
+  assert.throws(() => resourceOpenRequestFromIpc({ resourceId: 'canvas', url: 'https://x.test' }), /未知字段/u);
+  assert.throws(() => resourceOpenRequestFromIpc({ resourceId: '' }), /校园资源/u);
+  const f = fixture();
+  f.handlers.get('open-resource')({}, { resourceId: 'canvas' });
+  assert.deepEqual(f.calls.find(([name]) => name === 'resource'), [
+    'resource', { resourceId: 'canvas' },
+  ]);
+});
+
+test('Campus Browser URL IPC leaves route authority in Main', () => {
+  assert.deepEqual(campusOpenRequestFromIpc({ url: 'https://x.test' }), {
+    url: 'https://x.test',
   });
   assert.equal(campusOpenRequestFromIpc('https://x.test'), 'https://x.test');
-  assert.throws(() => campusOpenRequestFromIpc({ url: '', token: 'forbidden' }), /未知字段/);
-  assert.throws(() => campusOpenRequestFromIpc({ url: '', route: 'fallback' }), /路径/);
+  assert.throws(() => campusOpenRequestFromIpc({ url: '', route: 'direct' }), /未知字段/);
 });
 
 test('copy, update, external and resize reject malformed renderer values', () => {
@@ -58,9 +72,9 @@ test('copy, update, external and resize reject malformed renderer values', () =>
   assert.throws(() => f.handlers.get('open-external')({}, ''), /无效/);
   assert.throws(() => f.handlers.get('resize')({}, Number.NaN), /尺寸/);
   f.handlers.get('copy')({}, 'safe');
-  f.handlers.get('open-campus-browser')({}, { url: '', route: 'campus' });
+  f.handlers.get('open-campus-browser')({}, { url: '' });
   assert.deepEqual(f.calls.filter(([name]) => name === 'copy' || name === 'browser'), [
     ['copy', 'safe'],
-    ['browser', { url: '', route: 'campus' }],
+    ['browser', { url: '' }],
   ]);
 });

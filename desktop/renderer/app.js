@@ -4,7 +4,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 // Active UI language. Chinese until get-state reports the real system locale.
 let t = window.I18N.createT('zh');
 const { evaluateLoginProgress } = window.loginFlow;
-const { routeLabel, visibleResources } = window.resourceView;
+const { filteredResources, routeLabel, visibleResources } = window.resourceView;
 let st = {
   connected: false,
   connecting: false,
@@ -19,6 +19,8 @@ let pacUrl = '';
 let campusActionBusy = false;
 let campusResources = [];
 let resourcesExpanded = false;
+let resourceQuery = '';
+let resourceView = 'all';
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
@@ -116,14 +118,24 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
-  const visible = visibleResources(campusResources, resourcesExpanded);
-  $('campusResources').innerHTML = visible.map((resource) =>
-    `<button class="resource-link" data-campus-id="${esc(resource.id)}" title="${esc(resource.url)}">`
+  const filtered = filteredResources(campusResources, {
+    query: resourceQuery,
+    view: resourceView,
+  });
+  const focused = resourceQuery.length > 0 || resourceView !== 'all';
+  const visible = visibleResources(filtered, resourcesExpanded || focused);
+  $('campusResources').innerHTML = visible.length ? visible.map((resource) =>
+    `<div class="resource-card" data-campus-id="${esc(resource.id)}">`
+    + `<button class="resource-link" type="button" data-resource-action="open" title="${esc(resource.url)}">`
     + `<span class="resource-name">${esc(resource.name)}</span>`
     + `<span class="resource-desc">${esc(resource.description || resource.url)}</span>`
-    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource, t))}</span></button>`).join('');
+    + `<span class="resource-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${esc(routeLabel(resource, t))}</span></button>`
+    + `<button class="resource-favorite${resource.favorite ? ' active' : ''}" type="button" data-resource-action="favorite"`
+    + ` aria-label="${esc(resource.favorite ? t('resources.unfavorite') : t('resources.favorite'))}"`
+    + ` title="${esc(resource.favorite ? t('resources.unfavorite') : t('resources.favorite'))}">★</button></div>`).join('')
+    : `<div class="resource-empty">${esc(t('resources.empty'))}</div>`;
   const toggle = $('toggleResources');
-  const hasMore = campusResources.length > 4;
+  const hasMore = !focused && filtered.length > 4;
   toggle.hidden = !hasMore;
   toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
   toggle.setAttribute('aria-expanded', String(resourcesExpanded));
@@ -276,10 +288,15 @@ async function openCampus(selected) {
   $('quickErr').textContent = '';
   renderConnect(st);
   try {
-    const request = selected && typeof selected === 'object'
-      ? { url: selected.url, route: selected.route }
-      : { url: typeof selected === 'string' ? selected : $('campusUrl').value };
-    const result = await window.api.openCampusBrowser(request);
+    const result = selected && typeof selected === 'object' && selected.id
+      ? await window.api.openResource(selected.id)
+      : await window.api.openCampusBrowser({
+        url: typeof selected === 'string' ? selected : $('campusUrl').value,
+      });
+    if (Array.isArray(result?.resources)) {
+      campusResources = result.resources;
+      renderResources();
+    }
     if (!result || !result.ok) $('quickErr').textContent = result?.error || t('quick.browserOpenFailed');
   } finally {
     campusActionBusy = false;
@@ -308,10 +325,11 @@ $('quickAddCampus').addEventListener('click', async () => {
       return;
     }
     setResourceSaved(t('resources.saved'));
-    const result = await window.api.openCampusBrowser({
-      url: saved.resource.url,
-      route: saved.resource.route,
-    });
+    const result = await window.api.openResource(saved.resource.id);
+    if (Array.isArray(result?.resources)) {
+      campusResources = result.resources;
+      renderResources();
+    }
     if (!result?.ok) $('quickAddErr').textContent = result?.error || t('quick.browserOpenFailed');
   } catch (error) {
     $('quickAddErr').textContent = error?.message || t('quick.addFailed');
@@ -323,7 +341,20 @@ $('quickAddCampus').addEventListener('click', async () => {
 $('campusResources').addEventListener('click', (event) => {
   const target = event.target.closest('[data-campus-id]');
   const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
-  if (resource) openCampus(resource);
+  if (!resource) return;
+  const action = event.target.closest('[data-resource-action]')?.dataset.resourceAction;
+  if (action === 'favorite') {
+    window.api.toggleResourceFavorite(resource.id).then((result) => {
+      if (!result?.ok) {
+        $('quickErr').textContent = result?.error || t('resources.favoriteFailed');
+        return;
+      }
+      campusResources = result.resources || campusResources;
+      renderResources();
+    }).catch(() => { $('quickErr').textContent = t('resources.favoriteFailed'); });
+    return;
+  }
+  if (action === 'open') openCampus(resource);
 });
 $('campusUrl').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') openCampus();
@@ -331,6 +362,14 @@ $('campusUrl').addEventListener('keydown', (event) => {
 
 $('toggleResources').addEventListener('click', () => {
   resourcesExpanded = !resourcesExpanded;
+  renderResources();
+});
+$('resourceSearch').addEventListener('input', (event) => {
+  resourceQuery = event.target.value.trim();
+  renderResources();
+});
+$('resourceView').addEventListener('change', (event) => {
+  resourceView = event.target.value;
   renderResources();
 });
 

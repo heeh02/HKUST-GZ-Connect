@@ -92,6 +92,12 @@ class ResourceActivityStore {
     return next;
   }
 
+  replaceFavorites(document) {
+    const next = validateFavoriteResourceDocument(document);
+    this.#write(this.favoritesFile, next);
+    return next;
+  }
+
   recordOpen(resourceId, resources) {
     const current = this.#read(
       this.recentFile,

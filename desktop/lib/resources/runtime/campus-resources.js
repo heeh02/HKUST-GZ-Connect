@@ -50,6 +50,22 @@ function resourceRoute(resource) {
   return resource?.route === ROUTE_DIRECT ? ROUTE_DIRECT : ROUTE_CAMPUS;
 }
 
+function resolveResourceById(resources, resourceId) {
+  if (typeof resourceId !== 'string' || !resourceId || resourceId.length > 40 ||
+      !/^[a-z0-9-]+$/u.test(resourceId)) {
+    throw new TypeError('resource ID is invalid');
+  }
+  const matches = (Array.isArray(resources) ? resources : [])
+    .filter((resource) => resource?.id === resourceId);
+  if (matches.length !== 1) throw new Error('resource is unavailable');
+  const resource = matches[0];
+  return Object.freeze({
+    id: resource.id,
+    url: resource.url,
+    route: resourceRoute(resource),
+  });
+}
+
 module.exports = {
   MAX_CUSTOM_RESOURCES,
   mergeCampusResources,
@@ -57,4 +73,5 @@ module.exports = {
   normalizeResource,
   projectCampusResources,
   resourceRoute,
+  resolveResourceById,
 };

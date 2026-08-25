@@ -18,8 +18,11 @@ function fixture(overrides = {}) {
     platform: 'darwin',
     getVersion: () => '2.0.0-test',
     getUpdate: () => null,
-    getResources: () => [{ id: 'home' }, { id: 'hpc' }],
-    getFallbackResources: () => [{ id: 'home' }],
+    getResources: () => [
+      { id: 'home', favorite: true, lastOpenedAt: 20 },
+      { id: 'hpc', favorite: false, lastOpenedAt: null },
+    ],
+    getFallbackResources: () => [{ id: 'home', favorite: false, lastOpenedAt: null }],
     getProfilePresentation: (options) => {
       calls.push(options);
       return {
@@ -43,7 +46,13 @@ test('projects settings, resources and key-free profile compatibility views', ()
   assert.equal(value.hasPassword, true);
   assert.equal(value.capabilitySnapshot, null);
   assert.deepEqual(value.campusResources.map(({ id }) => id), ['home', 'hpc']);
-  assert.deepEqual(calls, [{ locale: 'zh-CN', hasCredential: true, resourceCount: 2 }]);
+  assert.deepEqual(calls, [{
+    locale: 'zh-CN',
+    hasCredential: true,
+    resourceCount: 2,
+    favoriteCount: 1,
+    recentCount: 1,
+  }]);
   for (const forbidden of ['engineConfigRef', 'reviewedDnsFallback', 'accountKey', 'workspaceKey']) {
     assert.equal(JSON.stringify(value).includes(forbidden), false);
   }
@@ -59,7 +68,7 @@ test('settings failure returns the bounded fallback without probing credentials'
   assert.equal(value.settings, null);
   assert.equal(value.loggedIn, false);
   assert.equal(value.hasPassword, false);
-  assert.deepEqual(value.campusResources, [{ id: 'home' }]);
+  assert.deepEqual(value.campusResources, [{ id: 'home', favorite: false, lastOpenedAt: null }]);
   assert.equal(credentialReads, 0);
   assert.deepEqual(calls, [{ locale: 'zh-CN' }]);
 });

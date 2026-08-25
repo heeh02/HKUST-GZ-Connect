@@ -215,6 +215,12 @@ class CampusBrowser {
       session,
       partition,
       routingPolicy: this.routingPolicy,
+      ensureRequestReady: async (url) => {
+        let resolution;
+        try { resolution = this.routingPolicy.resolve(url); }
+        catch { return false; }
+        return resolution?.route === ROUTE_DIRECT || await this.ensureCampusReady();
+      },
       onSessionReady: (browserSession) => this.applyDownloadHandler(browserSession),
     });
     // One-release compatibility for diagnostics/tests; ownership and mutation

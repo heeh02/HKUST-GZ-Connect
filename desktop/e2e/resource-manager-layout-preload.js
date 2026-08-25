@@ -8,6 +8,10 @@ let resources = Array.from({ length: 18 }, (_, index) => ({
   url: `https://fixture-${index}.example.edu/`,
   description: '用于布局回归测试',
   route: index % 2 ? 'direct' : 'campus',
+  category: 'custom',
+  keywords: [],
+  favorite: false,
+  lastOpenedAt: null,
   builtin: false,
 }));
 let lastOpenRequest = null;
@@ -72,6 +76,13 @@ contextBridge.exposeInMainWorld('api', {
     lastOpenRequest = request;
     return { ok: true };
   },
+  openResource: async (resourceId) => {
+    lastOpenRequest = { resourceId };
+    resources = resources.map((resource) => (
+      resource.id === resourceId ? { ...resource, lastOpenedAt: Date.now() } : resource
+    ));
+    return { ok: true, resourceId, resources };
+  },
   saveResource: async (resource) => {
     const saved = {
       ...resource,
@@ -79,12 +90,22 @@ contextBridge.exposeInMainWorld('api', {
       url: normalizeFixtureUrl(resource.url),
       route: resource.route || 'campus',
       builtin: false,
+      category: 'custom',
+      keywords: [],
+      favorite: false,
+      lastOpenedAt: null,
     };
     resources = [...resources.filter((item) => item.id !== saved.id), saved];
     return { ok: true, resource: saved, resources };
   },
   deleteResource: async () => ({ ok: true, resources }),
   reorderResources: async () => ({ ok: true, resources }),
+  toggleResourceFavorite: async (resourceId) => {
+    resources = resources.map((resource) => (
+      resource.id === resourceId ? { ...resource, favorite: !resource.favorite } : resource
+    ));
+    return { ok: true, resources };
+  },
   listIntegrations: async () => ({ ok: true, integrations: integrationViews() }),
   prepareIntegration: async ({ adapterId, action }) => {
     if (!integrationAdapters.includes(adapterId)) {

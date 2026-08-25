@@ -25,7 +25,10 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   );
   assert.match(appJs, /updateLoginProgress\(s\)/);
   assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
-  assert.match(appJs, /const \{ routeLabel, visibleResources \} = window\.resourceView/);
+  assert.match(
+    appJs,
+    /const \{ filteredResources, routeLabel, visibleResources \} = window\.resourceView/,
+  );
   assert.doesNotMatch(appJs, /function evaluateLoginProgress\(/);
   assert.doesNotMatch(appJs, /function visibleResources\(/);
   assert.doesNotMatch(appJs, /function routeLabel\(/);
@@ -60,6 +63,20 @@ test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="stats"/);
   assert.match(html, /data-collapsible="gateway"/);
   assert.match(html, /id="toggleResources"/);
+});
+
+test('WebResource shelf supports ID-only open, search, categories, favorites and recent views', () => {
+  for (const id of ['resourceSearch', 'resourceView', 'campusResources']) {
+    assert.match(html, new RegExp(`id="${id}"`, 'u'));
+  }
+  for (const view of ['favorites', 'recent', 'common', 'academic', 'campus-service', 'custom']) {
+    assert.match(html, new RegExp(`value="${view}"`, 'u'));
+  }
+  assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
+  assert.match(appJs, /window\.api\.toggleResourceFavorite\(resource\.id\)/u);
+  assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
+  assert.match(css, /\.resource-library-controls/u);
+  assert.match(css, /\.resource-favorite\.active/u);
 });
 
 test('control panel has responsive wide and compact layout rules', () => {

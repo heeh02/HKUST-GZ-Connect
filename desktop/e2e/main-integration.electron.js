@@ -135,13 +135,12 @@ async function run() {
   assert.equal(strictSettings.settings.strictProxyAuth, true);
   const directWithoutTunnel = await invoke(control, `window.api.openCampusBrowser({
     url: 'https://outlook.office.com/owa/',
-    route: 'direct',
   })`);
-  assert.equal(directWithoutTunnel.ok, false,
-    'a remote DIRECT first page still establishes the tunnel for a later SAML return');
+  assert.equal(directWithoutTunnel.ok, true,
+    'a Direct first page must not require the campus Engine');
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
-  )), false);
+  )), true);
 
   const settings = projectRuntimeSettings(persistence.reloadAuthority());
   assert.equal(settings.username, '');

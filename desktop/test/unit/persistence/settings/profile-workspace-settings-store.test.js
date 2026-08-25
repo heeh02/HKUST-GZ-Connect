@@ -137,6 +137,8 @@ function nextSettings(value) {
       description: 'Local fixture',
       url: 'https://example.edu/',
       route: 'campus',
+      category: 'custom',
+      keywords: [],
     }],
   };
 }

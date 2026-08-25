@@ -13,11 +13,17 @@ function registerCampusResourceIpc({
   saveSettings,
   runTransaction,
   safeResources,
+  activityStore,
 } = {}) {
   for (const dependency of [register, loadSettings, saveSettings, runTransaction, safeResources]) {
     if (typeof dependency !== 'function') {
       throw new TypeError('campus resource IPC dependencies are incomplete');
     }
+  }
+  if (!activityStore || typeof activityStore.snapshot !== 'function' ||
+      typeof activityStore.toggleFavorite !== 'function' ||
+      typeof activityStore.replaceFavorites !== 'function') {
+    throw new TypeError('campus resource activity dependencies are incomplete');
   }
   register('save-resource', async (_event, payload) => {
     try {
@@ -87,6 +93,32 @@ function registerCampusResourceIpc({
         };
       });
       return { ok: true, resources: safeResources(), warning: null };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message,
+        rollbackIncomplete: error.rollbackIncomplete === true,
+        resources: safeResources(),
+      };
+    }
+  });
+  register('toggle-resource-favorite', async (_event, payload) => {
+    try {
+      const request = allowedKeys(payload, ['resourceId']);
+      const resourceId = boundedString(request.resourceId, {
+        minLength: 1,
+        maxLength: 40,
+        trim: true,
+      });
+      await runTransaction(() => {
+        const resources = safeResources();
+        const previous = activityStore.snapshot().favorites;
+        return {
+          commit: () => activityStore.toggleFavorite(resourceId, resources),
+          rollback: () => activityStore.replaceFavorites(previous),
+        };
+      });
+      return { ok: true, resources: safeResources() };
     } catch (error) {
       return {
         ok: false,
