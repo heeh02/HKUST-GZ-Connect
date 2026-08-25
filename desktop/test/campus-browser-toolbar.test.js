@@ -28,3 +28,14 @@ test('browser toolbar uses a typed preload channel and never encodes commands in
   );
   assert.doesNotMatch(browserSource, /URLSearchParams|parsed\.hash|typeof input === 'string'/);
 });
+
+test('production Main points Electron at the packaged toolbar preload', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(
+    main,
+    /path\.join\(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract\.js'\)/u,
+  );
+  assert.ok(fs.existsSync(
+    path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
+  ));
+});

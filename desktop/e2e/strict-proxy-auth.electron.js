@@ -292,7 +292,7 @@ async function run() {
     credentialVault: null,
     parentWindow: () => null,
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
-    toolbarPreload: path.join(__dirname, '..', 'lib', 'campus-toolbar-contract.js'),
+    toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     routingPolicy: strictRoutingPolicy(),
     onError: (message) => errors.push(String(message)),

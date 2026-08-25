@@ -128,6 +128,7 @@ test('package verification binds the reviewed school profile before signing', ()
   assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-controller\.js/u);
   assert.match(packageVerifier, /lib\/ipc\/control-state-snapshot\.js/u);
   assert.match(packageVerifier, /lib\/resources\/schema\/campus-resource-contract\.js/u);
+  assert.match(packageVerifier, /lib\/browser\/toolbar\/campus-toolbar-contract\.js/u);
   assert.match(packageVerifier, /assets\/profiles\/hkustgz\/builtin-resources\.json/u);
   assert.match(packageVerifier, /legacy duplicate campus resource asset entered the package/u);
   assert.match(packageVerifier, /packaged Desktop does not enforce private Engine profile binding/u);

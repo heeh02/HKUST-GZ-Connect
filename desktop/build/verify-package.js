@@ -341,6 +341,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/preload.js',
     '/campus-preload.js',
     '/lib/browser/session/campus-browser.js',
+    '/lib/browser/toolbar/campus-toolbar-contract.js',
     '/lib/browser/certificates/campus-certificate-trust.js',
     '/lib/browser/credentials/campus-credential-vault.js',
     '/lib/app/desktop-runtime-composition.js',
