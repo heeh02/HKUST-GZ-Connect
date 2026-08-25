@@ -5,7 +5,7 @@ const {
   createPreparedActiveContextSwitch,
   markActiveContextSwitchReady,
   validateActiveContextSwitchJournal,
-} = require('./active-context-switch-journal');
+} = require('../active-context/active-context-switch-journal');
 
 class ActiveContextSwitchError extends Error {
   constructor(code, stage, cause = null) {

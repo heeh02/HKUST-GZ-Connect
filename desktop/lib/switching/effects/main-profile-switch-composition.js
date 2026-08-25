@@ -1,11 +1,11 @@
 'use strict';
 
 const { createProfileSwitchBarrierEffects } = require('./profile-switch-main-effects');
-const { createMainProfileSwitchRuntime } = require('./profile-switch-main-runtime');
+const { createMainProfileSwitchRuntime } = require('../runtime/profile-switch-main-runtime');
 const {
   relaunchAfterProfileSwitch,
   scheduleProfileSwitchRelaunch,
-} = require('./profile-switch-relaunch');
+} = require('../runtime/profile-switch-relaunch');
 
 function requiredFunction(value, name) {
   if (typeof value !== 'function') throw new TypeError(`${name} must be a function`);

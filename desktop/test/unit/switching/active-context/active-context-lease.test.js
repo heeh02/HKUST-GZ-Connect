@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ActiveContextLease } = require('../lib/active-context-lease');
+const { ActiveContextLease } = require('../../../../lib/switching/active-context/active-context-lease');
 
 function binding({
   profileId = 'school-a',

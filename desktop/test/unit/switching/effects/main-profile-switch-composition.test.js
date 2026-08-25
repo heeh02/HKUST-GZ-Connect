@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   createMainProfileSwitchComposition,
-} = require('../lib/main-profile-switch-composition');
+} = require('../../../../lib/switching/effects/main-profile-switch-composition');
 
 const directive = {
   switchId: `switch-${'a'.repeat(32)}`,

@@ -2,7 +2,7 @@
 
 const { planReconnect } = require('./reconnect-policy');
 const { ConnectionWaitRegistry } = require('./connection-wait-registry');
-const { ActiveContextLease } = require('./active-context-lease');
+const { ActiveContextLease } = require('./switching/active-context/active-context-lease');
 
 const CONNECTION_PHASE = Object.freeze({
   IDLE: 'idle',

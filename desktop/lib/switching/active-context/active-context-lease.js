@@ -4,7 +4,7 @@ const util = require('node:util');
 const {
   validateAccountHandle,
   validateProfileId,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../../profiles/schema/school-profile-schema');
 
 function plainObject(value, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||

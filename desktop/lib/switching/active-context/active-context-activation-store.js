@@ -3,22 +3,22 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
+const { atomicWritePrivateFile } = require('../../credential-store');
 const {
   validateActiveContextSwitchJournal,
 } = require('./active-context-switch-journal');
-const { readPrivateFileBounded } = require('./private-file');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   createProfileAccountWorkspaceLayout,
   validateUserDataRoot,
-} = require('./persistence/paths/profile-workspace-layout');
+} = require('../../persistence/paths/profile-workspace-layout');
 const {
   validateGlobalSettingsDocument,
-} = require('./persistence/schema/profile-workspace-documents');
+} = require('../../persistence/schema/profile-workspace-documents');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_TARGET_BYTES = 512 * 1024;
 const WORKSPACE_KEYS = Object.freeze([

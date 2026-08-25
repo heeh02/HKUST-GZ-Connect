@@ -76,7 +76,7 @@ const { routeCertificateError } = require('./lib/certificate-error-boundary');
 const { createT, effectiveLocale } = require('./lib/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing-policy-transaction');
-const { stopEngineAfterBrowserSuspend } = require('./lib/browser-engine-barrier');
+const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');
 const { ActiveContextLease, ConnectionStateMachine, ConnectionWaitRegistry, projectConnectionStatus } = require('./lib/connection-state-machine');
 // The campus browser is intentionally constrained to the application's
 // proxy/PAC boundary. WebRTC data channels do not require camera or microphone

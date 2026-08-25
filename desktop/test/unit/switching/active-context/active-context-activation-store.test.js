@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { ActiveContextActivationStore } = require('../lib/active-context-activation-store');
+const { ActiveContextActivationStore } = require('../../../../lib/switching/active-context/active-context-activation-store');
 const {
   createPreparedActiveContextSwitch,
   markActiveContextSwitchReady,
-} = require('../lib/active-context-switch-journal');
+} = require('../../../../lib/switching/active-context/active-context-switch-journal');
 const {
   createProfileAccountWorkspaceLayout,
-} = require('../lib/persistence/paths/profile-workspace-layout');
+} = require('../../../../lib/persistence/paths/profile-workspace-layout');
 
 function key(name, seed) { return `${name}-${String(seed).repeat(32)}`; }
 

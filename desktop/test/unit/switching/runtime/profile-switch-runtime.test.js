@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ProfileSwitchRuntime } = require('../lib/profile-switch-runtime');
+const { ProfileSwitchRuntime } = require('../../../../lib/switching/runtime/profile-switch-runtime');
 
 function context(profileId, seed, epoch) {
   return Object.freeze({

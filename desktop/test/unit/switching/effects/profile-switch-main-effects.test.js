@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   createProfileSwitchBarrierEffects,
-} = require('../lib/profile-switch-main-effects');
+} = require('../../../../lib/switching/effects/profile-switch-main-effects');
 
 test('Main switch effects delegate exact owners and retain Browser proof', async () => {
   const calls = [];

@@ -11,7 +11,7 @@ const {
   relaunchAfterProfileSwitch,
   scheduleProfileSwitchRelaunch,
   writeProfileSwitchE2EMarker,
-} = require('../lib/profile-switch-relaunch');
+} = require('../../../../lib/switching/runtime/profile-switch-relaunch');
 
 const first = `switch-${'a'.repeat(32)}`;
 const second = `switch-${'b'.repeat(32)}`;

@@ -2,8 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ActiveContextLease } = require('../lib/active-context-lease');
-const { ActiveContextSwitchBarrier } = require('../lib/active-context-switch-barrier');
+const { ActiveContextLease } = require('../../../../lib/switching/active-context/active-context-lease');
+const { ActiveContextSwitchBarrier } = require('../../../../lib/switching/effects/active-context-switch-barrier');
 
 function lease() {
   return new ActiveContextLease({

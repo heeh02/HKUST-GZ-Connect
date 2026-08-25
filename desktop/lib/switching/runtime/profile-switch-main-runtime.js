@@ -1,9 +1,9 @@
 'use strict';
 
-const { ActiveContextActivationStore } = require('./active-context-activation-store');
-const { ActiveContextSwitchBarrier } = require('./active-context-switch-barrier');
-const { ActiveContextSwitchJournalStore } = require('./active-context-switch-store');
-const { ProfileCandidateDirectory } = require('./profiles/registry/profile-candidate-directory');
+const { ActiveContextActivationStore } = require('../active-context/active-context-activation-store');
+const { ActiveContextSwitchBarrier } = require('../effects/active-context-switch-barrier');
+const { ActiveContextSwitchJournalStore } = require('../active-context/active-context-switch-store');
+const { ProfileCandidateDirectory } = require('../../profiles/registry/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('./profile-switch-runtime');
 
 function persistentContextFromAuthority(authority) {

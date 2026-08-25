@@ -1,6 +1,6 @@
 'use strict';
 
-const { ActiveContextSwitchSystem } = require('./active-context-switch-system');
+const { ActiveContextSwitchSystem } = require('../effects/active-context-switch-system');
 
 function requiredFunction(value, name) {
   if (typeof value !== 'function') throw new TypeError(`${name} must be a function`);

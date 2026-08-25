@@ -7,7 +7,7 @@ const {
   createPreparedActiveContextSwitch,
   markActiveContextSwitchReady,
   validateActiveContextSwitchJournal,
-} = require('../lib/active-context-switch-journal');
+} = require('../../../../lib/switching/active-context/active-context-switch-journal');
 
 function key(name, seed) { return `${name}-${String(seed).repeat(32)}`; }
 

@@ -6,7 +6,7 @@ const {
   MainProfileSwitchRuntime,
   createMainProfileSwitchRuntime,
   persistentContextFromAuthority,
-} = require('../lib/profile-switch-main-runtime');
+} = require('../../../../lib/switching/runtime/profile-switch-main-runtime');
 
 const targetProfileId = `custom-${'a'.repeat(32)}`;
 const target = {

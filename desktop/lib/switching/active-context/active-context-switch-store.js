@@ -2,14 +2,14 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { readPrivateFileBounded } = require('./private-file');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   validateActiveContextSwitchJournal,
 } = require('./active-context-switch-journal');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_ACTIVE_CONTEXT_SWITCH_BYTES = 256 * 1024;
 let temporarySequence = 0;

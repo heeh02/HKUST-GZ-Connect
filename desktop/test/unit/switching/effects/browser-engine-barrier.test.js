@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { stopEngineAfterBrowserSuspend } = require('../lib/browser-engine-barrier');
+const { stopEngineAfterBrowserSuspend } = require('../../../../lib/switching/effects/browser-engine-barrier');
 
 test('a PAC/drain failure is reported but cannot strand the engine', async () => {
   const calls = [];

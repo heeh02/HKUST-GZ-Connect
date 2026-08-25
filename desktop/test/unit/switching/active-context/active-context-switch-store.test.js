@@ -9,10 +9,10 @@ const {
   commitActiveContextSwitch,
   createPreparedActiveContextSwitch,
   markActiveContextSwitchReady,
-} = require('../lib/active-context-switch-journal');
+} = require('../../../../lib/switching/active-context/active-context-switch-journal');
 const {
   ActiveContextSwitchJournalStore,
-} = require('../lib/active-context-switch-store');
+} = require('../../../../lib/switching/active-context/active-context-switch-store');
 
 function key(name, seed) { return `${name}-${String(seed).repeat(32)}`; }
 

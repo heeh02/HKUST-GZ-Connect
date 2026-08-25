@@ -6,12 +6,12 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { CustomGatewayConfirmationOwner } = require('../../../lib/profiles/onboarding/custom-gateway-onboarding');
-const { ActiveContextActivationStore } = require('../../../lib/active-context-activation-store');
-const { ActiveContextSwitchBarrier } = require('../../../lib/active-context-switch-barrier');
-const { ActiveContextSwitchJournalStore } = require('../../../lib/active-context-switch-store');
+const { ActiveContextActivationStore } = require('../../../lib/switching/active-context/active-context-activation-store');
+const { ActiveContextSwitchBarrier } = require('../../../lib/switching/effects/active-context-switch-barrier');
+const { ActiveContextSwitchJournalStore } = require('../../../lib/switching/active-context/active-context-switch-store');
 const { CustomProfileProvisioningRuntime } = require('../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
 const { ProfileCandidateDirectory } = require('../../../lib/profiles/registry/profile-candidate-directory');
-const { ProfileSwitchRuntime } = require('../../../lib/profile-switch-runtime');
+const { ProfileSwitchRuntime } = require('../../../lib/switching/runtime/profile-switch-runtime');
 const {
   createSchoolProfileControllerFromCandidate,
 } = require('../../../lib/profiles/runtime/school-profile-controller');

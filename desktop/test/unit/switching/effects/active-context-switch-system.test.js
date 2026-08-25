@@ -2,12 +2,12 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ActiveContextLease } = require('../lib/active-context-lease');
-const { ActiveContextSwitchBarrier } = require('../lib/active-context-switch-barrier');
+const { ActiveContextLease } = require('../../../../lib/switching/active-context/active-context-lease');
+const { ActiveContextSwitchBarrier } = require('../../../../lib/switching/effects/active-context-switch-barrier');
 const {
   validateActiveContextSwitchJournal,
-} = require('../lib/active-context-switch-journal');
-const { ActiveContextSwitchSystem } = require('../lib/active-context-switch-system');
+} = require('../../../../lib/switching/active-context/active-context-switch-journal');
+const { ActiveContextSwitchSystem } = require('../../../../lib/switching/effects/active-context-switch-system');
 
 function key(name, seed) { return `${name}-${String(seed).repeat(32)}`; }
 

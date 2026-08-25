@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const {
   validateOpaqueKey,
   validateProfileId,
-} = require('./profiles/schema/school-profile-schema');
+} = require('../../profiles/schema/school-profile-schema');
 
 const ACTIVE_CONTEXT_SWITCH_JOURNAL_VERSION = 1;
 const ACTIVE_CONTEXT_SWITCH_TYPE = 'active_context_switch';

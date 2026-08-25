@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   assertActiveContextSwitchStartupClear,
-} = require('../lib/active-context-switch-startup');
+} = require('../../../../lib/switching/active-context/active-context-switch-startup');
 
 const FILE = path.resolve('/tmp/campus-active-context-switch.json');
 
