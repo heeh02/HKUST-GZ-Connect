@@ -31,14 +31,14 @@ test('2.0 keeps Web resources and external tool integration as separate product 
   assert.match(integrations, /BEGIN CAMPUS-CONNECT MANAGED <profileId>/u);
 });
 
-test('2.0 phase order keeps multi-school before integrations and ordinary-user Web work', () => {
+test('2.0 phase order keeps isolated school selection before integrations and Web work', () => {
   const plan = read('docs/plans/2.0-preparation-execution-plan.md');
-  const p6 = plan.indexOf('### 2.0-P6 — School selector, second reviewed Profile');
+  const p6 = plan.indexOf('### 2.0-P6 — Implemented school selector and isolated experimental custom domain');
   const p7 = plan.indexOf('### 2.0-P7 — Shared Profile Network Rules and External Tool Integration Center');
   const p8 = plan.indexOf('### 2.0-P8 — Lightweight WebResource and ordinary-user Campus Workspace upgrade');
   assert.ok(p6 >= 0 && p7 > p6 && p8 > p7);
   assert.doesNotMatch(plan, /P8b\s+—\s+External Tool Integration Center/u);
-  assert.match(plan, /P6b accepts only a bounded HTTPS domain\/port/u);
+  assert.match(plan, /P6 custom path accepts only a bounded HTTPS domain\/port/u);
 });
 
 test('the first Beta has no built-in SSH HPC Jupyter database or forwarding workbench module', () => {

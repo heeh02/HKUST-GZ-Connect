@@ -1,8 +1,8 @@
 # ADR-0003: Multi-school profiles and custom Gateway onboarding
 
-- Status: Proposed for 2.0 preparation
+- Status: Accepted and implemented for P1/P3-P6
 - Decision owner: project maintainer
-- Production activation: not authorized by this ADR alone
+- Production activation: reviewed HKUST + isolated experimental custom-local onboarding; no formal multi-school claim
 
 ## Context
 
@@ -14,11 +14,11 @@ risks: one school's password, Cookies, certificate pins or routes could be used 
 
 1. a reviewed HKUST(GZ) preset;
 2. future reviewed school presets;
-3. later, an Advanced `Other` flow where the user enters a Gateway domain/port locally.
+3. an experimental `Other` flow where the user enters a Gateway domain/port locally.
 
-The ordinary selector initially shows reviewed profiles only. The P5 connector foundation is implemented first,
-a second reviewed school proves profile/account isolation in P6, and only P6b may expose `Other` as experimental
-and unverified.
+The selector uses reviewed Profiles as trust anchors. After the P5 connector and P3-P6 isolation/adversarial
+gates, it may also expose `Other` as experimental and unverified. A second reviewed school is still required
+before the project claims reviewed multi-school production support.
 
 Entering a domain must be simple, but it must not cause the application to guess protocol endpoints and submit
 credentials automatically.
@@ -142,14 +142,14 @@ PublicProbeSpec
   maximum candidate attempts
 ```
 
-P6b compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
+The implemented custom-Gateway path compiles exactly one reviewed EasyConnect public probe spec. Custom/profile data cannot provide
 its path, method, headers, parser or candidate list. Future families add a separately reviewed compiled spec and
 synthetic fixture. A probe result identifies only a candidate public authentication surface; the
 `ProtocolFamily` factory independently constructs credential-bearing endpoints after confirmation.
 
-## Advanced custom Gateway onboarding (P6b)
+## Advanced custom Gateway onboarding (P6)
 
-Proposed login surface:
+Implemented login surface:
 
 ```text
 Campus Connect · Advanced settings
@@ -465,7 +465,7 @@ credentials. Rollback never submits a credential to a changed Gateway or merges 
 
 ## Evidence and acceptance
 
-Before adding a second reviewed school:
+Before claiming support for a second reviewed school:
 
 - two profiles × two accounts prove password/Cookie/pin/rule/resource/event isolation;
 - Integration Center exports, managed blocks/extensions and credentials for Profile/Account A are stale and
@@ -478,9 +478,8 @@ Before adding a second reviewed school:
 - three-platform package verifier validates the exact profile manifest;
 - the new school completes official parity and staff canary.
 
-Before P6b exposes Advanced custom onboarding:
+Current custom onboarding acceptance invariants:
 
-- the second reviewed school has passed the preceding gate;
 - custom Gateway probe sends no credentials and rejects invalid TLS/origin/protocol;
 - custom discovery/auth rejects rebinding, mixed/unsafe answers and confirmation replay; probe Cookies are never
   observed in authentication;

@@ -1,4 +1,4 @@
-# ADR-0016: P3 runtime storage path seam
+# ADR-0030: P3 runtime storage path seam
 
 - Status: Accepted as a behavior-preserving P3j seam
 - Production migration: not enabled by this ADR

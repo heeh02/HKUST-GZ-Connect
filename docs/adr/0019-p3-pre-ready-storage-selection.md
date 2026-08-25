@@ -2,7 +2,7 @@
 
 - Status: Accepted as a non-activating P3m seam
 - Production Main activation: next patch
-- Parent contracts: [`ADR-0016`](0016-p3-runtime-storage-path-seam.md),
+- Parent contracts: [`ADR-0030`](0030-p3-runtime-storage-path-seam.md),
   [`ADR-0018`](0018-p3-startup-recovery-runtime.md)
 
 ## Context
