@@ -8,11 +8,11 @@ const path = require('node:path');
 // is extracted incrementally behind tests.
 const BASELINE = Object.freeze({
   mainDirectDependencies: 35,
-  mainTransitiveDependencies: 149,
-  mainLines: 1644,
-  rendererLines: 558,
+  mainTransitiveDependencies: 153,
+  mainLines: 1659,
+  rendererLines: 564,
   libMaxFanIn: 45,
-  libMaxFanOut: 13,
+  libMaxFanOut: 14,
   runtimeCompositionExports: 1,
 });
 

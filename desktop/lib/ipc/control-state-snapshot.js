@@ -66,6 +66,8 @@ function createControlStateSnapshot({
     }
     const passwordPresent = dependencies.hasCredential();
     const resources = dependencies.getResources(settings);
+    const favoriteCount = resources.filter(({ favorite }) => favorite === true).length;
+    const recentCount = resources.filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt)).length;
     return {
       ...common(),
       settings,
@@ -76,6 +78,8 @@ function createControlStateSnapshot({
         locale: dependencies.getLocale(),
         hasCredential: passwordPresent,
         resourceCount: resources.length,
+        favoriteCount,
+        recentCount,
       }),
     };
   };

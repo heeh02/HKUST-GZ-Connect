@@ -119,6 +119,21 @@
                 <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
               </span>
             </div>
+            <div class="resource-library-controls">
+              <input id="resourceSearch" class="resource-search" type="search" maxlength="80"
+                     placeholder="搜索网站" data-i18n-attr="placeholder:resources.searchPlaceholder"
+                     aria-label="搜索校园网站" />
+              <select id="resourceView" class="resource-view-select" aria-label="网站分类"
+                      data-i18n-attr="aria-label:resources.viewLabel">
+                <option value="all" data-i18n="resources.viewAll">全部</option>
+                <option value="favorites" data-i18n="resources.viewFavorites">已收藏</option>
+                <option value="recent" data-i18n="resources.viewRecent">最近打开</option>
+                <option value="common" data-i18n="resources.categoryCommon">常用</option>
+                <option value="academic" data-i18n="resources.categoryAcademic">教务与学习</option>
+                <option value="campus-service" data-i18n="resources.categoryCampus">校园服务</option>
+                <option value="custom" data-i18n="resources.categoryCustom">自定义</option>
+              </select>
+            </div>
             <div id="campusResources" class="resource-grid" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
           </div>
           <div class="collapsible-panel" data-collapsible="stats" hidden>

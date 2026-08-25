@@ -79,7 +79,7 @@ function createMemoryRoutingPolicy() {
 // A campus web page is untrusted content. Nothing it renders needs the camera,
 // microphone, location, notifications, or a USB/serial device, so every request
 // is refused without prompting the user.
-function applyCampusSessionPolicy(campusSession) {
+function applyCampusSessionPolicy(campusSession, ensureRequestReady = null) {
   if (!campusSession || typeof campusSession !== 'object') {
     throw new Error('校园浏览器 Session 无效');
   }
@@ -92,19 +92,37 @@ function applyCampusSessionPolicy(campusSession) {
   if (typeof campusSession.setDevicePermissionHandler === 'function') {
     campusSession.setDevicePermissionHandler(() => false);
   }
-  applyCampusRequestBoundary(campusSession);
+  applyCampusRequestBoundary(campusSession, ensureRequestReady);
   return campusSession;
 }
 
-function applyCampusRequestBoundary(campusSession) {
+function applyCampusRequestBoundary(campusSession, ensureRequestReady = null) {
   if (!campusSession || typeof campusSession !== 'object' ||
       typeof campusSession.webRequest?.onBeforeRequest !== 'function' ||
       requestBoundaryGates.has(campusSession)) {
     return campusSession;
   }
-  const gate = { blocked: false };
+  const gate = {
+    blocked: false,
+    epoch: 1,
+    ensureRequestReady: typeof ensureRequestReady === 'function' ? ensureRequestReady : null,
+  };
   campusSession.webRequest.onBeforeRequest(CAMPUS_REQUEST_FILTER, (details, callback) => {
-    callback({ cancel: gate.blocked || isUnsafeBrowserTargetUrl(details?.url) });
+    if (gate.blocked || isUnsafeBrowserTargetUrl(details?.url)) {
+      callback({ cancel: true });
+      return;
+    }
+    if (!gate.ensureRequestReady) {
+      callback({ cancel: false });
+      return;
+    }
+    const epoch = gate.epoch;
+    Promise.resolve().then(() => gate.ensureRequestReady(details?.url)).then(
+      (ready) => callback({
+        cancel: ready !== true || gate.blocked || gate.epoch !== epoch,
+      }),
+      () => callback({ cancel: true }),
+    );
   });
   requestBoundaryGates.set(campusSession, gate);
   return campusSession;
@@ -113,6 +131,7 @@ function applyCampusRequestBoundary(campusSession) {
 function setCampusRequestBlocked(campusSession, blocked) {
   const gate = requestBoundaryGates.get(campusSession);
   if (!gate) return false;
+  gate.epoch += 1;
   gate.blocked = blocked === true;
   return true;
 }
@@ -135,6 +154,7 @@ class BrowserSessionManager {
     routingPolicy,
     partition = CAMPUS_PARTITION,
     onSessionReady,
+    ensureRequestReady,
   } = {}) {
     if (typeof partition !== 'string' || partition.length > 96 ||
         !/^persist:[a-z0-9-]+$/u.test(partition)) {
@@ -144,6 +164,7 @@ class BrowserSessionManager {
     this.routingPolicy = routingPolicy;
     this.partition = partition;
     this.onSessionReady = typeof onSessionReady === 'function' ? onSessionReady : null;
+    this.ensureRequestReady = typeof ensureRequestReady === 'function' ? ensureRequestReady : null;
     this.configuredPort = null;
     this.sessionKey = '';
     this.campusSession = null;
@@ -210,6 +231,7 @@ class BrowserSessionManager {
     if (!browserSession) {
       browserSession = applyCampusSessionPolicy(
         this.electronSession.fromPartition(this.partition),
+        this.ensureRequestReady,
       );
       this.onSessionReady?.(browserSession);
     }

@@ -9,6 +9,7 @@ function fixture() {
   let rules = [];
   let pins = [{ origin: 'https://campus.example', fingerprint: 'A'.repeat(64) }];
   let settings = { customResources: [] };
+  let favorites = { schemaVersion: 1, entries: [] };
   const runTransaction = async (build) => {
     const operations = build();
     return operations.commit();
@@ -35,6 +36,20 @@ function fixture() {
       saveSettings: (next) => { settings = next; return settings; },
       runTransaction,
       safeResources: () => settings.customResources,
+      activityStore: {
+        snapshot: () => ({
+          favorites,
+          recent: { schemaVersion: 1, entries: [] },
+        }),
+        toggleFavorite: (resourceId) => {
+          favorites = {
+            schemaVersion: 1,
+            entries: favorites.entries.includes(resourceId) ? [] : [resourceId],
+          };
+          return favorites;
+        },
+        replaceFavorites: (document) => { favorites = document; return favorites; },
+      },
     },
     schools: {
       onboarding: {
@@ -67,6 +82,7 @@ test('facade registers exact routing certificate resource and school channels', 
     'save-resource',
     'delete-resource',
     'reorder-resources',
+    'toggle-resource-favorite',
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',
@@ -110,6 +126,7 @@ test('resource handlers preserve transactional CRUD and reject unknown IPC field
   assert.equal(saved.ok, true);
   assert.equal(saved.resources.length, 1);
   const id = saved.resource.id;
+  assert.equal((await f.handlers.get('toggle-resource-favorite')({}, { resourceId: id })).ok, true);
   const invalid = await f.handlers.get('save-resource')({}, {
     name: 'Synthetic', url: 'https://resource.example.test', cookie: 'forbidden',
   });

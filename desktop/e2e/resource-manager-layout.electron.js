@@ -140,9 +140,8 @@ function assertCustomResourceAddAndOpen(result) {
   assert.equal(result.savedMessage, '已添加到常用网站', 'adding and opening did not confirm the saved shortcut');
   assert.equal(result.savedRows, 1, 'adding and opening did not persist a shortcut');
   assert.deepEqual(result.openedRequest, {
-    url: 'https://103.189.154.10:4433/',
-    route: 'campus',
-  }, 'adding and opening did not use the saved campus route');
+    resourceId: 'custom-test-2',
+  }, 'adding and opening did not use the saved WebResource ID');
 }
 
 async function exerciseIntegrationCenter(window) {

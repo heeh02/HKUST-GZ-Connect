@@ -139,6 +139,56 @@ test('Session request boundary blocks every implicit-bypass target for every res
   }
 });
 
+test('request boundary waits for an on-demand campus Engine without replaying the request', async () => {
+  let requestHandler = null;
+  let releaseCampus;
+  let releaseLateCampus;
+  const campusReady = new Promise((resolve) => { releaseCampus = resolve; });
+  const lateCampusReady = new Promise((resolve) => { releaseLateCampus = resolve; });
+  const checked = [];
+  const browserSession = {
+    webRequest: { onBeforeRequest: (_filter, handler) => { requestHandler = handler; } },
+    setProxy: async () => {},
+    forceReloadProxyConfig: async () => {},
+    closeAllConnections: async () => {},
+  };
+  const manager = new BrowserSessionManager({
+    session: { fromPartition: () => browserSession },
+    routingPolicy: { proxyConfig: async (port) => validPac(port) },
+    ensureRequestReady: async (url) => {
+      checked.push(url);
+      if (url.includes('late-campus')) return lateCampusReady;
+      if (url.includes('campus')) return campusReady;
+      if (url.includes('failed')) throw new Error('offline');
+      return true;
+    },
+  });
+  await manager.configure(6180);
+  const decision = (url) => new Promise((resolve) => requestHandler({ url }, resolve));
+  assert.deepEqual(await decision('https://direct.example/'), { cancel: false });
+  let campusDecision = null;
+  const pendingCampus = decision('https://campus.example/').then((value) => { campusDecision = value; });
+  await Promise.resolve();
+  assert.equal(campusDecision, null, 'the original request remains paused at the boundary');
+  releaseCampus(true);
+  await pendingCampus;
+  assert.deepEqual(campusDecision, { cancel: false });
+  assert.deepEqual(await decision('https://failed.example/'), { cancel: true });
+  const lateDecision = decision('https://late-campus.example/');
+  await Promise.resolve();
+  const suspension = manager.suspend();
+  releaseLateCampus(true);
+  assert.deepEqual(await lateDecision, { cancel: true },
+    'a request waiting on Engine readiness cannot outlive a closed request gate');
+  await suspension;
+  assert.deepEqual(checked, [
+    'https://direct.example/',
+    'https://campus.example/',
+    'https://failed.example/',
+    'https://late-campus.example/',
+  ]);
+});
+
 test('session manager rejects unsafe ports, malformed PAC, and missing Electron Session', async () => {
   assert.throws(() => campusProxyConfig(1024), /端口/);
   assert.deepEqual(campusProxyConfig(1080), {

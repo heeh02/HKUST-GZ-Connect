@@ -1,6 +1,6 @@
 # Web resource model
 
-Status: accepted 2.0 product/architecture direction; P8 implementation is not enabled by this document.
+Status: accepted and implemented on the active P8 branch; merge remains independently reviewed.
 
 ## 1. Product boundary
 
@@ -21,7 +21,8 @@ External Clash/OpenSSH/VS Code/PAC configuration belongs to the independent
 
 The current product already has:
 
-- six reviewed built-in Web shortcuts;
+- fifteen reviewed built-in Web shortcuts, including nine current HKUST(GZ) academic tools linked by the
+  official Academic Registry Services Systems & Tools page;
 - locally managed custom Web shortcuts;
 - Campus/Direct route choice and remembered domain rules;
 - a sandboxed, multi-tab Campus Browser;

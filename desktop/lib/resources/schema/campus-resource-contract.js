@@ -14,6 +14,16 @@ const MAX_RESOURCE_ID_LENGTH = 40;
 const MAX_RESOURCE_NAME_LENGTH = 40;
 const MAX_RESOURCE_DESCRIPTION_LENGTH = 80;
 const MAX_RESOURCE_URL_LENGTH = 2048;
+const MAX_RESOURCE_KEYWORDS = 12;
+const MAX_RESOURCE_KEYWORD_LENGTH = 40;
+const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
+const WEB_RESOURCE_SCHEMA_VERSION = 1;
+const RESOURCE_CATEGORIES = Object.freeze([
+  'common',
+  'academic',
+  'campus-service',
+  'custom',
+]);
 const SAFE_RESOURCE_ID = /^[a-z0-9-]+$/u;
 const SAFE_RESOURCE_REF = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
 
@@ -75,7 +85,7 @@ function normalizedResource(value, {
   defaultRoute = ROUTE_CAMPUS,
 } = {}) {
   const source = exact
-    ? exactKeys(value, ['id', 'name', 'description', 'url', 'route'],
+    ? exactKeys(value, ['id', 'name', 'description', 'url', 'route', 'category', 'keywords'],
       ['id', 'name', 'description', 'url'], 'WebResource')
     : plainObject(value, 'WebResource');
   const id = boundedText(source.id, MAX_RESOURCE_ID_LENGTH, 'resource id');
@@ -84,21 +94,46 @@ function normalizedResource(value, {
   if (route !== ROUTE_CAMPUS && route !== ROUTE_DIRECT) {
     throw new TypeError('resource route is unsupported');
   }
+  const category = source.category == null
+    ? (builtin === true ? 'common' : 'custom')
+    : source.category;
+  if (!RESOURCE_CATEGORIES.includes(category) || (builtin !== true && category !== 'custom')) {
+    throw new TypeError('resource category is unsupported');
+  }
+  const rawKeywords = source.keywords == null ? [] : source.keywords;
+  if (!Array.isArray(rawKeywords) || rawKeywords.length > MAX_RESOURCE_KEYWORDS) {
+    throw new TypeError('resource keywords have an invalid count');
+  }
+  const keywords = rawKeywords.map((keyword) => (
+    boundedText(keyword, MAX_RESOURCE_KEYWORD_LENGTH, 'resource keyword')
+  ));
+  if (new Set(keywords).size !== keywords.length) {
+    throw new TypeError('resource keywords contain a duplicate');
+  }
   const url = normalizedWebUrl(source.url, { reviewed });
   if (route === ROUTE_DIRECT && isIsolatedNetworkHost(new URL(url).hostname)) {
     throw new TypeError('private or local resources cannot use the Direct route');
   }
+  const name = boundedText(source.name, MAX_RESOURCE_NAME_LENGTH, 'resource name');
+  const description = boundedText(
+    source.description,
+    MAX_RESOURCE_DESCRIPTION_LENGTH,
+    'resource description',
+    { allowEmpty: true },
+  );
   return deepFreeze({
+    schemaVersion: WEB_RESOURCE_SCHEMA_VERSION,
     id,
-    name: boundedText(source.name, MAX_RESOURCE_NAME_LENGTH, 'resource name'),
-    description: boundedText(
-      source.description,
-      MAX_RESOURCE_DESCRIPTION_LENGTH,
-      'resource description',
-      { allowEmpty: true },
-    ),
+    localizedName: { zh: name, en: name },
+    localizedDescription: { zh: description, en: description },
+    name,
+    description,
     url,
     route,
+    category,
+    keywords: deepFreeze(keywords),
+    iconKey: null,
+    reviewed: reviewed === true,
     builtin: builtin === true,
   });
 }
@@ -134,11 +169,34 @@ function validateRuntimeBuiltinResources(value) {
     throw new TypeError('runtime builtin resources have an invalid resource count');
   }
   return validateUniqueResources(value.map((resource) => {
-    const source = exactKeys(resource, ['id', 'name', 'description', 'url', 'route', 'builtin'],
-      ['id', 'name', 'description', 'url', 'route', 'builtin'], 'RuntimeWebResource');
-    if (source.builtin !== true) throw new TypeError('runtime builtin resource lost its origin');
-    const { builtin: _builtin, ...document } = source;
-    return normalizedResource(document, {
+    const source = exactKeys(
+      resource,
+      [
+        'schemaVersion', 'id', 'localizedName', 'localizedDescription', 'name', 'description',
+        'url', 'route', 'category', 'keywords', 'iconKey', 'reviewed', 'builtin',
+      ],
+      [
+        'schemaVersion', 'id', 'localizedName', 'localizedDescription', 'name', 'description',
+        'url', 'route', 'category', 'keywords', 'iconKey', 'reviewed', 'builtin',
+      ],
+      'RuntimeWebResource',
+    );
+    if (source.schemaVersion !== WEB_RESOURCE_SCHEMA_VERSION || source.builtin !== true ||
+        source.reviewed !== true || source.iconKey !== null ||
+        source.localizedName?.zh !== source.name || source.localizedName?.en !== source.name ||
+        source.localizedDescription?.zh !== source.description ||
+        source.localizedDescription?.en !== source.description) {
+      throw new TypeError('runtime builtin resource lost its version or origin');
+    }
+    return normalizedResource({
+      id: source.id,
+      name: source.name,
+      description: source.description,
+      url: source.url,
+      route: source.route,
+      category: source.category,
+      keywords: source.keywords,
+    }, {
       builtin: true,
       reviewed: true,
       exact: true,
@@ -154,7 +212,16 @@ function parseBuiltinResourceDocument(value) {
   let parsed;
   try { parsed = JSON.parse(data.toString('utf8')); }
   catch { throw new TypeError('builtin resource document is not valid JSON'); }
-  return validateBuiltinResourceDocument(parsed);
+  const document = exactKeys(
+    parsed,
+    ['schemaVersion', 'resources'],
+    ['schemaVersion', 'resources'],
+    'builtin resource document',
+  );
+  if (document.schemaVersion !== BUILTIN_RESOURCE_DOCUMENT_VERSION) {
+    throw new TypeError('builtin resource document version is unsupported');
+  }
+  return validateBuiltinResourceDocument(document.resources);
 }
 
 function validateCustomResourceDocument(value) {
@@ -197,6 +264,8 @@ function normalizeResource(value) {
     description: String(value.description || '').trim(),
     url: String(value.url || '').trim(),
     route,
+    category: value.category,
+    keywords: value.keywords,
   }, route);
 }
 
@@ -213,10 +282,19 @@ function normalizeCustomResources(input) {
       seenUrls.add(resource.url);
       return true;
     })
-    .map(({ builtin, ...resource }) => resource);
+    .map(({
+      builtin: _builtin,
+      schemaVersion: _schemaVersion,
+      localizedName: _localizedName,
+      localizedDescription: _localizedDescription,
+      iconKey: _iconKey,
+      reviewed: _reviewed,
+      ...resource
+    }) => resource);
 }
 
 module.exports = {
+  BUILTIN_RESOURCE_DOCUMENT_VERSION,
   MAX_BUILTIN_RESOURCES,
   MAX_CUSTOM_RESOURCES,
   MAX_MERGED_RESOURCES,
@@ -225,6 +303,10 @@ module.exports = {
   MAX_RESOURCE_ID_LENGTH,
   MAX_RESOURCE_NAME_LENGTH,
   MAX_RESOURCE_URL_LENGTH,
+  MAX_RESOURCE_KEYWORDS,
+  MAX_RESOURCE_KEYWORD_LENGTH,
+  RESOURCE_CATEGORIES,
+  WEB_RESOURCE_SCHEMA_VERSION,
   normalizeCustomResources,
   normalizeLegacyCustomResource,
   normalizeResource,

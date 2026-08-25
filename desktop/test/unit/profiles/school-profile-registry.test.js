@@ -111,7 +111,7 @@ test('loads the reviewed single-HKUST packaged registry and bounded views', () =
     { host: 'library.hkust-gz.edu.cn', port: 443 },
   ]);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
-  assert.equal(registry.getBuiltinResources('hkustgz').length, 6);
+  assert.equal(registry.getBuiltinResources('hkustgz').length, 15);
   assert.deepEqual(registry.listViews({ locale: 'en', compatibility: 'reviewed' }), [
     {
       schemaVersion: 1,
@@ -245,7 +245,7 @@ test('document and asset hash changes fail closed', (t) => {
 
 test('resource asset is the only content source and invalid reviewed entries fail closed', (t) => {
   const changed = fixture(t, {
-    mutateResources: (resources) => { resources[0].name = 'n'.repeat(41); },
+    mutateResources: (document) => { document.resources[0].name = 'n'.repeat(41); },
   });
   assert.throws(
     () => new SchoolProfileRegistry({ packageRoot: changed.root }).load(),

@@ -20,6 +20,7 @@ const { relaunchAfterProfileSwitch, scheduleProfileSwitchRelaunch,
   writeProfileSwitchE2EMarker } =
   require('../switching/runtime/profile-switch-relaunch');
 const { createLegacyRuntimeStoragePaths } = require('../persistence/paths/runtime-storage-paths');
+const { ResourceLibraryRuntime } = require('../resources/runtime/resource-library-runtime');
 
 function resolveUserDataOverride(rawValue) {
   if (rawValue == null || String(rawValue).trim() === '') return null;
@@ -52,6 +53,7 @@ const desktopRuntimeComposition = Object.freeze({
   DesktopPersistenceRuntime,
   LegacyMigrationCredentialOwner,
   ProfileWorkspaceStartupRuntime,
+  ResourceLibraryRuntime,
   resolveUserDataOverride,
   relaunchAfterPersistenceMigration,
   relaunchAfterProfileSwitch,

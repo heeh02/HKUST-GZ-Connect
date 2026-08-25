@@ -4,7 +4,12 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { CAMPUS_PARTITION } = require('../../routing/policy/campus-route');
-const { mergeCampusResources, projectCampusResources } = require('../../resources/runtime/campus-resources');
+const {
+  mergeCampusResources,
+  mergeWebResourceLibrary,
+  projectCampusResources,
+  projectWebResourceLibrary,
+} = require('../../resources/runtime/campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
 const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
 const { verifyPrivateDirectoryChain } = require('../../platform/storage/private-directory');
@@ -219,8 +224,14 @@ function createController(context, options) {
     mergeResources(customResources = []) {
       return mergeCampusResources(builtInResources, customResources);
     },
+    mergeResourceLibrary(customResources = []) {
+      return mergeWebResourceLibrary(builtInResources, customResources);
+    },
     projectResources(customResources = []) {
       return projectCampusResources(builtInResources, customResources);
+    },
+    projectResourceLibrary(customResources = []) {
+      return projectWebResourceLibrary(builtInResources, customResources);
     },
     createCapabilitySnapshot: capabilitySnapshotFromReport,
     observeCapabilityReport(report) {

@@ -155,6 +155,8 @@ function validateLocalResourcesDocument(value) {
     description: resource.description,
     url: resource.url,
     route: resource.route,
+    category: resource.category,
+    keywords: resource.keywords,
   }));
   return Object.freeze({
     schemaVersion: documentVersion(source.schemaVersion, 'local resources'),

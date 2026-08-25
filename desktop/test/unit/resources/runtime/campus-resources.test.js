@@ -7,9 +7,11 @@ const test = require('node:test');
 const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const {
   mergeCampusResources,
+  mergeWebResourceLibrary,
   normalizeCustomResources,
   normalizeResource,
   projectCampusResources,
+  projectWebResourceLibrary,
 } = require('../../../../lib/resources/runtime/campus-resources');
 const {
   MAX_BUILTIN_RESOURCES,
@@ -96,12 +98,13 @@ test('custom resources are bounded, normalized, and merged after built-ins', () 
   ]);
   assert.equal(custom.length, 1);
   assert.equal(custom[0].route, ROUTE_DIRECT);
-  const merged = mergeCampusResources([
+  const merged = mergeCampusResources(validateBuiltinResourceDocument([
     {
       id: 'home', name: '学校主页', description: '',
-      url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS, builtin: true,
+      url: 'https://www.hkust-gz.edu.cn/', route: ROUTE_CAMPUS,
+      category: 'common', keywords: [],
     },
-  ], custom);
+  ]), custom);
   assert.deepEqual(merged.map((resource) => resource.id), ['home', 'portal']);
   assert.equal(merged[0].builtin, true);
   assert.equal(merged[1].builtin, false);
@@ -142,6 +145,27 @@ test('runtime projection retains lossless sources while preserving the 32-visibl
     hiddenCount: 32,
   });
   assert.equal(custom.length, 32, 'projection must not rewrite the custom source');
+});
+
+test('P8 WebResource library exposes both bounded sources without the legacy shelf cap', () => {
+  const builtins = validateBuiltinResourceDocument(Array.from({ length: 32 }, (_, index) => ({
+    id: `builtin-${index}`,
+    name: `Builtin ${index}`,
+    description: '',
+    url: `https://builtin-${index}.example.edu/`,
+    route: 'campus',
+  })));
+  const custom = Array.from({ length: 32 }, (_, index) => ({
+    id: `custom-${index}`,
+    name: `Custom ${index}`,
+    description: '',
+    url: `https://custom-${index}.example.edu/`,
+    route: 'campus',
+  }));
+  const projection = projectWebResourceLibrary(builtins, custom);
+  assert.equal(projection.resources.length, 64);
+  assert.equal(projection.receipt.hiddenCount, 0);
+  assert.equal(mergeWebResourceLibrary(builtins, custom).length, 64);
 });
 
 test('legacy cross-source duplicates keep builtin-first startup behavior and produce a receipt', () => {

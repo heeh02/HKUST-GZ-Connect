@@ -1,7 +1,7 @@
 'use strict';
 
 const { BLANK_CAMPUS_HOME, CampusBrowser, DEFAULT_CAMPUS_HOME } = require('./campus-browser');
-const { CAMPUS_PARTITION } = require('../../routing/policy/campus-route');
+const { CAMPUS_PARTITION, ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
 const { CampusCredentialVault } = require('../credentials/campus-credential-vault');
 const { normalizeOpenRequest } = require('../resources/campus-open-policy');
 
@@ -114,10 +114,10 @@ class CampusBrowserManager {
       }
     }
     // The local custom-Profile landing page has no network request and must be
-    // usable before credentials exist. Real HTTP(S) pages still establish the
-    // tunnel up front until the request-boundary on-demand barrier can preserve
-    // an original cross-origin SSO redirect without replaying it as a GET.
-    if (request.url !== BLANK_CAMPUS_HOME) {
+    // usable before credentials exist. Direct resources also need no Engine;
+    // campus pages still establish the tunnel up front so an original
+    // cross-origin SSO redirect is never replayed as a GET.
+    if (request.url !== BLANK_CAMPUS_HOME && request.route === ROUTE_CAMPUS) {
       const connection = await this.ensureConnected();
       if (!connection?.ok) {
         const error = connection?.error || translate('error.connectTimeout');

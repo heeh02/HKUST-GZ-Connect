@@ -21,7 +21,7 @@ const {
   runCredentialSettingsMutation,
 } = require('./lib/persistence/credentials/credential-settings-transaction');
 const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
-const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
+const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, ResourceLibraryRuntime, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -127,6 +127,8 @@ const CAMPUS_BROWSER_PAC_FILE = runtimeStoragePaths.browserPac;
 const ROUTING_RULES = runtimeStoragePaths.routingRules;
 const CAMPUS_CREDENTIALS = runtimeStoragePaths.siteCredentials;
 const CAMPUS_CERTIFICATE_TRUST = runtimeStoragePaths.certificateTrust;
+const RESOURCE_FAVORITES = runtimeStoragePaths.resourceFavorites;
+const RESOURCE_RECENTS = runtimeStoragePaths.resourceRecents;
 const ENGINE_OWNER = runtimeStoragePaths.engineOwner;
 const CREDENTIAL_TRANSACTION = runtimeStoragePaths.credentialTransaction;
 const ACTIVE_CONTEXT_SWITCH = runtimeStoragePaths.activeContextSwitch;
@@ -159,6 +161,7 @@ let credentialTransactionBlocked = credentialTransactionRecovery.status === 'blo
 for (const privateFile of [
   SETTINGS, CRED, LOG, PAC_FILE, CAMPUS_BROWSER_PAC_FILE, ROUTING_RULES,
   CAMPUS_CREDENTIALS, CAMPUS_CERTIFICATE_TRUST, ENGINE_OWNER,
+  RESOURCE_FAVORITES, RESOURCE_RECENTS,
   PROXY_CREDENTIAL, PROXY_HELPER_CREDENTIAL,
 ]) {
   ensureOwnerOnly(privateFile);
@@ -210,6 +213,15 @@ const externalProxyCredentialStore = new ExternalProxyCredentialStore({
   filePath: PROXY_CREDENTIAL,
   safeStorage,
   platform: process.platform,
+});
+const resourceLibraryRuntime = new ResourceLibraryRuntime({
+  favoritesFile: RESOURCE_FAVORITES,
+  recentFile: RESOURCE_RECENTS,
+  platform: process.platform,
+  loadResources: (settings) => safeCampusResources(settings),
+  captureContext: () => activeContextLease.captureContext(),
+  isContextCurrent: (context) => activeContextLease.isContextCurrent(context),
+  openRequest: (request) => campusBrowserManager.open(request),
 });
 // Last known "newer release exists" result. Failures never land here, so the
 // renderer can render it without distinguishing network errors from silence.
@@ -427,14 +439,17 @@ function proxyHelperPath() {
   });
 }
 function campusResources(settings = loadSettingsOrReport()) {
-  return activeSchoolProfile.mergeResources(settings.customResources);
+  return activeSchoolProfile.mergeResourceLibrary(settings.customResources);
 }
 function safeCampusResources(settings = null) {
   try { return campusResources(settings || loadSettingsOrReport()); }
   catch (error) {
     reportSettingsReadFailure(error);
-    return activeSchoolProfile.mergeResources();
+    return activeSchoolProfile.mergeResourceLibrary();
   }
+}
+function safeCampusResourceLibrary(settings = null) {
+  return resourceLibraryRuntime.list(settings);
 }
 const certificateTrustStore = new CampusCertificateTrustStore({
   filePath: CAMPUS_CERTIFICATE_TRUST,
@@ -1319,6 +1334,14 @@ async function connectAndOpenCampusBrowser(rawRequest) {
   }
   return result;
 }
+async function openCampusResourceById({ resourceId } = {}) {
+  try {
+    return await runActiveContextTransaction(() => ({
+      commit: () => resourceLibraryRuntime.openById(resourceId),
+    }));
+  }
+  catch { return { ok: false, error: t('error.resourceUnavailable') }; }
+}
 
 // ---------- update check (notify only; no auto-download) ----------
 // macOS builds are ad-hoc signed, so the app never downloads updates itself:
@@ -1368,8 +1391,9 @@ const controlStateSnapshot = createControlStateSnapshot({
   getStatus: statusSnapshot, loadSettings: loadSettingsOrReport,
   hasCredential: hasStoredCredential, hasAccountIdentity: () => persistenceRuntime.hasAccountIdentity(),
   getPacUrl: pacUrl, getLocale: () => locale, platform: process.platform,
-  getVersion: () => app.getVersion(), getUpdate: () => updateInfo, getResources: campusResources,
-  getFallbackResources: () => safeCampusResources({ customResources: [] }),
+  getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
+  getResources: safeCampusResourceLibrary,
+  getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
   getCapabilitySnapshot: () => activeSchoolProfile.capabilitySnapshot(),
@@ -1390,7 +1414,8 @@ registerControlDataIpc({
     loadSettings: loadSettingsOrReport,
     saveSettings,
     runTransaction: runDomainPolicyTransaction,
-    safeResources: safeCampusResources,
+    safeResources: safeCampusResourceLibrary,
+    activityStore: resourceLibraryRuntime,
   },
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
     switchProfile: switchSchoolProfile },
@@ -1446,6 +1471,7 @@ registerCoreControlIpc({
     return { ok: true };
   },
   openCampusBrowser: (request) => connectAndOpenCampusBrowser(request),
+  openResource: (request) => openCampusResourceById(request),
   checkUpdate: (force) => force ? runUpdateCheck() : runAutomaticUpdateCheck(),
   openExternal: (url) => {
     if (!isAllowedReleaseUrl(url)) return { ok: false };

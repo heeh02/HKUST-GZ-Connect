@@ -128,6 +128,8 @@ test('custom shortcut resources survive an owner-only settings round trip', (t) 
     description: '邮件',
     url: 'https://outlook.office.com/owa/',
     route: 'direct',
+    category: 'custom',
+    keywords: [],
   };
 
   saveSettings(file, { customResources: [resource] });
