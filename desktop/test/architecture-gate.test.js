@@ -95,7 +95,7 @@ test('current production graph has no cycle and stays within debt growth caps', 
   assert.ok(snapshot.rendererLines <= BASELINE.rendererLines);
   assert.ok(snapshot.libMaxFanIn <= BASELINE.libMaxFanIn);
   assert.ok(snapshot.libMaxFanOut <= BASELINE.libMaxFanOut);
-  assert.ok(snapshot.appDataDirExports <= BASELINE.appDataDirExports);
+  assert.ok(snapshot.runtimeCompositionExports <= BASELINE.runtimeCompositionExports);
   assert.deepEqual(snapshot.domainLayerErrors, []);
   assert.deepEqual(snapshot.rootLibraryDebtErrors, []);
 });
@@ -109,7 +109,7 @@ test('growth beyond any explicit baseline fails the gate', () => {
     rendererLines: BASELINE.rendererLines + 1,
     libMaxFanIn: BASELINE.libMaxFanIn + 1,
     libMaxFanOut: BASELINE.libMaxFanOut + 1,
-    appDataDirExports: BASELINE.appDataDirExports + 1,
+    runtimeCompositionExports: BASELINE.runtimeCompositionExports + 1,
   };
   assert.deepEqual(architectureErrors(snapshot), [
     `mainDirectDependencies grew from ${BASELINE.mainDirectDependencies} to ${snapshot.mainDirectDependencies}`,
@@ -118,6 +118,6 @@ test('growth beyond any explicit baseline fails the gate', () => {
     `rendererLines grew from ${BASELINE.rendererLines} to ${snapshot.rendererLines}`,
     `libMaxFanIn grew from ${BASELINE.libMaxFanIn} to ${snapshot.libMaxFanIn}`,
     `libMaxFanOut grew from ${BASELINE.libMaxFanOut} to ${snapshot.libMaxFanOut}`,
-    `appDataDirExports grew from ${BASELINE.appDataDirExports} to ${snapshot.appDataDirExports}`,
+    `runtimeCompositionExports grew from ${BASELINE.runtimeCompositionExports} to ${snapshot.runtimeCompositionExports}`,
   ]);
 });

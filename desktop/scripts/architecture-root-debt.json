@@ -10,7 +10,6 @@
     "active-context-switch-store.js",
     "active-context-switch-system.js",
     "app-connection-enumerator.js",
-    "app-data-dir.js",
     "auth-challenge-coordinator.js",
     "browser-engine-barrier.js",
     "browser-session-manager.js",

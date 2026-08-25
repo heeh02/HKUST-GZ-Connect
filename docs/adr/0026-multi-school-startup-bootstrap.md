@@ -37,6 +37,7 @@ active Profile from GlobalSettings/profile directory before creating path-bound
 services, then rotate the controller, persistence adapter, Browser session and
 active-context lease after a committed switch.
 
-The composition remains behind the existing `app-data-dir` facade, so
+The composition is now exposed through the accurately named
+`lib/app/desktop-runtime-composition.js` composition boundary, so
 `main.js` stays at its architecture ratchet of 35 direct dependencies and 1644
 lines.

@@ -20,7 +20,8 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = require('./lib/app-data-dir');
+const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
+const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,

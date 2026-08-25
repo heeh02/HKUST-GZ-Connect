@@ -13,7 +13,7 @@ const BASELINE = Object.freeze({
   rendererLines: 558,
   libMaxFanIn: 45,
   libMaxFanOut: 13,
-  appDataDirExports: 16,
+  runtimeCompositionExports: 1,
 });
 
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'release']);
@@ -239,7 +239,7 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
   const graph = buildDependencyGraph(files);
   const mainFile = path.join(root, 'main.js');
   const rendererFile = path.join(root, 'renderer', 'app.js');
-  const appDataDirFile = path.join(root, 'lib', 'app-data-dir.js');
+  const runtimeCompositionFile = path.join(root, 'lib', 'app', 'desktop-runtime-composition.js');
   const rootFiles = rootLibraryFiles(root);
   const rootDebt = loadRootLibraryDebt(root);
   const fan = graphFanMetrics(graph, root);
@@ -254,7 +254,9 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
     mainTransitiveDependencies: transitiveDependencies(graph, mainFile).size,
     mainLines: lineCount(mainFile),
     rendererLines: lineCount(rendererFile),
-    appDataDirExports: moduleExportNames(fs.readFileSync(appDataDirFile, 'utf8')).length,
+    runtimeCompositionExports: moduleExportNames(
+      fs.readFileSync(runtimeCompositionFile, 'utf8'),
+    ).length,
     rootLibraryFileCount: rootFiles.length,
     ...fan,
   };
@@ -268,7 +270,7 @@ function architectureErrors(snapshot) {
   errors.push(...(snapshot.rootLibraryDebtErrors || []));
   for (const key of [
     'mainDirectDependencies', 'mainTransitiveDependencies', 'mainLines', 'rendererLines',
-    'libMaxFanIn', 'libMaxFanOut', 'appDataDirExports',
+    'libMaxFanIn', 'libMaxFanOut', 'runtimeCompositionExports',
   ]) {
     if (!Number.isFinite(snapshot[key])) continue;
     if (snapshot[key] > BASELINE[key]) {
@@ -294,7 +296,7 @@ function run() {
     `architecture gate: PASS (files=${snapshot.fileCount}, edges=${snapshot.edgeCount}, ` +
     `mainDeps=${snapshot.mainDirectDependencies}/${snapshot.mainTransitiveDependencies}, ` +
     `libFan=${snapshot.libMaxFanOut}/${snapshot.libMaxFanIn}, rootDebt=${snapshot.rootLibraryFileCount}, ` +
-    `barrelExports=${snapshot.appDataDirExports}, mainLines=${snapshot.mainLines}, ` +
+    `compositionExports=${snapshot.runtimeCompositionExports}, mainLines=${snapshot.mainLines}, ` +
     `rendererLines=${snapshot.rendererLines})\n`,
   );
 }

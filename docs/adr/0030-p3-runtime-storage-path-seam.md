@@ -33,7 +33,7 @@ stable proxy credential and helper sidecar
 ```
 
 `createLegacyRuntimeStoragePaths()` maps these names to the existing flat paths. Production Main now obtains every
-path from this projection through its existing `app-data-dir` dependency, so Main dependency count and external
+path from this projection through `lib/app/desktop-runtime-composition.js`, so Main dependency count and external
 behavior remain unchanged.
 
 `createProfileWorkspaceRuntimeStoragePaths()` maps the same service owners to global, Account or Workspace paths

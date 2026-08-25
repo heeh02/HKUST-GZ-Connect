@@ -3,7 +3,8 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
-const { resolveUserDataOverride } = require('../lib/app-data-dir');
+const { desktopRuntimeComposition } = require('../../../lib/app/desktop-runtime-composition');
+const { resolveUserDataOverride } = desktopRuntimeComposition;
 
 test('missing or blank app-data override uses Electron defaults', () => {
   assert.equal(resolveUserDataOverride(undefined), null);

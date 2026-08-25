@@ -343,7 +343,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/campus-browser.js',
     '/lib/campus-certificate-trust.js',
     '/lib/campus-credential-vault.js',
-    '/lib/app-data-dir.js',
+    '/lib/app/desktop-runtime-composition.js',
     '/lib/i18n.js',
     '/lib/login-flow.js',
     '/lib/resource-view.js',

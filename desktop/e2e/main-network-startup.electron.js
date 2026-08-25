@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, safeStorage } = require('electron');
 const { savePassword } = require('../lib/credential-store');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/app-data-dir');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
 const { saveSettings } = require('../lib/settings-store');
 
 const TEST_TIMEOUT_MS = 20_000;

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
-const { ProfileWorkspaceStartupRuntime } = require('../lib/app-data-dir');
+const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
 const { projectRuntimeSettings } = require('../lib/profile-workspace-settings-bundle');
 const { saveSettings } = require('../lib/settings-store');
 
