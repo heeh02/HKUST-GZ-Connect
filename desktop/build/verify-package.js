@@ -352,7 +352,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/connection/engine/engine-connection-runtime.js',
     '/lib/connection/engine/engine-control-suite.js',
     '/lib/desktop-shell.js',
-    '/lib/windows-private-file.js',
+    '/lib/platform/storage/windows-private-file.js',
     '/lib/browser/session/campus-browser-manager.js',
     '/lib/profiles/schema/school-profile-schema.js',
     '/lib/resources/schema/campus-resource-contract.js',

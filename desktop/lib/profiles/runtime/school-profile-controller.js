@@ -7,13 +7,13 @@ const { CAMPUS_PARTITION } = require('../../routing/policy/campus-route');
 const { mergeCampusResources, projectCampusResources } = require('../../resources/runtime/campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
 const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
-const { verifyPrivateDirectoryChain } = require('../../private-directory');
+const { verifyPrivateDirectoryChain } = require('../../platform/storage/private-directory');
 const { validateGlobalSettingsDocument } = require('../../persistence/schema/profile-workspace-documents');
-const { readPrivateFileBounded } = require('../../private-file');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 const {
   createCapabilitySnapshot,
   createLegacyPrimaryAccountView,

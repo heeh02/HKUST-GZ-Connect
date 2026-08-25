@@ -13,7 +13,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 function exists(file, fileSystem) {
   try {

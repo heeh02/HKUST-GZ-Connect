@@ -4,14 +4,14 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('../credential-store');
-const { ensurePrivateDirectoryChain } = require('../private-directory');
+const { ensurePrivateDirectoryChain } = require('../platform/storage/private-directory');
 const {
   normalizedIntegrationTargetFile,
 } = require('./integration-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../windows-private-file');
+} = require('../platform/storage/windows-private-file');
 
 const MAX_MANAGED_FILE_BYTES = 1024 * 1024;
 

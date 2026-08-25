@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readPrivateFileBounded } = require('./private-file');
+const { readPrivateFileBounded } = require('./platform/storage/private-file');
 
 let temporarySequence = 0;
 const MAX_ENCRYPTED_PASSWORD_BYTES = 64 * 1024;

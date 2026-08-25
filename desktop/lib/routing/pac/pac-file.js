@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { ensureOwnerOnly } = require('../../private-file');
+const { ensureOwnerOnly } = require('../../platform/storage/private-file');
 
 const MAX_PAC_BYTES = 512 * 1024;
 let temporarySequence = 0;

@@ -8,12 +8,12 @@ const {
   CUSTOM_PROFILE_FILE_IDS,
   CUSTOM_PROFILE_PROVISIONING_VERSION,
 } = require('./custom-profile-provisioning-plan');
-const { ensurePrivateDirectoryChain } = require('../../private-directory');
-const { readPrivateFileBounded } = require('../../private-file');
+const { ensurePrivateDirectoryChain } = require('../../platform/storage/private-directory');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const MAX_CUSTOM_PROFILE_FILE_BYTES = 512 * 1024;
 

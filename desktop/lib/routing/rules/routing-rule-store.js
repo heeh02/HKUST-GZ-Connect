@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { domainToASCII } = require('node:url');
-const { ensureOwnerOnly } = require('../../private-file');
+const { ensureOwnerOnly } = require('../../platform/storage/private-file');
 const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../policy/campus-route');
 const { isIsolatedNetworkHost } = require('../policy/host-safety');
 

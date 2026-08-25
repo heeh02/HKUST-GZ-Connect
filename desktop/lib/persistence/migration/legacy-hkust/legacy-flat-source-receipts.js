@@ -7,7 +7,7 @@ const {
   validateUserDataRoot,
 } = require('../../paths/profile-workspace-layout');
 const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
-const { verifyWindowsFileOwnerOnly } = require('../../../windows-private-file');
+const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
 
 const READ_CHUNK_BYTES = 64 * 1024;
 const LEGACY_SOURCE_MAX_BYTES = Object.freeze({

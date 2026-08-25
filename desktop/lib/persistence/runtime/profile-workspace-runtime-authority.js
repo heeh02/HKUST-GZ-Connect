@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { collectPrivateFileReceipt } = require('../migration/legacy-hkust/legacy-flat-source-receipts');
-const { readPrivateFileBounded } = require('../../private-file');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   createProfileAccountBootstrapLayout,
   createProfileAccountWorkspaceLayout,
@@ -25,7 +25,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const MAX_RUNTIME_DOCUMENT_BYTES = 512 * 1024;
 const MAX_RUNTIME_CREDENTIAL_BYTES = 64 * 1024;

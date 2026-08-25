@@ -2,12 +2,12 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { readPrivateFileBounded } = require('../../../private-file');
+const { readPrivateFileBounded } = require('../../../platform/storage/private-file');
 const { validateMigrationJournal } = require('./profile-workspace-migration-journal');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../../windows-private-file');
+} = require('../../../platform/storage/windows-private-file');
 
 const MAX_MIGRATION_JOURNAL_BYTES = 256 * 1024;
 let temporarySequence = 0;

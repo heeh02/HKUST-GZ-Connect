@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('./platform/storage/private-file');
 const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('./routing/pac/pac');
 const { normalizeCustomResources } = require('./resources/runtime/campus-resources');
 

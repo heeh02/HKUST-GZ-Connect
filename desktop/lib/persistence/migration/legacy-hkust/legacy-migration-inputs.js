@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const util = require('node:util');
 const { protectedStorageAvailable } = require('../../../credential-store');
 const { LEGACY_SOURCE_MAX_BYTES } = require('./legacy-flat-source-receipts');
-const { readPrivateFileBounded } = require('../../../private-file');
+const { readPrivateFileBounded } = require('../../../platform/storage/private-file');
 const {
   LEGACY_SOURCE_IDS,
   legacySourceReceiptDigest,
@@ -13,7 +13,7 @@ const {
 const { createLegacyFlatSourcePaths } = require('../../paths/profile-workspace-layout');
 const { normalizeSettings } = require('../../../settings-store');
 const { parseCredentialField } = require('../../../settings-update');
-const { verifyWindowsFileOwnerOnly } = require('../../../windows-private-file');
+const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
 
 function sameReceipt(expected, data) {
   return expected.present === true && expected.bytes === data.length &&

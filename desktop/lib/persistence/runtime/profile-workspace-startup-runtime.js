@@ -24,7 +24,7 @@ const { validateSchoolProfileDocument } = require('../../profiles/schema/school-
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 function deepFreeze(value) {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;

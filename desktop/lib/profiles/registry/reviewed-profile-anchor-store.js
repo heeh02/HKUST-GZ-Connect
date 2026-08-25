@@ -3,8 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('../../credential-store');
-const { ensurePrivateDirectoryChain } = require('../../private-directory');
-const { readPrivateFileBounded } = require('../../private-file');
+const { ensurePrivateDirectoryChain } = require('../../platform/storage/private-directory');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   validateOpaqueKey,
   validateProfileId,
@@ -12,7 +12,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const REVIEWED_PROFILE_ANCHOR_VERSION = 1;
 const MAX_REVIEWED_PROFILE_ANCHORS = 16;

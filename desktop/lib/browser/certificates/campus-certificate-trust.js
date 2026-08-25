@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('../../private-file');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('../../platform/storage/private-file');
 
 const LEGACY_TRUST_VERSION = 1;
 const TRUST_VERSION = 2;

@@ -55,7 +55,7 @@ const {
   registerCoreControlIpc,
   registerSettingsCredentialIpc,
 } = require('./lib/ipc/control-ipc-suite');
-const { ensureOwnerOnly } = require('./lib/private-file');
+const { ensureOwnerOnly } = require('./lib/platform/storage/private-file');
 const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
 const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/stop-policy');
 const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');

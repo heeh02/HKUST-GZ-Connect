@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('../../credential-store');
 const { collectPrivateFileReceipt } = require('../migration/legacy-hkust/legacy-flat-source-receipts');
-const { readPrivateFileBounded } = require('../../private-file');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const { splitRuntimeSettings } = require('./profile-workspace-settings-bundle');
 const {
   normalizeGatewayOrigin,
@@ -16,7 +16,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const SETTINGS_TRANSACTION_VERSION = 1;
 const MAX_SETTINGS_TARGET_BYTES = 512 * 1024;

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('../lib/private-file');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('../../../../lib/platform/storage/private-file');
 
 test('owner-only hardening changes only an opened regular file', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-private-file-'));

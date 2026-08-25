@@ -17,7 +17,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 function engineLaunchBinding(record) {
   const stdinFrame = JSON.stringify({

@@ -38,7 +38,7 @@ const { validateSchoolProfileDocument } = require('../../../profiles/schema/scho
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../../windows-private-file');
+} = require('../../../platform/storage/windows-private-file');
 
 function pathExists(file, fileSystem) {
   try {

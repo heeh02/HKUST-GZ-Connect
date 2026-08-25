@@ -12,7 +12,7 @@ const {
   legacySourceReceiptDigest,
 } = require('./profile-workspace-migration-journal');
 const { createLegacyFlatSourcePaths } = require('../../paths/profile-workspace-layout');
-const { verifyWindowsFileOwnerOnly } = require('../../../windows-private-file');
+const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
 
 function sameReceipt(left, right) {
   return left.present === right.present && left.bytes === right.bytes && left.sha256 === right.sha256;

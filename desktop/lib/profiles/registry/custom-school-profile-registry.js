@@ -4,8 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { verifyCustomEngineConfigFile } = require('../provisioning/custom-engine-config');
 const { CustomProfileIndexStore } = require('./custom-profile-index');
-const { verifyPrivateDirectoryChain } = require('../../private-directory');
-const { readPrivateFileBounded } = require('../../private-file');
+const { verifyPrivateDirectoryChain } = require('../../platform/storage/private-directory');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   loadProfileWorkspaceAuthorityByKeys,
 } = require('../../persistence/runtime/profile-workspace-runtime-authority');
@@ -17,7 +17,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const MAX_CUSTOM_PROFILE_DOCUMENT_BYTES = 256 * 1024;
 

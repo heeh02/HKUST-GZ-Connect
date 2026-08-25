@@ -12,8 +12,6 @@
     "log-writer.js",
     "login-flow.js",
     "multi-school-startup-runtime.js",
-    "private-directory.js",
-    "private-file.js",
     "private-log-file.js",
     "profile-workspace-credential-store.js",
     "profile-workspace-credential-transaction.js",
@@ -24,7 +22,6 @@
     "update-check.js",
     "vpn-credential-envelope-store.js",
     "vpn-credential-envelope.js",
-    "window-layout.js",
-    "windows-private-file.js"
+    "window-layout.js"
   ]
 }

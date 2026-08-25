@@ -8,12 +8,12 @@ const {
   atomicWritePrivateFile,
   protectedStorageAvailable,
 } = require('./credential-store');
-const { readPrivateFileBounded } = require('./private-file');
+const { readPrivateFileBounded } = require('./platform/storage/private-file');
 const { RANDOM_SECRET_BYTES } = require('./proxy-credential');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('./platform/storage/windows-private-file');
 
 const DOCUMENT_VERSION = 1;
 const MAX_ENCRYPTED_PROXY_CREDENTIAL_BYTES = 64 * 1024;

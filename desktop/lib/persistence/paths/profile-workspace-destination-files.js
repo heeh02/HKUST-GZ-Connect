@@ -11,7 +11,7 @@ const { DESTINATION_RECEIPT_IDS } = require('../migration/legacy-hkust/profile-w
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../windows-private-file');
+} = require('../../platform/storage/windows-private-file');
 
 const MAX_DESTINATION_FILE_BYTES = 16 * 1024 * 1024;
 

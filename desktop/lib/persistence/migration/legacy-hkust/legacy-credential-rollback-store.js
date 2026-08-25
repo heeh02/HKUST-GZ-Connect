@@ -8,7 +8,7 @@ const {
   retireLegacyCredentialRollbackState,
   validateLegacyCredentialRollbackState,
 } = require('./legacy-credential-rollback-state');
-const { readPrivateFileBounded } = require('../../../private-file');
+const { readPrivateFileBounded } = require('../../../platform/storage/private-file');
 const {
   normalizeGatewayOrigin,
   validateOpaqueKey,
@@ -18,7 +18,7 @@ const {
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../../../windows-private-file');
+} = require('../../../platform/storage/windows-private-file');
 
 const RETIREMENT_INTENT_VERSION = 1;
 const MAX_ROLLBACK_BLOB_BYTES = 64 * 1024;

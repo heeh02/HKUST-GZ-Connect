@@ -2,12 +2,12 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const { readPrivateFileBounded } = require('../../private-file');
+const { readPrivateFileBounded } = require('../../platform/storage/private-file');
 const {
   PROTOCOL_FAMILY,
   validateSchoolProfileDocument,
 } = require('../schema/school-profile-schema');
-const { verifyWindowsFileOwnerOnly } = require('../../windows-private-file');
+const { verifyWindowsFileOwnerOnly } = require('../../platform/storage/windows-private-file');
 
 const CUSTOM_ENGINE_CONFIG_VERSION = 1;
 const MAX_CUSTOM_ENGINE_CONFIG_BYTES = 64 * 1024;

@@ -10,7 +10,7 @@ const {
   POWERSHELL_ACL_TIMEOUT_MS,
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('../lib/windows-private-file');
+} = require('../../../../lib/platform/storage/windows-private-file');
 
 test('Windows ACL commands keep paths out of scripts and require fixed verification output', () => {
   const calls = [];
