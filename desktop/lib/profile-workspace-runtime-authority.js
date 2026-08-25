@@ -261,6 +261,7 @@ function loadProfileWorkspaceAuthorityByKeys({
   profile: rawProfile,
   profileKey,
   accountKey,
+  adoptLegacyHkustBrowserPartition = false,
   fileSystem = fs,
   platform = process.platform,
   windowsAcl = {
@@ -318,7 +319,7 @@ function loadProfileWorkspaceAuthorityByKeys({
     profileKey,
     accountKey,
     workspaceKey: account.workspaceKey,
-    adoptLegacyHkustBrowserPartition: false,
+    adoptLegacyHkustBrowserPartition,
   });
   const workspaceState = readDocument(
     layout.workspace.state,
