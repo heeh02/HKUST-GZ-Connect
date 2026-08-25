@@ -18,6 +18,7 @@ const fixturePath = process.env.EC_AUTH_FIXTURE || path.join(
   'debug',
   fixtureName,
 );
+let activeChild = null;
 
 function nextPublished(published, startIndex) {
   const deadline = Date.now() + 3_000;
@@ -37,6 +38,7 @@ async function main() {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  activeChild = child;
   const exitPromise = new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`fixture exit ${code}`))));
@@ -44,11 +46,20 @@ async function main() {
   let stdout = '';
   let stderr = '';
   const published = [];
+  const contextToken = Object.freeze({
+    profileId: 'synthetic-profile',
+    profileRevision: 1,
+    accountHandle: `account-${'a'.repeat(36)}`,
+    activeContextEpoch: 1,
+    connectionIntent: 1,
+    engineGeneration: 9,
+  });
   const coordinator = new AuthChallengeCoordinator({
     publish: (challenge) => published.push(challenge),
+    isContextCurrent: (candidate) => candidate === contextToken,
   });
   const registry = new EngineControlRegistry({ authChallenges: coordinator });
-  const controls = registry.bind(9, child.stdin);
+  const controls = registry.bind(9, child.stdin, contextToken);
   child.stdout.on('data', (chunk) => {
     stdout += chunk.toString('utf8');
     controls.feed(chunk);
@@ -84,6 +95,7 @@ async function main() {
   await coordinator.respond(accepted);
   assert.equal(accepted.response, '');
   await exitPromise;
+  activeChild = null;
   clearTimeout(timeout);
   registry.clear(9);
   assert.equal(published.at(-1), null);
@@ -95,6 +107,8 @@ async function main() {
 }
 
 main().catch((error) => {
+  try { activeChild?.kill(); } catch {}
+  activeChild = null;
   process.stderr.write(`auth control fixture e2e: FAIL (${error.message})\n`);
   process.exitCode = 1;
 });
