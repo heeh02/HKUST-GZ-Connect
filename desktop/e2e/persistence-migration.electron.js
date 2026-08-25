@@ -6,8 +6,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, safeStorage } = require('electron');
-const { createLegacyFlatSourcePaths } = require('../lib/persistence/paths/profile-workspace-layout');
-const { normalizeSettings } = require('../lib/persistence/settings/settings-store');
+const {
+  createLegacyFlatSourcePaths,
+  createProfileAccountWorkspaceLayout,
+} = require('../lib/persistence/paths/profile-workspace-layout');
+const v123Settings = require('./fixtures/v1.2.3-settings.json');
 
 const WAIT_MS = 30_000;
 
@@ -42,17 +45,13 @@ async function run() {
   assert.equal(safeStorage.isEncryptionAvailable(), true);
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hkust-persistence-e2e-'));
   const legacy = createLegacyFlatSourcePaths(userData);
-  const settings = normalizeSettings({
-    username: 'synthetic-user',
-    port: 6180,
-    autoConnect: false,
-    startAtLogin: false,
-    routeDomains: ['hkust-gz.edu.cn'],
-  });
-  const bytes = Buffer.from(JSON.stringify(settings), 'utf8');
+  // This checked-in document is the exact flat settings shape emitted by the
+  // published v1.2.3 line. Do not generate it with current normalizers: doing
+  // so would let a schema regression change both the migration and its input.
+  const bytes = Buffer.from(JSON.stringify(v123Settings), 'utf8');
   fs.writeFileSync(legacy.settings, bytes, { mode: 0o600 });
   fs.writeFileSync(legacy.settingsBackup, bytes, { mode: 0o600 });
-  fs.writeFileSync(legacy.vpnCredential, safeStorage.encryptString('synthetic-password'), {
+  fs.writeFileSync(legacy.vpnCredential, safeStorage.encryptString('synthetic-v1-2-3-password'), {
     mode: 0o600,
   });
   fs.writeFileSync(legacy.routingRules, '{"schemaVersion":1,"rules":[]}', { mode: 0o600 });
@@ -81,9 +80,46 @@ async function run() {
     assert.equal(Number.isInteger(marker.pid) && marker.pid > 0, true);
     assert.equal(fs.existsSync(legacy.settings), false);
     assert.equal(fs.existsSync(legacy.vpnCredential), false);
-    assert.equal(fs.existsSync(path.join(userData, 'global', 'settings.json')), true);
+    const globalSettingsPath = path.join(userData, 'global', 'settings.json');
+    assert.equal(fs.existsSync(globalSettingsPath), true);
+    const globalSettings = JSON.parse(fs.readFileSync(globalSettingsPath, 'utf8'));
+    assert.equal(globalSettings.port, 6280);
+    assert.equal(globalSettings.strictProxyAuth, false);
+    assert.equal(globalSettings.proxyAuthMigrationPending, true);
+    assert.equal(globalSettings.closeAction, 'quit');
+    assert.equal(globalSettings.language, 'en');
+    assert.equal(globalSettings.startAtLogin, false);
+    assert.equal(Object.hasOwn(globalSettings, 'username'), false);
     const profilesRoot = path.join(userData, 'profiles');
-    assert.equal(fs.readdirSync(profilesRoot).length, 1);
+    const profileKeys = fs.readdirSync(profilesRoot);
+    assert.equal(profileKeys.length, 1);
+    assert.equal(profileKeys[0], globalSettings.activeProfileKey);
+    const accountRoot = path.join(
+      profilesRoot,
+      globalSettings.activeProfileKey,
+      'accounts',
+      globalSettings.activeAccountKey,
+    );
+    const account = JSON.parse(fs.readFileSync(path.join(accountRoot, 'account.json'), 'utf8'));
+    const layout = createProfileAccountWorkspaceLayout({
+      userData,
+      profileKey: globalSettings.activeProfileKey,
+      accountKey: globalSettings.activeAccountKey,
+      workspaceKey: account.workspaceKey,
+      adoptLegacyHkustBrowserPartition: true,
+    });
+    const workspaceSettings = JSON.parse(fs.readFileSync(layout.workspace.settings, 'utf8'));
+    assert.equal(workspaceSettings.autoReconnect, false);
+    assert.equal(workspaceSettings.maxAttempts, 4);
+    assert.equal(workspaceSettings.autoConnect, false);
+    assert.deepEqual(workspaceSettings.routeDomains, ['hkust-gz.edu.cn', 'hkust.edu.hk']);
+    const localResources = JSON.parse(fs.readFileSync(layout.workspace.localResources, 'utf8'));
+    assert.deepEqual(localResources.resources, [{
+      ...v123Settings.customResources[0],
+      category: 'custom',
+      keywords: [],
+    }]);
+    assert.equal(fs.statSync(layout.account.vpnCredential).size > 0, true);
   } finally {
     if (marker?.pid) await stopOwnedProcess(marker.pid);
     try { child.kill('SIGTERM'); } catch {}

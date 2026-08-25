@@ -1,0 +1,27 @@
+{
+  "username": "synthetic-v1-2-3-user",
+  "port": 6280,
+  "autoReconnect": false,
+  "maxAttempts": 4,
+  "startAtLogin": false,
+  "autoConnect": false,
+  "strictProxyAuth": false,
+  "proxySecurityVersion": 3,
+  "proxyAuthMigrationPending": true,
+  "closeAction": "quit",
+  "language": "en",
+  "updateCheckedAt": 1780000000000,
+  "routeDomains": [
+    "hkust-gz.edu.cn",
+    "hkust.edu.hk"
+  ],
+  "customResources": [
+    {
+      "id": "synthetic-v123-direct",
+      "name": "Synthetic direct portal",
+      "description": "Sanitized v1.2.3 upgrade fixture",
+      "url": "https://portal.example.edu/",
+      "route": "direct"
+    }
+  ]
+}

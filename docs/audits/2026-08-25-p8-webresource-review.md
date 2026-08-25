@@ -2,8 +2,9 @@
 
 ## Scope
 
-This review covers the ordinary-user WebResource upgrade on `codex/2.0-p8-web-resources`. It changes no Gateway
-authentication, Modern L3, DNS, SOCKS/HTTP frontend or External Tool Integration provider.
+This review covers the ordinary-user WebResource upgrade merged by PR #53 as
+`17f9f5f2461e79081f156b55db829c9ab4d12eb2`. It changes no Gateway authentication, Modern L3, DNS, SOCKS/HTTP
+frontend or External Tool Integration provider.
 
 ## Delivered boundaries
 
@@ -40,3 +41,4 @@ or authenticated server catalogue was added.
   residue.
 - Rust fmt and Clippy `-D warnings` passed. Rust tests: 297 passed, two explicit performance matrices ignored,
   zero failures.
+- GitHub required checks passed on macOS, Windows and Linux before PR #53 merged.
