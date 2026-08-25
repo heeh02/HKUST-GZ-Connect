@@ -74,6 +74,29 @@ fn gateway_http_is_neutral_to_probe_transport_and_local_frontends() {
 }
 
 #[test]
+fn gateway_connector_is_profile_bound_but_credential_and_transport_neutral() {
+    let connector = source("src/gateway_connector.rs");
+    for forbidden in [
+        "crate::credentials",
+        "crate::gateway_auth",
+        "crate::probe",
+        "crate::modern",
+        "crate::special_tls11",
+        "crate::engine::socks",
+        "crate::engine::dns",
+        "std::env",
+    ] {
+        assert!(
+            !connector.contains(forbidden),
+            "Gateway connector imports {forbidden}"
+        );
+    }
+    assert!(connector.contains(".no_proxy()"));
+    assert!(connector.contains(".resolve_to_addrs("));
+    assert!(connector.contains("peer_allowed"));
+}
+
+#[test]
 fn credential_input_is_neutral_to_gateway_and_protocol_layers() {
     let credentials = source("src/credentials.rs");
     for forbidden in [

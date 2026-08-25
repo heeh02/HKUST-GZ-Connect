@@ -5,6 +5,7 @@ pub mod config;
 pub mod credentials;
 pub mod engine;
 pub mod gateway_auth;
+pub mod gateway_connector;
 pub mod gateway_http;
 pub mod modern;
 pub mod probe;
