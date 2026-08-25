@@ -17,7 +17,7 @@ const {
 const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,
-} = require('../lib/school-profile-schema');
+} = require('../lib/profiles/schema/school-profile-schema');
 const {
   validateLegacyCredentialRollbackState,
 } = require('../lib/legacy-credential-rollback-state');

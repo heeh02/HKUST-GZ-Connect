@@ -5,19 +5,19 @@ const path = require('node:path');
 const { CustomSchoolProfileRegistry } = require('./custom-school-profile-registry');
 const {
   loadProfileWorkspaceAuthorityByKeys,
-} = require('./profile-workspace-runtime-authority');
+} = require('../../profile-workspace-runtime-authority');
 const { ReviewedProfileAnchorStore } = require('./reviewed-profile-anchor-store');
 const { SchoolProfileRegistry } = require('./school-profile-registry');
-const { verifyEngineConfigBinding } = require('./school-profile-runtime');
+const { verifyEngineConfigBinding } = require('../runtime/school-profile-runtime');
 const {
   createSchoolProfileView,
   validateOpaqueKey,
   validateSchoolProfileDocument,
-} = require('./school-profile-schema');
+} = require('../schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 function engineLaunchBinding(record) {
   const stdinFrame = JSON.stringify({

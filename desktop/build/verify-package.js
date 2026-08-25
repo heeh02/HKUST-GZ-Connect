@@ -10,8 +10,8 @@ const { parseBuiltinResourceDocument } = require('../lib/campus-resource-contrac
 const {
   normalizeGatewayOrigin,
   validateSchoolProfileDocument,
-} = require('../lib/school-profile-schema');
-const { normalizeManifest } = require('../lib/school-profile-registry');
+} = require('../lib/profiles/schema/school-profile-schema');
+const { normalizeManifest } = require('../lib/profiles/registry/school-profile-registry');
 
 const FORBIDDEN_TEST_RESOURCE = /(?:^|\/)(?:e2e|tests?|fixtures?|synthetic|fake[-_]?gateway|test[-_]?ca|pki)(?:\/|[-_.])|(?:^|\/)private[-_]?key(?:$|[-_.\/])|\.(?:pem|key|p12|pfx)$/iu;
 const TEST_ONLY_ENGINE_MARKER = 'HKUSTGZ_TEST_ONLY_ENGINE_LIFECYCLE_V1';
@@ -354,11 +354,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/desktop-shell.js',
     '/lib/windows-private-file.js',
     '/lib/campus-browser-manager.js',
-    '/lib/school-profile-schema.js',
+    '/lib/profiles/schema/school-profile-schema.js',
     '/lib/campus-resource-contract.js',
-    '/lib/school-profile-registry.js',
-    '/lib/school-profile-runtime.js',
-    '/lib/school-profile-controller.js',
+    '/lib/profiles/registry/school-profile-registry.js',
+    '/lib/profiles/runtime/school-profile-runtime.js',
+    '/lib/profiles/runtime/school-profile-controller.js',
     '/lib/control-state-snapshot.js',
     '/lib/connection-telemetry-coordinator.js',
     '/lib/engine-protocol-session.js',

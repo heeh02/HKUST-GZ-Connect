@@ -5,10 +5,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { CustomSchoolProfileRegistry } = require('../lib/custom-school-profile-registry');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { CustomGatewayConfirmationOwner } = require('../../../lib/custom-gateway-onboarding');
+const { CustomProfileProvisioningRuntime } = require('../../../lib/custom-profile-provisioning-runtime');
+const { CustomSchoolProfileRegistry } = require('../../../lib/profiles/registry/custom-school-profile-registry');
+const { PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
 
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-school-registry-'));

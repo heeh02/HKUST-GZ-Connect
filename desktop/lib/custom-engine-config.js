@@ -6,7 +6,7 @@ const { readPrivateFileBounded } = require('./private-file');
 const {
   PROTOCOL_FAMILY,
   validateSchoolProfileDocument,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 const { verifyWindowsFileOwnerOnly } = require('./windows-private-file');
 
 const CUSTOM_ENGINE_CONFIG_VERSION = 1;

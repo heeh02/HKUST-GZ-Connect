@@ -21,7 +21,7 @@ const {
 const {
   validateCampusAccountDocument,
   validateWorkspaceScopeDocument,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 const { encryptVpnCredentialEnvelope } = require('./vpn-credential-envelope');
 
 const LEGACY_COPY_SOURCE_IDS = Object.freeze([

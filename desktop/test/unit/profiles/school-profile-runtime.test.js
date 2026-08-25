@@ -6,14 +6,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
-const { SchoolProfileRegistry } = require('../lib/school-profile-registry');
+const { SchoolProfileRegistry } = require('../../../lib/profiles/registry/school-profile-registry');
 const {
   createActiveSchoolProfileContext,
   readRegularFileNoFollow,
   verifyEngineConfigBinding,
-} = require('../lib/school-profile-runtime');
+} = require('../../../lib/profiles/runtime/school-profile-runtime');
 
-const desktopRoot = path.join(__dirname, '..');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..');
 
 function copyConfig(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-profile-runtime-'));

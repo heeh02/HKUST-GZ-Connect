@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { CustomProfileIndexStore } = require('../lib/custom-profile-index');
+const { CustomProfileIndexStore } = require('../lib/profiles/registry/custom-profile-index');
 const { CustomProfileMaterializer } = require('../lib/custom-profile-materializer');
 const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
 const {
@@ -16,7 +16,7 @@ const {
   createCustomProfileProvisioningIdentity,
   createCustomProfileProvisioningPlan,
 } = require('../lib/custom-profile-provisioning-plan');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-profile-storage-'));

@@ -44,7 +44,7 @@ const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
 const { savePacFile } = require('./lib/pac-file');
 const { pacDataUrl } = require('./lib/browser-session-manager');
 const { CampusBrowserManager } = require('./lib/campus-browser-manager');
-const { createPreReadySchoolProfileController } = require('./lib/school-profile-controller');
+const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
   createControlStateSnapshot,
   createExternalIntegrationRuntime,

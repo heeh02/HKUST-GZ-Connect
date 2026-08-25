@@ -3,14 +3,14 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./credential-store');
-const { ensurePrivateDirectoryChain } = require('./private-directory');
-const { readPrivateFileBounded } = require('./private-file');
-const { validateOpaqueKey, validateProfileId } = require('./school-profile-schema');
+const { atomicWritePrivateFile } = require('../../credential-store');
+const { ensurePrivateDirectoryChain } = require('../../private-directory');
+const { readPrivateFileBounded } = require('../../private-file');
+const { validateOpaqueKey, validateProfileId } = require('../schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const CUSTOM_PROFILE_INDEX_VERSION = 1;
 const MAX_CUSTOM_PROFILE_INDEX_BYTES = 256 * 1024;

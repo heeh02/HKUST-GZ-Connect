@@ -6,7 +6,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 const { LEGACY_HKUST_BROWSER_PARTITION } = require('./profile-workspace-layout');
 
 const MIGRATION_JOURNAL_VERSION = 1;

@@ -224,8 +224,8 @@ run().then(
   (error) => {
     clearTimeout(hardTimeout);
     process.stderr.write(`${error.stack || error}\n`);
-    app.exitCode = 1;
-    app.quit();
+    process.exitCode = 1;
+    app.exit(1);
   },
 );
 

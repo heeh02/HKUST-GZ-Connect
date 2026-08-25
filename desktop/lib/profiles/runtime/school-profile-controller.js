@@ -3,23 +3,23 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { CAMPUS_PARTITION } = require('./campus-route');
-const { mergeCampusResources, projectCampusResources } = require('./campus-resources');
+const { CAMPUS_PARTITION } = require('../../campus-route');
+const { mergeCampusResources, projectCampusResources } = require('../../campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
-const { ProfileCandidateDirectory } = require('./profile-candidate-directory');
-const { verifyPrivateDirectoryChain } = require('./private-directory');
-const { validateGlobalSettingsDocument } = require('./profile-workspace-documents');
-const { readPrivateFileBounded } = require('./private-file');
+const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
+const { verifyPrivateDirectoryChain } = require('../../private-directory');
+const { validateGlobalSettingsDocument } = require('../../profile-workspace-documents');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 const {
   createCapabilitySnapshot,
   createLegacyPrimaryAccountView,
   createLegacyWorkspaceView,
   createSchoolProfileView,
-} = require('./school-profile-schema');
+} = require('../schema/school-profile-schema');
 
 const CURRENT_PROFILE_CAPABILITIES = new Set(['auth.password', 'transport.l3']);
 

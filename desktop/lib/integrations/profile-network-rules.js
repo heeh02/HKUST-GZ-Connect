@@ -12,7 +12,7 @@ const {
   normalizeGatewayOrigin,
   validateProfileId,
   validateSchoolProfileDocument,
-} = require('../school-profile-schema');
+} = require('../profiles/schema/school-profile-schema');
 
 const PROFILE_NETWORK_RULES_VERSION = 1;
 const MAX_CAMPUS_CIDRS = 64;

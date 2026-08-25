@@ -7,7 +7,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateSchoolProfileDocument,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 
 const CUSTOM_PROFILE_PROVISIONING_JOURNAL_VERSION = 1;
 const CUSTOM_PROFILE_PROVISIONING_TYPE = 'custom_profile_provisioning';

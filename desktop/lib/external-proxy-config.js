@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { atomicWritePrivateFile } = require('./credential-store');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('./private-file');
-const { validateProfileId } = require('./school-profile-schema');
+const { validateProfileId } = require('./profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,

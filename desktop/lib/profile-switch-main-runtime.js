@@ -3,7 +3,7 @@
 const { ActiveContextActivationStore } = require('./active-context-activation-store');
 const { ActiveContextSwitchBarrier } = require('./active-context-switch-barrier');
 const { ActiveContextSwitchJournalStore } = require('./active-context-switch-store');
-const { ProfileCandidateDirectory } = require('./profile-candidate-directory');
+const { ProfileCandidateDirectory } = require('./profiles/registry/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('./profile-switch-runtime');
 
 function persistentContextFromAuthority(authority) {

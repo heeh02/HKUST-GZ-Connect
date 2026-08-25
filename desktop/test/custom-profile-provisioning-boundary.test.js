@@ -15,7 +15,7 @@ test('custom Profile provisioning is credential Engine Browser and Renderer neut
     'custom-profile-provisioning-journal.js',
     'custom-profile-provisioning-store.js',
     'custom-profile-materializer.js',
-    'custom-profile-index.js',
+    'profiles/registry/custom-profile-index.js',
     'custom-profile-provisioning-runtime.js',
   ];
   const combined = files.map(source).join('\n');
@@ -32,8 +32,8 @@ test('custom Profile provisioning is credential Engine Browser and Renderer neut
   assert.equal(combined.includes('autoConnect: false'), true);
 });
 
-test('production Main cannot activate unfinished custom provisioning yet', () => {
+test('production Main activates provisioning through composition instead of low-level stores', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
   assert.equal(main.includes("require('./lib/custom-profile-provisioning-runtime')"), false);
-  assert.equal(main.includes("require('./lib/custom-profile-index')"), false);
+  assert.equal(main.includes("require('./lib/profiles/registry/custom-profile-index')"), false);
 });

@@ -2,7 +2,7 @@
 
 const net = require('node:net');
 const { domainToASCII } = require('node:url');
-const { validateBuiltinResourcesRef } = require('./campus-resource-contract');
+const { validateBuiltinResourcesRef } = require('../../campus-resource-contract');
 
 const PROFILE_SCHEMA_VERSION = 1;
 const CAMPUS_ACCOUNT_SCHEMA_VERSION = 1;

@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('node:path');
-const { normalizeGatewayOrigin } = require('./school-profile-schema');
+const { normalizeGatewayOrigin } = require('./profiles/schema/school-profile-schema');
 
 const DEFAULT_GATEWAY_PROBE_TIMEOUT_MS = 12_000;
 const MAX_GATEWAY_PROBE_OUTPUT_BYTES = 64 * 1024;

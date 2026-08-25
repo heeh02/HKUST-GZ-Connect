@@ -11,10 +11,10 @@ const { ActiveContextSwitchBarrier } = require('../lib/active-context-switch-bar
 const { ActiveContextSwitchJournalStore } = require('../lib/active-context-switch-store');
 const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
 const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { ProfileCandidateDirectory } = require('../lib/profile-candidate-directory');
+const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('../lib/profile-switch-runtime');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 const { saveSettings } = require('../lib/settings-store');
 
 const DESKTOP = path.join(__dirname, '..');

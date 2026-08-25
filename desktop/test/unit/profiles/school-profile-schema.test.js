@@ -16,7 +16,7 @@ const {
   validateCampusAccountDocument,
   validateSchoolProfileDocument,
   validateWorkspaceScopeDocument,
-} = require('../lib/school-profile-schema');
+} = require('../../../lib/profiles/schema/school-profile-schema');
 
 const ACCOUNT_KEY = 'account_7p4m2x9c6v8n3k5j1q0w';
 const WORKSPACE_KEY = 'workspace_4c8m2v7n5x9k3q1p6j0w';

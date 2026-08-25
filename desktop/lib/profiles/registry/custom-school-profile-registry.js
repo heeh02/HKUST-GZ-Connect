@@ -2,22 +2,22 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { verifyCustomEngineConfigFile } = require('./custom-engine-config');
+const { verifyCustomEngineConfigFile } = require('../../custom-engine-config');
 const { CustomProfileIndexStore } = require('./custom-profile-index');
-const { verifyPrivateDirectoryChain } = require('./private-directory');
-const { readPrivateFileBounded } = require('./private-file');
+const { verifyPrivateDirectoryChain } = require('../../private-directory');
+const { readPrivateFileBounded } = require('../../private-file');
 const {
   loadProfileWorkspaceAuthorityByKeys,
-} = require('./profile-workspace-runtime-authority');
-const { validateProfileSettingsDocument } = require('./profile-workspace-documents');
+} = require('../../profile-workspace-runtime-authority');
+const { validateProfileSettingsDocument } = require('../../profile-workspace-documents');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,
-} = require('./school-profile-schema');
+} = require('../schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./windows-private-file');
+} = require('../../windows-private-file');
 
 const MAX_CUSTOM_PROFILE_DOCUMENT_BYTES = 256 * 1024;
 

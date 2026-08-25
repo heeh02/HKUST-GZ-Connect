@@ -17,7 +17,7 @@ const {
   validateProfileId,
   validateSchoolProfileDocument,
   validateWorkspaceScopeDocument,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 
 const CUSTOM_PROFILE_PROVISIONING_VERSION = 1;
 const CUSTOM_PROFILE_FILE_IDS = Object.freeze([

@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const electron = require('electron');
-const { ProfileCandidateDirectory } = require('../lib/profile-candidate-directory');
+const { ProfileCandidateDirectory } = require('../lib/profiles/registry/profile-candidate-directory');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/profile-workspace-startup-runtime');
 const { saveSettings } = require('../lib/settings-store');
 

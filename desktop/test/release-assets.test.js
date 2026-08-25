@@ -124,13 +124,24 @@ test('package verification binds the reviewed school profile before signing', ()
   assert.match(packageVerifier, /assertPackagedSchoolProfile\(archive,/u);
   assert.match(packageVerifier, /packaged external Engine config differs from its profile binding/u);
   assert.match(packageVerifier, /assets\/profiles\/manifest\.json/u);
-  assert.match(packageVerifier, /lib\/school-profile-runtime\.js/u);
-  assert.match(packageVerifier, /lib\/school-profile-controller\.js/u);
+  assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-runtime\.js/u);
+  assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-controller\.js/u);
   assert.match(packageVerifier, /lib\/control-state-snapshot\.js/u);
   assert.match(packageVerifier, /lib\/campus-resource-contract\.js/u);
   assert.match(packageVerifier, /assets\/profiles\/hkustgz\/builtin-resources\.json/u);
   assert.match(packageVerifier, /legacy duplicate campus resource asset entered the package/u);
   assert.match(packageVerifier, /packaged Desktop does not enforce private Engine profile binding/u);
+});
+
+test('Electron gates exit nonzero on assertion failure', () => {
+  for (const relativePath of [
+    'e2e/main-engine-lifecycle.electron.js',
+    'e2e/school-profile-asar.electron.js',
+  ]) {
+    const source = fs.readFileSync(path.join(desktopRoot, relativePath), 'utf8');
+    assert.doesNotMatch(source, /app\.exitCode/u, relativePath);
+    assert.match(source, /app\.exit\(1\)/u, relativePath);
+  }
 });
 
 test('every byte-bound profile asset has deterministic LF checkout semantics', () => {

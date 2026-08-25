@@ -6,7 +6,7 @@ const {
   CustomGatewayConfirmationOwner,
   customProfileDocument,
 } = require('../lib/custom-gateway-onboarding');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 function context(overrides = {}) {
   return {

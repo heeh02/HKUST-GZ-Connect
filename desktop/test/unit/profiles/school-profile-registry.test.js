@@ -8,9 +8,9 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   SchoolProfileRegistry,
-} = require('../lib/school-profile-registry');
+} = require('../../../lib/profiles/registry/school-profile-registry');
 
-const desktopRoot = path.join(__dirname, '..');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..');
 const sourceProfile = JSON.parse(fs.readFileSync(
   path.join(desktopRoot, 'assets', 'profiles', 'hkustgz', 'school-profile.json'),
   'utf8',

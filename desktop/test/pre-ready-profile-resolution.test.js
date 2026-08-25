@@ -12,8 +12,8 @@ const { loadProfileWorkspaceAuthorityByKeys } =
   require('../lib/profile-workspace-runtime-authority');
 const { selectProfileWorkspacePreReadyStorage } =
   require('../lib/profile-workspace-pre-ready-selection');
-const { createPreReadySchoolProfileController } = require('../lib/school-profile-controller');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { createPreReadySchoolProfileController } = require('../lib/profiles/runtime/school-profile-controller');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 const DESKTOP = path.join(__dirname, '..');
 

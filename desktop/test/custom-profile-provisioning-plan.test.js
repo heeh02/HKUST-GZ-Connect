@@ -12,7 +12,7 @@ const {
   createCustomProfileProvisioningIdentity,
   createCustomProfileProvisioningPlan,
 } = require('../lib/custom-profile-provisioning-plan');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+const { PROTOCOL_FAMILY } = require('../lib/profiles/schema/school-profile-schema');
 
 function activeContext() {
   return {

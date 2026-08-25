@@ -7,7 +7,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 const { isValidPort, PROXY_SECURITY_VERSION } = require('./settings-store');
 
 const PROFILE_WORKSPACE_DOCUMENT_VERSION = 1;

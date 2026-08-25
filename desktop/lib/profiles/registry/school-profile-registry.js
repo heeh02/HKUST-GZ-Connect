@@ -3,11 +3,11 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseBuiltinResourceDocument } = require('./campus-resource-contract');
+const { parseBuiltinResourceDocument } = require('../../campus-resource-contract');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,
-} = require('./school-profile-schema');
+} = require('../schema/school-profile-schema');
 
 const REGISTRY_SCHEMA_VERSION = 1;
 const DEFAULT_PROFILE_ID = 'hkustgz';

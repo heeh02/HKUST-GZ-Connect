@@ -6,7 +6,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 
 const VPN_CREDENTIAL_ENVELOPE_VERSION = 1;
 const MAX_ENCRYPTED_ENVELOPE_BYTES = 64 * 1024;

@@ -1,8 +1,8 @@
 'use strict';
 
 const { CustomProfileProvisioningRuntime } = require('./custom-profile-provisioning-runtime');
-const { ProfileCandidateDirectory } = require('./profile-candidate-directory');
-const { validateSchoolProfileDocument } = require('./school-profile-schema');
+const { ProfileCandidateDirectory } = require('./profiles/registry/profile-candidate-directory');
+const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
 
 class MultiSchoolStartupRuntime {
   constructor({

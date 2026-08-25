@@ -7,8 +7,8 @@ const {
   createLegacyPrimaryAccountView,
   createLegacyWorkspaceView,
   normalizeGatewayOrigin,
-} = require('./school-profile-schema');
-const { SchoolProfileRegistry } = require('./school-profile-registry');
+} = require('../schema/school-profile-schema');
+const { SchoolProfileRegistry } = require('../registry/school-profile-registry');
 
 const MAX_ENGINE_CONFIG_BYTES = 256 * 1024;
 const ENGINE_CONFIG_FILES = Object.freeze({

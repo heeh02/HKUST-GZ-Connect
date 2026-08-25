@@ -3,9 +3,9 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const test = require('node:test');
-const { createSchoolProfileController } = require('../lib/school-profile-controller');
+const { createSchoolProfileController } = require('../../../lib/profiles/runtime/school-profile-controller');
 
-const desktopRoot = path.join(__dirname, '..');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..');
 
 function controller(options = {}) {
   return createSchoolProfileController({

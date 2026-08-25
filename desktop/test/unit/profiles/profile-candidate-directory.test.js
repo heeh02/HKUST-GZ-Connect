@@ -5,21 +5,21 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { CustomGatewayConfirmationOwner } = require('../lib/custom-gateway-onboarding');
-const { ActiveContextActivationStore } = require('../lib/active-context-activation-store');
-const { ActiveContextSwitchBarrier } = require('../lib/active-context-switch-barrier');
-const { ActiveContextSwitchJournalStore } = require('../lib/active-context-switch-store');
-const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
-const { ProfileCandidateDirectory } = require('../lib/profile-candidate-directory');
-const { ProfileSwitchRuntime } = require('../lib/profile-switch-runtime');
+const { CustomGatewayConfirmationOwner } = require('../../../lib/custom-gateway-onboarding');
+const { ActiveContextActivationStore } = require('../../../lib/active-context-activation-store');
+const { ActiveContextSwitchBarrier } = require('../../../lib/active-context-switch-barrier');
+const { ActiveContextSwitchJournalStore } = require('../../../lib/active-context-switch-store');
+const { CustomProfileProvisioningRuntime } = require('../../../lib/custom-profile-provisioning-runtime');
+const { ProfileCandidateDirectory } = require('../../../lib/profiles/registry/profile-candidate-directory');
+const { ProfileSwitchRuntime } = require('../../../lib/profile-switch-runtime');
 const {
   createSchoolProfileControllerFromCandidate,
-} = require('../lib/school-profile-controller');
-const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
-const { ReviewedProfileAnchorStore } = require('../lib/reviewed-profile-anchor-store');
-const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
+} = require('../../../lib/profiles/runtime/school-profile-controller');
+const { createProfileAccountWorkspaceLayout } = require('../../../lib/profile-workspace-layout');
+const { ReviewedProfileAnchorStore } = require('../../../lib/profiles/registry/reviewed-profile-anchor-store');
+const { PROTOCOL_FAMILY } = require('../../../lib/profiles/schema/school-profile-schema');
 
-const DESKTOP = path.join(__dirname, '..');
+const DESKTOP = path.resolve(__dirname, '..', '..', '..');
 const PROFILE_KEY = `profile-${'11'.repeat(16)}`;
 const ACCOUNT_KEY = `account-${'22'.repeat(16)}`;
 const WORKSPACE_KEY = `workspace-${'33'.repeat(16)}`;

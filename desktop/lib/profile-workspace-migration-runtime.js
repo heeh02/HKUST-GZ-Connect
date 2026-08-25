@@ -34,7 +34,7 @@ const {
   createLegacyRuntimeStoragePaths,
   createProfileWorkspaceRuntimeStoragePaths,
 } = require('./runtime-storage-paths');
-const { validateSchoolProfileDocument } = require('./school-profile-schema');
+const { validateSchoolProfileDocument } = require('./profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,

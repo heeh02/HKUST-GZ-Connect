@@ -5,7 +5,7 @@ const path = require('node:path');
 const {
   validateOpaqueKey,
   validateProfileId,
-} = require('../school-profile-schema');
+} = require('../profiles/schema/school-profile-schema');
 
 const INTEGRATION_SCHEMA_VERSION = 1;
 const INTEGRATION_ADAPTER_IDS = Object.freeze([

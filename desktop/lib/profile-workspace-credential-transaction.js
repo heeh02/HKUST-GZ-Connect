@@ -7,7 +7,7 @@ const {
   validateOpaqueKey,
   validateProfileId,
   validateProtocolFamily,
-} = require('./school-profile-schema');
+} = require('./profiles/schema/school-profile-schema');
 
 const CREDENTIAL_TRANSACTION_VERSION = 1;
 const MAX_CREDENTIAL_TRANSACTION_BYTES = 512 * 1024;
