@@ -16,9 +16,9 @@ function section(startText, endText) {
   return main.slice(start, end);
 }
 
-test('composition root loads one reviewed profile before credential recovery', () => {
+test('composition root resolves one active Profile before credential recovery', () => {
   const sidecarCleanup = main.indexOf('fs.unlinkSync(legacyRuntimeStoragePaths.proxyHelperCredential)');
-  const profile = main.indexOf('const activeSchoolProfile = createSchoolProfileController(');
+  const profile = main.indexOf('const activeSchoolProfile = createPreReadySchoolProfileController(');
   const recovery = main.indexOf('recoverCredentialSettingsTransaction(');
   assert.ok(sidecarCleanup >= 0 && profile > sidecarCleanup && recovery > profile);
   assert.match(

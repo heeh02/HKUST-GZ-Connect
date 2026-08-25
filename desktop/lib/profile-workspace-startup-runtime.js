@@ -159,11 +159,15 @@ class ProfileWorkspaceStartupRuntime {
 
   #recoverRuntimeTransactions() {
     let accountAuthority = this.#accountAuthority();
-    this.#rollbackStore(accountAuthority).reconcile();
+    const ownsLegacyHkustRollback = this.profile.evidenceClass === 'builtin-reviewed' &&
+      this.profile.profileId === 'hkustgz';
+    if (ownsLegacyHkustRollback) this.#rollbackStore(accountAuthority).reconcile();
     const credentialStore = new ProfileWorkspaceCredentialStore({
       loadAccountAuthority: () => this.#accountAuthority(),
       loadWorkspaceAuthority: () => this.#workspaceAuthority(),
-      retireRollback: ({ authority, reason }) => this.#rollbackStore(authority).retire({ reason }),
+      retireRollback: ({ authority, reason }) => ownsLegacyHkustRollback
+        ? this.#rollbackStore(authority).retire({ reason })
+        : true,
       safeStorage: this.safeStorage,
       fileSystem: this.fileSystem,
       platform: this.platform,

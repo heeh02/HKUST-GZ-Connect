@@ -27,7 +27,7 @@ function tcpPing(host, port) {
 }
 
 function validHealthTargets(value) {
-  return Array.isArray(value) && value.length >= 2 && value.every((target) => (
+  return Array.isArray(value) && (value.length === 0 || value.length >= 2) && value.every((target) => (
     target && typeof target.host === 'string' && target.host &&
     Number.isInteger(target.port) && target.port >= 1 && target.port <= 65535
   ));
@@ -147,6 +147,9 @@ class ConnectionTelemetryCoordinator {
   async checkHealth(generation) {
     if (!this.current(generation) ||
         this.recoveryInFlight?.generation === generation) return undefined;
+    if (this.healthTargets?.length === 0) {
+      return { kind: 'unknown', failedTargets: [] };
+    }
     let proxyPort;
     try { proxyPort = Number(this.getSocksPort()); }
     catch { return { kind: 'settings-unavailable', failedTargets: [] }; }

@@ -33,6 +33,14 @@ function authority() {
   };
 }
 
+function customAuthority() {
+  return {
+    ...authority(),
+    profile: { browser: { campusDomains: [] } },
+    workspaceSettings: { ...authority().workspaceSettings, routeDomains: [] },
+  };
+}
+
 test('runtime settings projection round-trips without persisting the account label', () => {
   const current = projectRuntimeSettings(authority(), { accountLabel: 'synthetic-user' });
   assert.equal(current.username, 'synthetic-user');
@@ -66,4 +74,11 @@ test('runtime settings reject password fields unknown fields and noncanonical va
   assert.throws(() => splitRuntimeSettings(authority(), { ...current, port: 80 }), /canonical/u);
   assert.throws(() => projectRuntimeSettings(authority(), { accountLabel: 'bad\nlabel' }),
     /控制字符|control/u);
+});
+
+test('custom Profile projection and save preserve an explicitly empty campus-domain authority', () => {
+  const current = projectRuntimeSettings(customAuthority());
+  assert.deepEqual(current.routeDomains, []);
+  const split = splitRuntimeSettings(customAuthority(), current);
+  assert.deepEqual(split.workspaceSettings.routeDomains, []);
 });

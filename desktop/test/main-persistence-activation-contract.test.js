@@ -16,7 +16,7 @@ function section(start, end) {
 
 test('pre-ready selection binds every service path before recovery or construction', () => {
   const legacyCleanup = source.indexOf('fs.unlinkSync(legacyRuntimeStoragePaths.proxyHelperCredential)');
-  const profile = source.indexOf('const activeSchoolProfile = createSchoolProfileController(');
+  const profile = source.indexOf('const activeSchoolProfile = createPreReadySchoolProfileController(');
   const selection = source.indexOf('selectProfileWorkspacePreReadyStorage({ userData: DATA, profile })');
   const paths = source.indexOf('const runtimeStoragePaths = preReadyStorage.paths;');
   const recovery = source.indexOf('recoverCredentialSettingsTransaction(CREDENTIAL_TRANSACTION');

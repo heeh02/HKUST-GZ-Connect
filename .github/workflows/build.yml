@@ -81,6 +81,7 @@ jobs:
         working-directory: desktop
         run: |
           npm run test:main-integration
+          npm run test:main-custom-profile
           npm run test:control-renderer-recovery
           npm run test:main-engine-lifecycle
           npm run test:main-network-startup
@@ -102,26 +103,30 @@ jobs:
           cargo build --locked --release --no-default-features --bin ec-engine --target x86_64-apple-darwin
           cargo build --locked --release --no-default-features --bin ec-proxy-command --target aarch64-apple-darwin
           cargo build --locked --release --no-default-features --bin ec-proxy-command --target x86_64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-gateway-probe --target aarch64-apple-darwin
+          cargo build --locked --release --no-default-features --bin ec-gateway-probe --target x86_64-apple-darwin
 
       - name: Build independent engine (Windows)
         if: matrix.platform == 'win'
         shell: pwsh
         working-directory: independent
         run: |
-          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command --bin ec-gateway-probe
           New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
           Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
           Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
+          Copy-Item target/release/ec-gateway-probe.exe ../desktop/engine/ec-gateway-probe-windows-amd64.exe
           Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
 
       - name: Build independent engines (Linux x86_64)
         if: matrix.platform == 'linux'
         working-directory: independent
         run: |
-          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command --bin ec-gateway-probe
           mkdir -p ../desktop/engine
           cp target/release/ec-engine ../desktop/engine/ec-engine-linux-amd64
           cp target/release/ec-proxy-command ../desktop/engine/ec-proxy-command-linux-amd64
+          cp target/release/ec-gateway-probe ../desktop/engine/ec-gateway-probe-linux-amd64
           cp config/hkustgz.json ../desktop/engine/hkustgz.json
 
       # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
@@ -158,12 +163,14 @@ jobs:
             local package_arch="$3"
             mkdir -p engine
             find engine -maxdepth 1 -type f \
-              \( -name 'ec-engine*' -o -name 'ec-proxy-command*' \) \
+              \( -name 'ec-engine*' -o -name 'ec-proxy-command*' -o -name 'ec-gateway-probe*' \) \
               -delete
             cp "../independent/target/${cargo_target}/release/ec-engine" \
               "engine/ec-engine-darwin-${package_arch}"
             cp "../independent/target/${cargo_target}/release/ec-proxy-command" \
               "engine/ec-proxy-command-darwin-${package_arch}"
+            cp "../independent/target/${cargo_target}/release/ec-gateway-probe" \
+              "engine/ec-gateway-probe-darwin-${package_arch}"
             cp ../independent/config/hkustgz.json engine/hkustgz.json
             echo "staged exact macOS ${build_arch} native resources"
           }
@@ -195,6 +202,8 @@ jobs:
           test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-engine-darwin-amd64)" = "x86_64"
           test "$(lipo -archs release/mac-arm64/hkustgzconnect.app/Contents/Resources/engine/ec-proxy-command-darwin-arm64)" = "arm64"
           test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-proxy-command-darwin-amd64)" = "x86_64"
+          test "$(lipo -archs release/mac-arm64/hkustgzconnect.app/Contents/Resources/engine/ec-gateway-probe-darwin-arm64)" = "arm64"
+          test "$(lipo -archs release/mac/hkustgzconnect.app/Contents/Resources/engine/ec-gateway-probe-darwin-amd64)" = "x86_64"
 
       - name: Verify packaged macOS applications
         if: matrix.platform == 'mac'

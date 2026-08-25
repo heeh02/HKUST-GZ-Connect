@@ -116,6 +116,17 @@ test('disabled recovery and stale generations never restart the Engine', async (
   assert.equal(await stale.coordinator.checkHealth(7), undefined);
 });
 
+test('an unreviewed custom Profile with no health targets performs no invented probe', async () => {
+  const f = fixture({
+    healthTargets: [],
+    runHealthRound: async () => { throw new Error('health probe must stay disabled'); },
+  });
+  f.coordinator.start(7, CONTEXT_TOKEN);
+  assert.deepEqual(await f.coordinator.checkHealth(7), { kind: 'unknown', failedTargets: [] });
+  assert.equal(f.calls.some(([name]) => name === 'health'), false);
+  assert.equal(f.calls.some(([name]) => name === 'reconnect'), false);
+});
+
 test('telemetry requires and forwards the exact active context token', async () => {
   const observed = [];
   const f = fixture({

@@ -12,6 +12,9 @@ const { ActiveContextSwitchJournalStore } = require('../lib/active-context-switc
 const { CustomProfileProvisioningRuntime } = require('../lib/custom-profile-provisioning-runtime');
 const { ProfileCandidateDirectory } = require('../lib/profile-candidate-directory');
 const { ProfileSwitchRuntime } = require('../lib/profile-switch-runtime');
+const {
+  createSchoolProfileControllerFromCandidate,
+} = require('../lib/school-profile-controller');
 const { createProfileAccountWorkspaceLayout } = require('../lib/profile-workspace-layout');
 const { ReviewedProfileAnchorStore } = require('../lib/reviewed-profile-anchor-store');
 const { PROTOCOL_FAMILY } = require('../lib/school-profile-schema');
@@ -142,6 +145,27 @@ test('reviewed anchor and custom index form one restart-safe candidate directory
     assert.deepEqual(record.context, custom.context);
     assert.equal(JSON.parse(record.engineLaunchBinding.stdinFrame).profileId, custom.profileId);
   });
+
+  const customController = createSchoolProfileControllerFromCandidate({
+    directory: candidates,
+    profileId: custom.profileId,
+    randomBytes: (length) => Buffer.alloc(length, 7),
+  });
+  assert.equal(customController.browserHomeUrl, null);
+  assert.deepEqual(customController.defaultRouteDomains, []);
+  assert.equal(customController.browserPartition.startsWith('persist:campus-workspace-'), true);
+  assert.equal(customController.activeContextBinding().activeContextEpoch, 1);
+  assert.equal(JSON.parse(customController.verifyEngineLaunchBinding().stdinFrame).profileId,
+    custom.profileId);
+  assert.equal(customController.createPresentation({ locale: 'en' }).schoolProfile.unverified, true);
+
+  const reviewedController = createSchoolProfileControllerFromCandidate({
+    directory: candidates,
+    profileId: 'hkustgz',
+    randomBytes: (length) => Buffer.alloc(length, 8),
+  });
+  assert.equal(reviewedController.browserPartition, 'persist:hkustgz-campus-browser');
+  assert.equal(reviewedController.builtInResourceCount > 0, true);
 
   const restarted = directory(userData);
   assert.deepEqual(restarted.listViews({ locale: 'en' }).map((view) => view.profileId),

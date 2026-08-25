@@ -11,6 +11,7 @@ const { SchoolProfileRegistry } = require('./school-profile-registry');
 const { verifyEngineConfigBinding } = require('./school-profile-runtime');
 const {
   createSchoolProfileView,
+  validateOpaqueKey,
   validateSchoolProfileDocument,
 } = require('./school-profile-schema');
 const {
@@ -109,6 +110,21 @@ class ProfileCandidateDirectory {
     return Object.freeze([...reviewed, ...custom]);
   }
 
+  resolveProfileIdByKey(profileKey) {
+    const key = validateOpaqueKey(profileKey, 'active profileKey');
+    const matches = [
+      ...this.anchorStore.read().entries,
+      ...this.customRegistry.indexStore.read().entries,
+    ].filter((entry) => entry.profileKey === key);
+    if (matches.length > 1) throw new Error('active profileKey has ambiguous ownership');
+    return matches[0]?.profileId || null;
+  }
+
+  hasAnyCandidates() {
+    return this.anchorStore.read().entries.length > 0 ||
+      this.customRegistry.indexStore.read().entries.length > 0;
+  }
+
   withCandidate(profileId, callback) {
     if (typeof callback !== 'function') throw new TypeError('Profile candidate callback is required');
     const anchor = this.anchorStore.get(profileId);
@@ -132,6 +148,7 @@ class ProfileCandidateDirectory {
       record = this.customRegistry.reload().withProfile(profileId, (custom) => Object.freeze({
         ...custom,
         kind: 'custom-local',
+        builtInResources: Object.freeze([]),
         view: createSchoolProfileView(custom.sourceDocument, {
           locale: 'en', compatibility: 'candidate',
         }),
@@ -161,6 +178,7 @@ class ProfileCandidateDirectory {
       sourceDocument,
       authority,
       engineConfig,
+      builtInResources: this.packagedRegistry.getBuiltinResources(profile.profileId),
       context: Object.freeze({
         profileId: profile.profileId,
         profileKey: authority.layout.identity.profileKey,

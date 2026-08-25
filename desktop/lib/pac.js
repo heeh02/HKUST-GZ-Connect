@@ -47,7 +47,7 @@ function normalizeRouteDomains(input, defaultDomains = DEFAULT_ROUTE_DOMAINS) {
 }
 
 function buildPac(routeDomains, port, options = {}) {
-  const domains = normalizeRouteDomains(routeDomains);
+  const domains = normalizeRouteDomains(routeDomains, options.schoolDomains);
   const proxyPort = Number.isInteger(port) && port >= 1025 && port <= 65535 ? port : 1080;
   return buildDomainRoutePac({ ...options, schoolDomains: domains }, proxyPort, {
     defaultRoute: ROUTE_DIRECT,

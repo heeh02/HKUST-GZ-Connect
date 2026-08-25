@@ -602,6 +602,16 @@ function loadingState(scripts) {
   return { loading: state.loading, slow: state.slow };
 }
 
+test('a custom local blank home keeps every new tab on the non-network direct route', async () => {
+  const { browser } = createFakeBrowser({ homeUrl: 'about:blank' });
+  await browser.open('about:blank', 1080, ROUTE_DIRECT);
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.activeTab().view.webContents.getURL(), 'about:blank');
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+});
+
 test('a load slower than ten seconds is flagged per tab', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { browser, scripts } = createFakeBrowser();

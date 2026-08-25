@@ -18,6 +18,7 @@
     "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
     "test:main-integration": "electron e2e/main-integration.electron.js",
+    "test:main-custom-profile": "electron e2e/main-custom-profile.electron.js",
     "test:main-engine-lifecycle": "electron e2e/main-engine-lifecycle.electron.js",
     "test:main-network-startup": "electron e2e/main-network-startup.electron.js",
     "test:persistence-migration": "electron e2e/persistence-migration.electron.js",
@@ -66,6 +67,8 @@
           "ec-engine.exe",
           "ec-proxy-command-*",
           "ec-proxy-command.exe",
+          "ec-gateway-probe-*",
+          "ec-gateway-probe.exe",
           "hkustgz.json"
         ]
       }

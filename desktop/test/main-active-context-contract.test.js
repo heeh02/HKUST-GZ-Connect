@@ -15,7 +15,7 @@ function section(start, end) {
 }
 
 test('Main creates one Profile-bound lease before persistence and connection services', () => {
-  const profile = source.indexOf('const activeSchoolProfile = createSchoolProfileController(');
+  const profile = source.indexOf('const activeSchoolProfile = createPreReadySchoolProfileController(');
   const lease = source.indexOf(
     'new ActiveContextLease(activeSchoolProfile.activeContextBinding())',
   );

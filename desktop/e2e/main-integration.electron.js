@@ -132,7 +132,7 @@ async function run() {
     route: 'direct',
   })`);
   assert.equal(directWithoutTunnel.ok, false,
-    'even a DIRECT first page must establish the tunnel before preserving a later SAML return');
+    'a remote DIRECT first page still establishes the tunnel for a later SAML return');
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), false);

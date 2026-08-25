@@ -46,6 +46,8 @@ test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux Ap
     /ec-proxy-command-linux-amd64/,
     'the Linux SSH proxy helper must use the packaged name',
   );
+  assert.match(workflow, /ec-gateway-probe-linux-amd64/,
+    'the credential-free Gateway probe must use the packaged Linux name');
   assert.match(workflow, /Build \(Linux AppImage x86_64\)/, 'cloud build needs a required AppImage step');
   assert.match(workflow, /release\/linux-unpacked\/resources linux x64/, 'the unpacked Linux package must be verified');
   assert.deepEqual(

@@ -20,14 +20,20 @@ function plainObject(value, name) {
   return value;
 }
 
-function exactLegacySettings(value) {
+function profileRouteDomains(authority) {
+  return Array.isArray(authority?.profile?.browser?.campusDomains)
+    ? authority.profile.browser.campusDomains
+    : DEFAULTS.routeDomains;
+}
+
+function exactLegacySettings(value, defaultRouteDomains) {
   const source = plainObject(value, 'runtime settings projection');
   const keys = Object.keys(source).sort();
   if (keys.length !== LEGACY_SETTINGS_KEYS.length ||
       keys.some((key, index) => key !== LEGACY_SETTINGS_KEYS[index])) {
     throw new TypeError('runtime settings projection has an invalid schema');
   }
-  const normalized = normalizeSettings(source);
+  const normalized = normalizeSettings(source, { defaultRouteDomains });
   if (!isDeepStrictEqual(source, normalized)) {
     throw new TypeError('runtime settings projection is not canonical');
   }
@@ -71,12 +77,12 @@ function projectRuntimeSettings(authorityValue, { accountLabel = '' } = {}) {
     updateCheckedAt: update.checkedAt,
     routeDomains: workspace.routeDomains,
     customResources: local.resources,
-  }));
+  }, { defaultRouteDomains: profileRouteDomains(authority) }));
 }
 
 function splitRuntimeSettings(authorityValue, settingsValue) {
   const authority = validateAuthority(authorityValue);
-  const settings = exactLegacySettings(settingsValue);
+  const settings = exactLegacySettings(settingsValue, profileRouteDomains(authority));
   return Object.freeze({
     globalSettings: validateGlobalSettingsDocument({
       ...authority.globalSettings,

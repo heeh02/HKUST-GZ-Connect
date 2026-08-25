@@ -450,14 +450,19 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   const extension = platformName === 'windows' ? '.exe' : '';
   const engineName = `ec-engine-${platformName}-${architectureName}${extension}`;
   const proxyCommandName = `ec-proxy-command-${platformName}-${architectureName}${extension}`;
+  const gatewayProbeName = `ec-gateway-probe-${platformName}-${architectureName}${extension}`;
   const engine = path.join(resources, 'engine', engineName);
   const proxyCommand = path.join(resources, 'engine', proxyCommandName);
+  const gatewayProbe = path.join(resources, 'engine', gatewayProbeName);
   assertExactNativeResources(path.join(resources, 'engine'), [
     engineName,
     proxyCommandName,
+    gatewayProbeName,
     'hkustgz.json',
   ]);
-  for (const [label, executable] of [['engine', engine], ['SSH proxy helper', proxyCommand]]) {
+  for (const [label, executable] of [
+    ['engine', engine], ['SSH proxy helper', proxyCommand], ['Gateway probe', gatewayProbe],
+  ]) {
     if (!fs.existsSync(executable) || !fs.statSync(executable).isFile() || fs.statSync(executable).size === 0) {
       throw new Error(`missing packaged ${label}: ${executable}`);
     }
@@ -466,7 +471,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   assertPackagedSchoolProfile(archive, path.join(resources, 'engine', 'hkustgz.json'));
 
   if (platformName === 'windows') {
-    for (const executable of [engine, proxyCommand]) {
+    for (const executable of [engine, proxyCommand, gatewayProbe]) {
       const header = fs.readFileSync(executable);
       const peOffset = header.length >= 0x40 ? header.readUInt32LE(0x3c) : -1;
       const signature = peOffset >= 0 && peOffset + 6 <= header.length
@@ -481,11 +486,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
       }
     }
   } else if (platformName === 'linux') {
-    for (const executable of [engine, proxyCommand]) {
+    for (const executable of [engine, proxyCommand, gatewayProbe]) {
       assertLinuxElfArchitecture(executable, architectureName);
     }
   } else if (platformName === 'darwin') {
-    for (const executable of [engine, proxyCommand]) {
+    for (const executable of [engine, proxyCommand, gatewayProbe]) {
       assertMacSystemOnlyDylibs(executable);
     }
   }

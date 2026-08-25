@@ -68,6 +68,22 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
 });
 
+test('custom Profile uses its isolated partition and a local blank home without network fallback', async () => {
+  const partition = `persist:campus-workspace-${'1'.repeat(32)}`;
+  let connectionCalls = 0;
+  const f = fixture({
+    homeUrl: null,
+    browserPartition: partition,
+    ensureConnected: async () => { connectionCalls += 1; return { ok: true }; },
+  });
+  const result = await f.manager.open();
+  assert.equal(result.url, 'about:blank');
+  assert.equal(f.manager.browser.options.homeUrl, 'about:blank');
+  assert.equal(f.manager.browser.options.partition, partition);
+  assert.deepEqual(f.manager.browser.opens, [['about:blank', 6180, 'direct']]);
+  assert.equal(connectionCalls, 0);
+});
+
 test('route, connection and browser failures return bounded UI results', async () => {
   const route = fixture({ resolveRoute: () => { throw new Error('route-failed'); } });
   assert.deepEqual(await route.manager.open('https://x.test'), {

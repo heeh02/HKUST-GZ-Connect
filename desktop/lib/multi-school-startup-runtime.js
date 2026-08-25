@@ -49,17 +49,27 @@ class MultiSchoolStartupRuntime {
       throw new TypeError('active reviewed Profile access must be synchronous');
     }
     const profile = validateSchoolProfileDocument(sourceDocument);
-    if (profile.evidenceClass !== 'builtin-reviewed' ||
-        authority.profile?.profileId !== profile.profileId ||
+    if (authority.profile?.profileId !== profile.profileId ||
         authority.profile?.profileRevision !== profile.profileRevision) {
-      throw new Error('startup reviewed Profile does not match persistence authority');
+      throw new Error('startup Profile does not match persistence authority');
     }
     const directory = new this.CandidateDirectoryClass(this.options);
-    directory.anchorReviewedCurrent({
-      profileId: profile.profileId,
-      profileKey: authority.globalSettings.activeProfileKey,
-      accountKey: authority.globalSettings.activeAccountKey,
-    });
+    if (profile.evidenceClass === 'builtin-reviewed') {
+      directory.anchorReviewedCurrent({
+        profileId: profile.profileId,
+        profileKey: authority.globalSettings.activeProfileKey,
+        accountKey: authority.globalSettings.activeAccountKey,
+      });
+    } else {
+      let matched = false;
+      directory.withCandidate(profile.profileId, (record) => {
+        matched = record.context.profileKey === authority.layout.identity.profileKey &&
+          record.context.accountKey === authority.account.accountKey &&
+          record.context.workspaceKey === authority.account.workspaceKey &&
+          record.context.activeContextEpoch === authority.workspaceState.activeContextEpoch;
+      });
+      if (!matched) throw new Error('startup custom Profile candidate does not match authority');
+    }
     this.directory = directory;
     this.state = Object.freeze({
       ready: true,

@@ -45,7 +45,7 @@ const { DomainRoutePolicyStore } = require('./lib/domain-route-policy');
 const { savePacFile } = require('./lib/pac-file');
 const { pacDataUrl } = require('./lib/browser-session-manager');
 const { CampusBrowserManager } = require('./lib/campus-browser-manager');
-const { createSchoolProfileController } = require('./lib/school-profile-controller');
+const { createPreReadySchoolProfileController } = require('./lib/school-profile-controller');
 const {
   createControlStateSnapshot,
   registerControlDataIpc,
@@ -108,7 +108,8 @@ const legacyRuntimeStoragePaths = createLegacyRuntimeStoragePaths(DATA);
 try { fs.unlinkSync(legacyRuntimeStoragePaths.proxyHelperCredential); } catch (error) {
   if (error?.code !== 'ENOENT') { /* strict access fails closed if replacement is unsafe */ }
 }
-const activeSchoolProfile = createSchoolProfileController({
+const activeSchoolProfile = createPreReadySchoolProfileController({
+  userData: DATA,
   packageRoot: __dirname, isPackaged: app.isPackaged,
   resourcesPath: process.resourcesPath, desktopDir: __dirname,
 });
@@ -131,7 +132,6 @@ const ACTIVE_CONTEXT_SWITCH = runtimeStoragePaths.activeContextSwitch;
 const PROXY_CREDENTIAL = runtimeStoragePaths.proxyCredential;
 const PROXY_HELPER_CREDENTIAL = runtimeStoragePaths.proxyHelperCredential;
 const syntheticEngineE2e = !app.isPackaged && process.env[SYNTHETIC_ENGINE_E2E_ENV] === '1';
-
 // The helper sidecar is a short-lived, owner-only plaintext projection of the
 // encrypted stable credential. It is valid only while this app owns (or is
 // about to start) the loopback listener, so never carry it across launches.
@@ -440,7 +440,6 @@ const domainRoutePolicy = new DomainRoutePolicyStore({
   directPartnerDomains: () => activeSchoolProfile.directPartnerDomains,
   serverResources: () => serverCampusResources,
 });
-
 // ---------- engine ----------
 function enginePath() {
   const plat = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
@@ -1272,6 +1271,7 @@ campusBrowserManager = new CampusBrowserManager({
   toolbarPreload: path.join(__dirname, 'lib', 'campus-toolbar-contract.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
   homeUrl: activeSchoolProfile.browserHomeUrl,
+  browserPartition: preReadyStorage.authority?.layout?.browserPartition || activeSchoolProfile.browserPartition,
   routingPolicy: browserRoutingPolicy,
   ensureCampusReady,
   resolveRoute: (url) => domainRoutePolicy.resolve(url),

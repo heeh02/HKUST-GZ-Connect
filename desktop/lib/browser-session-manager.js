@@ -136,6 +136,10 @@ class BrowserSessionManager {
     partition = CAMPUS_PARTITION,
     onSessionReady,
   } = {}) {
+    if (typeof partition !== 'string' || partition.length > 96 ||
+        !/^persist:[a-z0-9-]+$/u.test(partition)) {
+      throw new TypeError('校园浏览器存储分区无效');
+    }
     this.electronSession = session;
     this.routingPolicy = routingPolicy;
     this.partition = partition;

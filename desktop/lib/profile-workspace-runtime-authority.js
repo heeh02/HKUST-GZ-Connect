@@ -193,7 +193,8 @@ function loadActiveProfileAccountAuthority({
     profileKey: globalSettings.activeProfileKey,
     accountKey: globalSettings.activeAccountKey,
     workspaceKey: account.workspaceKey,
-    adoptLegacyHkustBrowserPartition: true,
+    adoptLegacyHkustBrowserPartition: profile.evidenceClass === 'builtin-reviewed' &&
+      profile.profileId === 'hkustgz',
   });
   const workspaceState = readDocument(
     layout.workspace.state,
