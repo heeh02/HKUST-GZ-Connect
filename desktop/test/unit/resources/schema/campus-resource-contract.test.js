@@ -36,7 +36,7 @@ function resource(index, overrides = {}) {
 
 test('the sole reviewed resource document is bounded, frozen and route-compatible', () => {
   const resources = parseBuiltinResourceDocument(fs.readFileSync(sourceFile));
-  assert.equal(resources.length, 6);
+  assert.equal(resources.length, 15);
   assert.equal(resources[0].route, 'campus');
   assert.equal(resources[4].route, 'direct');
   assert.equal(resources[0].category, 'campus-service');
@@ -45,6 +45,10 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
   assert.equal(resources[0].reviewed, true);
   assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: '学校主页' });
   assert.equal(resources[0].iconKey, null);
+  for (const id of [
+    'sis', 'class-schedule', 'grade-reporting', 'exam-scheduling', 'room-booking',
+    'class-enrollment-request', 'thesis-exam', 'academic-edoc', 'ug-major-selection',
+  ]) assert.equal(resources.some((resource) => resource.id === id), true, id);
   assert.equal(Object.isFrozen(resources), true);
   assert.equal(Object.isFrozen(resources[0]), true);
   assert.equal(validateBuiltinResourcesRef('hkustgz-builtin-resources'), 'hkustgz-builtin-resources');

@@ -111,7 +111,7 @@ test('loads the reviewed single-HKUST packaged registry and bounded views', () =
     { host: 'library.hkust-gz.edu.cn', port: 443 },
   ]);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
-  assert.equal(registry.getBuiltinResources('hkustgz').length, 6);
+  assert.equal(registry.getBuiltinResources('hkustgz').length, 15);
   assert.deepEqual(registry.listViews({ locale: 'en', compatibility: 'reviewed' }), [
     {
       schemaVersion: 1,

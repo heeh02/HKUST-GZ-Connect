@@ -8,6 +8,10 @@ authentication, Modern L3, DNS, SOCKS/HTTP frontend or External Tool Integration
 ## Delivered boundaries
 
 - The reviewed resource asset is an exact manifest-bound versioned document.
+- The reviewed HKUST(GZ) catalogue contains 15 entries. Nine academic tools were added only after their exact
+  URLs were confirmed on the official Academic Registry Services Systems & Tools page; the term-coded Final
+  Examination link and the Clear Water Bay grade system were deliberately excluded.
+  Source: [HKUST(GZ) Academic Registry Services — Systems & Tools](https://ars.hkust-gz.edu.cn/systems-tools/).
 - Runtime WebResource values carry version, bounded locale fallbacks, canonical URL, explicit route, closed
   category, bounded keywords, packaged-icon placeholder and reviewed provenance.
 - Stored-resource open IPC accepts only a resource ID. Main re-resolves the current active library and route.

@@ -50,6 +50,78 @@
       "route": "direct",
       "category": "academic",
       "keywords": ["Canvas", "课程", "作业", "教学"]
+    },
+    {
+      "id": "sis",
+      "name": "学生信息系统 SIS",
+      "description": "学籍、选课与个人教务信息",
+      "url": "https://sisn.hkust-gz.edu.cn/auth-sign",
+      "category": "academic",
+      "keywords": ["SIS", "学籍", "选课", "Student Information System"]
+    },
+    {
+      "id": "class-schedule",
+      "name": "课表与课程容量",
+      "description": "查询 Class Schedule 与 Quota",
+      "url": "https://sisn.hkust-gz.edu.cn/cq",
+      "category": "academic",
+      "keywords": ["课表", "课程容量", "Class Schedule", "Quota"]
+    },
+    {
+      "id": "grade-reporting",
+      "name": "成绩报送系统",
+      "description": "广州校区 Grade Reporting System",
+      "url": "https://w3.hkust-gz.edu.cn/ssgs/gradeManage.do",
+      "category": "academic",
+      "keywords": ["成绩", "Grade Reporting", "教师"]
+    },
+    {
+      "id": "exam-scheduling",
+      "name": "考试排程系统",
+      "description": "Exam Scheduling System",
+      "url": "https://ess.hkust-gz.edu.cn/index",
+      "category": "academic",
+      "keywords": ["考试", "排考", "Exam Scheduling"]
+    },
+    {
+      "id": "room-booking",
+      "name": "教室预约系统",
+      "description": "Room Booking System",
+      "url": "https://booking.hkust-gz.edu.cn/front_page",
+      "category": "academic",
+      "keywords": ["教室", "预约", "Room Booking"]
+    },
+    {
+      "id": "class-enrollment-request",
+      "name": "课程注册申请",
+      "description": "Class Enrollment Request",
+      "url": "https://w3.hkust-gz.edu.cn/ssea/insCourseApprovalRequest.do",
+      "category": "academic",
+      "keywords": ["课程注册", "选课申请", "Enrollment Request"]
+    },
+    {
+      "id": "thesis-exam",
+      "name": "论文答辩系统",
+      "description": "Thesis Exam System",
+      "url": "https://thesisexam.hkust-gz.edu.cn/",
+      "category": "academic",
+      "keywords": ["论文", "答辩", "Thesis Exam"]
+    },
+    {
+      "id": "academic-edoc",
+      "name": "教务电子文件申请",
+      "description": "证明、成绩单与在读文件申请",
+      "url": "https://acad-edoc.hkust-gz.edu.cn/index",
+      "category": "academic",
+      "keywords": ["证明", "成绩单", "Transcript", "E-Doc"]
+    },
+    {
+      "id": "ug-major-selection",
+      "name": "本科专业选择系统",
+      "description": "UG Major Selection System",
+      "url": "https://ugms.hkust-gz.edu.cn/",
+      "category": "academic",
+      "keywords": ["本科", "专业选择", "UG Major Selection"]
     }
   ]
 }
