@@ -9,7 +9,7 @@ const {
   certificateTime,
 } = require('../../../../lib/browser/certificates/certificate-controller');
 const { certificateFingerprint } = require('../../../../lib/browser/certificates/campus-certificate-trust');
-const { createT } = require('../../../../lib/i18n');
+const { createT } = require('../../../../lib/platform/i18n/i18n');
 
 const CERTIFICATE_PEM = [
   '-----BEGIN CERTIFICATE-----',

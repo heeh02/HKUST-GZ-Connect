@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { CustomGatewayConfirmationOwner } = require('../lib/profiles/onboarding/custom-gateway-onboarding');
 const { CustomProfileProvisioningRuntime } = require('../lib/profiles/provisioning/custom-profile-provisioning-runtime');
-const { MultiSchoolStartupRuntime } = require('../lib/multi-school-startup-runtime');
+const { MultiSchoolStartupRuntime } = require('../lib/app/startup/multi-school-startup-runtime');
 const { loadProfileWorkspaceAuthorityByKeys } =
   require('../lib/persistence/runtime/profile-workspace-runtime-authority');
 const { selectProfileWorkspacePreReadyStorage } =

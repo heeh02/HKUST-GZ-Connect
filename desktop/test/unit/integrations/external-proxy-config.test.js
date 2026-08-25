@@ -11,7 +11,7 @@ const {
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,
   helperExecutableName,
-} = require('../lib/external-proxy-config');
+} = require('../../../lib/integrations/external-proxy-config');
 
 const material = Object.freeze({
   username: 'A'.repeat(32),

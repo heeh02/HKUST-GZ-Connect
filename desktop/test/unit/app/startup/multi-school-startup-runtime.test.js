@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { MultiSchoolStartupRuntime } = require('../lib/multi-school-startup-runtime');
+const { MultiSchoolStartupRuntime } = require('../../../../lib/app/startup/multi-school-startup-runtime');
 
-const PROFILE = require('../assets/profiles/hkustgz/school-profile.json');
+const PROFILE = require('../../../../assets/profiles/hkustgz/school-profile.json');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 
 function authority() {
   return {
@@ -79,7 +80,7 @@ test('startup rejects asynchronous wrong or custom authority before ordinary ser
 });
 
 test('production startup orders provisioning recovery before logs tray and network', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');
   const start = main.indexOf('app.whenReady().then(() => {');
   const end = main.indexOf("app.on('window-all-closed'", start);
   const source = main.slice(start, end);

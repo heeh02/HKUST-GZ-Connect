@@ -1,17 +1,4 @@
 {
   "schemaVersion": 1,
-  "rootFiles": [
-    "app-connection-enumerator.js",
-    "credential-controller.js",
-    "desktop-shell.js",
-    "external-proxy-config.js",
-    "i18n.js",
-    "log-writer.js",
-    "login-flow.js",
-    "multi-school-startup-runtime.js",
-    "private-log-file.js",
-    "tray-icon.js",
-    "update-check.js",
-    "window-layout.js"
-  ]
+  "rootFiles": []
 }

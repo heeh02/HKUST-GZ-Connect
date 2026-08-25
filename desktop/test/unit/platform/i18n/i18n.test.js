@@ -4,9 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 
-const mainI18n = require('../lib/i18n');
-const rendererI18n = require('../renderer/i18n');
+const mainI18n = require('../../../../lib/platform/i18n/i18n');
+const rendererI18n = require('../../../../renderer/i18n');
 
 for (const [name, mod] of [['main', mainI18n], ['renderer', rendererI18n]]) {
   test(`${name} dictionaries have identical zh/en key sets`, () => {
@@ -65,7 +66,7 @@ test('renderer t interpolates named variables', () => {
 });
 
 function markupKeys(file) {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'renderer', file), 'utf8');
+  const html = fs.readFileSync(path.join(desktopRoot, 'renderer', file), 'utf8');
   const keys = new Set();
   for (const match of html.matchAll(/data-i18n="([^"]+)"/g)) keys.add(match[1]);
   for (const match of html.matchAll(/data-i18n-attr="([^"]+)"/g)) {
@@ -89,7 +90,7 @@ for (const file of ['index.html', 'campus-browser.html']) {
 }
 
 test('both pages load i18n.js before their app script', () => {
-  const renderer = (file) => fs.readFileSync(path.join(__dirname, '..', 'renderer', file), 'utf8');
+  const renderer = (file) => fs.readFileSync(path.join(desktopRoot, 'renderer', file), 'utf8');
   for (const [file, appScript] of [['index.html', 'app.js'], ['campus-browser.html', 'campus-browser.js']]) {
     const html = renderer(file);
     assert.ok(html.indexOf('src="i18n.js"') !== -1, `${file} must load i18n.js`);
@@ -101,6 +102,6 @@ test('both pages load i18n.js before their app script', () => {
 test('main.js never shadows the module-level translator with a local t', () => {
   // Regression: onData once declared `const t = d.toString()`, shadowing the
   // translator and crashing the main process with "t is not a function".
-  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');
   assert.doesNotMatch(main, /\bconst t =/);
 });

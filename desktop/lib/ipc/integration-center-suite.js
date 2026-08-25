@@ -11,7 +11,7 @@ const {
 const {
   buildClashProxyYaml,
   buildSshProxyCommand,
-} = require('../external-proxy-config');
+} = require('../integrations/external-proxy-config');
 
 function selectedFile(result) {
   if (!result || result.canceled === true) return null;

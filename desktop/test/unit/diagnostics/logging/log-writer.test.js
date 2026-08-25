@@ -10,7 +10,7 @@ const {
   DEFAULT_RETENTION_MS,
   readLogTail,
   redactDiagnosticText,
-} = require('../lib/log-writer');
+} = require('../../../../lib/diagnostics/logging/log-writer');
 
 function temporaryLog(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-buffered-log-'));

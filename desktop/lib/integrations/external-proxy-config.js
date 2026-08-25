@@ -3,13 +3,13 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { atomicWritePrivateFile } = require('./persistence/credentials/credential-store');
-const { ensureOwnerOnly, readPrivateFileBounded } = require('./platform/storage/private-file');
-const { validateProfileId } = require('./profiles/schema/school-profile-schema');
+const { atomicWritePrivateFile } = require('../platform/storage/atomic-private-file');
+const { ensureOwnerOnly, readPrivateFileBounded } = require('../platform/storage/private-file');
+const { validateProfileId } = require('../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
-} = require('./platform/storage/windows-private-file');
+} = require('../platform/storage/windows-private-file');
 
 const LOOPBACK_HOST = '127.0.0.1';
 const MAX_PROXY_SIDECAR_BYTES = 1024;

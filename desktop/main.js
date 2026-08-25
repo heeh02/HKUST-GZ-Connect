@@ -30,7 +30,7 @@ const {
 } = require('./lib/connection/engine/engine-output');
 const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/connection/engine/engine-control-suite');
 const { EngineConnectionRuntime } = require('./lib/connection/engine/engine-connection-runtime');
-const { DesktopShell } = require('./lib/desktop-shell');
+const { DesktopShell } = require('./lib/platform/shell/desktop-shell');
 const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveGatewayProbeLaunch, resolveNativeResourcePath } = require('./lib/connection/engine/engine-process');
 const {
   EngineSupervisor,
@@ -56,9 +56,9 @@ const {
   registerSettingsCredentialIpc,
 } = require('./lib/ipc/control-ipc-suite');
 const { ensureOwnerOnly } = require('./lib/platform/storage/private-file');
-const { BufferedLogWriter, readLogTail } = require('./lib/log-writer');
+const { BufferedLogWriter, readLogTail } = require('./lib/diagnostics/logging/log-writer');
 const { STOP_GRACE_MS, STOP_FORCE_WAIT_MS } = require('./lib/connection/state/stop-policy');
-const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/update-check');
+const { AUTO_CHECK_INTERVAL_MS, checkForUpdate, isAllowedReleaseUrl, shouldAutoCheck } = require('./lib/platform/update/update-check');
 const { ConnectivityRecovery } = require('./lib/connection/recovery/connectivity-recovery');
 const { createNetworkStartupSystem } = require('./lib/connection/telemetry/network-status-monitor');
 const { EphemeralProxyCredential, cleanupProxyAccessForEngineClose } = require('./lib/persistence/credentials/proxy-credential');
@@ -68,12 +68,12 @@ const {
 const {
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,
-} = require('./lib/external-proxy-config');
+} = require('./lib/integrations/external-proxy-config');
 const {
   CampusCertificateTrustStore,
 } = require('./lib/browser/certificates/campus-certificate-trust');
 const { routeCertificateError } = require('./lib/browser/certificates/certificate-error-boundary');
-const { createT, effectiveLocale } = require('./lib/i18n');
+const { createT, effectiveLocale } = require('./lib/platform/i18n/i18n');
 const { registerTrustedIpcHandlers } = require('./lib/ipc/ipc-handlers');
 const { RoutingPolicyTransactionQueue } = require('./lib/routing/rules/routing-policy-transaction');
 const { stopEngineAfterBrowserSuspend } = require('./lib/switching/effects/browser-engine-barrier');

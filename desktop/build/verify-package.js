@@ -344,14 +344,14 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/browser/certificates/campus-certificate-trust.js',
     '/lib/browser/credentials/campus-credential-vault.js',
     '/lib/app/desktop-runtime-composition.js',
-    '/lib/i18n.js',
-    '/lib/login-flow.js',
+    '/lib/platform/i18n/i18n.js',
+    '/lib/browser/auth/login-flow.js',
     '/lib/resources/presentation/resource-view.js',
     '/lib/connection/engine/engine-control-client.js',
     '/lib/connection/engine/engine-auth-control-client.js',
     '/lib/connection/engine/engine-connection-runtime.js',
     '/lib/connection/engine/engine-control-suite.js',
-    '/lib/desktop-shell.js',
+    '/lib/platform/shell/desktop-shell.js',
     '/lib/platform/storage/windows-private-file.js',
     '/lib/browser/session/campus-browser-manager.js',
     '/lib/profiles/schema/school-profile-schema.js',
@@ -372,7 +372,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/ipc/campus-resource-ipc.js',
     '/lib/persistence/settings/settings-update.js',
     '/lib/connection/recovery/tunnel-health.js',
-    '/lib/update-check.js',
+    '/lib/platform/update/update-check.js',
     '/renderer/app.js',
     '/renderer/auth-challenge.js',
     '/renderer/manager-view.js',
@@ -412,7 +412,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     throw new Error('packaged Desktop does not enforce private Engine profile binding');
   }
   for (const [helper, source] of [
-    ['login-flow', '../lib/login-flow.js'],
+    ['login-flow', '../lib/browser/auth/login-flow.js'],
     ['resource-view', '../lib/resources/presentation/resource-view.js'],
   ]) {
     if (!packagedIndex.includes(source)) {

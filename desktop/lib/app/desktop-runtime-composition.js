@@ -5,7 +5,7 @@ const { ActiveContextLease } = require('../switching/active-context/active-conte
 const { assertActiveContextSwitchStartupClear } = require('../switching/active-context/active-context-switch-startup');
 const { DesktopPersistenceRuntime } = require('../persistence/runtime/desktop-persistence-runtime');
 const { LegacyMigrationCredentialOwner } = require('../persistence/migration/legacy-hkust/legacy-migration-inputs');
-const { MultiSchoolStartupRuntime } = require('../multi-school-startup-runtime');
+const { MultiSchoolStartupRuntime } = require('./startup/multi-school-startup-runtime');
 const {
   createMainProfileSwitchComposition,
 } = require('../switching/effects/main-profile-switch-composition');

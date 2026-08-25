@@ -6,7 +6,7 @@ const {
   CONTROL_WINDOW,
   clampWindowSize,
   layoutMode,
-} = require('../lib/window-layout');
+} = require('../../../../lib/platform/shell/window-layout');
 
 test('control window uses a resizable bounded compact default', () => {
   assert.deepEqual(CONTROL_WINDOW, {

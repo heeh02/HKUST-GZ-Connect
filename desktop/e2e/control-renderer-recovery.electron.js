@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, Menu, nativeImage } = require('electron');
-const { DesktopShell } = require('../lib/desktop-shell');
+const { DesktopShell } = require('../lib/platform/shell/desktop-shell');
 
 const TIMEOUT_MS = 15_000;
 

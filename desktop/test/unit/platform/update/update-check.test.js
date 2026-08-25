@@ -10,7 +10,7 @@ const {
   compareVersions,
   isAllowedReleaseUrl,
   shouldAutoCheck,
-} = require('../lib/update-check');
+} = require('../../../../lib/platform/update/update-check');
 
 test('compareVersions orders plain numeric versions', () => {
   assert.equal(compareVersions('1.0.7', '1.0.7'), 0);

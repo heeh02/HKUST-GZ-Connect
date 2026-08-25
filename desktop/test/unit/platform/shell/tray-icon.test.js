@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { loadTrayImage, TRAY_SIZE } = require('../lib/tray-icon');
+const { loadTrayImage, TRAY_SIZE } = require('../../../../lib/platform/shell/tray-icon');
 
 test('macOS tray image is explicitly constrained to menu-bar size', () => {
   let requested = null;

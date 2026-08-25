@@ -11,7 +11,7 @@ const { resolveDomainRouteForUrl } = require('../../routing/policy/domain-route-
 const { normalizeRuleHost } = require('../../routing/rules/routing-rule-store');
 const { normalizeToolbarCommand } = require('../toolbar/campus-toolbar-contract');
 const { CertificateController } = require('../certificates/certificate-controller');
-const { CredentialController } = require('../../credential-controller');
+const { CredentialController } = require('../credentials/credential-controller');
 const {
   BrowserSessionManager,
   applyCampusSessionPolicy,
@@ -20,7 +20,7 @@ const {
   pacDataUrl,
 } = require('./browser-session-manager');
 const { DEFAULT_MAX_TABS, TabManager } = require('../tabs/tab-manager');
-const { createT } = require('../../i18n');
+const { createT } = require('../../platform/i18n/i18n');
 const TOOLBAR_HEIGHT = 76;
 const FIND_BAR_HEIGHT = 34;
 const SLOW_LOADING_HINT_MS = 10000;

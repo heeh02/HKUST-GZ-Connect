@@ -7,7 +7,7 @@ const {
   friendlyProcessName,
   parseLsofConnections,
   parseWindowsConnections,
-} = require('../lib/app-connection-enumerator');
+} = require('../../../../lib/diagnostics/telemetry/app-connection-enumerator');
 
 test('lsof parsing counts only exact loopback SOCKS ports and excludes app-owned pids', () => {
   const parsed = parseLsofConnections([

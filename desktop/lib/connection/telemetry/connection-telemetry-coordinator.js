@@ -1,7 +1,7 @@
 'use strict';
 
 const net = require('node:net');
-const { AppConnectionEnumerator } = require('../../app-connection-enumerator');
+const { AppConnectionEnumerator } = require('../../diagnostics/telemetry/app-connection-enumerator');
 const { runConcurrentHealthRound } = require('../recovery/health-supervisor');
 const { probeSocksConnect } = require('../recovery/socks-health');
 const { TelemetryService } = require('./telemetry-service');

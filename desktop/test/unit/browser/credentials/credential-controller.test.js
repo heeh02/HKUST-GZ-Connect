@@ -4,12 +4,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const {
   CREDENTIAL_CANDIDATE_TTL_MS,
   CredentialController,
   MAX_PASSWORD_LENGTH,
   MAX_USERNAME_LENGTH,
-} = require('../lib/credential-controller');
+} = require('../../../../lib/browser/credentials/credential-controller');
 
 function fixture(overrides = {}) {
   let currentOrigin = overrides.currentOrigin || 'https://sso.example.edu';
@@ -382,7 +383,7 @@ test('save prompts are single-flight per origin and every candidate copy is eras
 
 test('CampusBrowser delegates candidate state and keeps all lifecycle clear calls', () => {
   const source = fs.readFileSync(
-    path.join(__dirname, '..', 'lib', 'browser', 'session', 'campus-browser.js'),
+    path.join(desktopRoot, 'lib', 'browser', 'session', 'campus-browser.js'),
     'utf8',
   );
   assert.match(source, /new CredentialController\(\{/);

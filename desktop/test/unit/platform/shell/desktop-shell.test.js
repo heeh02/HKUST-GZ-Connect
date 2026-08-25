@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
-const { DesktopShell } = require('../lib/desktop-shell');
+const { DesktopShell } = require('../../../../lib/platform/shell/desktop-shell');
 
 class FakeContents extends EventEmitter {
   constructor() {

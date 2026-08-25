@@ -239,7 +239,7 @@ function dependencyLayerErrors(graph, root) {
   const errors = [];
   const relative = (file) => path.relative(root, file).replaceAll(path.sep, '/');
   const browserShared = new Set([
-    'lib/login-flow.js',
+    'lib/browser/auth/login-flow.js',
     'lib/resources/presentation/resource-view.js',
   ]);
   for (const [source, dependencies] of graph) {

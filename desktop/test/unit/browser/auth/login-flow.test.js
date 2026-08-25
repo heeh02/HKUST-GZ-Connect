@@ -2,9 +2,10 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { evaluateLoginProgress } = require('../lib/login-flow');
+const { evaluateLoginProgress } = require('../../../../lib/browser/auth/login-flow');
 const fs = require('node:fs');
 const path = require('node:path');
+const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 
 test('login keeps the password while the engine is connecting', () => {
   assert.deepEqual(
@@ -40,7 +41,7 @@ test('real renderer can supply its active locale to the shared login logic', () 
 });
 
 test('renderer handles a rejected password-save IPC without clearing the form', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'app.js'), 'utf8');
+  const source = fs.readFileSync(path.join(desktopRoot, 'renderer', 'app.js'), 'utf8');
   assert.match(source, /try\s*\{\s*saved\s*=\s*await window\.api\.save\(\{ username: u, password: p \}\)/s);
   assert.match(source, /catch \(error\)\s*\{\s*\$\('lgErr'\)\.textContent/s);
   assert.doesNotMatch(source, /catch \(error\)[\s\S]{0,180}\$\('lgPass'\)\.value\s*=\s*''/);
