@@ -8,9 +8,10 @@
 
 Consuming a Main-owned Gateway confirmation produces one deterministic plan
 with fresh opaque `profileKey`, `accountKey`, `workspaceKey` and provisioning
-identity. The plan contains exactly ten owner-only JSON targets:
+identity. The plan contains exactly eleven owner-only JSON targets:
 
 - the raw `custom-local` SchoolProfile source document;
+- a compiled-family Engine config bound to the confirmed origin;
 - Profile settings and immutable Profile state;
 - one credential-free primary CampusAccount;
 - Workspace settings and Workspace scope;

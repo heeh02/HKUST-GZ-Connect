@@ -68,7 +68,11 @@ test('confirmed custom Gateway produces one credential-free isolated destination
     assert.equal(plan.context.activeContextEpoch, 1);
     assert.equal(plan.layout.browserPartition.startsWith('persist:campus-workspace-'), true);
     assert.notEqual(plan.layout.browserPartition, 'persist:hkustgz-campus-browser');
-    assert.equal(Object.keys(plan.files).length, 10);
+    assert.equal(Object.keys(plan.files).length, 11);
+    const engineConfig = JSON.parse(plan.files.engineConfig.toString('utf8'));
+    assert.equal(engineConfig.base_url, 'https://vpn.example.edu');
+    assert.deepEqual(engineConfig.proxy.vpn_dns_servers, []);
+    assert.equal(engineConfig.gateway_connector.reviewed_private_gateway_allowed, false);
     for (const [name, file] of Object.entries(plan.paths)) {
       assert.equal(path.isAbsolute(file), true, name);
       assert.equal(path.relative(userData, file).startsWith('..'), false, name);

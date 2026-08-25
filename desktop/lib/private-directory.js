@@ -11,9 +11,10 @@ function normalizedRoot(value) {
   return value;
 }
 
-function ensurePrivateDirectoryChain(rootValue, directoryValue, {
+function privateDirectoryChain(rootValue, directoryValue, {
   fileSystem = fs,
   platform = process.platform,
+  create = false,
 } = {}) {
   const root = normalizedRoot(rootValue);
   if (typeof directoryValue !== 'string' || !path.isAbsolute(directoryValue) ||
@@ -24,15 +25,17 @@ function ensurePrivateDirectoryChain(rootValue, directoryValue, {
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new TypeError('private directory escapes its root');
   }
-  try { fileSystem.mkdirSync(root, { recursive: true, mode: 0o700 }); }
-  catch (error) { throw new Error('private directory root could not be created', { cause: error }); }
+  if (create) {
+    try { fileSystem.mkdirSync(root, { recursive: true, mode: 0o700 }); }
+    catch (error) { throw new Error('private directory root could not be created', { cause: error }); }
+  }
   let current = root;
   for (const component of ['', ...relative.split(path.sep).filter(Boolean)]) {
     if (component) current = path.join(current, component);
     let stat;
     try { stat = fileSystem.lstatSync(current); }
     catch (error) {
-      if (error?.code !== 'ENOENT' || !component) throw error;
+      if (!create || error?.code !== 'ENOENT' || !component) throw error;
       fileSystem.mkdirSync(current, { mode: 0o700 });
       stat = fileSystem.lstatSync(current);
     }
@@ -42,6 +45,14 @@ function ensurePrivateDirectoryChain(rootValue, directoryValue, {
     }
   }
   return true;
+}
+
+function ensurePrivateDirectoryChain(root, directory, options = {}) {
+  return privateDirectoryChain(root, directory, { ...options, create: true });
+}
+
+function verifyPrivateDirectoryChain(root, directory, options = {}) {
+  return privateDirectoryChain(root, directory, { ...options, create: false });
 }
 
 function fsyncPrivateDirectory(directory, fileSystem = fs, platform = process.platform) {
@@ -59,4 +70,8 @@ function fsyncPrivateDirectory(directory, fileSystem = fs, platform = process.pl
   }
 }
 
-module.exports = { ensurePrivateDirectoryChain, fsyncPrivateDirectory };
+module.exports = {
+  ensurePrivateDirectoryChain,
+  fsyncPrivateDirectory,
+  verifyPrivateDirectoryChain,
+};

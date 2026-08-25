@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { createCustomEngineConfigDocument } = require('./custom-engine-config');
 const {
   validateLocalResourcesDocument,
   validateProfileSettingsDocument,
@@ -20,7 +21,7 @@ const {
 
 const CUSTOM_PROFILE_PROVISIONING_VERSION = 1;
 const CUSTOM_PROFILE_FILE_IDS = Object.freeze([
-  'schoolProfile', 'profileSettings', 'profileState', 'account',
+  'schoolProfile', 'engineConfig', 'profileSettings', 'profileState', 'account',
   'workspaceSettings', 'workspaceState', 'localResources', 'favorites',
   'recentResources', 'externalIntegrations',
 ]);
@@ -101,7 +102,7 @@ function createCustomProfileProvisioningPlan({
     throw new TypeError('consumed Gateway confirmation does not match its custom Profile');
   }
   const createdAt = timestamp(now());
-  const accountDocument = validateCampusAccountDocument({
+  const accountSourceDocument = {
     schemaVersion: 1,
     accountKey: keys.accountKey,
     accountRevision: 1,
@@ -116,7 +117,8 @@ function createCustomProfileProvisioningPlan({
     activeCredentialVersion: null,
     createdAt,
     updatedAt: createdAt,
-  });
+  };
+  const accountDocument = validateCampusAccountDocument(accountSourceDocument);
   const workspaceDocument = validateWorkspaceScopeDocument({
     schemaVersion: 1,
     profileId: profile.profileId,
@@ -135,6 +137,7 @@ function createCustomProfileProvisioningPlan({
   });
   const documents = {
     schoolProfile: consumed.profileDocument,
+    engineConfig: createCustomEngineConfigDocument(consumed.profileDocument),
     profileSettings: validateProfileSettingsDocument({
       schemaVersion: 1,
       profileId: profile.profileId,
@@ -150,7 +153,7 @@ function createCustomProfileProvisioningPlan({
       gatewayOrigin: profile.gateway.origin.origin,
       protocolFamily: profile.gateway.protocolFamily,
     }),
-    account: accountDocument,
+    account: accountSourceDocument,
     workspaceSettings: validateWorkspaceSettingsDocument({
       schemaVersion: 1,
       autoReconnect: true,
@@ -166,6 +169,7 @@ function createCustomProfileProvisioningPlan({
   };
   const paths = Object.freeze({
     schoolProfile: layout.profile.document,
+    engineConfig: layout.profile.engineConfig,
     profileSettings: layout.profile.settings,
     profileState: layout.profile.state,
     account: layout.account.document,

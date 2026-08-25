@@ -256,9 +256,105 @@ function loadActiveProfileWorkspaceAuthority(options = {}) {
   });
 }
 
+function loadProfileWorkspaceAuthorityByKeys({
+  userData,
+  profile: rawProfile,
+  profileKey,
+  accountKey,
+  fileSystem = fs,
+  platform = process.platform,
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+} = {}) {
+  const deps = authorityDependencies({
+    userData,
+    profile: rawProfile,
+    fileSystem,
+    platform,
+    windowsAcl,
+  });
+  const { root, profile } = deps;
+  const bootstrap = createProfileAccountBootstrapLayout({
+    userData: root,
+    profileKey,
+    accountKey,
+  });
+  const profileSettings = readDocument(
+    bootstrap.profile.settings,
+    validateProfileSettingsDocument,
+    deps,
+  );
+  const profileState = readDocument(
+    bootstrap.profile.state,
+    validateProfileStateDocument,
+    deps,
+  );
+  const account = readDocument(
+    bootstrap.account.document,
+    validateCampusAccountDocument,
+    deps,
+  );
+  equal(profileSettings.profileId, profile.profileId, 'Profile ID');
+  equal(profileSettings.profileRevision, profile.profileRevision, 'Profile revision');
+  equal(profileSettings.primaryAccountKey, accountKey, 'primary account');
+  equal(profileState.profileId, profile.profileId, 'Profile state ID');
+  equal(profileState.profileRevision, profile.profileRevision, 'Profile state revision');
+  equal(profileState.profileCredentialBindingRevision,
+    profile.profileCredentialBindingRevision, 'Profile credential revision');
+  equal(profileState.gatewayOrigin, profile.gateway.origin.origin, 'Gateway origin');
+  equal(profileState.protocolFamily, profile.gateway.protocolFamily, 'ProtocolFamily');
+  equal(account.accountKey, accountKey, 'account key');
+  equal(account.profileId, profile.profileId, 'account Profile ID');
+  equal(account.profileRevision, profile.profileRevision, 'account Profile revision');
+  equal(account.gatewayOrigin.origin, profile.gateway.origin.origin, 'account Gateway origin');
+  equal(account.protocolFamily, profile.gateway.protocolFamily, 'account ProtocolFamily');
+  if (account.role !== 'primary' || account.state !== 'enabled') {
+    throw new Error('Profile workspace account is not an enabled primary account');
+  }
+  const layout = createProfileAccountWorkspaceLayout({
+    userData: root,
+    profileKey,
+    accountKey,
+    workspaceKey: account.workspaceKey,
+    adoptLegacyHkustBrowserPartition: false,
+  });
+  const workspaceState = readDocument(
+    layout.workspace.state,
+    (value) => validateWorkspaceScopeDocument(value, { account }),
+    deps,
+  );
+  const workspaceSettings = readDocument(
+    layout.workspace.settings,
+    validateWorkspaceSettingsDocument,
+    deps,
+  );
+  const localResources = readDocument(
+    layout.workspace.localResources,
+    validateLocalResourcesDocument,
+    deps,
+  );
+  const observedCredential = credentialReceipt(layout.account.vpnCredential, deps);
+  equal(observedCredential.present, account.activeCredentialVersion !== null, 'credential presence');
+  return Object.freeze({
+    profile,
+    layout,
+    profileSettings,
+    profileState,
+    account,
+    workspaceState,
+    workspaceSettings,
+    localResources,
+    hasCredential: observedCredential.present,
+    credentialBinding: bindingFrom(profile, profileState, account),
+  });
+}
+
 module.exports = {
   MAX_RUNTIME_CREDENTIAL_BYTES,
   MAX_RUNTIME_DOCUMENT_BYTES,
   loadActiveProfileAccountAuthority,
   loadActiveProfileWorkspaceAuthority,
+  loadProfileWorkspaceAuthorityByKeys,
 };
