@@ -72,10 +72,11 @@ jobs:
         shell: pwsh
         working-directory: independent
         run: |
-          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
+          cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command --bin ec-gateway-probe
           New-Item -ItemType Directory -Force -Path ../desktop/engine | Out-Null
           Copy-Item target/release/ec-engine.exe ../desktop/engine/ec-engine-windows-amd64.exe
           Copy-Item target/release/ec-proxy-command.exe ../desktop/engine/ec-proxy-command-windows-amd64.exe
+          Copy-Item target/release/ec-gateway-probe.exe ../desktop/engine/ec-gateway-probe-windows-amd64.exe
           Copy-Item config/hkustgz.json ../desktop/engine/hkustgz.json
 
       - name: Build unpacked Linux application
@@ -189,10 +190,20 @@ jobs:
         run: npm ci
       - name: Exercise the real Electron main process
         run: npm run test:main-integration
+      - name: Exercise clean custom Profile startup
+        run: npm run test:main-custom-profile
+      - name: Exercise School selector and custom Gateway onboarding
+        run: npm run test:main-school-onboarding
+      - name: Exercise recoverable Profile switching and relaunch
+        run: npm run test:main-profile-switch
+      - name: Exercise control renderer crash-loop recovery
+        run: npm run test:control-renderer-recovery
       - name: Exercise Main with a synthetic Engine lifecycle
         run: npm run test:main-engine-lifecycle
       - name: Exercise initially-offline Main startup recovery
         run: npm run test:main-network-startup
+      - name: Exercise two-process Profile Workspace migration
+        run: npm run test:persistence-migration
       - name: Exercise the School Profile registry inside a real ASAR
         run: npm run test:profile-asar
       - name: Exercise campus-browser toolbar IPC
@@ -269,4 +280,4 @@ jobs:
             offline_netstack_poll_latency_matrix -- \
             --ignored --nocapture --test-threads=1
       - name: Build shipped native binaries
-        run: cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command
+        run: cargo build --locked --release --no-default-features --bin ec-engine --bin ec-proxy-command --bin ec-gateway-probe

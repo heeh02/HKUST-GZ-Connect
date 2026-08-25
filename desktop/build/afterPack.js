@@ -30,6 +30,12 @@ function requiredProxyCommandName(platform, arch) {
   return `ec-proxy-command-${platformName}-${architectureName(arch)}${extension}`;
 }
 
+function requiredGatewayProbeName(platform, arch) {
+  const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';
+  const extension = platformName === 'windows' ? '.exe' : '';
+  return `ec-gateway-probe-${platformName}-${architectureName(arch)}${extension}`;
+}
+
 function assertEnginePresent(resourcesDir, platform, arch) {
   const name = requiredEngineName(platform, arch);
   const enginePath = path.join(resourcesDir, name);
@@ -52,11 +58,22 @@ function assertProxyCommandPresent(resourcesDir, platform, arch) {
   return helperPath;
 }
 
+function assertGatewayProbePresent(resourcesDir, platform, arch) {
+  const name = requiredGatewayProbeName(platform, arch);
+  const probePath = path.join(resourcesDir, name);
+  if (!fs.existsSync(probePath) || !fs.statSync(probePath).isFile() || fs.statSync(probePath).size === 0) {
+    throw new Error(`missing packaged Gateway probe: ${probePath}`);
+  }
+  return probePath;
+}
+
 exports.architectureName = architectureName;
 exports.requiredEngineName = requiredEngineName;
 exports.assertEnginePresent = assertEnginePresent;
 exports.requiredProxyCommandName = requiredProxyCommandName;
 exports.assertProxyCommandPresent = assertProxyCommandPresent;
+exports.requiredGatewayProbeName = requiredGatewayProbeName;
+exports.assertGatewayProbePresent = assertGatewayProbePresent;
 
 function discoverLocalAppleIdentity() {
   try {
@@ -103,6 +120,9 @@ exports.default = async function afterPack(context) {
   const proxyCommandPath = assertProxyCommandPresent(
     packagedEngineDirectory, context.electronPlatformName, context.arch,
   );
+  const gatewayProbePath = assertGatewayProbePresent(
+    packagedEngineDirectory, context.electronPlatformName, context.arch,
+  );
   assertPackagedSchoolProfile(
     path.join(resourcesDir, 'app.asar'),
     path.join(packagedEngineDirectory, 'hkustgz.json'),
@@ -113,6 +133,6 @@ exports.default = async function afterPack(context) {
     return;
   }
   const identity = discoverLocalAppleIdentity();
-  signMacPackage(appPath, [enginePath, proxyCommandPath], identity);
+  signMacPackage(appPath, [enginePath, proxyCommandPath, gatewayProbePath], identity);
   console.log(`[afterPack] ${identity ? identity.kind : 'ad-hoc'} signed + verified:`, appPath);
 };

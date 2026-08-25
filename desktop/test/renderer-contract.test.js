@@ -29,6 +29,19 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
 });
 
+test('login owns a modular bilingual School selector with an explicit unreviewed confirmation', () => {
+  assert.match(html, /id="schoolProfileSelect"/u);
+  assert.match(html, /id="customGatewayConfirmation"[^>]*hidden/u);
+  assert.match(html, /id="confirmCustomGateway"/u);
+  assert.match(html, /class="gateway-warning"/u);
+  const selectorScript = html.indexOf('<script src="school-profile-selector.js"></script>');
+  const appScript = html.indexOf('<script src="app.js"></script>');
+  assert.ok(selectorScript > 0 && selectorScript < appScript);
+  assert.match(css, /@media\s*\(max-width:\s*459px\)/u);
+  assert.doesNotMatch(appJs, /probeCustomGateway|confirmCustomGateway|schoolProfileSelect/u,
+    'School onboarding belongs to its renderer feature module');
+});
+
 test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="stats"/);
   assert.match(html, /data-collapsible="gateway"/);
@@ -39,6 +52,12 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /@media\s*\(min-width:\s*620px\)/);
   assert.match(css, /@media\s*\(max-width:\s*619px\)/);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
+});
+
+test('connected status remains static instead of continuously repainting Electron', () => {
+  assert.match(css, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
+  assert.doesNotMatch(css, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
+  assert.doesNotMatch(css, /@keyframes\s+ping/);
 });
 
 test('update download uses one stable delegated listener', () => {

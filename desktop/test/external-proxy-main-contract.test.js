@@ -11,14 +11,14 @@ const connectEnd = source.indexOf('\nfunction ensureEngineStopped()', connectSta
 const connectOnce = source.slice(connectStart, connectEnd);
 
 test('strict and compatibility generations share one stable credential with distinct policies', () => {
-  assert.match(source, /const PROXY_CREDENTIAL = path\.join\(DATA, 'proxy-credential\.bin'\)/);
+  assert.match(source, /const PROXY_CREDENTIAL = runtimeStoragePaths\.proxyCredential/);
   assert.match(connectOnce, /proxyCredential = generationProxyCredential\(Number\(s\.port\)\);\s*proxyCredentialMode = 'required'/);
   assert.match(connectOnce, /stableProxyCredential \|\| fs\.existsSync\(PROXY_CREDENTIAL\)[\s\S]*proxyCredentialMode = 'optional'/);
   assert.match(connectOnce, /proxyCredentialMode === 'required'[^\n]+--socks-auth-stdin/);
   assert.match(connectOnce, /proxyCredentialMode === 'optional'[^\n]+--socks-auth-optional-stdin/);
   assert.match(
     connectOnce,
-    /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{s\.username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}/,
+    /\$\{engineConfigBinding\.stdinFrame\}\\n\$\{username\}\\n\$\{pw\}\\n\$\{proxyCredentialLines\}/,
   );
   assert.match(connectOnce, /'--control-api-v2-stdin'/);
 });

@@ -32,9 +32,9 @@ test('final connection snapshot fails the FSM and classifies credential availabi
   const marker = body.indexOf('// FINAL_CONNECTION_SNAPSHOT:');
   const spawn = body.indexOf('const started = engineSupervisor.start(');
   const guardedStart = body.slice(marker, spawn);
-  assert.match(guardedStart, /try \{\s*s = loadSettings\(\);\s*credentialResult = loadPasswordResult\(\);\s*pw = credentialResult\.password;/);
-  assert.match(guardedStart, /credentialResult\.status === 'missing'/);
-  assert.match(guardedStart, /credentialResult\.status !== 'decrypted'/);
+  assert.match(guardedStart, /s = loadSettings\(\);[\s\S]*persistenceRuntime\.openCredential\(\)/);
+  assert.match(guardedStart, /credentialOwner\.withStrings/);
+  assert.match(guardedStart, /credentialOwner\.destroy\(\)/);
   assert.match(guardedStart, /connectionState\.failIntent\(intent\);/);
   assert.match(guardedStart, /settingsUnavailable: true/);
 });

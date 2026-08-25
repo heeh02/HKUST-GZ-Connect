@@ -108,3 +108,64 @@ test('unavailable secure storage creates no plaintext fallback', (t) => {
   assert.throws(() => store.loadOrCreate(), /secure storage is unavailable/);
   assert.equal(fs.existsSync(temporary.file), false);
 });
+
+test('clear durably revokes the encrypted credential without decrypting it', (t) => {
+  const temporary = temporaryFile();
+  t.after(temporary.cleanup);
+  const safeStorage = fakeSafeStorage();
+  let entropy = 7;
+  const store = new ExternalProxyCredentialStore({
+    filePath: temporary.file,
+    safeStorage,
+    platform: HOST_PRIVATE_FILE_PLATFORM,
+    randomBytes: (length) => Buffer.alloc(length, entropy++),
+  });
+  store.create().destroy();
+  assert.equal(store.clear(), true);
+  assert.equal(fs.existsSync(temporary.file), false);
+  assert.equal(store.clear(), true);
+  assert.equal(safeStorage.calls.decrypt, 0);
+});
+
+test('clear never follows a symbolic or hard-linked credential', {
+  skip: process.platform === 'win32',
+}, (t) => {
+  const temporary = temporaryFile();
+  t.after(temporary.cleanup);
+  const unrelated = path.join(temporary.directory, 'unrelated');
+  fs.writeFileSync(unrelated, 'unrelated', { mode: 0o600 });
+  const store = new ExternalProxyCredentialStore({
+    filePath: temporary.file,
+    safeStorage: fakeSafeStorage(),
+    platform: 'darwin',
+  });
+  fs.symlinkSync(unrelated, temporary.file);
+  assert.throws(() => store.clear(), /cannot be removed safely/u);
+  fs.unlinkSync(temporary.file);
+  fs.linkSync(unrelated, temporary.file);
+  assert.throws(() => store.clear(), /cannot be removed safely/u);
+  assert.equal(fs.readFileSync(unrelated, 'utf8'), 'unrelated');
+});
+
+test('simulated Windows create protects and clear verifies the encrypted file ACL', (t) => {
+  const temporary = temporaryFile();
+  t.after(temporary.cleanup);
+  const protectedPaths = [];
+  const verifiedPaths = [];
+  const windowsAcl = {
+    protect(file) { protectedPaths.push(file); return true; },
+    verify(file) { verifiedPaths.push(file); return fs.existsSync(file); },
+  };
+  let entropy = 8;
+  const store = new ExternalProxyCredentialStore({
+    filePath: temporary.file,
+    safeStorage: fakeSafeStorage(),
+    platform: 'win32',
+    windowsAcl,
+    randomBytes: (length) => Buffer.alloc(length, entropy++),
+  });
+  store.create().destroy();
+  assert.equal(store.clear(), true);
+  assert.equal(protectedPaths.some((file) => file.endsWith('.tmp')), true);
+  assert.equal(verifiedPaths.includes(temporary.file), true);
+});

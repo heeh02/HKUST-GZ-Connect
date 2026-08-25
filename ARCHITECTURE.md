@@ -125,6 +125,45 @@ Desktop 负责用户意图、Engine 进程、浏览器、设置、安全存储�
 稳定的 Engine event/error code，不持有 Gateway Cookie、TwfID、CSRF、Modern token、
 transport token 或原始认证响应。
 
+### 4.6 Profile / Account / Workspace storage
+
+持久用户状态按 `SchoolProfile -> CampusAccount -> WorkspaceScope` 归属。路径只能由安装本地生成的
+opaque `profileKey` / `accountKey` 派生；Profile ID、Gateway、用户名、标签和 Renderer handle
+不得成为路径组件。Browser partition 只能由 `workspaceKey` 的稳定摘要派生；现有
+`persist:hkustgz-campus-browser` 仅允许经 HKUST primary 的 P3 迁移 journal 显式收养。
+
+迁移必须先建立 owner-only、no-follow、single-link 的 journal，并保持单调
+`prepared -> committed -> cleared`。journal 只能保存身份/版本绑定和有界 SHA-256 收据，不保存
+用户名、密码、Cookie、token 或旧文件内容。`prepared` 不得覆盖或删除；commit 必须保持同一
+Profile/origin/family/key/source binding 并采用同目录临时文件、文件 fsync、原子 rename、目录
+fsync。Windows 文件还必须在提交前后通过 current-user-only DACL 保护与验证。
+
+P3 完整激活前，flat 1.x `userData` 仍是唯一生产权威；基础 layout/journal 模块不得由
+`desktop/main.js` 导入。详细合同见 [`ADR-0007`](docs/adr/0007-p3-storage-foundation.md)。
+
+旧 flat 状态的迁移收据必须由同一个 no-follow descriptor 完成 `fstat -> bounded hash -> fstat`，
+同时比较 inode、size、mtime、ctime；收据只含 `present / bytes / sha256`。VPN username 与 password
+必须作为一个加密 envelope 提交，并绑定 profile/account credential revision、Gateway origin、
+ProtocolFamily 和 credential version。解密结果由 Main-only zeroizing owner 管理，不进入 Renderer、
+日志或 migration journal。详细合同见 [`ADR-0008`](docs/adr/0008-p3-receipts-and-vpn-envelope.md)。
+
+迁移协调器是同步、single-flight 的 Main-domain service。无 journal 时新旧权威并存必须阻断；
+`prepared` 只能在旧 source receipts 完全一致时幂等续跑；`committed` 只能在 destination receipts
+完全一致时退休旧权威并清 journal。异常不得把 prepared 降级为 absent，也不得在未验证
+destination 时删除 legacy。生产接线前的非激活合同见
+[`ADR-0009`](docs/adr/0009-p3-migration-coordinator.md)。
+
+destination materializer 必须在第一次写入前预检全部 exact-schema target；已存在且 digest 相同可幂等
+复用，任何冲突、link、宽权限或未知文件都不得覆盖。legacy retirement 只能在 committed journal
+下重新验证收据后逐文件 unlink/fsync，禁止递归删除，并把旧 `settings.json` 权威放在最后退休。
+具体非激活适配器合同见 [`ADR-0010`](docs/adr/0010-p3-destination-and-retirement.md)。
+
+HKUST destination planner 必须从 receipt-matched legacy settings/payload 与同一 username/password owner
+构造 exact destination plan。全局、Workspace 和更新状态分离；VPN 凭据作为绑定 envelope；旧 ciphertext
+只能进入 account-scoped 一代 rollback blob，并由 `active | retired` 元数据绑定 migration/Profile/
+Account/origin/family。目标 JSON 不得保存 username/password。合同见
+[`ADR-0011`](docs/adr/0011-p3-hkust-destination-plan.md)。
+
 ## 5. Connection state machine
 
 ### 5.1 唯一权威状态

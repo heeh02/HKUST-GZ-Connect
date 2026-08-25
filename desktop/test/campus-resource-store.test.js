@@ -21,6 +21,7 @@ test('adding a shortcut generates a stable local id and partner route', () => {
   });
   assert.match(result.resource.id, /^custom-[a-f0-9]{8}$/);
   assert.equal(result.resource.route, 'direct');
+  assert.equal(Object.hasOwn(result.resource, 'builtin'), false);
   assert.equal(result.resources.length, 1);
 });
 

@@ -1,4 +1,5 @@
 use crate::gateway_auth::{AUTHENTICATED_SESSION_ID_LEN, AuthenticatedSessionId};
+use crate::gateway_connector::GatewayConnectorGeneration;
 use crate::special_tls11::SpecialTls11Stream;
 use crate::{Error, ErrorKind, Result};
 use rand::RngCore;
@@ -77,6 +78,7 @@ pub struct ModernTokenAcquisition {
     token: ModernToken,
     verified_leaf_sha256: [u8; 32],
     peer_address: SocketAddr,
+    connector: Option<Arc<GatewayConnectorGeneration>>,
 }
 
 impl ModernTokenAcquisition {
@@ -90,6 +92,10 @@ impl ModernTokenAcquisition {
 
     pub fn peer_address(&self) -> SocketAddr {
         self.peer_address
+    }
+
+    pub(crate) fn connector(&self) -> Option<&GatewayConnectorGeneration> {
+        self.connector.as_deref()
     }
 }
 
@@ -682,15 +688,30 @@ pub fn parse_server_hello_session_id(records: &[u8]) -> Result<Zeroizing<Vec<u8>
 /// gateway to acknowledge the previous one, so interactive traffic pays a
 /// delayed-ACK stall on every packet instead of a single round trip.
 pub(crate) fn connect_gateway_tcp(address: SocketAddr, timeout: Duration) -> Result<TcpStream> {
-    const KEEPALIVE_IDLE: Duration = Duration::from_secs(15);
-    const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
-
     let stream = TcpStream::connect_timeout(&address, timeout).map_err(|error| {
         Error::classified(
             ErrorKind::DataPlaneTransient,
             format!("cannot connect to the gateway TCP endpoint: {error}"),
         )
     })?;
+    configure_gateway_tcp(stream, timeout)
+}
+
+pub(crate) fn connect_gateway_tcp_to_connector(
+    connector: &GatewayConnectorGeneration,
+    peer: SocketAddr,
+    timeout: Duration,
+) -> Result<TcpStream> {
+    let stream = connector
+        .connect_tcp_to(peer, timeout)
+        .map_err(classify_connector_transport_error)?;
+    configure_gateway_tcp(stream, timeout)
+}
+
+fn configure_gateway_tcp(stream: TcpStream, timeout: Duration) -> Result<TcpStream> {
+    const KEEPALIVE_IDLE: Duration = Duration::from_secs(15);
+    const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
     stream.set_read_timeout(Some(timeout)).map_err(|error| {
         Error::classified(
             ErrorKind::DataPlane,
@@ -723,6 +744,19 @@ pub(crate) fn connect_gateway_tcp(address: SocketAddr, timeout: Duration) -> Res
     Ok(stream)
 }
 
+fn classify_connector_transport_error(error: Error) -> Error {
+    let kind = match error.kind() {
+        ErrorKind::GatewayHttp | ErrorKind::GatewayHttpIndeterminate | ErrorKind::Io => {
+            ErrorKind::DataPlaneTransient
+        }
+        _ => ErrorKind::DataPlane,
+    };
+    Error::classified(
+        kind,
+        "Gateway connector rejected the Modern transport socket",
+    )
+}
+
 fn resolve_gateway(url: &Url) -> Result<(String, SocketAddr)> {
     if url.scheme() != "https" {
         return Err(Error("modern token endpoint must use HTTPS".into()));
@@ -747,7 +781,35 @@ pub fn request_modern_token(
     let url = Url::parse(base_url).map_err(|_| Error("invalid modern token base URL".into()))?;
     let (host, address) = resolve_gateway(&url)?;
     let socket = connect_gateway_tcp(address, timeout)?;
+    request_modern_token_on_socket(host, address, socket, None, session)
+}
 
+pub fn request_modern_token_with_connector(
+    connector: Arc<GatewayConnectorGeneration>,
+    session: &AuthenticatedSessionId,
+    timeout: Duration,
+) -> Result<ModernTokenAcquisition> {
+    let socket = connector
+        .connect_tcp(timeout)
+        .map_err(classify_connector_transport_error)?;
+    let address = socket.peer_addr().map_err(|_| {
+        Error::classified(
+            ErrorKind::DataPlane,
+            "Gateway connector Modern peer could not be inspected",
+        )
+    })?;
+    let socket = configure_gateway_tcp(socket, timeout)?;
+    let host = connector.host().to_owned();
+    request_modern_token_on_socket(host, address, socket, Some(connector), session)
+}
+
+fn request_modern_token_on_socket(
+    host: String,
+    address: SocketAddr,
+    socket: TcpStream,
+    connector: Option<Arc<GatewayConnectorGeneration>>,
+    session: &AuthenticatedSessionId,
+) -> Result<ModernTokenAcquisition> {
     let roots = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     let config = ClientConfig::builder()
         .with_root_certificates(roots)
@@ -795,6 +857,7 @@ pub fn request_modern_token(
         token,
         verified_leaf_sha256,
         peer_address: address,
+        connector,
     })
 }
 
@@ -851,6 +914,38 @@ mod tests {
         assert_eq!(&token.as_bytes()[32..], b"0123456789abcdef");
         assert_eq!(format!("{token:?}"), "ModernToken(<redacted>)");
         assert!(ModernToken::derive(&[1; 15], &session).is_err());
+    }
+
+    #[test]
+    fn token_acquisition_retains_the_exact_connector_generation() {
+        let peer: SocketAddr = "8.8.8.8:443".parse().unwrap();
+        let connector = Arc::new(
+            GatewayConnectorGeneration::from_resolved(
+                "school-a",
+                4,
+                19,
+                "https://gateway.example.test",
+                false,
+                vec![peer],
+            )
+            .unwrap(),
+        );
+        let session = ModernSessionId::from_bytes(b"0123456789abcdef").unwrap();
+        let acquisition = ModernTokenAcquisition {
+            token: ModernToken::derive(&[0xab; 32], &session).unwrap(),
+            verified_leaf_sha256: [7; 32],
+            peer_address: peer,
+            connector: Some(Arc::clone(&connector)),
+        };
+        let observed = acquisition.connector().unwrap();
+        assert_eq!(observed.profile_id(), "school-a");
+        assert_eq!(observed.profile_revision(), 4);
+        assert_eq!(observed.generation(), 19);
+        assert!(observed.peer_allowed(acquisition.peer_address()));
+        assert_eq!(
+            format!("{acquisition:?}"),
+            "ModernTokenAcquisition(<redacted>)"
+        );
     }
 
     #[test]

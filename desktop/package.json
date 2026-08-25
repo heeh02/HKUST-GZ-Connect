@@ -13,12 +13,17 @@
     "test:auth-control-e2e": "node e2e/auth-control-fixture.js",
     "test:campus-mfa-safety": "electron e2e/campus-mfa-safety.electron.js",
     "test:campus-popup-mfa-safety": "electron e2e/campus-popup-mfa-safety.electron.js",
+    "test:control-renderer-recovery": "electron e2e/control-renderer-recovery.electron.js",
     "test:idle-performance": "electron scripts/idle-performance-baseline.js",
     "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
     "test:main-integration": "electron e2e/main-integration.electron.js",
+    "test:main-custom-profile": "electron e2e/main-custom-profile.electron.js",
+    "test:main-school-onboarding": "node e2e/main-school-onboarding.electron.js",
+    "test:main-profile-switch": "node e2e/main-profile-switch.electron.js",
     "test:main-engine-lifecycle": "electron e2e/main-engine-lifecycle.electron.js",
     "test:main-network-startup": "electron e2e/main-network-startup.electron.js",
+    "test:persistence-migration": "electron e2e/persistence-migration.electron.js",
     "test:profile-asar": "electron e2e/school-profile-asar.electron.js",
     "test:strict-proxy-auth": "electron e2e/strict-proxy-auth.electron.js",
     "start": "electron .",
@@ -64,6 +69,8 @@
           "ec-engine.exe",
           "ec-proxy-command-*",
           "ec-proxy-command.exe",
+          "ec-gateway-probe-*",
+          "ec-gateway-probe.exe",
           "hkustgz.json"
         ]
       }

@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('api', {
   deleteRoutingRule: (identity) => ipcRenderer.invoke('delete-routing-rule', identity),
   listCertificatePins: () => ipcRenderer.invoke('list-certificate-pins'),
   deleteCertificatePin: (identity) => ipcRenderer.invoke('delete-certificate-pin', identity),
+  listSchoolProfiles: () => ipcRenderer.invoke('list-school-profiles'),
+  probeCustomGateway: (request) => ipcRenderer.invoke('probe-custom-gateway', request),
+  confirmCustomGateway: (request) => ipcRenderer.invoke('confirm-custom-gateway', request),
+  cancelCustomGateway: () => ipcRenderer.invoke('cancel-custom-gateway'),
+  switchSchoolProfile: (request) => ipcRenderer.invoke('switch-school-profile', request),
   resize: (height) => ipcRenderer.invoke('resize', height),
   onOpenRoutingRules: (cb) => {
     if (typeof cb !== 'function') return () => {};

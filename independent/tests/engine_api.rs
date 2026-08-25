@@ -246,12 +246,20 @@ fn engine_rechecks_config_digest_and_origin_before_reading_credentials() {
 
 #[test]
 fn matching_config_binding_reaches_the_credential_boundary() {
-    let config = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("config")
         .join("hkustgz.json");
-    let digest = hex::encode(Sha256::digest(std::fs::read(&config).unwrap()));
+    let mut document: Value = serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    document["base_url"] = Value::String("https://8.8.8.8".into());
+    let config = std::env::temp_dir().join(format!(
+        "hkustgz-connector-credential-boundary-{}.json",
+        std::process::id()
+    ));
+    let payload = serde_json::to_vec(&document).unwrap();
+    std::fs::write(&config, &payload).unwrap();
+    let digest = hex::encode(Sha256::digest(&payload));
     let binding = format!(
-        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://remote.hkust-gz.edu.cn\",\"profileId\":\"hkustgz\",\"profileRevision\":1,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\n",
+        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://8.8.8.8\",\"profileId\":\"hkustgz\",\"profileRevision\":1,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\n",
     );
     let output = engine()
         .args([
@@ -261,6 +269,8 @@ fn matching_config_binding_reaches_the_credential_boundary() {
             "--credentials-stdin",
             "--socks-bind",
             "127.0.0.1:6180",
+            "--generation",
+            "9",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -271,12 +281,62 @@ fn matching_config_binding_reaches_the_credential_boundary() {
             child.wait_with_output()
         })
         .unwrap();
+    std::fs::remove_file(config).unwrap();
     assert!(!output.status.success());
     assert!(
         events(&output.stdout).iter().any(|event| {
             event["type"] == "fatal_error" && event["code"] == "CREDENTIALS_INVALID"
         })
     );
+}
+
+#[test]
+fn profile_bound_connector_policy_fails_before_reading_credentials() {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("config")
+        .join("hkustgz.json");
+    let mut document: Value = serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    document["base_url"] = Value::String("https://127.0.0.1".into());
+    let config = std::env::temp_dir().join(format!(
+        "hkustgz-forbidden-connector-{}.json",
+        std::process::id()
+    ));
+    let payload = serde_json::to_vec(&document).unwrap();
+    std::fs::write(&config, &payload).unwrap();
+    let digest = hex::encode(Sha256::digest(&payload));
+    let binding = format!(
+        "{{\"type\":\"engine_config_binding\",\"apiVersion\":1,\"configSha256\":\"{digest}\",\"gatewayOrigin\":\"https://127.0.0.1\",\"profileId\":\"hkustgz\",\"profileRevision\":1,\"protocolFamily\":\"easyconnect-password-modern-l3-v1\"}}\n",
+    );
+    let private_credential = "must-not-reach-forbidden-connector";
+    let mut child = engine()
+        .args([
+            "--config",
+            config.to_str().unwrap(),
+            "--profile-binding-v1-stdin",
+            "--credentials-stdin",
+            "--socks-bind",
+            "127.0.0.1:6180",
+            "--generation",
+            "10",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(format!("{binding}student\n{private_credential}\n").as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    std::fs::remove_file(config).unwrap();
+    assert!(events(&output.stdout).iter().any(|event| {
+        event["type"] == "fatal_error" && event["code"] == "CONFIGURATION_INVALID"
+    }));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains(private_credential));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(private_credential));
 }
 
 #[test]

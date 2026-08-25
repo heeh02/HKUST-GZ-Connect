@@ -1,6 +1,7 @@
 'use strict';
 
-const { CampusBrowser, DEFAULT_CAMPUS_HOME } = require('./campus-browser');
+const { BLANK_CAMPUS_HOME, CampusBrowser, DEFAULT_CAMPUS_HOME } = require('./campus-browser');
+const { CAMPUS_PARTITION } = require('./campus-route');
 const { CampusCredentialVault } = require('./campus-credential-vault');
 const { normalizeOpenRequest } = require('./campus-open-policy');
 
@@ -19,6 +20,7 @@ class CampusBrowserManager {
     toolbarPreload,
     campusPreload,
     homeUrl = DEFAULT_CAMPUS_HOME,
+    browserPartition = CAMPUS_PARTITION,
     routingPolicy,
     ensureCampusReady,
     resolveRoute,
@@ -41,14 +43,16 @@ class CampusBrowserManager {
       }
     }
     if (!session || !dialog || !safeStorage || !certificateTrust || !routingPolicy ||
-        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, homeUrl]
+        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, browserPartition]
           .every((value) => typeof value === 'string' && value)) {
       throw new TypeError('Campus Browser manager environment is incomplete');
     }
     Object.assign(this, {
       BrowserWindow, WebContentsView, session, dialog, safeStorage, platform,
       credentialFile, certificateTrust, parentWindow, toolbarFile, toolbarPreload,
-      campusPreload, homeUrl, routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
+      campusPreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
+      routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
+      browserPartition,
       getSocksPort, getLocale, getTranslator, showRoutingRules, reportError,
       CampusBrowserClass, CredentialVaultClass,
     });
@@ -58,6 +62,8 @@ class CampusBrowserManager {
   get routingSuspended() { return this.browser?.routingSuspended === true; }
 
   get routingRequestsBlocked() { return this.browser?.routingRequestsBlocked; }
+
+  get hasBrowser() { return this.browser !== null; }
 
   getOrCreate() {
     if (this.browser) return this.browser;
@@ -78,6 +84,7 @@ class CampusBrowserManager {
       toolbarPreload: this.toolbarPreload,
       campusPreload: this.campusPreload,
       homeUrl: this.homeUrl,
+      partition: this.browserPartition,
       routingPolicy: this.routingPolicy,
       ensureCampusReady: this.ensureCampusReady,
       onManageRoutingRules: this.showRoutingRules,
@@ -92,23 +99,31 @@ class CampusBrowserManager {
     const translate = this.getTranslator();
     let request;
     try {
-      request = normalizeOpenRequest(rawRequest, translate);
+      request = normalizeOpenRequest(rawRequest, translate, this.homeUrl);
     } catch (error) {
       this.reportError(error.message);
       return { ok: false, error: error.message };
     }
-    try {
-      request.route = this.resolveRoute(request.url).route;
-    } catch (error) {
-      const message = error.userMessage || error.message;
-      this.reportError(message);
-      return { ok: false, error: message };
+    if (request.url !== BLANK_CAMPUS_HOME) {
+      try {
+        request.route = this.resolveRoute(request.url).route;
+      } catch (error) {
+        const message = error.userMessage || error.message;
+        this.reportError(message);
+        return { ok: false, error: message };
+      }
     }
-    const connection = await this.ensureConnected();
-    if (!connection?.ok) {
-      const error = connection?.error || translate('error.connectTimeout');
-      this.reportError(error);
-      return { ok: false, error };
+    // The local custom-Profile landing page has no network request and must be
+    // usable before credentials exist. Real HTTP(S) pages still establish the
+    // tunnel up front until the request-boundary on-demand barrier can preserve
+    // an original cross-origin SSO redirect without replaying it as a GET.
+    if (request.url !== BLANK_CAMPUS_HOME) {
+      const connection = await this.ensureConnected();
+      if (!connection?.ok) {
+        const error = connection?.error || translate('error.connectTimeout');
+        this.reportError(error);
+        return { ok: false, error };
+      }
     }
     try {
       await this.getOrCreate().open(request.url, this.getSocksPort(), request.route);
@@ -131,7 +146,18 @@ class CampusBrowserManager {
   }
 
   close() {
-    return this.browser?.close() ?? null;
+    const browser = this.browser;
+    this.browser = null;
+    return browser?.close() ?? null;
+  }
+
+  async closeForContextSwitch() {
+    const browser = this.browser;
+    if (!browser) return true;
+    if (typeof browser.closeForContextSwitch !== 'function') return false;
+    if (await browser.closeForContextSwitch() !== true) return false;
+    if (this.browser === browser) this.browser = null;
+    return this.browser === null;
   }
 
   ownsWebContents(contents) {

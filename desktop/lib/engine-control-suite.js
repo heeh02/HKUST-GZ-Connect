@@ -46,11 +46,11 @@ class EngineControlRegistry {
     this.active = null;
   }
 
-  bind(generation, writable) {
+  bind(generation, writable, contextToken) {
     this.clear();
     const client = new EngineControlSuite({ writable, generation });
     this.active = { generation, client };
-    this.authChallenges.bind(generation, client);
+    this.authChallenges.bind(generation, client, contextToken);
     return client;
   }
 

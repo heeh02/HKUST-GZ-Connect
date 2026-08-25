@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const util = require('node:util');
 const {
   atomicWritePrivateFile,
@@ -8,6 +10,10 @@ const {
 } = require('./credential-store');
 const { readPrivateFileBounded } = require('./private-file');
 const { RANDOM_SECRET_BYTES } = require('./proxy-credential');
+const {
+  protectWindowsFileOwnerOnly,
+  verifyWindowsFileOwnerOnly,
+} = require('./windows-private-file');
 
 const DOCUMENT_VERSION = 1;
 const MAX_ENCRYPTED_PROXY_CREDENTIAL_BYTES = 64 * 1024;
@@ -34,6 +40,21 @@ function generateSecret(randomBytes) {
     throw storageError('secure proxy credential generation failed');
   }
   return bytes.toString('base64url');
+}
+
+function fsyncDirectory(directory, fileSystem, platform) {
+  let descriptor = null;
+  try {
+    descriptor = fileSystem.openSync(directory, 'r');
+    fileSystem.fsyncSync?.(descriptor);
+    return true;
+  } catch {
+    return platform === 'win32';
+  } finally {
+    if (descriptor !== null) {
+      try { fileSystem.closeSync(descriptor); } catch {}
+    }
+  }
 }
 
 class StableProxyCredential {
@@ -87,10 +108,17 @@ class ExternalProxyCredentialStore {
     safeStorage,
     platform = process.platform,
     randomBytes = crypto.randomBytes,
-    fileSystem,
+    fileSystem = fs,
+    windowsAcl = {
+      protect: protectWindowsFileOwnerOnly,
+      verify: verifyWindowsFileOwnerOnly,
+    },
   } = {}) {
     if (typeof filePath !== 'string' || !filePath ||
-        !safeStorage || typeof randomBytes !== 'function') {
+        !safeStorage || typeof randomBytes !== 'function' || !fileSystem ||
+        typeof fileSystem.openSync !== 'function' ||
+        (platform === 'win32' &&
+          (typeof windowsAcl?.protect !== 'function' || typeof windowsAcl?.verify !== 'function'))) {
       throw new TypeError('external proxy credential store options are invalid');
     }
     this.filePath = filePath;
@@ -98,6 +126,7 @@ class ExternalProxyCredentialStore {
     this.platform = platform;
     this.randomBytes = randomBytes;
     this.fileSystem = fileSystem;
+    this.windowsAcl = windowsAcl;
   }
 
   encryptionAvailable() {
@@ -114,6 +143,11 @@ class ExternalProxyCredentialStore {
     }
     let encrypted;
     try {
+      if (this.platform === 'win32' && !this.windowsAcl.verify(this.filePath)) {
+        try { this.fileSystem.lstatSync(this.filePath); }
+        catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+        throw new Error('saved proxy credential ACL is invalid');
+      }
       encrypted = readPrivateFileBounded(this.filePath, {
         maxBytes: MAX_ENCRYPTED_PROXY_CREDENTIAL_BYTES,
         platform: this.platform,
@@ -160,7 +194,12 @@ class ExternalProxyCredentialStore {
           encrypted.length > MAX_ENCRYPTED_PROXY_CREDENTIAL_BYTES) {
         throw new Error('invalid encrypted proxy credential');
       }
-      if (!atomicWritePrivateFile(this.filePath, encrypted, this.fileSystem)) {
+      const options = this.platform === 'win32' ? {
+        protectTemporary: (file) => this.windowsAcl.protect(file) === true,
+        verifyCommitted: (file) => this.windowsAcl.verify(file) === true,
+        removeCommittedOnFailure: true,
+      } : {};
+      if (!atomicWritePrivateFile(this.filePath, encrypted, this.fileSystem, options)) {
         throw new Error('could not persist proxy credential');
       }
       return credential;
@@ -175,6 +214,39 @@ class ExternalProxyCredentialStore {
   loadOrCreate() {
     const existing = this.load();
     return existing || this.create();
+  }
+
+  clear() {
+    if (this.platform === 'win32') {
+      try {
+        this.fileSystem.lstatSync(this.filePath);
+      } catch (error) {
+        if (error?.code === 'ENOENT') return true;
+        throw storageError('saved proxy credential cannot be inspected', error);
+      }
+      if (!this.windowsAcl.verify(this.filePath)) {
+        throw storageError('saved proxy credential ACL is invalid');
+      }
+    }
+    let data;
+    try {
+      ({ data } = readPrivateFileBounded(this.filePath, {
+        maxBytes: MAX_ENCRYPTED_PROXY_CREDENTIAL_BYTES,
+        platform: this.platform,
+        fileSystem: this.fileSystem,
+      }));
+    } catch (error) {
+      if (error?.code === 'ENOENT') return true;
+      throw storageError('saved proxy credential cannot be removed safely', error);
+    } finally {
+      data?.fill?.(0);
+    }
+    try { this.fileSystem.unlinkSync(this.filePath); }
+    catch (error) { throw storageError('saved proxy credential removal failed', error); }
+    if (!fsyncDirectory(path.dirname(this.filePath), this.fileSystem, this.platform)) {
+      throw storageError('saved proxy credential removal was not durable');
+    }
+    return true;
   }
 }
 

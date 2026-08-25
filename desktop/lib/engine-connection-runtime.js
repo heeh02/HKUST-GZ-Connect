@@ -11,6 +11,7 @@ const NOOP = () => {};
 class EngineConnectionRuntime {
   constructor({
     generation,
+    contextToken,
     expectedPort,
     stdin,
     controlRegistry,
@@ -22,6 +23,9 @@ class EngineConnectionRuntime {
   } = {}) {
     if (!Number.isSafeInteger(generation) || generation <= 0) {
       throw new TypeError('a positive Engine generation is required');
+    }
+    if (!contextToken || typeof contextToken !== 'object') {
+      throw new TypeError('an active context token is required');
     }
     if (!Number.isInteger(expectedPort) || expectedPort < 1025 || expectedPort > 65535) {
       throw new TypeError('a valid expected listener port is required');
@@ -35,6 +39,7 @@ class EngineConnectionRuntime {
       throw new TypeError('Engine runtime lifecycle dependencies are invalid');
     }
     this.generation = generation;
+    this.contextToken = contextToken;
     this.expectedPort = expectedPort;
     this.isCurrent = isCurrent;
     this.handlers = {
@@ -60,7 +65,7 @@ class EngineConnectionRuntime {
     this.clearTimeoutFn = clearTimeoutFn;
     this.protocol = new EngineProtocolSession(generation);
     this.events = new EngineEventParser();
-    this.control = controlRegistry.bind(generation, stdin);
+    this.control = controlRegistry.bind(generation, stdin, contextToken);
     this.stdout = null;
     this.stdoutListener = null;
     this.helloTimer = null;

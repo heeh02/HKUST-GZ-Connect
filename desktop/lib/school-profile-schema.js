@@ -82,7 +82,7 @@ function boundedTimestamp(value, name) {
   return value;
 }
 
-function opaqueKey(value, name) {
+function opaqueKey(value, name = 'opaqueKey') {
   if (typeof value !== 'string' || !SAFE_OPAQUE_KEY.test(value)) {
     throw new TypeError(`${name} must be a bounded opaque key`);
   }
@@ -566,6 +566,9 @@ module.exports = {
   createSchoolProfileView,
   createWorkspaceView,
   normalizeGatewayOrigin,
+  validateOpaqueKey: opaqueKey,
+  validateAccountHandle: opaqueAccountHandle,
+  validateProfileId,
   validateProtocolFamily,
   validateCampusAccountDocument,
   validateSchoolProfileDocument,

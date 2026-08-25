@@ -57,7 +57,7 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
 });
 
 test('Windows ACL subprocess remains bounded but tolerates a cold PowerShell start', () => {
-  assert.equal(POWERSHELL_ACL_TIMEOUT_MS, 15_000);
+  assert.equal(POWERSHELL_ACL_TIMEOUT_MS, 30_000);
 });
 
 test('real Windows ACL is current-user-only and inheritance-protected', {

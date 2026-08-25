@@ -16,9 +16,9 @@ function section(startText, endText) {
   return main.slice(start, end);
 }
 
-test('composition root loads one reviewed profile before credential recovery', () => {
-  const sidecarCleanup = main.indexOf('fs.unlinkSync(PROXY_HELPER_CREDENTIAL)');
-  const profile = main.indexOf('const activeSchoolProfile = createSchoolProfileController(');
+test('composition root resolves one active Profile before credential recovery', () => {
+  const sidecarCleanup = main.indexOf('fs.unlinkSync(legacyRuntimeStoragePaths.proxyHelperCredential)');
+  const profile = main.indexOf('const activeSchoolProfile = createPreReadySchoolProfileController(');
   const recovery = main.indexOf('recoverCredentialSettingsTransaction(');
   assert.ok(sidecarCleanup >= 0 && profile > sidecarCleanup && recovery > profile);
   assert.match(
@@ -40,12 +40,12 @@ test('profile drives reviewed resources, routes, Browser home and health targets
 test('reviewed profile and config binding is validated before credential decryption', () => {
   const connect = section('async function connectOnce(', '\nfunction ensureEngineStopped(');
   const profileConfig = connect.indexOf('engineConfigBinding = activeSchoolProfile.verifyEngineLaunchBinding();');
-  const credential = connect.indexOf('credentialResult = loadPasswordResult();');
+  const credential = connect.indexOf('persistenceRuntime.openCredential();');
   const spawn = connect.indexOf('const started = engineSupervisor.start(');
   assert.ok(profileConfig >= 0 && credential > profileConfig && spawn > credential);
   assert.match(main, /engineConfigBinding = activeSchoolProfile\.verifyEngineLaunchBinding\(\)/u);
   assert.match(connect, /--profile-binding-v1-stdin/u);
-  const bindingWrite = connect.indexOf('${engineConfigBinding.stdinFrame}\\n${s.username}\\n${pw}');
+  const bindingWrite = connect.indexOf('${engineConfigBinding.stdinFrame}\\n${username}\\n${pw}');
   assert.ok(bindingWrite > profileConfig && bindingWrite > credential && bindingWrite > spawn);
   assert.doesNotMatch(connect, /error\.engineConfigMissing'\s*,\s*\{\s*path/u);
   const privatePath = '/Users/private-person/Applications/config.json';

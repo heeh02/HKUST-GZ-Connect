@@ -1,9 +1,25 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { CAMPUS_PARTITION } = require('./campus-route');
 const { mergeCampusResources, projectCampusResources } = require('./campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
-const { createCapabilitySnapshot } = require('./school-profile-schema');
+const { ProfileCandidateDirectory } = require('./profile-candidate-directory');
+const { verifyPrivateDirectoryChain } = require('./private-directory');
+const { validateGlobalSettingsDocument } = require('./profile-workspace-documents');
+const { readPrivateFileBounded } = require('./private-file');
+const {
+  protectWindowsFileOwnerOnly,
+  verifyWindowsFileOwnerOnly,
+} = require('./windows-private-file');
+const {
+  createCapabilitySnapshot,
+  createLegacyPrimaryAccountView,
+  createLegacyWorkspaceView,
+  createSchoolProfileView,
+} = require('./school-profile-schema');
 
 const CURRENT_PROFILE_CAPABILITIES = new Set(['auth.password', 'transport.l3']);
 
@@ -15,7 +31,117 @@ function selectedCapabilityLayer(keys) {
 }
 
 function createSchoolProfileController(options = {}) {
-  const context = createActiveSchoolProfileContext(options);
+  const source = createActiveSchoolProfileContext(options);
+  const context = {
+    ...source,
+    activeContextEpoch: 1,
+    browserPartition: CAMPUS_PARTITION,
+    compatibility: 'reviewed',
+    withProfileDocument: (callback) => source.registry.withDefaultProfileDocument(callback),
+    createProfileView: (options) => source.createProfileView(options),
+  };
+  return createController(context, options);
+}
+
+function createSchoolProfileControllerFromCandidate({ directory, profileId, ...options } = {}) {
+  if (!directory || typeof directory.withCandidate !== 'function') {
+    throw new TypeError('candidate Profile directory is invalid');
+  }
+  const load = () => {
+    let record = null;
+    directory.withCandidate(profileId, (value) => { record = value; });
+    if (!record) throw new Error('candidate Profile is unavailable');
+    return record;
+  };
+  const record = load();
+  const profile = record.profile;
+  const context = {
+    profile,
+    builtinResources: record.builtInResources || Object.freeze([]),
+    gatewayHost: profile.gateway.origin.hostname.replace(/^\[|\]$/gu, ''),
+    gatewayPort: profile.gateway.origin.port,
+    engineConfigPath: record.engineConfig.path,
+    activeContextEpoch: record.context.activeContextEpoch,
+    browserPartition: record.authority.layout.browserPartition,
+    compatibility: record.kind === 'builtin-reviewed' ? 'reviewed' : 'candidate',
+    verifyEngineConfig: () => load().engineConfig,
+    verifyEngineLaunchBinding: () => load().engineLaunchBinding,
+    withProfileDocument: (callback) => {
+      if (typeof callback !== 'function') throw new TypeError('Profile document callback is required');
+      const result = callback(load().sourceDocument);
+      if (result && typeof result.then === 'function') {
+        throw new TypeError('Profile document callback must be synchronous');
+      }
+      return result;
+    },
+    createProfileView: (viewOptions) => createSchoolProfileView(
+      load().sourceDocument,
+      { ...viewOptions, compatibility: record.kind === 'builtin-reviewed' ? 'reviewed' : 'candidate' },
+    ),
+  };
+  return createController(context, options);
+}
+
+function createPreReadySchoolProfileController({
+  userData,
+  fileSystem = fs,
+  platform = process.platform,
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+  ...options
+} = {}) {
+  const globalSettings = path.join(userData, 'global', 'settings.json');
+  try { fileSystem.lstatSync(globalSettings); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return createSchoolProfileController({ ...options, fsImpl: fileSystem });
+    throw new Error('pre-ready active Profile authority is unreadable', { cause: error });
+  }
+  verifyPrivateDirectoryChain(userData, path.dirname(globalSettings), { fileSystem, platform });
+  if (platform === 'win32' && !windowsAcl.verify(globalSettings)) {
+    throw new Error('pre-ready GlobalSettings ACL is invalid');
+  }
+  let data;
+  try {
+    ({ data } = readPrivateFileBounded(globalSettings, {
+      maxBytes: 512 * 1024,
+      minBytes: 2,
+      platform,
+      fileSystem,
+    }));
+  } catch (error) {
+    throw new Error('pre-ready active Profile authority is unreadable', { cause: error });
+  }
+  let settings;
+  try { settings = validateGlobalSettingsDocument(JSON.parse(data.toString('utf8'))); }
+  catch (error) { throw new Error('pre-ready GlobalSettings is invalid', { cause: error }); }
+  finally { data.fill(0); }
+
+  const directory = new ProfileCandidateDirectory({
+    userData,
+    packageRoot: options.packageRoot,
+    isPackaged: options.isPackaged,
+    resourcesPath: options.resourcesPath,
+    desktopDir: options.desktopDir,
+    fileSystem,
+    platform,
+    windowsAcl,
+  });
+  const profileId = directory.resolveProfileIdByKey(settings.activeProfileKey);
+  if (profileId === null) {
+    if (directory.hasAnyCandidates()) {
+      throw new Error('pre-ready active profileKey is not owned by a candidate');
+    }
+    // One-time compatibility for the first P6 startup after P3 migration:
+    // prior builds could only create the reviewed HKUST authority, and P6g
+    // persists its anchor after this fallback succeeds.
+    return createSchoolProfileController({ ...options, fsImpl: fileSystem });
+  }
+  return createSchoolProfileControllerFromCandidate({ directory, profileId, ...options });
+}
+
+function createController(context, options) {
   const { profile } = context;
   const builtInResources = context.builtinResources;
   const randomBytes = typeof options.randomBytes === 'function' ? options.randomBytes : crypto.randomBytes;
@@ -27,7 +153,7 @@ function createSchoolProfileController(options = {}) {
   // "-" or "_", which the bounded handle schema rejects at random.
   const accountHandle = `account-${accountEntropy.toString('hex')}`;
   accountEntropy.fill(0);
-  const activeContextEpoch = 1;
+  const activeContextEpoch = context.activeContextEpoch;
   let currentCapabilitySnapshot = null;
 
   function capabilitySnapshotFromReport(report) {
@@ -58,9 +184,20 @@ function createSchoolProfileController(options = {}) {
     directPartnerDomains: profile.browser.directPartnerDomains,
     browserHomeUrl: profile.browser.homeUrl,
     healthTargets: profile.browser.healthTargets,
+    browserPartition: context.browserPartition,
     builtInResourceCount: builtInResources.length,
+    activeContextBinding: () => Object.freeze({
+      profileId: profile.profileId,
+      profileRevision: profile.profileRevision,
+      accountHandle,
+      activeContextEpoch,
+    }),
+    withProfileDocument: context.withProfileDocument,
     verifyEngineConfig: context.verifyEngineConfig,
     verifyEngineLaunchBinding() {
+      if (typeof context.verifyEngineLaunchBinding === 'function') {
+        return context.verifyEngineLaunchBinding();
+      }
       const verified = context.verifyEngineConfig();
       const stdinFrame = JSON.stringify({
         type: 'engine_config_binding',
@@ -108,16 +245,20 @@ function createSchoolProfileController(options = {}) {
       resourceCount = builtInResources.length,
     } = {}) {
       return Object.freeze({
-        schoolProfile: context.createProfileView({ locale, compatibility: 'reviewed' }),
-        campusAccount: context.createLegacyPrimaryAccountView({
+        schoolProfile: context.createProfileView({ locale, compatibility: context.compatibility }),
+        campusAccount: createLegacyPrimaryAccountView({
           accountHandle,
           hasCredential,
           isActive: true,
         }),
-        workspace: context.createLegacyWorkspaceView({ accountHandle, resourceCount }),
+        workspace: createLegacyWorkspaceView({ accountHandle, resourceCount }),
       });
     },
   });
 }
 
-module.exports = { createSchoolProfileController };
+module.exports = {
+  createPreReadySchoolProfileController,
+  createSchoolProfileController,
+  createSchoolProfileControllerFromCandidate,
+};

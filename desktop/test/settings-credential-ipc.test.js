@@ -27,7 +27,7 @@ function fixture(overrides = {}) {
     register: (channel, handler) => handlers.set(channel, handler),
     loadSettings: () => ({ ...current, customResources: [...current.customResources] }),
     saveSettings: (settings) => { current = settings; calls.push(['save', settings]); return settings; },
-    savePassword: (password) => { calls.push(['password', password]); return true; },
+    savePassword: (password, username) => { calls.push(['password', password, username]); return true; },
     removePassword: () => { calls.push(['remove-password']); return true; },
     runCredentialMutation: ({ mutate }) => {
       try { return { ok: true, value: mutate() }; }
@@ -107,7 +107,7 @@ test('password save uses the credential transaction and clears every request ref
   assert.equal(result.settings.username, 'bob');
   assert.equal(payload.password, '');
   assert.deepEqual(f.calls.filter(([name]) => name === 'password'), [
-    ['password', 'synthetic-password'],
+    ['password', 'synthetic-password', 'bob'],
   ]);
   assert.ok(f.calls.some(([name, status]) => name === 'recovery' && status === 'committed'));
 });

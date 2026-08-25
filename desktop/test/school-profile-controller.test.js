@@ -35,7 +35,7 @@ test('composes the reviewed HKUST deployment without persistent account scope', 
   assert.deepEqual(JSON.parse(binding.stdinFrame), {
     type: 'engine_config_binding',
     apiVersion: 1,
-    configSha256: '2a25086478bc751a686a0479a55cd3165deb9da2742b8cd20d646c94581c910a',
+    configSha256: 'ed7d9d3dee309124b35f9b9921c83df4947d9c919fc009ab2b8b9b3b0457e1db',
     gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
     profileId: 'hkustgz',
     profileRevision: 1,
@@ -52,6 +52,12 @@ test('composes the reviewed HKUST deployment without persistent account scope', 
     presentation.campusAccount.accountHandle,
   );
   assert.equal(presentation.workspace.persistentScope, false);
+  assert.deepEqual(profile.activeContextBinding(), {
+    profileId: 'hkustgz',
+    profileRevision: 1,
+    accountHandle: presentation.campusAccount.accountHandle,
+    activeContextEpoch: 1,
+  });
   for (const forbidden of ['engineConfigRef', 'reviewedDnsFallback', 'accountKey', 'workspaceKey']) {
     assert.equal(JSON.stringify(presentation).includes(forbidden), false);
   }
@@ -133,4 +139,19 @@ test('presentation uses an explicit locale and bounded resource count', () => {
   assert.equal(presentation.schoolProfile.shortName, 'HKUST(GZ)');
   assert.equal(presentation.campusAccount.hasCredential, true);
   assert.equal(presentation.workspace.resourceCount, 7);
+});
+
+test('controller exposes the reviewed raw Profile only through a synchronous callback', () => {
+  const profile = controller();
+  const result = profile.withProfileDocument((document) => ({
+    profileId: document.profileId,
+    gatewayOrigin: document.gateway.origin,
+    frozen: Object.isFrozen(document),
+  }));
+  assert.deepEqual(result, {
+    profileId: 'hkustgz',
+    gatewayOrigin: 'https://remote.hkust-gz.edu.cn',
+    frozen: true,
+  });
+  assert.throws(() => profile.withProfileDocument(async () => null), /synchronous/u);
 });

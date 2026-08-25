@@ -1,4 +1,8 @@
-use crate::modern::{build_special_client_hello, connect_gateway_tcp, verify_special_certificates};
+use crate::gateway_connector::GatewayConnectorGeneration;
+use crate::modern::{
+    build_special_client_hello, connect_gateway_tcp, connect_gateway_tcp_to_connector,
+    verify_special_certificates,
+};
 use crate::{Error, ErrorKind, Result};
 use hmac::{Hmac, Mac};
 use md5::Md5;
@@ -513,7 +517,44 @@ impl SpecialTls11Stream {
         verified_https_leaf_sha256: &[u8; 32],
         configured_special_leaf_sha256: Option<&[u8; 32]>,
     ) -> Result<Self> {
-        let mut stream = connect_gateway_tcp(address, timeout)?;
+        let stream = connect_gateway_tcp(address, timeout)?;
+        Self::handshake(
+            stream,
+            host,
+            verified_https_leaf_sha256,
+            configured_special_leaf_sha256,
+        )
+    }
+
+    pub(crate) fn connect_with_connector(
+        connector: &GatewayConnectorGeneration,
+        peer: SocketAddr,
+        host: &str,
+        timeout: Duration,
+        verified_https_leaf_sha256: &[u8; 32],
+        configured_special_leaf_sha256: Option<&[u8; 32]>,
+    ) -> Result<Self> {
+        if connector.host() != host {
+            return Err(Error::classified(
+                ErrorKind::DataPlane,
+                "special TLS host does not match the Gateway connector",
+            ));
+        }
+        let stream = connect_gateway_tcp_to_connector(connector, peer, timeout)?;
+        Self::handshake(
+            stream,
+            host,
+            verified_https_leaf_sha256,
+            configured_special_leaf_sha256,
+        )
+    }
+
+    fn handshake(
+        mut stream: TcpStream,
+        host: &str,
+        verified_https_leaf_sha256: &[u8; 32],
+        configured_special_leaf_sha256: Option<&[u8; 32]>,
+    ) -> Result<Self> {
         let mut client_random = [0_u8; 32];
         OsRng.fill_bytes(&mut client_random);
         let client_hello = build_special_client_hello(client_random)?;
@@ -701,6 +742,33 @@ impl SpecialTls11Stream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connector_bound_handshake_rejects_host_drift_before_network_io() {
+        let peer: SocketAddr = "8.8.8.8:443".parse().unwrap();
+        let connector = GatewayConnectorGeneration::from_resolved(
+            "school-a",
+            1,
+            9,
+            "https://gateway.example.test",
+            false,
+            vec![peer],
+        )
+        .unwrap();
+        let result = SpecialTls11Stream::connect_with_connector(
+            &connector,
+            peer,
+            "different.example.test",
+            Duration::from_millis(1),
+            &[0; 32],
+            None,
+        );
+        let error = match result {
+            Ok(_) => panic!("host drift reached a special TLS connection"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), ErrorKind::DataPlane);
+    }
 
     #[test]
     fn cipher_free_shutdown_handle_wakes_a_blocked_peer() {

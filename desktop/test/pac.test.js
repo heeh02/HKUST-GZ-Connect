@@ -14,6 +14,8 @@ test('route domains are normalized, deduplicated, and bounded', () => {
   assert.deepEqual(normalizeRouteDomains(undefined, ['Campus.Example.EDU']), [
     'campus.example.edu',
   ]);
+  assert.deepEqual(normalizeRouteDomains([], []), [],
+    'a custom Profile with no reviewed domains must not inherit another school');
 });
 
 test('PAC routes only explicit suffixes and literal private addresses', () => {
@@ -38,4 +40,10 @@ test('PAC routes only explicit suffixes and literal private addresses', () => {
   assert.equal(context.FindProxyForURL('http://127.0.0.1/', '127.0.0.1'), 'SOCKS5 127.0.0.1:6180');
   assert.equal(context.FindProxyForURL('http://192.168.1.1/', '192.168.1.1'), 'SOCKS5 127.0.0.1:6180');
   assert.equal(context.FindProxyForURL('https://example.com/', 'example.com'), 'DIRECT');
+});
+
+test('custom Profile PAC does not inherit HKUST domains from an empty authority', () => {
+  const source = buildPac([], 6180, { schoolDomains: [], directPartnerDomains: [] });
+  assert.equal(source.includes('hkust-gz.edu.cn'), false);
+  assert.equal(source.includes('hkust.edu.hk'), false);
 });

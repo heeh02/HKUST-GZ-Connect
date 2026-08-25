@@ -74,6 +74,103 @@ fn gateway_http_is_neutral_to_probe_transport_and_local_frontends() {
 }
 
 #[test]
+fn gateway_connector_is_profile_bound_but_credential_and_transport_neutral() {
+    let connector = source("src/gateway_connector.rs");
+    for forbidden in [
+        "crate::credentials",
+        "crate::gateway_auth",
+        "crate::probe",
+        "crate::modern",
+        "crate::special_tls11",
+        "crate::engine::socks",
+        "crate::engine::dns",
+        "std::env",
+    ] {
+        assert!(
+            !connector.contains(forbidden),
+            "Gateway connector imports {forbidden}"
+        );
+    }
+    assert!(connector.contains(".no_proxy()"));
+    assert!(connector.contains(".resolve_to_addrs("));
+    assert!(connector.contains("peer_allowed"));
+}
+
+#[test]
+fn production_gateway_http_is_bound_before_credentials_and_owned_by_one_session() {
+    let engine = source("src/bin/ec-engine.rs");
+    let run = engine
+        .split_once("async fn run_engine")
+        .expect("production run_engine")
+        .1;
+    let connector = run
+        .find("GatewayConnectorGeneration::resolve_system")
+        .expect("profile-bound Gateway connector");
+    let credential = run
+        .find("read_engine_credentials_prefix")
+        .expect("private credential input");
+    assert!(
+        connector < credential,
+        "Gateway origin and peer policy must fail before credential input"
+    );
+
+    let session = source("src/engine/session.rs");
+    assert!(session.contains("GatewaySession::new_with_connector"));
+    assert!(session.contains("http: GatewaySession"));
+    assert!(session.contains(".request(&self.configuration_path"));
+    assert!(session.contains(".request(&self.resource_list_path"));
+    assert!(session.contains(".request_with_timeout(&self.logout_path"));
+}
+
+#[test]
+fn production_modern_transport_consumes_the_authenticated_connector_generation() {
+    let session = source("src/engine/session.rs");
+    assert!(session.contains("session.http.connector_handle()"));
+    assert!(session.contains("request_modern_token_with_connector"));
+
+    let modern = source("src/modern.rs");
+    assert!(modern.contains("connector: Option<Arc<GatewayConnectorGeneration>>"));
+    assert!(modern.contains(".connect_tcp(timeout)"));
+
+    let data_plane = source("src/engine/data_plane.rs");
+    assert_eq!(
+        data_plane.matches("acquisition.connector()").count(),
+        3,
+        "address, send and receive channels must consume the token connector"
+    );
+    assert!(data_plane.contains("SpecialTls11Stream::connect_with_connector"));
+
+    let special_tls = source("src/special_tls11.rs");
+    assert!(special_tls.contains("connect_gateway_tcp_to_connector(connector, peer, timeout)"));
+    assert!(special_tls.contains("connector.host() != host"));
+}
+
+#[test]
+fn public_gateway_probe_is_credential_free_fixed_and_non_promoting() {
+    let probe = source("src/gateway_probe.rs");
+    for forbidden in [
+        "crate::credentials",
+        "crate::gateway_auth",
+        "crate::engine::session",
+        "password_login",
+        "cookie_store(true)",
+        "Policy::limited",
+        "Policy::custom",
+    ] {
+        assert!(
+            !probe.contains(forbidden),
+            "public probe contains {forbidden}"
+        );
+    }
+    assert!(probe.contains("/por/login_auth.csp?apiversion=1"));
+    assert!(probe.contains("Policy::none()"));
+    assert!(probe.contains("cookie_store(false)"));
+    assert!(probe.contains("MAX_PUBLIC_PROBE_BODY_BYTES"));
+    assert!(probe.contains("PublicGatewayCompatibility::RecognizedCandidate"));
+    assert!(!probe.contains("AuthenticatedGatewaySession"));
+}
+
+#[test]
 fn credential_input_is_neutral_to_gateway_and_protocol_layers() {
     let credentials = source("src/credentials.rs");
     for forbidden in [

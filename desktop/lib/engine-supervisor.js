@@ -22,9 +22,13 @@ const WINDOWS_EXACT_CLEANUP_SCRIPT = [
   `$ownerProcessId = [int]$env:${WINDOWS_ENGINE_PID_ENV}`,
   'if (-not $target -or $ownerProcessId -le 0) { exit 0 }',
   '$target = [System.IO.Path]::GetFullPath($target)',
-  'Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $ownerProcessId) -ErrorAction SilentlyContinue |',
-  '  Where-Object { $_.ExecutablePath -and [string]::Equals([System.IO.Path]::GetFullPath($_.ExecutablePath), $target, [System.StringComparison]::OrdinalIgnoreCase) } |',
-  '  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }',
+  '$owned = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $ownerProcessId) -ErrorAction SilentlyContinue |',
+  '  Where-Object { $_.ExecutablePath -and [string]::Equals([System.IO.Path]::GetFullPath($_.ExecutablePath), $target, [System.StringComparison]::OrdinalIgnoreCase) }',
+  '$owned | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }',
+  'Start-Sleep -Milliseconds 100',
+  '$remaining = Get-CimInstance Win32_Process -Filter ("ProcessId = {0}" -f $ownerProcessId) -ErrorAction SilentlyContinue |',
+  '  Where-Object { $_.ExecutablePath -and [string]::Equals([System.IO.Path]::GetFullPath($_.ExecutablePath), $target, [System.StringComparison]::OrdinalIgnoreCase) }',
+  'if ($remaining) { exit 1 }',
 ].join('\n');
 
 let ownerTemporarySequence = 0;
@@ -107,6 +111,59 @@ function windowsOwnedEngineCleanupInvocation(record, baseEnv = process.env) {
       [WINDOWS_ENGINE_PID_ENV]: String(normalized.pid),
     },
   };
+}
+
+function exactExecutableProcessPattern(executablePath) {
+  if (typeof executablePath !== 'string' || !path.isAbsolute(executablePath)) return '';
+  const escaped = executablePath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return `^${escaped}( |$)`;
+}
+
+function cleanupOrphanedEngine({
+  platform = process.platform,
+  executablePath,
+  ownerFile,
+  execFileSync = require('node:child_process').execFileSync,
+  baseEnv = process.env,
+} = {}) {
+  const executableIsAbsolute = platform === 'win32'
+    ? path.win32.isAbsolute(executablePath || '')
+    : path.isAbsolute(executablePath || '');
+  if (!['darwin', 'linux', 'win32'].includes(platform) ||
+      typeof executablePath !== 'string' || !executableIsAbsolute ||
+      typeof ownerFile !== 'string' || !path.isAbsolute(ownerFile) ||
+      typeof execFileSync !== 'function') {
+    throw new TypeError('orphaned Engine cleanup inputs are invalid');
+  }
+  if (platform === 'win32') {
+    const owner = loadEngineOwnerRecord(ownerFile);
+    if (!owner) return true;
+    if (!sameWindowsExecutablePath(owner.executablePath, executablePath)) return false;
+    const invocation = windowsOwnedEngineCleanupInvocation(owner, baseEnv);
+    if (!invocation) return false;
+    try {
+      execFileSync(invocation.command, invocation.args, {
+        env: invocation.env,
+        stdio: 'ignore',
+        timeout: 4_000,
+        windowsHide: true,
+      });
+    } catch { return false; }
+    return removeEngineOwnerRecord(ownerFile, owner);
+  }
+  const pattern = exactExecutableProcessPattern(executablePath);
+  if (!pattern) return false;
+  try {
+    execFileSync('pkill', ['-f', pattern], { stdio: 'ignore', timeout: 3_000 });
+  } catch (error) {
+    if (error?.status !== 1) return false;
+  }
+  try {
+    execFileSync('pgrep', ['-f', pattern], { stdio: 'ignore', timeout: 3_000 });
+    return false;
+  } catch (error) {
+    return error?.status === 1;
+  }
 }
 
 function safeCall(callback, payload) {
@@ -367,6 +424,8 @@ module.exports = {
   WINDOWS_ENGINE_PATH_ENV,
   WINDOWS_ENGINE_PID_ENV,
   WINDOWS_EXACT_CLEANUP_SCRIPT,
+  cleanupOrphanedEngine,
+  exactExecutableProcessPattern,
   loadEngineOwnerRecord,
   removeEngineOwnerRecord,
   sameWindowsExecutablePath,

@@ -98,6 +98,10 @@ function verifyEngineConfigBinding({
   if (normalizeGatewayOrigin(config.base_url).origin !== profile.gateway.origin.origin) {
     throw new Error('engine profile config Gateway origin does not match the active profile');
   }
+  if (config.gateway_connector?.reviewed_private_gateway_allowed !==
+      profile.policy.reviewedPrivateGatewayAllowed) {
+    throw new Error('engine profile config private Gateway policy does not match the active profile');
+  }
   return Object.freeze({ path: candidate, sha256: descriptor.sha256 });
 }
 

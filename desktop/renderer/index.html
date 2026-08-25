@@ -8,16 +8,47 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="titlebar"></div>
+  <div class="titlebar"><span id="titlebarText">HKUST(GZ) Connect</span></div>
 
   <!-- ============ LOGIN ============ -->
   <section id="login" class="login">
     <!-- No inline handler here: the page CSP has no script-src 'unsafe-inline',
          so an onerror attribute would be blocked and only log a violation. -->
-    <img class="logo" src="../assets/logo.svg" alt="HKUST(GZ)" />
-    <h1 class="brand-title">HKUST<span class="paren">(GZ)</span> Connect</h1>
-    <p class="brand-sub" data-i18n="brand.sub">香港科技大学(广州) · 校园 VPN</p>
+    <img id="brandLogo" class="logo" src="../assets/logo.svg" alt="HKUST(GZ)" />
+    <div id="brandFallback" class="profile-logo-fallback" aria-hidden="true" hidden>校</div>
+    <h1 id="brandTitle" class="brand-title">HKUST<span class="paren">(GZ)</span> Connect</h1>
+    <p id="brandSub" class="brand-sub" data-i18n="brand.sub">香港科技大学(广州) · 校园 VPN</p>
     <div class="lg-form">
+      <div class="school-picker" aria-labelledby="schoolPickerLabel">
+        <div class="school-picker-head">
+          <label id="schoolPickerLabel" class="lbl school-picker-label" for="schoolProfileSelect" data-i18n="school.title">学校 / School</label>
+          <span id="schoolProfileStatus" class="school-status" aria-live="polite"></span>
+        </div>
+        <div class="school-picker-row">
+          <select id="schoolProfileSelect" class="inp school-select" aria-describedby="schoolProfileError"></select>
+          <button id="switchSchoolProfile" class="ghost sm school-switch" type="button" data-i18n="school.switch">切换</button>
+        </div>
+        <div id="customSchoolPanel" class="custom-school-panel" hidden>
+          <label class="lbl" for="customSchoolName" data-i18n="school.name">学校名称（可选）</label>
+          <input id="customSchoolName" class="inp" type="text" maxlength="96" autocomplete="organization" placeholder="例如 Example University" data-i18n-attr="placeholder:school.namePlaceholder" />
+          <label class="lbl" for="customGatewayOrigin" data-i18n="school.gateway">EasyConnect 网关</label>
+          <input id="customGatewayOrigin" class="inp" type="url" inputmode="url" maxlength="2048" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://vpn.example.edu" data-i18n-attr="placeholder:school.gatewayPlaceholder" />
+          <div class="school-actions">
+            <button id="probeCustomGateway" class="primary sm" type="button" data-i18n="school.check">检查网关</button>
+            <button id="cancelCustomGateway" class="ghost sm" type="button" data-i18n="school.cancel">取消</button>
+          </div>
+        </div>
+        <div id="customGatewayConfirmation" class="gateway-confirmation" hidden>
+          <strong data-i18n="school.confirmTitle">确认未审核学校</strong>
+          <p id="customGatewaySummary"></p>
+          <p class="gateway-warning" data-i18n="school.unverifiedWarning">该学校并非应用内置审核配置。确认后会在本机创建独立配置并切换重启；校园密码不会发送给当前学校以外的网关。</p>
+          <div class="school-actions">
+            <button id="confirmCustomGateway" class="primary sm" type="button" data-i18n="school.confirmSwitch">确认创建并切换</button>
+            <button id="backCustomGateway" class="ghost sm" type="button" data-i18n="school.back">返回修改</button>
+          </div>
+        </div>
+        <p id="schoolProfileError" class="school-error" role="alert"></p>
+      </div>
       <label class="lbl" data-i18n="login.account">账号</label>
       <input id="lgUser" class="inp" type="text" name="username" autocomplete="username" spellcheck="false" placeholder="校园账号前缀(如 xxx000)" data-i18n-attr="placeholder:login.accountPlaceholder" />
       <label class="lbl" data-i18n="login.password">密码</label>
@@ -57,7 +88,7 @@
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
         <div class="hero-card" id="connTop">
-          <div class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
+          <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
           <div class="conn-ip">IP <span id="connIp">—</span></div>
           <button class="switch" id="power" aria-label="连接开关" data-i18n-attr="aria-label:connect.powerLabel"><span class="knob"></span></button>
           <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
@@ -114,7 +145,7 @@
                 <span class="loc-flag">🏫</span>
                 <div class="loc-card-text">
                   <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
-                  <div class="loc-card-sub" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</div>
+                  <div id="gatewaySchoolName" class="loc-card-sub" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</div>
                 </div>
               </div>
             </div>
@@ -206,7 +237,7 @@
           <div class="card-title" data-i18n="settings.account">当前账号</div>
           <div class="acct" id="acct">—</div>
           <div class="card-title gateway-title" data-i18n="settings.gateway">网关</div>
-          <div class="acct">remote.hkust-gz.edu.cn</div>
+          <div id="settingsGateway" class="acct">remote.hkust-gz.edu.cn</div>
           <p class="hint" data-i18n="settings.gatewayHint">网关及协议参数由受版本控制的引擎配置提供，避免本机设置漂移。</p>
         </div>
         <div class="card">
@@ -380,6 +411,7 @@
   <script src="certificate-manager.js"></script>
   <script src="resource-manager.js"></script>
   <script src="proxy-auth-migration.js"></script>
+  <script src="school-profile-selector.js"></script>
   <script src="app.js"></script>
   <script src="auth-challenge.js"></script>
 </body>

@@ -8,7 +8,9 @@ const test = require('node:test');
 const {
   assertEnginePresent,
   assertProxyCommandPresent,
+  assertGatewayProbePresent,
   requiredEngineName,
+  requiredGatewayProbeName,
   requiredProxyCommandName,
 } = require('../build/afterPack');
 const {
@@ -43,6 +45,8 @@ test('packaging maps each target to its required engine name', () => {
   assert.equal(requiredProxyCommandName('darwin', 'arm64'), 'ec-proxy-command-darwin-arm64');
   assert.equal(requiredProxyCommandName('win32', 'x64'), 'ec-proxy-command-windows-amd64.exe');
   assert.equal(requiredProxyCommandName('linux', 'x64'), 'ec-proxy-command-linux-amd64');
+  assert.equal(requiredGatewayProbeName('darwin', 'arm64'), 'ec-gateway-probe-darwin-arm64');
+  assert.equal(requiredGatewayProbeName('win32', 'x64'), 'ec-gateway-probe-windows-amd64.exe');
 });
 
 test('the synthetic auth fixture is never a packaged native resource', () => {
@@ -111,6 +115,7 @@ test('package verifier accepts only the exact target engine, helper and configur
   const expected = [
     'ec-engine-darwin-arm64',
     'ec-proxy-command-darwin-arm64',
+    'ec-gateway-probe-darwin-arm64',
     'hkustgz.json',
   ];
   for (const name of expected) fs.writeFileSync(path.join(directory, name), 'fixture');
@@ -196,6 +201,14 @@ test('packaging fails before signing when the SSH proxy helper is absent', () =>
   assert.throws(
     () => assertProxyCommandPresent(directory, 'darwin', 'arm64'),
     /missing packaged SSH proxy helper:.*ec-proxy-command-darwin-arm64/,
+  );
+});
+
+test('packaging fails before signing when the credential-free Gateway probe is absent', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-gateway-probe-'));
+  assert.throws(
+    () => assertGatewayProbePresent(directory, 'darwin', 'arm64'),
+    /missing packaged Gateway probe:.*ec-gateway-probe-darwin-arm64/u,
   );
 });
 

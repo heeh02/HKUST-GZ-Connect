@@ -106,7 +106,8 @@ test('a failure after an atomic rename is rolled back before browser restore', a
 });
 
 test('queued transaction factories run serially and observe the latest committed source', async () => {
-  const queue = new RoutingPolicyTransactionQueue();
+  const token = Object.freeze({});
+  const queue = new RoutingPolicyTransactionQueue({ isContextCurrent: (value) => value === token });
   const snapshots = [];
   let state = 0;
   let releaseFirst;
@@ -130,13 +131,79 @@ test('queued transaction factories run serially and observe the latest committed
     };
   };
 
-  const first = queue.run(makeTransaction(1, firstBlocked));
+  const first = queue.run(token, makeTransaction(1, firstBlocked));
   await firstStarted;
-  const second = queue.run(makeTransaction(2));
+  const second = queue.run(token, makeTransaction(2));
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(snapshots, [0], 'the second snapshot must not be captured before its turn');
   releaseFirst();
   assert.deepEqual(await Promise.all([first, second]), [1, 2]);
   assert.deepEqual(snapshots, [0, 1]);
   assert.equal(state, 2);
+});
+
+test('cancelAndDrain rejects queued stale work before its factory observes state', async () => {
+  const token = Object.freeze({});
+  const queue = new RoutingPolicyTransactionQueue({ isContextCurrent: () => true });
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let started;
+  const firstStarted = new Promise((resolve) => { started = resolve; });
+  let secondObserved = false;
+  const first = queue.run(token, () => ({
+    commit: async () => { started(); await blocked; },
+  }));
+  await firstStarted;
+  const second = queue.run(token, () => {
+    secondObserved = true;
+    return { commit: async () => {} };
+  });
+  const draining = queue.cancelAndDrain();
+  release();
+  await assert.rejects(first, (error) => error.code === 'stale_context');
+  await assert.rejects(second, (error) => error.code === 'stale_context');
+  assert.equal(await draining, true);
+  assert.equal(secondObserved, false);
+});
+
+test('stale in-flight commit rolls back old source and PAC then re-gates Browser', async () => {
+  const token = Object.freeze({});
+  let current = true;
+  let releaseExternal;
+  const externalBlocked = new Promise((resolve) => { releaseExternal = resolve; });
+  let externalStarted;
+  const externalStart = new Promise((resolve) => { externalStarted = resolve; });
+  const calls = [];
+  const queue = new RoutingPolicyTransactionQueue({ isContextCurrent: () => current });
+  const mutation = queue.run(token, {
+    suspend: async () => calls.push('suspend'),
+    commit: async () => calls.push('commit'),
+    applyExternal: async () => { calls.push('external'); externalStarted(); await externalBlocked; },
+    applyBrowser: async () => calls.push('browser'),
+    rollback: async () => calls.push('rollback'),
+    restoreExternal: async () => calls.push('restore-external'),
+    restoreBrowser: async () => calls.push('restore-browser'),
+  });
+  await externalStart;
+  current = false;
+  const draining = queue.cancelAndDrain();
+  releaseExternal();
+  await assert.rejects(mutation, (error) => error.code === 'stale_context');
+  assert.equal(await draining, true);
+  assert.deepEqual(calls, [
+    'suspend', 'commit', 'external', 'rollback', 'restore-external', 'suspend',
+  ]);
+});
+
+test('rollback uncertainty makes context drain fail closed permanently', async () => {
+  const token = Object.freeze({});
+  let current = true;
+  const queue = new RoutingPolicyTransactionQueue({ isContextCurrent: () => current });
+  const mutation = queue.run(token, {
+    commit: async () => { current = false; },
+    rollback: async () => { throw new Error('rollback failed'); },
+    restoreExternal: async () => {},
+  });
+  await assert.rejects(mutation, (error) => error.rollbackIncomplete === true);
+  assert.equal(await queue.cancelAndDrain(), false);
 });

@@ -1,6 +1,7 @@
 'use strict';
 
 const DEFAULT_CAMPUS_HOME = 'https://www.hkust-gz.edu.cn/';
+const BLANK_CAMPUS_HOME = 'about:blank';
 const {
   CAMPUS_PARTITION,
   ROUTE_CAMPUS,
@@ -31,6 +32,7 @@ const MAX_TABS = DEFAULT_MAX_TABS;
 
 function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('zh')) {
   let value = String(input || '').trim() || fallback;
+  if (value === BLANK_CAMPUS_HOME && fallback === BLANK_CAMPUS_HOME) return BLANK_CAMPUS_HOME;
   if (value.length > MAX_URL_LENGTH) throw new Error(t('url.tooLong'));
   if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value}`;
 
@@ -70,6 +72,7 @@ function campusWindowChrome(platform) {
 }
 
 function safePopupUrl(value) {
+  if (value === BLANK_CAMPUS_HOME) return true;
   try {
     const parsed = new URL(value);
     return ['http:', 'https:'].includes(parsed.protocol);
@@ -168,6 +171,7 @@ class CampusBrowser {
     locale,
     t,
     onError,
+    partition = CAMPUS_PARTITION,
   }) {
     this.BrowserWindow = BrowserWindow;
     this.WebContentsView = WebContentsView;
@@ -185,7 +189,9 @@ class CampusBrowser {
     this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
-    this.homeUrl = normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
+    this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
+      ? BLANK_CAMPUS_HOME
+      : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
     this.onError = onError;
     this.certificateController = new CertificateController({
       trustStore: certificateTrust,
@@ -207,6 +213,7 @@ class CampusBrowser {
     this.tabManager = new TabManager({ maxTabs: MAX_TABS });
     this.browserSessionManager = new BrowserSessionManager({
       session,
+      partition,
       routingPolicy: this.routingPolicy,
       onSessionReady: (browserSession) => this.applyDownloadHandler(browserSession),
     });
@@ -368,6 +375,9 @@ class CampusBrowser {
   }
 
   resolveRoute(rawUrl, inheritedRoute = null, requestedRoute = null) {
+    if (rawUrl === BLANK_CAMPUS_HOME) {
+      return { route: ROUTE_DIRECT, source: 'local-blank', matchedRule: null };
+    }
     let resolution;
     try {
       resolution = this.routingPolicy.resolve(rawUrl, inheritedRoute);
@@ -479,7 +489,7 @@ class CampusBrowser {
     const active = this.activeTab();
     const navigation = navigationForContents(active?.view.webContents);
 
-    if (command === 'new-tab') this.createTab(this.homeUrl, ROUTE_CAMPUS);
+    if (command === 'new-tab') this.createTab(this.homeUrl);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -1028,12 +1038,41 @@ class CampusBrowser {
     this.findOpen = false;
     this.lastToolbarState = null;
   }
+
+  closeForContextSwitch({ timeoutMs = 5_000, setTimeoutFn = setTimeout,
+    clearTimeoutFn = clearTimeout } = {}) {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30_000 ||
+        typeof setTimeoutFn !== 'function' || typeof clearTimeoutFn !== 'function') {
+      return Promise.reject(new TypeError('Campus Browser close deadline is invalid'));
+    }
+    const window = this.window;
+    if (!window || window.isDestroyed()) {
+      this.close();
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      const finish = (closed) => {
+        if (settled) return;
+        settled = true;
+        clearTimeoutFn(timer);
+        resolve(closed);
+      };
+      window.once('closed', () => finish(true));
+      timer = setTimeoutFn(() => finish(false), timeoutMs);
+      timer?.unref?.();
+      try { window.close(); }
+      catch { finish(false); }
+    });
+  }
 }
 
 module.exports = {
   CAMPUS_PARTITION,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
+  BLANK_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
   MAX_TABS,
   SLOW_LOADING_HINT_MS,

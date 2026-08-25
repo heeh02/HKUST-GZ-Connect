@@ -602,6 +602,41 @@ function loadingState(scripts) {
   return { loading: state.loading, slow: state.slow };
 }
 
+test('a custom local blank home keeps every new tab on the non-network direct route', async () => {
+  const { browser } = createFakeBrowser({ homeUrl: 'about:blank' });
+  await browser.open('about:blank', 1080, ROUTE_DIRECT);
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.activeTab().view.webContents.getURL(), 'about:blank');
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+});
+
+test('context switch close waits for the real BrowserWindow closed event', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const window = browser.window;
+  const pending = browser.closeForContextSwitch();
+  assert.equal(window.destroyed, true);
+  window.emit('closed');
+  assert.equal(await pending, true);
+  assert.equal(browser.window, null);
+  assert.equal(browser.tabs.length, 0);
+});
+
+test('context switch close fails closed when BrowserWindow never confirms closure', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  let timeout;
+  const pending = browser.closeForContextSwitch({
+    timeoutMs: 100,
+    setTimeoutFn: (callback) => { timeout = callback; return { unref() {} }; },
+    clearTimeoutFn: () => {},
+  });
+  timeout();
+  assert.equal(await pending, false);
+});
+
 test('a load slower than ten seconds is flagged per tab', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { browser, scripts } = createFakeBrowser();
