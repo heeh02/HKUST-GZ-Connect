@@ -20,7 +20,7 @@ const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
 } = require('./lib/credential-settings-transaction');
-const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker } = require('./lib/app-data-dir');
+const { assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = require('./lib/app-data-dir');
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -30,12 +30,11 @@ const {
 const { AuthChallengeCoordinator, EngineControlRegistry } = require('./lib/engine-control-suite');
 const { EngineConnectionRuntime } = require('./lib/engine-connection-runtime');
 const { DesktopShell } = require('./lib/desktop-shell');
-const { SYNTHETIC_ENGINE_E2E_ENV, exactExecutablePattern, resolveEngineLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
+const { SYNTHETIC_ENGINE_E2E_ENV, resolveEngineLaunch, resolveNativeResourcePath } = require('./lib/engine-process');
 const {
   EngineSupervisor,
-  loadEngineOwnerRecord,
+  cleanupOrphanedEngine,
   removeEngineOwnerRecord,
-  windowsOwnedEngineCleanupInvocation,
   writeEngineOwnerRecord,
 } = require('./lib/engine-supervisor');
 const { ConnectionTelemetryCoordinator } = require('./lib/connection-telemetry-coordinator');
@@ -466,34 +465,8 @@ function emit() {
 // The gateway permits one session per account. Stop an orphaned independent
 // engine before starting the new owned child.
 function killStrayEngines(resolvedEnginePath) {
-  if (process.platform === 'win32') {
-    const owner = loadEngineOwnerRecord(ENGINE_OWNER);
-    try {
-      const invocation = windowsOwnedEngineCleanupInvocation(owner);
-      if (!invocation) return;
-      require('child_process').execFileSync(invocation.command, invocation.args, {
-        env: invocation.env,
-        stdio: 'ignore',
-        timeout: 4000,
-        windowsHide: true,
-      });
-    } catch {
-    } finally {
-      // A stale/corrupt record must not be retried forever. PID reuse is safe:
-      // PowerShell checks both the recorded PID and the actual executable path.
-      removeEngineOwnerRecord(ENGINE_OWNER);
-    }
-    return;
-  }
-  try {
-    const processPattern = exactExecutablePattern(resolvedEnginePath);
-    if (!processPattern) return;
-    require('child_process').execFileSync(
-      'pkill',
-      ['-f', processPattern],
-      { stdio: 'ignore', timeout: 3000 },
-    );
-  } catch {}
+  return cleanupOrphanedEngine({ platform: process.platform,
+    executablePath: resolvedEnginePath, ownerFile: ENGINE_OWNER });
 }
 
 function beginLifecycleIntent() {
@@ -1295,6 +1268,27 @@ campusBrowserManager = new CampusBrowserManager({
   },
 });
 
+const profileSwitching = createMainProfileSwitchComposition({
+  enabled: preReadyStorage.mode === 'profile-workspace',
+  directoryOptions: { userData: DATA, packageRoot: __dirname, isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath, desktopDir: __dirname },
+  userData: DATA, journalFile: ACTIVE_CONTEXT_SWITCH, activeAuthority: preReadyStorage.authority,
+  application: app, argv: process.argv, isPackaged: app.isPackaged, developmentEntry: __dirname,
+  owners: { activeContextLease, browserManager: campusBrowserManager,
+    authChallenges: authChallengeCoordinator, onboarding: schoolProfileOnboarding,
+    networkStartup: networkStartupCoordinator, connectivityRecovery,
+    mutationQueue: routingPolicyTransactions, engineSupervisor, connectionState },
+  effects: {
+    clearProxyCredential: clearActiveProxyCredential, clearConnectionPresentation,
+    ensureEngineStopped, cleanupOrphanedEngine: () => killStrayEngines(enginePath()),
+    revokeProxyAccess: () => (clearActiveProxyCredential(),
+      removeExternalProxySidecar() && activeProxyCredential === null),
+    clearServerState: () => { serverCampusResources = []; state.lastError = null;
+      state.browserNotice = null; clearConnectionPresentation(); return true; },
+    closeLog: () => logWriter?.close().catch(reportLogFailure),
+  },
+});
+const switchSchoolProfile = profileSwitching.switchProfile;
 async function connectAndOpenCampusBrowser(rawRequest) {
   state.browserNotice = null;
   emit();
@@ -1378,7 +1372,8 @@ registerControlDataIpc({
     runTransaction: runDomainPolicyTransaction,
     safeResources: safeCampusResources,
   },
-  schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale },
+  schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
+    switchProfile: switchSchoolProfile },
 });
 registerSettingsCredentialIpc({
   register: trustedHandle,
@@ -1574,7 +1569,12 @@ app.on('login', (event, webContents, _details, authInfo, callback) => {
   activeProxyCredential.answerProxyChallenge(authInfo, generation, callback);
 });
 app.whenReady().then(() => {
-  assertActiveContextSwitchStartupClear({ mode: preReadyStorage.mode, filePath: ACTIVE_CONTEXT_SWITCH });
+  if (!profileSwitching.runtime) {
+    assertActiveContextSwitchStartupClear({ mode: preReadyStorage.mode, filePath: ACTIVE_CONTEXT_SWITCH });
+  }
+  return profileSwitching.recoverBeforeServices();
+}).then((switchRecovery) => {
+  if (switchRecovery?.relaunching) return;
   const persistence = persistenceRuntime.initialize();
   if (persistence.relaunchRequired) {
     relaunchAfterPersistenceMigration({ application: app, argv: process.argv,
@@ -1583,7 +1583,7 @@ app.whenReady().then(() => {
   }
   initializeMultiSchoolStartup(persistenceRuntime, activeSchoolProfile);
   initializeLogWriter();
-  writePersistenceE2EMarker({ application: app, environment: process.env, userData: DATA, mode: persistenceRuntime.mode });
+  writePersistenceE2EMarker({ application: app, environment: process.env, userData: DATA, mode: persistenceRuntime.mode }); writeProfileSwitchE2EMarker({ application: app, environment: process.env, userData: DATA, ...activeSchoolProfile.activeContextBinding() });
   try {
     locale = currentLocale();
   } catch {

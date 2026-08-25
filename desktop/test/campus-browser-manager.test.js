@@ -19,6 +19,7 @@ class FakeBrowser {
   suspendRoutingPolicy() { this.routingSuspended = true; return 'suspended'; }
   resumeRoutingPolicy(port) { this.routingSuspended = false; return port; }
   close() { return 'closed'; }
+  closeForContextSwitch() { this.contextClosed = true; return Promise.resolve(true); }
   ownsWebContents(value) { return value === 'owned'; }
   handleCertificateError(value) { return value; }
   setLocale(...args) { this.locale = args; }
@@ -118,4 +119,13 @@ test('lifecycle and certificate wrappers are inert before creation and delegate 
   assert.equal(f.manager.close(), 'closed');
   assert.equal(f.manager.hasBrowser, false);
   assert.notEqual(f.manager.getOrCreate(), retired);
+});
+
+test('context switch close retains ownership until Browser confirms closed', async () => {
+  const f = fixture();
+  assert.equal(await f.manager.closeForContextSwitch(), true);
+  const browser = f.manager.getOrCreate();
+  assert.equal(await f.manager.closeForContextSwitch(), true);
+  assert.equal(browser.contextClosed, true);
+  assert.equal(f.manager.browser, null);
 });

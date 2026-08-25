@@ -612,6 +612,31 @@ test('a custom local blank home keeps every new tab on the non-network direct ro
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
+test('context switch close waits for the real BrowserWindow closed event', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const window = browser.window;
+  const pending = browser.closeForContextSwitch();
+  assert.equal(window.destroyed, true);
+  window.emit('closed');
+  assert.equal(await pending, true);
+  assert.equal(browser.window, null);
+  assert.equal(browser.tabs.length, 0);
+});
+
+test('context switch close fails closed when BrowserWindow never confirms closure', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  let timeout;
+  const pending = browser.closeForContextSwitch({
+    timeoutMs: 100,
+    setTimeoutFn: (callback) => { timeout = callback; return { unref() {} }; },
+    clearTimeoutFn: () => {},
+  });
+  timeout();
+  assert.equal(await pending, false);
+});
+
 test('a load slower than ten seconds is flagged per tab', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const { browser, scripts } = createFakeBrowser();

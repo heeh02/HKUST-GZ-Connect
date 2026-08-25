@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
   probeCustomGateway: (request) => ipcRenderer.invoke('probe-custom-gateway', request),
   confirmCustomGateway: (request) => ipcRenderer.invoke('confirm-custom-gateway', request),
   cancelCustomGateway: () => ipcRenderer.invoke('cancel-custom-gateway'),
+  switchSchoolProfile: (request) => ipcRenderer.invoke('switch-school-profile', request),
   resize: (height) => ipcRenderer.invoke('resize', height),
   onOpenRoutingRules: (cb) => {
     if (typeof cb !== 'function') return () => {};

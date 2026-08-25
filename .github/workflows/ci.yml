@@ -192,6 +192,8 @@ jobs:
         run: npm run test:main-integration
       - name: Exercise clean custom Profile startup
         run: npm run test:main-custom-profile
+      - name: Exercise recoverable Profile switching and relaunch
+        run: npm run test:main-profile-switch
       - name: Exercise control renderer crash-loop recovery
         run: npm run test:control-renderer-recovery
       - name: Exercise Main with a synthetic Engine lifecycle

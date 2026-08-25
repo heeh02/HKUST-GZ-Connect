@@ -86,16 +86,19 @@ test('control preload exposes only bounded school onboarding operations', async 
   await api.probeCustomGateway(probe);
   await api.confirmCustomGateway(confirmation);
   await api.cancelCustomGateway();
+  await api.switchSchoolProfile({ profileId: 'custom-example' });
   assert.deepEqual(invocations.map(({ channel }) => channel), [
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',
     'cancel-custom-gateway',
+    'switch-school-profile',
   ]);
   assert.equal(invocations[0].argumentCount, 1);
   assert.equal(invocations[1].payload, probe);
   assert.equal(invocations[2].payload, confirmation);
   assert.equal(invocations[3].argumentCount, 1);
+  assert.deepEqual(invocations[4].payload, { profileId: 'custom-example' });
   assert.equal(typeof api.getProfileKey, 'undefined');
   assert.equal(typeof api.getGatewayCookie, 'undefined');
 });

@@ -82,6 +82,7 @@ jobs:
         run: |
           npm run test:main-integration
           npm run test:main-custom-profile
+          npm run test:main-profile-switch
           npm run test:control-renderer-recovery
           npm run test:main-engine-lifecycle
           npm run test:main-network-startup

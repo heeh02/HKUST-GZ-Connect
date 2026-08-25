@@ -12,6 +12,8 @@ const {
   WINDOWS_ENGINE_PATH_ENV,
   WINDOWS_ENGINE_PID_ENV,
   WINDOWS_EXACT_CLEANUP_SCRIPT,
+  cleanupOrphanedEngine,
+  exactExecutableProcessPattern,
   loadEngineOwnerRecord,
   removeEngineOwnerRecord,
   sameWindowsExecutablePath,
@@ -399,6 +401,7 @@ test('Windows orphan cleanup requires both the recorded PID and resolved executa
   assert.equal(WINDOWS_EXACT_CLEANUP_SCRIPT.includes(executable), false);
   assert.match(WINDOWS_EXACT_CLEANUP_SCRIPT, /ProcessId/);
   assert.match(WINDOWS_EXACT_CLEANUP_SCRIPT, /ExecutablePath/);
+  assert.match(WINDOWS_EXACT_CLEANUP_SCRIPT, /if \(\$remaining\) \{ exit 1 \}/u);
   assert.doesNotMatch(WINDOWS_EXACT_CLEANUP_SCRIPT, /Get-Process\s+-Name/);
   assert.equal(
     sameWindowsExecutablePath(executable, 'C:\\Other\\ec-engine-windows-amd64.exe'),
@@ -412,4 +415,62 @@ test('Windows orphan cleanup requires both the recorded PID and resolved executa
   assert.equal(windowsOwnedEngineCleanupInvocation(
     { ...owner, pid: -1 },
   ), null);
+});
+
+test('POSIX orphan cleanup kills and then proves the exact executable is absent', () => {
+  const calls = [];
+  const executablePath = '/Applications/Campus Connect.app/Contents/Resources/engine/ec-engine';
+  const result = cleanupOrphanedEngine({
+    platform: 'darwin',
+    executablePath,
+    ownerFile: '/private/user/global/engine-owner.json',
+    execFileSync(command, args) {
+      calls.push([command, args]);
+      if (command === 'pgrep') { const error = new Error('absent'); error.status = 1; throw error; }
+    },
+  });
+  assert.equal(result, true);
+  const pattern = exactExecutableProcessPattern(executablePath);
+  assert.deepEqual(calls, [
+    ['pkill', ['-f', pattern]],
+    ['pgrep', ['-f', pattern]],
+  ]);
+  assert.equal(new RegExp(pattern).test(`${executablePath} --config x`), true);
+  assert.equal(new RegExp(pattern).test('/other/ec-engine --config x'), false);
+});
+
+test('orphan cleanup stays fail closed when a process remains or tooling fails', () => {
+  const input = {
+    platform: 'linux',
+    executablePath: '/app/ec-engine',
+    ownerFile: '/user/engine-owner.json',
+  };
+  assert.equal(cleanupOrphanedEngine({ ...input, execFileSync: () => {} }), false,
+    'a successful pgrep means the process still exists');
+  assert.equal(cleanupOrphanedEngine({
+    ...input,
+    execFileSync: () => { const error = new Error('missing tool'); error.code = 'ENOENT'; throw error; },
+  }), false);
+});
+
+test('Windows confirmed cleanup removes only the matching owner record', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'switch-engine-owner-'));
+  const ownerFile = path.join(directory, 'engine-owner.json');
+  const executablePath = 'C:\\Program Files\\Campus Connect\\ec-engine.exe';
+  const owner = { pid: 4321, executablePath };
+  try {
+    writeEngineOwnerRecord(ownerFile, owner);
+    assert.equal(cleanupOrphanedEngine({
+      platform: 'win32', executablePath, ownerFile, execFileSync: () => {}, baseEnv: {},
+    }), true);
+    assert.equal(fs.existsSync(ownerFile), false);
+    writeEngineOwnerRecord(ownerFile, owner);
+    assert.equal(cleanupOrphanedEngine({
+      platform: 'win32', executablePath: 'C:\\Other\\ec-engine.exe', ownerFile,
+      execFileSync: () => {}, baseEnv: {},
+    }), false);
+    assert.equal(fs.existsSync(ownerFile), true);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

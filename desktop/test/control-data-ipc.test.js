@@ -44,6 +44,7 @@ function fixture() {
         cancel: () => false,
       },
       getLocale: () => 'en',
+      switchProfile: async () => ({ ok: true }),
     },
   });
   return { handlers, get pins() { return pins; }, get rules() { return rules; } };
@@ -64,6 +65,7 @@ test('facade registers exact routing certificate resource and school channels', 
     'probe-custom-gateway',
     'confirm-custom-gateway',
     'cancel-custom-gateway',
+    'switch-school-profile',
   ]);
 });
 

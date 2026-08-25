@@ -1038,6 +1038,34 @@ class CampusBrowser {
     this.findOpen = false;
     this.lastToolbarState = null;
   }
+
+  closeForContextSwitch({ timeoutMs = 5_000, setTimeoutFn = setTimeout,
+    clearTimeoutFn = clearTimeout } = {}) {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30_000 ||
+        typeof setTimeoutFn !== 'function' || typeof clearTimeoutFn !== 'function') {
+      return Promise.reject(new TypeError('Campus Browser close deadline is invalid'));
+    }
+    const window = this.window;
+    if (!window || window.isDestroyed()) {
+      this.close();
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      const finish = (closed) => {
+        if (settled) return;
+        settled = true;
+        clearTimeoutFn(timer);
+        resolve(closed);
+      };
+      window.once('closed', () => finish(true));
+      timer = setTimeoutFn(() => finish(false), timeoutMs);
+      timer?.unref?.();
+      try { window.close(); }
+      catch { finish(false); }
+    });
+  }
 }
 
 module.exports = {

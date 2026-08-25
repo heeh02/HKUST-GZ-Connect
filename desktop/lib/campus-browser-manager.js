@@ -151,6 +151,15 @@ class CampusBrowserManager {
     return browser?.close() ?? null;
   }
 
+  async closeForContextSwitch() {
+    const browser = this.browser;
+    if (!browser) return true;
+    if (typeof browser.closeForContextSwitch !== 'function') return false;
+    if (await browser.closeForContextSwitch() !== true) return false;
+    if (this.browser === browser) this.browser = null;
+    return this.browser === null;
+  }
+
   ownsWebContents(contents) {
     return this.browser?.ownsWebContents(contents) === true;
   }
