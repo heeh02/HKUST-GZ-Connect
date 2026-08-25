@@ -6,8 +6,13 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
-const { CampusBrowser, FIND_BAR_HEIGHT, TOOLBAR_HEIGHT } = require('../lib/browser/session/campus-browser');
-const { CAMPUS_PARTITION } = require('../lib/routing/policy/campus-route');
+const {
+  BLANK_CAMPUS_HOME,
+  CampusBrowser,
+  FIND_BAR_HEIGHT,
+  TOOLBAR_HEIGHT,
+} = require('../lib/browser/session/campus-browser');
+const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing/policy/campus-route');
 
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
 // local error page immediately instead of hanging the test.
@@ -26,6 +31,15 @@ async function waitForMain(condition, description) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
+async function waitForPage(contents, expression, description) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (await contents.executeJavaScript(expression)) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`Timed out waiting for ${description}`);
@@ -128,6 +142,29 @@ async function assertFindBar(browser) {
   assert.equal(browser.activeTab().view.getBounds().y, TOOLBAR_HEIGHT);
 }
 
+async function assertWorkspaceHome(browser) {
+  const contents = browser.activeTab().view.webContents;
+  await waitForPage(contents,
+    "document.querySelectorAll('.resource').length === 3",
+    'local Workspace Home resources');
+  const state = await contents.executeJavaScript(`(() => ({
+    title: document.querySelector('h1')?.textContent,
+    warning: document.querySelector('.warning')?.textContent,
+    sections: [...document.querySelectorAll('h2')].map((value) => value.textContent),
+    names: [...document.querySelectorAll('.resource strong')].map((value) => value.textContent),
+    routes: [...document.querySelectorAll('.resource .route')].map((value) => value.textContent),
+    hrefs: [...document.querySelectorAll('.resource')].map((value) => value.href),
+  }))()`);
+  assert.equal(state.title, 'Example University');
+  assert.match(state.warning, /未审核/u);
+  assert.deepEqual(state.sections, ['收藏', '最近打开', '校园服务']);
+  assert.deepEqual(state.names, ['Favorite', 'Recent', 'Service']);
+  assert.deepEqual(state.routes, ['校园隧道', '直连', '校园隧道']);
+  assert.equal(state.hrefs.every((value) => value.startsWith('http://')), true);
+  assert.equal(contents.getURL(), BLANK_CAMPUS_HOME,
+    'Workspace Home must remain an app-owned non-network page');
+}
+
 async function main() {
   await app.whenReady();
   const errors = [];
@@ -145,14 +182,29 @@ async function main() {
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
     toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
+    homeUrl: BLANK_CAMPUS_HOME,
+    profilePresentation: { schoolName: 'Example University', unverified: true },
+    getWorkspaceResources: () => [
+      { id: 'favorite', name: 'Favorite', description: 'Pinned',
+        url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
+        favorite: true, lastOpenedAt: null },
+      { id: 'recent', name: 'Recent', description: 'Opened',
+        url: 'http://recent.example.invalid:1/', route: ROUTE_DIRECT,
+        favorite: false, lastOpenedAt: 200 },
+      { id: 'service', name: 'Service', description: 'Available',
+        url: 'http://service.example.invalid:1/', route: ROUTE_CAMPUS,
+        favorite: false, lastOpenedAt: null },
+    ],
     partition: CAMPUS_PARTITION,
     onError: (message) => errors.push(message),
   });
 
   try {
-    await browser.open(DEAD_URL, 11080, 'campus');
+    await browser.open(BLANK_CAMPUS_HOME, 11080, ROUTE_DIRECT);
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
+    await assertWorkspaceHome(browser);
+    await browser.open(DEAD_URL, 11080, 'campus');
 
     await assertDragRegions(browser);
     await assertRouteSwitch(browser);

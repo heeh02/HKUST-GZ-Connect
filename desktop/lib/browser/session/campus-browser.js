@@ -26,6 +26,7 @@ const TOOLBAR_HEIGHT = 76;
 const FIND_BAR_HEIGHT = 34;
 const SLOW_LOADING_HINT_MS = 10000;
 const MAX_URL_LENGTH = 2048;
+const MAX_WORKSPACE_HOME_RESOURCES = 64;
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
@@ -153,15 +154,90 @@ function errorPage(failedUrl, description, t = createT('zh'), route = ROUTE_CAMP
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-function neutralHomePage(profile, t = createT('zh')) {
+function workspaceHomeResources(value, t = createT('zh')) {
+  if (!Array.isArray(value) || value.length > MAX_WORKSPACE_HOME_RESOURCES) {
+    throw new TypeError('Campus Browser workspace resources are invalid');
+  }
+  const seenIds = new Set();
+  const seenUrls = new Set();
+  return Object.freeze(value.map((resource) => {
+    if (!resource || typeof resource !== 'object' || Array.isArray(resource) ||
+        typeof resource.id !== 'string' || !/^[a-z0-9-]{1,40}$/u.test(resource.id) ||
+        typeof resource.name !== 'string' || !resource.name.trim() || resource.name.length > 80 ||
+        /[\u0000-\u001f\u007f<>]/u.test(resource.name) ||
+        typeof resource.description !== 'string' || resource.description.length > 160 ||
+        /[\u0000-\u001f\u007f<>]/u.test(resource.description) ||
+        ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(resource.route) ||
+        typeof resource.favorite !== 'boolean' ||
+        (resource.lastOpenedAt !== null &&
+          (!Number.isSafeInteger(resource.lastOpenedAt) || resource.lastOpenedAt <= 0))) {
+      throw new TypeError('Campus Browser workspace resource is invalid');
+    }
+    const url = normalizeCampusUrl(resource.url, BLANK_CAMPUS_HOME, t);
+    if (url === BLANK_CAMPUS_HOME || seenIds.has(resource.id) || seenUrls.has(url)) {
+      throw new TypeError('Campus Browser workspace resources are duplicated');
+    }
+    seenIds.add(resource.id);
+    seenUrls.add(url);
+    return Object.freeze({
+      id: resource.id,
+      name: resource.name.trim(),
+      description: resource.description,
+      url,
+      route: resource.route,
+      favorite: resource.favorite,
+      lastOpenedAt: resource.lastOpenedAt,
+    });
+  }));
+}
+
+function workspaceResourceCard(resource, t) {
+  const description = resource.description
+    ? `<span class="description">${escapeHtml(resource.description)}</span>` : '';
+  const route = escapeHtml(t(resource.route === ROUTE_DIRECT ? 'route.direct' : 'route.campus'));
+  return `<a class="resource" href="${escapeHtml(resource.url)}">
+    <strong>${escapeHtml(resource.name)}</strong>${description}
+    <span class="route ${resource.route === ROUTE_DIRECT ? 'direct' : ''}">${route}</span>
+  </a>`;
+}
+
+function workspaceHomeSection(title, resources, t) {
+  if (!resources.length) return '';
+  return `<section><h2>${escapeHtml(title)}</h2><div class="grid">${resources
+    .map((resource) => workspaceResourceCard(resource, t)).join('')}</div></section>`;
+}
+
+function neutralHomePage(profile, t = createT('zh'), rawResources = []) {
+  const resources = workspaceHomeResources(rawResources, t);
   const school = escapeHtml(profile?.schoolName || t('browser.workspace'));
   const warning = profile?.unverified
     ? `<p class="warning">${escapeHtml(t('browser.neutralHomeUnverified'))}</p>` : '';
+  const favorites = resources.filter((resource) => resource.favorite);
+  const claimed = new Set(favorites.map(({ id }) => id));
+  const recent = resources.filter((resource) => !claimed.has(resource.id) && resource.lastOpenedAt)
+    .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
+  for (const resource of recent) claimed.add(resource.id);
+  const services = resources.filter((resource) => !claimed.has(resource.id));
+  const sections = [
+    workspaceHomeSection(t('browser.homeFavorites'), favorites, t),
+    workspaceHomeSection(t('browser.homeRecent'), recent, t),
+    workspaceHomeSection(t('browser.homeServices'), services, t),
+  ].join('');
+  const empty = sections ? '' : `<p class="empty">${escapeHtml(t('browser.homeEmpty'))}</p>`;
   return `<!doctype html><meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
     <title>${escapeHtml(t('browser.workspace'))}</title>
-    <style>body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}main{max-width:680px;margin:12vh auto;padding:36px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}h1{margin:0 0 10px;color:#0b2a5b;font-size:25px}p{line-height:1.7;color:#667085}.warning{color:#7a5200;background:#fff1cf;border-radius:10px;padding:10px 12px}</style>
-    <main><h1>${school}</h1>${warning}<p>${escapeHtml(t('browser.neutralHomeBody'))}</p></main>`;
+    <style>
+      *{box-sizing:border-box}body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}
+      main{max-width:900px;margin:6vh auto;padding:32px}.hero{padding:24px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}
+      h1{margin:0 0 8px;color:#0b2a5b;font-size:25px}h2{margin:24px 0 10px;color:#0b2a5b;font-size:16px}p{margin:0;line-height:1.7;color:#667085}
+      .warning{margin-top:12px;color:#7a5200;background:#fff1cf;border-radius:10px;padding:10px 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+      .resource{display:flex;min-width:0;min-height:104px;flex-direction:column;gap:6px;padding:14px;color:#0b2a5b;text-decoration:none;background:#fff;border:1px solid #e2e8f2;border-radius:14px;transition:border-color .16s,box-shadow .16s,transform .16s}
+      .resource:hover,.resource:focus-visible{border-color:#c59a2b;box-shadow:0 8px 20px rgba(13,30,66,.08);transform:translateY(-1px);outline:none}.description{color:#7a8598;font-size:13px;line-height:1.4}.route{align-self:flex-start;margin-top:auto;padding:3px 7px;border-radius:999px;background:#eaf0fa;color:#0b2a5b;font-size:11px;font-weight:700}.route.direct{background:#fff1cf;color:#715300}.empty{margin-top:18px;text-align:center}
+      @media(max-width:560px){main{margin:0;padding:18px}.hero{padding:18px}.grid{grid-template-columns:1fr}}
+      @media(prefers-reduced-motion:reduce){.resource{transition:none}.resource:hover,.resource:focus-visible{transform:none}}
+    </style>
+    <main><div class="hero"><h1>${school}</h1><p>${escapeHtml(t('browser.neutralHomeBody'))}</p>${warning}</div>${sections}${empty}</main>`;
 }
 
 class CampusBrowser {
@@ -177,6 +253,7 @@ class CampusBrowser {
     toolbarPreload,
     campusPreload,
     profilePresentation = null,
+    getWorkspaceResources = () => [],
     showItemInFolder = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
@@ -211,6 +288,10 @@ class CampusBrowser {
         unverified: profilePresentation.unverified,
       })
       : Object.freeze({ schoolName: this.t('browser.workspace'), unverified: false });
+    if (typeof getWorkspaceResources !== 'function') {
+      throw new TypeError('Campus Browser workspace resource provider is invalid');
+    }
+    this.getWorkspaceResources = getWorkspaceResources;
     this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
@@ -285,7 +366,23 @@ class CampusBrowser {
       trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
     }));
     this.window.webContents.send?.('campus-toolbar-locale', this.locale);
+    for (const tab of this.tabs) {
+      if (this.currentUrl(tab) === BLANK_CAMPUS_HOME) this.renderWorkspaceHome(tab);
+    }
     this.updateToolbar();
+  }
+
+  workspaceResources() {
+    try { return workspaceHomeResources(this.getWorkspaceResources(), this.t); }
+    catch { return Object.freeze([]); }
+  }
+
+  renderWorkspaceHome(tab) {
+    if (!tab || tab.view.webContents.isDestroyed()) return false;
+    const source = neutralHomePage(this.profilePresentation, this.t, this.workspaceResources());
+    const script = `document.open();document.write(${JSON.stringify(source)});document.close();`;
+    tab.view.webContents.executeJavaScript(script).catch(() => {});
+    return true;
   }
 
   async decideCertificateTrust({ origin, fingerprint, error, certificate }) {
@@ -1069,9 +1166,7 @@ class CampusBrowser {
     const loading = tab.view.webContents.loadURL(url);
     loading.then(() => {
       if (url !== BLANK_CAMPUS_HOME || tab.view.webContents.isDestroyed()) return;
-      const source = neutralHomePage(this.profilePresentation, this.t);
-      const script = `document.open();document.write(${JSON.stringify(source)});document.close();`;
-      tab.view.webContents.executeJavaScript(script).catch(() => {});
+      this.renderWorkspaceHome(tab);
     }).catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
@@ -1154,6 +1249,7 @@ module.exports = {
   NEUTRAL_CAMPUS_PARTITION,
   BLANK_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
+  MAX_WORKSPACE_HOME_RESOURCES,
   MAX_TABS,
   SLOW_LOADING_HINT_MS,
   TOOLBAR_HEIGHT,
@@ -1162,6 +1258,7 @@ module.exports = {
   campusWindowChrome,
   errorPage,
   neutralHomePage,
+  workspaceHomeResources,
   nextZoomFactor,
   navigationForContents,
   normalizeCampusUrl,

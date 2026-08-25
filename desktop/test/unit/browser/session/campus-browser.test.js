@@ -5,6 +5,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const {
   CAMPUS_PARTITION,
+  BLANK_CAMPUS_HOME,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
@@ -16,6 +17,7 @@ const {
   campusWindowChrome,
   nextZoomFactor,
   neutralHomePage,
+  workspaceHomeResources,
   normalizeCampusUrl,
   errorPage,
   redactedFailedUrl,
@@ -47,11 +49,52 @@ test('campus URLs reject executable schemes and embedded credentials', () => {
   assert.equal(safePopupUrl('file:///etc/passwd'), false);
 });
 
-test('neutral Browser Home is app-owned, profile-aware, and contains no school URL', () => {
-  const html = neutralHomePage({ schoolName: 'Example <University>', unverified: true });
+test('neutral Browser Home is app-owned, profile-aware, and groups resources without duplicates', () => {
+  const resources = [
+    { id: 'favorite', name: 'Favorite & Site', description: 'Pinned',
+      url: 'https://favorite.example.edu/', route: ROUTE_CAMPUS, favorite: true,
+      lastOpenedAt: 100 },
+    { id: 'recent', name: 'Recent', description: 'Opened',
+      url: 'https://recent.example.edu/', route: ROUTE_DIRECT, favorite: false,
+      lastOpenedAt: 200 },
+    { id: 'service', name: 'Service', description: '',
+      url: 'https://service.example.edu/', route: ROUTE_CAMPUS, favorite: false,
+      lastOpenedAt: null },
+  ];
+  const labels = {
+    'browser.workspace': 'Workspace', 'browser.neutralHomeUnverified': 'Unverified',
+    'browser.neutralHomeBody': 'Choose a service', 'browser.homeFavorites': 'Favorites',
+    'browser.homeRecent': 'Recent', 'browser.homeServices': 'Services',
+    'browser.homeEmpty': 'Empty', 'route.campus': 'Campus', 'route.direct': 'Direct',
+  };
+  const html = neutralHomePage(
+    { schoolName: 'Example <University>', unverified: true },
+    (key) => labels[key] || key,
+    resources,
+  );
   assert.match(html, /Example &lt;University&gt;/u);
   assert.doesNotMatch(html, /hkust-gz\.edu\.cn|vpn\.example/u);
   assert.match(html, /warning/u);
+  assert.match(html, /Favorites[\s\S]*Favorite &amp; Site[\s\S]*Recent[\s\S]*Services/u);
+  assert.match(html, /https:\/\/recent\.example\.edu\/[\s\S]*Direct/u);
+  for (const resource of resources) {
+    const escapedName = resource.name.replace('&', '&amp;');
+    assert.equal(html.match(new RegExp(`<strong>${escapedName}</strong>`, 'gu'))?.length,
+      1, `${resource.id} appears once`);
+  }
+  assert.match(html, /prefers-reduced-motion:reduce/u);
+});
+
+test('Workspace Home resource projection rejects unsafe, duplicate and unbounded input', () => {
+  const valid = { id: 'site', name: 'Site', description: '',
+    url: 'https://site.example.edu/', route: ROUTE_CAMPUS, favorite: false,
+    lastOpenedAt: null };
+  assert.equal(workspaceHomeResources([valid])[0].url, 'https://site.example.edu/');
+  assert.throws(() => workspaceHomeResources([valid, { ...valid }]), /duplicated/u);
+  assert.throws(() => workspaceHomeResources([{ ...valid, name: '<script>' }]), /invalid/u);
+  assert.throws(() => workspaceHomeResources(Array.from({ length: 65 }, (_, index) => ({
+    ...valid, id: `site-${index}`, url: `https://site-${index}.example.edu/`,
+  }))), /invalid/u);
 });
 
 test('browser error pages retain only the origin of a sensitive failed URL', () => {
@@ -326,6 +369,7 @@ test('campus browser keeps one persistent session and routes each domain through
     isDestroyed() { return this.destroyed; }
     isMinimized() { return false; }
     getContentSize() { return [1200, 820]; }
+    setTitle(value) { this.title = value; }
     show() { calls.push(['show']); }
     focus() { calls.push(['focus']); }
     async loadFile(file) { calls.push(['toolbar', file]); }
@@ -462,6 +506,7 @@ test('a provisional load failure keeps the failed URL and shows an error page', 
     isDestroyed() { return this.destroyed; }
     isMinimized() { return false; }
     getContentSize() { return [1200, 820]; }
+    setTitle(value) { this.title = value; }
     show() {}
     focus() {}
     async loadFile() {}
@@ -518,6 +563,7 @@ test('zoom factors step by 0.1, reset to 1, and clamp to [0.5, 2]', () => {
 function createFakeBrowser(extra = {}) {
   const calls = [];
   const scripts = [];
+  const homeScripts = [];
   function makeSession(name) {
     const routeSession = new EventEmitter();
     routeSession.name = name;
@@ -535,6 +581,9 @@ function createFakeBrowser(extra = {}) {
     executeJavaScript(script) {
       if (typeof script === 'string' && script.includes('campusBrowserUI')) {
         scripts.push(script);
+      }
+      if (typeof script === 'string' && script.includes('document.write')) {
+        homeScripts.push(script);
       }
       return Promise.resolve();
     }
@@ -586,6 +635,7 @@ function createFakeBrowser(extra = {}) {
     isDestroyed() { return this.destroyed; }
     isMinimized() { return false; }
     getContentSize() { return [1200, 820]; }
+    setTitle(value) { this.title = value; }
     show() {}
     focus() {}
     async loadFile() {}
@@ -601,7 +651,7 @@ function createFakeBrowser(extra = {}) {
     partition: CAMPUS_PARTITION,
     ...extra,
   });
-  return { browser, calls, scripts, sessions };
+  return { browser, calls, scripts, homeScripts, sessions };
 }
 
 function nextImmediate() {
@@ -626,6 +676,39 @@ test('a custom local blank home keeps every new tab on the non-network direct ro
   assert.equal(browser.tabs.length, 2);
   assert.equal(browser.activeTab().view.webContents.getURL(), 'about:blank');
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+});
+
+test('local Workspace Home refreshes favorites and recent resources without a network home', async () => {
+  let resources = [{
+    id: 'library', name: 'Library', description: 'Research',
+    url: 'https://library.example.edu/', route: ROUTE_CAMPUS, favorite: true,
+    lastOpenedAt: null,
+  }];
+  const labels = {
+    'browser.workspace': 'Workspace', 'browser.neutralHomeBody': 'Choose',
+    'browser.neutralHomeUnverified': 'Unverified', 'browser.homeFavorites': 'Favorites',
+    'browser.homeRecent': 'Recent', 'browser.homeServices': 'Services',
+    'browser.homeEmpty': 'Empty', 'route.campus': 'Campus', 'route.direct': 'Direct',
+    'browser.windowTitleForSchool': 'Workspace', 'browser.unverifiedSuffix': '',
+  };
+  const translate = (key) => labels[key] || key;
+  const { browser, homeScripts } = createFakeBrowser({
+    homeUrl: BLANK_CAMPUS_HOME,
+    profilePresentation: { schoolName: 'Example University', unverified: false },
+    getWorkspaceResources: () => resources,
+    t: translate,
+  });
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  await nextImmediate();
+  assert.match(homeScripts.at(-1), /Favorites[\s\S]*Library/u);
+  resources = [{
+    id: 'recent', name: 'Recent Site', description: '',
+    url: 'https://recent.example.edu/', route: ROUTE_DIRECT, favorite: false,
+    lastOpenedAt: 300,
+  }];
+  browser.setLocale('en', translate);
+  assert.match(homeScripts.at(-1), /Recent Site[\s\S]*Direct/u);
+  assert.doesNotMatch(homeScripts.at(-1), /Library/u);
 });
 
 test('context switch close waits for the real BrowserWindow closed event', async () => {

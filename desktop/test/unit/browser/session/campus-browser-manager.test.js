@@ -52,6 +52,11 @@ function fixture(overrides = {}) {
     getLocale: () => 'zh',
     getTranslator: () => (key, vars) => vars?.message ? `${key}:${vars.message}` : key,
     getProfilePresentation: () => ({ schoolName: 'Example University', unverified: false }),
+    getWorkspaceResources: () => [{
+      id: 'library', name: 'Library', description: 'Research resources',
+      url: 'https://library.example.edu/', route: 'campus', favorite: true,
+      lastOpenedAt: null,
+    }],
     showItemInFolder: () => {},
     showRoutingRules: () => {},
     reportError: (message) => errors.push(message),
@@ -75,6 +80,7 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.deepEqual(browser.options.profilePresentation, {
     schoolName: 'Example University', unverified: false,
   });
+  assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
 });
 
@@ -87,7 +93,7 @@ test('Browser presentation keeps only bounded school and trust display fields', 
   }), /presentation/u);
 });
 
-test('custom Profile uses its isolated partition and a local blank home without network fallback', async () => {
+test('every Profile uses its isolated partition and local Workspace Home without network fallback', async () => {
   const partition = `persist:campus-workspace-${'1'.repeat(32)}`;
   let connectionCalls = 0;
   const f = fixture({
@@ -101,6 +107,15 @@ test('custom Profile uses its isolated partition and a local blank home without 
   assert.equal(f.manager.browser.options.partition, partition);
   assert.deepEqual(f.manager.browser.opens, [['about:blank', 6180, 'direct']]);
   assert.equal(connectionCalls, 0);
+});
+
+test('reviewed Profile home cannot silently fall back to a packaged school URL', async () => {
+  const f = fixture();
+  const result = await f.manager.open();
+  assert.equal(result.url, 'about:blank');
+  assert.equal(f.manager.browser.options.homeUrl, 'about:blank');
+  assert.equal(f.manager.browser.options.getWorkspaceResources()[0].url,
+    'https://library.example.edu/');
 });
 
 test('a Direct WebResource opens without starting or requiring the campus Engine', async () => {

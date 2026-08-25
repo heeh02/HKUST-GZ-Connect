@@ -475,7 +475,7 @@ function emit() {
   // separate channel; update rides along so an automatic check that finds a
   // new release surfaces without waiting for a full refresh. get-state stays
   // the source of truth on full refreshes.
-  desktopShell?.send('status', { ...statusSnapshot(), locale, update: updateInfo });
+  desktopShell?.send('status', { ...statusSnapshot(), locale, update: updateInfo, capabilitySnapshot: activeSchoolProfile.capabilitySnapshot() });
   desktopShell?.updateTray();
 }
 
@@ -1258,7 +1258,6 @@ campusBrowserManager = new CampusBrowserManager({
   toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
   toolbarPreload: path.join(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
-  homeUrl: activeSchoolProfile.browserHomeUrl,
   browserPartition: preReadyStorage.authority?.layout?.browserPartition || activeSchoolProfile.browserPartition,
   routingPolicy: browserRoutingPolicy,
   ensureCampusReady,
@@ -1275,7 +1274,8 @@ campusBrowserManager = new CampusBrowserManager({
   getSocksPort: socksPort,
   getLocale: () => locale,
   getTranslator: () => t,
-  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, showItemInFolder: (file) => shell.showItemInFolder(file),
+  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(),
+  showItemInFolder: (file) => shell.showItemInFolder(file),
   showRoutingRules: () => {
     desktopShell?.showWindow();
     desktopShell?.send('open-routing-rules');

@@ -272,6 +272,18 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 .proxy-auth-chevron { font-size: 14px; line-height: 1; transition: transform .18s ease; }
 .proxy-auth-details[open] .proxy-auth-chevron { transform: rotate(180deg); }
 .proxy-auth-setting .hint { margin-top: 7px; }
+.capability-summary { padding: 11px; border: 1px solid var(--line); border-radius: 11px; background: #fbfcff; }
+.capability-summary[hidden] { display: none; }
+.capability-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--navy); }
+.capability-heading strong { font-size: 12px; }
+.capability-heading span { color: var(--muted); font-size: 9.5px; text-align: right; }
+.capability-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.capability-item { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 8px; border-radius: 9px; background: var(--field); }
+.capability-name { min-width: 0; color: #40506a; font-size: 10.5px; font-weight: 650; }
+.capability-state { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; color: #6d778a; background: #e8edf5; font-size: 9px; font-weight: 750; }
+.capability-state.supported { color: #08704a; background: #e4f6ee; }
+.capability-state.unavailable { color: #805f08; background: #fff3cf; }
+.capability-summary .hint { margin-top: 8px; }
 .radio { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 .radio input { width: 16px; height: 16px; accent-color: var(--gold); }
 .radio span { font-weight: 650; }
@@ -454,6 +466,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .manager-entry { align-items: flex-start; }
   .proxy-auth-setting .sw { align-items: flex-start; }
   .proxy-auth-setting .sw input { margin-top: 1px; }
+  .capability-list { grid-template-columns: 1fr; }
   .manager-dialog { left: 8px; right: 8px; }
   .manager-body { padding: 12px 14px 16px; }
   .manager-item { grid-template-columns: 1fr; }

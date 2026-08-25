@@ -68,6 +68,25 @@ const state = {
   lastError: null,
   version: 'test',
   pacUrl: '',
+  capabilitySnapshot: {
+    schemaVersion: 1,
+    profileId: 'hkustgz',
+    effective: {
+      'auth.password': 'supported',
+      'auth.captcha': 'unsupported',
+      'auth.sms': 'unsupported',
+      'auth.token': 'unsupported',
+      'auth.certificate': 'unsupported',
+      'auth.hid': 'unsupported',
+      'auth.sso': 'unsupported',
+      'auth.device': 'unsupported',
+      'auth.unknown_secondary': 'unsupported',
+      'resource.catalogue': 'unsupported',
+      'resource.authorization_decision': 'unsupported',
+      'transport.l3': 'supported',
+      'transport.web_vpn': 'unsupported',
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('api', {

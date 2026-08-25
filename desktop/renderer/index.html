@@ -219,6 +219,14 @@
               </div>
             </div>
           </div>
+          <div id="capabilitySummary" class="capability-summary" hidden>
+            <div class="capability-heading">
+              <strong data-i18n="capability.title">当前接入能力</strong>
+              <span data-i18n="capability.source">由当前学校与引擎共同确认</span>
+            </div>
+            <div id="capabilityList" class="capability-list"></div>
+            <p class="hint" data-i18n="capability.hint">只显示当前会话实际确认的能力；未启用不代表应用会尝试降级或绕过认证。</p>
+          </div>
           <label class="sw"><span data-i18n="tower.autoReconnect">自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk" data-i18n="tower.maxAttempts">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
           <label class="sw"><span data-i18n="tower.startAtLogin">开机自启</span><input type="checkbox" id="startAtLogin" /></label>
@@ -556,6 +564,7 @@
   <script src="proxy-auth-migration.js"></script>
   <script src="school-profile-selector.js"></script>
   <script src="integration-center.js"></script>
+  <script src="capability-presentation.js"></script>
   <script src="app.js"></script>
   <script src="auth-challenge.js"></script>
 </body>

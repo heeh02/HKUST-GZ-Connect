@@ -164,7 +164,7 @@ function populateTowerForm() {
 async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
   applyLocale(s.locale);
-  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn } }));
+  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn, capabilitySnapshot: s.capabilitySnapshot } }));
   settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   renderConnect(s);
@@ -527,7 +527,7 @@ $('checkUpdateBtn').addEventListener('click', async () => {
 });
 
 window.api.onStatus((s) => {
-  renderConnect(s);
+  renderConnect(s); document.dispatchEvent(new CustomEvent('app-status-updated', { detail: { capabilitySnapshot: s.capabilitySnapshot } }));
   if (s.update) renderUpdateResult(s.update);
 });
 window.api.onTelemetry(renderTelemetry);

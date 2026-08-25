@@ -151,6 +151,22 @@ async function exerciseIntegrationCenter(window) {
   await waitFor(window,
     `document.querySelectorAll('[data-integration-adapter]').length === 2`,
     'Integration Center rows');
+  const capabilities = await window.webContents.executeJavaScript(`(async () => {
+    const state = await window.api.getState();
+    return {
+      hidden: document.getElementById('capabilitySummary').hidden,
+      rows: document.querySelectorAll('.capability-item').length,
+      text: document.getElementById('capabilitySummary').textContent,
+      feature: !!window.capabilityPresentationFeature,
+      view: window.capabilityPresentation?.capabilityView(state.capabilitySnapshot) || null,
+    };
+  })()`);
+  assert.equal(capabilities.hidden, false,
+    `confirmed capabilities stayed hidden: ${JSON.stringify(capabilities)}`);
+  assert.equal(capabilities.rows, 5, 'CapabilitySnapshot did not render the bounded summary');
+  assert.match(capabilities.text, /密码登录|Password sign-in/u);
+  assert.doesNotMatch(capabilities.text, /auth\.password|accountHandle/u,
+    'Control Tower exposed raw capability or Account fields');
   const explanation = await window.webContents.executeJavaScript(`(() => {
     const details = document.querySelector('.integration-explainer');
     details.querySelector('summary').click();

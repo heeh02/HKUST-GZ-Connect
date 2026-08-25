@@ -42,6 +42,7 @@ class CampusBrowserManager {
     getLocale,
     getTranslator,
     getProfilePresentation,
+    getWorkspaceResources,
     showItemInFolder,
     showRoutingRules,
     reportError,
@@ -51,7 +52,7 @@ class CampusBrowserManager {
     for (const dependency of [
       BrowserWindow, WebContentsView, parentWindow, ensureCampusReady, resolveRoute,
       ensureConnected, getSocksPort, getLocale, getTranslator, getProfilePresentation,
-      showItemInFolder,
+      getWorkspaceResources, showItemInFolder,
       showRoutingRules,
       reportError, CampusBrowserClass, CredentialVaultClass,
     ]) {
@@ -71,7 +72,7 @@ class CampusBrowserManager {
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       browserPartition,
       getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
-      showRoutingRules, reportError,
+      getWorkspaceResources, showRoutingRules, reportError,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
@@ -102,6 +103,7 @@ class CampusBrowserManager {
       toolbarPreload: this.toolbarPreload,
       campusPreload: this.campusPreload,
       profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
+      getWorkspaceResources: () => this.getWorkspaceResources(),
       showItemInFolder: this.showItemInFolder,
       homeUrl: this.homeUrl,
       partition: this.browserPartition,
