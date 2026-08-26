@@ -9,6 +9,7 @@
 const https = require('https');
 
 const RELEASES_API_URL = 'https://api.github.com/repos/heeh02/HKUST-GZ-Connect/releases/latest';
+const PRERELEASES_API_URL = 'https://api.github.com/repos/heeh02/HKUST-GZ-Connect/releases?per_page=30';
 const RELEASES_URL_PREFIX = 'https://github.com/heeh02/HKUST-GZ-Connect/releases';
 const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -24,9 +25,30 @@ function isAllowedReleaseUrl(url) {
 
 function parseVersion(version) {
   if (typeof version !== 'string') return null;
-  const match = version.trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  const normalized = version.trim().replace(/^v/i, '');
+  const match = normalized.match(
+    /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/u,
+  );
   if (!match) return null;
-  return [Number(match[1]), Number(match[2] || 0), Number(match[3] || 0)];
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2] || 0),
+    patch: Number(match[3] || 0),
+    prerelease: match[4] ? match[4].split('.') : [],
+    normalized,
+  };
+}
+
+function comparePrereleaseIdentifiers(a, b) {
+  const aNumeric = /^\d+$/u.test(a);
+  const bNumeric = /^\d+$/u.test(b);
+  if (aNumeric && bNumeric) {
+    const left = Number(a);
+    const right = Number(b);
+    return left === right ? 0 : left > right ? 1 : -1;
+  }
+  if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+  return a === b ? 0 : a > b ? 1 : -1;
 }
 
 // Returns 1 / 0 / -1 like a comparator, or null when either side is not a
@@ -36,10 +58,76 @@ function compareVersions(a, b) {
   const pa = parseVersion(a);
   const pb = parseVersion(b);
   if (!pa || !pb) return null;
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] > pb[i] ? 1 : -1;
+  for (const key of ['major', 'minor', 'patch']) {
+    if (pa[key] !== pb[key]) return pa[key] > pb[key] ? 1 : -1;
+  }
+  if (pa.prerelease.length === 0 || pb.prerelease.length === 0) {
+    if (pa.prerelease.length === pb.prerelease.length) return 0;
+    return pa.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(pa.prerelease.length, pb.prerelease.length);
+  for (let i = 0; i < length; i++) {
+    if (pa.prerelease[i] === undefined) return -1;
+    if (pb.prerelease[i] === undefined) return 1;
+    const comparison = comparePrereleaseIdentifiers(pa.prerelease[i], pb.prerelease[i]);
+    if (comparison !== 0) return comparison;
   }
   return 0;
+}
+
+function isPrerelease(version) {
+  const parsed = parseVersion(version);
+  return Boolean(parsed?.prerelease.length);
+}
+
+// The user-facing 2.0 Beta line intentionally permits maintenance builds such
+// as 2.0.1-beta.1 before the evidence-gated 2.0.0 final. Standard SemVer ranks
+// that Beta above 2.0.0, so the final release needs one explicit promotion
+// rule. Keeping it here avoids enabling general downgrades.
+function isBetaFinalPromotion(candidateVersion, currentVersion) {
+  const candidate = parseVersion(candidateVersion);
+  const current = parseVersion(currentVersion);
+  return Boolean(candidate && current &&
+    candidate.prerelease.length === 0 && candidate.patch === 0 &&
+    current.prerelease[0]?.toLowerCase() === 'beta' &&
+    candidate.major === current.major && candidate.minor === current.minor);
+}
+
+function isUpdateCandidate(candidateVersion, currentVersion) {
+  const comparison = compareVersions(candidateVersion, currentVersion);
+  return comparison === 1 || isBetaFinalPromotion(candidateVersion, currentVersion);
+}
+
+function releaseVersion(release) {
+  if (!release || release.draft === true || typeof release.tag_name !== 'string') return null;
+  const version = release.tag_name.trim().replace(/^v/i, '');
+  return parseVersion(version) ? version : null;
+}
+
+function selectPrereleaseUpdate(releases, currentVersion) {
+  if (!Array.isArray(releases)) return null;
+  const eligible = releases
+    .map((release) => ({ release, version: releaseVersion(release) }))
+    .filter(({ version }) => version && isUpdateCandidate(version, currentVersion));
+  if (eligible.length === 0) {
+    return { updateAvailable: false, latestVersion: currentVersion, url: RELEASES_URL_PREFIX };
+  }
+
+  // A stable release wins over a Beta once it is eligible. Otherwise choose
+  // the greatest SemVer candidate returned by GitHub, independent of API order.
+  eligible.sort((a, b) => {
+    const aStable = !isPrerelease(a.version);
+    const bStable = !isPrerelease(b.version);
+    if (aStable !== bStable) return aStable ? -1 : 1;
+    return -(compareVersions(a.version, b.version) || 0);
+  });
+  const selected = eligible[0];
+  return {
+    updateAvailable: true,
+    latestVersion: selected.version,
+    url: isAllowedReleaseUrl(selected.release.html_url)
+      ? selected.release.html_url : RELEASES_URL_PREFIX,
+  };
 }
 
 function defaultFetchJson(url) {
@@ -74,6 +162,12 @@ function defaultFetchJson(url) {
 // else falls back to the releases index.
 async function checkForUpdate(currentVersion, fetchJson = defaultFetchJson) {
   try {
+    const current = parseVersion(currentVersion);
+    if (!current) return null;
+    if (current.prerelease.length > 0) {
+      return selectPrereleaseUpdate(await fetchJson(PRERELEASES_API_URL), current.normalized);
+    }
+
     const release = await fetchJson(RELEASES_API_URL);
     if (!release || typeof release.tag_name !== 'string') return null;
     const latestVersion = release.tag_name.trim().replace(/^v/i, '');
@@ -100,11 +194,13 @@ function shouldAutoCheck(lastCheckedAt, now = Date.now(), intervalMs = AUTO_CHEC
 
 module.exports = {
   AUTO_CHECK_INTERVAL_MS,
+  PRERELEASES_API_URL,
   RELEASES_API_URL,
   RELEASES_URL_PREFIX,
   REQUEST_TIMEOUT_MS,
   checkForUpdate,
   compareVersions,
+  isBetaFinalPromotion,
   isAllowedReleaseUrl,
   shouldAutoCheck,
 };

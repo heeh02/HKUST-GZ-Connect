@@ -4,10 +4,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   AUTO_CHECK_INTERVAL_MS,
+  PRERELEASES_API_URL,
   RELEASES_API_URL,
   RELEASES_URL_PREFIX,
   checkForUpdate,
   compareVersions,
+  isBetaFinalPromotion,
   isAllowedReleaseUrl,
   shouldAutoCheck,
 } = require('../../../../lib/platform/update/update-check');
@@ -26,6 +28,22 @@ test('compareVersions tolerates leading v and short forms', () => {
   assert.equal(compareVersions('v1.0.8', '1.0.7'), 1);
   assert.equal(compareVersions('1.1', '1.1.0'), 0);
   assert.equal(compareVersions(' 1.0.8 ', '1.0.7'), 1);
+});
+
+test('compareVersions applies SemVer prerelease ordering', () => {
+  assert.equal(compareVersions('2.0.0-beta.2', '2.0.0-beta.1'), 1);
+  assert.equal(compareVersions('2.0.0-beta.10', '2.0.0-beta.2'), 1);
+  assert.equal(compareVersions('2.0.0-beta.1', '2.0.0'), -1);
+  assert.equal(compareVersions('2.0.0', '2.0.0-beta.9'), 1);
+  assert.equal(compareVersions('2.0.0-alpha.2', '2.0.0-alpha.10'), -1);
+});
+
+test('only the same release-line Beta can promote to its patch-zero final', () => {
+  assert.equal(isBetaFinalPromotion('2.0.0', '2.0.1-beta.4'), true);
+  assert.equal(isBetaFinalPromotion('2.0.0', '2.0.0-beta.4'), true);
+  assert.equal(isBetaFinalPromotion('2.0.1', '2.0.2-beta.4'), false);
+  assert.equal(isBetaFinalPromotion('2.1.0', '2.0.1-beta.4'), false);
+  assert.equal(isBetaFinalPromotion('2.0.0-beta.5', '2.0.1-beta.4'), false);
 });
 
 test('compareVersions refuses unparsable input instead of guessing', () => {
@@ -55,6 +73,55 @@ test('checkForUpdate passes the releases API URL to the fetcher', async () => {
     return { tag_name: 'v1.0.7' };
   });
   assert.equal(requested, RELEASES_API_URL);
+});
+
+test('prerelease builds query the release list and discover a newer Beta', async () => {
+  let requested = null;
+  const release = {
+    tag_name: 'v2.0.1-beta.2',
+    prerelease: true,
+    html_url: `${RELEASES_URL_PREFIX}/tag/v2.0.1-beta.2`,
+  };
+  const result = await checkForUpdate('2.0.0-beta.1', async (url) => {
+    requested = url;
+    return [{ tag_name: 'v1.2.3', prerelease: false }, release];
+  });
+  assert.equal(requested, PRERELEASES_API_URL);
+  assert.deepEqual(result, {
+    updateAvailable: true,
+    latestVersion: '2.0.1-beta.2',
+    url: release.html_url,
+  });
+});
+
+test('the evidence-gated final supersedes a numerically higher maintenance Beta', async () => {
+  const release = {
+    tag_name: 'v2.0.0',
+    prerelease: false,
+    html_url: `${RELEASES_URL_PREFIX}/tag/v2.0.0`,
+  };
+  const result = await checkForUpdate('2.0.1-beta.7', async () => [
+    { tag_name: 'v2.0.1-beta.8', prerelease: true },
+    release,
+  ]);
+  assert.deepEqual(result, {
+    updateAvailable: true,
+    latestVersion: '2.0.0',
+    url: release.html_url,
+  });
+});
+
+test('prerelease selection ignores drafts and older stable releases', async () => {
+  const result = await checkForUpdate('2.0.0-beta.3', async () => [
+    { tag_name: 'v2.0.0-beta.4', prerelease: true, draft: true },
+    { tag_name: 'v1.2.3', prerelease: false },
+    { tag_name: 'not-a-version', prerelease: true },
+  ]);
+  assert.deepEqual(result, {
+    updateAvailable: false,
+    latestVersion: '2.0.0-beta.3',
+    url: RELEASES_URL_PREFIX,
+  });
 });
 
 test('checkForUpdate treats same or older tags as no update', async () => {
