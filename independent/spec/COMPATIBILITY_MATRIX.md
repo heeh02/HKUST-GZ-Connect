@@ -14,15 +14,20 @@ This file uses the repository-wide two-axis model:
   official-client parity.
 
 Historical live observations below do not automatically raise a newer source
-tree. Current release evidence remains conservative until repeated on its exact
-SHA.
+tree. The current Engine tree is byte-identical to the published
+`v2.0.0-beta.1` tag: the tag build tested and packaged it on macOS, Windows and
+Linux, while the installed macOS Beta assigned a Campus IP, selected Gateway
+DNS and reached the school homepage through its loopback SOCKS listener. The
+HPC hostname also resolved through the tunnel and reached its HTTPS service.
+These are HKUST canaries, not official-client parity and not evidence for
+another school or an unexercised protocol branch.
 
 | Capability | Implementation | Current-tree evidence | Support truth |
 |---|---:|---:|---|
-| Password Gateway auth | `I3` | `E2` | Production-wired; current-release canary pending |
-| Modern L3 IPv4 | `I3` | `E2` | Production-wired; current-release Gateway canary pending |
-| Campus DNS UDP/TCP | `I3` | `E2` | Same-resolver tunnel path; HPC/TC canary pending |
-| SOCKS5 and strict HTTP/WS | `I3` | `E3` | Exact-SHA three-platform package/test evidence; real Clash/SSH/HTTP/WS canary pending |
+| Password Gateway auth | `I3` | `E4` | Published-Beta Engine authenticated and assigned a Campus IP; current official-client parity remains separate |
+| Modern L3 IPv4 | `I3` | `E4` | Published-Beta Engine carried live campus HTTPS traffic; broader reconnect/handover canaries remain separate |
+| Campus DNS UDP/TCP | `I3` | `E4` / `E2` | Gateway DNS and an internal-only HPC hostname passed live; matching-TC TCP fallback remains synthetic only |
+| SOCKS5 and strict HTTP/WS | `I3` | `E4` / `E3` | Live SOCKS and Mihomo-to-SOCKS campus HTTPS passed; strict ordinary HTTP/WS and SSH canaries remain pending |
 | Campus Browser/domain routing | `I3` | `E3` | Packaged synthetic Electron; real partner/campus SSO canary pending |
 | Resource catalogue | `I2` | `E2` | Offline only; not advertised as retrieved/authorized |
 | Generic challenge framework | `I2` | `E2` | Architecture/test fixture only; no real Gateway MFA provider |
@@ -38,7 +43,7 @@ SHA.
 | Package/version metadata | yes | yes | observer only | not applicable |
 | Windows module policy | yes | yes | observer only | not applicable |
 | Installer content identity | yes | hash check | observer only | not applicable |
-| Username/password auth | live success | yes | probe only | one approved run |
+| Username/password auth | published-Beta live success | yes | production provider and packaged Engine | one earlier approved run; current parity not repeated |
 | CAPTCHA | observed disabled | auth-state fixture | state classified; interaction pending | pending enabled profile |
 | SMS/TOTP/certificate/HID/SSO | official package + capability discovery | auth-state fixtures | states classified; providers pending | pending enabled profiles |
 | Password expiry/change | official package capability | pending | control contract planned | pending enabled profile |
