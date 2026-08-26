@@ -122,6 +122,7 @@ const dictionaries = {
     'browser.homeRecent': '最近打开',
     'browser.homeServices': '校园服务',
     'browser.homeEmpty': '当前学校还没有可显示的校园服务；可以先在主窗口添加网址。',
+    'browser.openExternalFailed': '无法在外部浏览器中打开当前页面',
     'download.completed': '下载完成：{filename}',
     'download.showInFolder': '在文件夹中显示',
 
@@ -284,6 +285,7 @@ const dictionaries = {
     'browser.homeRecent': 'Recently opened',
     'browser.homeServices': 'Campus services',
     'browser.homeEmpty': 'This school has no campus services to show yet. Add a site from the main window first.',
+    'browser.openExternalFailed': 'The current page could not be opened in an external browser',
     'download.completed': 'Download completed: {filename}',
     'download.showInFolder': 'Show in Folder',
 

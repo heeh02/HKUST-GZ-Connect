@@ -1275,7 +1275,7 @@ campusBrowserManager = new CampusBrowserManager({
   getLocale: () => locale,
   getTranslator: () => t,
   getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(),
-  showItemInFolder: (file) => shell.showItemInFolder(file),
+  showItemInFolder: (file) => shell.showItemInFolder(file), openExternal: (url) => shell.openExternal(url),
   showRoutingRules: () => {
     desktopShell?.showWindow();
     desktopShell?.send('open-routing-rules');

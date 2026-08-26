@@ -46,6 +46,7 @@ const routeBadge = document.getElementById('routeBadge');
 const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
 const downloadStatus = document.getElementById('downloadStatus');
+const openExternal = document.getElementById('openExternal');
 document.getElementById('browserProfileName').textContent = profileName || t('browser.workspace');
 document.getElementById('browserProfileTrust').hidden = !profileUnverified;
 
@@ -70,6 +71,10 @@ routeSelector.addEventListener('change', () => command('set-route', routeSelecto
 document.getElementById('routeRules').addEventListener(
   'click',
   () => command('manage-routing-rules'),
+);
+openExternal.addEventListener(
+  'click',
+  () => command('open-external'),
 );
 
 findInput.addEventListener('input', () => command('find', findInput.value));
@@ -144,6 +149,7 @@ window.campusBrowserUI = {
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
     routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
+    openExternal.disabled = !/^https?:\/\//iu.test(String(next.url || ''));
     routeBadge.textContent = next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
     routeBadge.classList.toggle('direct', next.route === 'direct');
     routeBadge.title = next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');

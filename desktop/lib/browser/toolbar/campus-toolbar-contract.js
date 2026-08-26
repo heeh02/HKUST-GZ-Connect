@@ -7,6 +7,7 @@ const NO_VALUE_COMMANDS = new Set([
   'home',
   'manage-credential',
   'manage-routing-rules',
+  'open-external',
   'new-tab',
   'find-open',
   'find-close',

@@ -4,6 +4,7 @@
 // CampusBrowser against loopback URLs that fail fast, without any network.
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, session } = require('electron');
 const {
@@ -165,6 +166,24 @@ async function assertWorkspaceHome(browser) {
     'Workspace Home must remain an app-owned non-network page');
 }
 
+async function captureBrowserChrome(browser) {
+  const output = process.env.HKUSTGZ_BROWSER_SCREENSHOT_DIR;
+  if (!output) return;
+  if (!path.isAbsolute(output)) throw new Error('browser screenshot directory must be absolute');
+  fs.mkdirSync(output, { recursive: true });
+  for (const [label, width, height] of [
+    ['compact', 660, 520],
+    ['standard', 900, 620],
+    ['wide', 1200, 720],
+  ]) {
+    browser.window.setContentSize(width, height);
+    await waitFor(browser.window, `window.innerWidth === ${width}`, `${label} browser width`);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const image = await browser.window.webContents.capturePage();
+    fs.writeFileSync(path.join(output, `${label}-browser.png`), image.toPNG());
+  }
+}
+
 async function main() {
   await app.whenReady();
   const errors = [];
@@ -209,6 +228,7 @@ async function main() {
     await assertDragRegions(browser);
     await assertRouteSwitch(browser);
     await assertFindBar(browser);
+    await captureBrowserChrome(browser);
     assert.deepEqual(errors, [], `unexpected campus browser errors: ${errors.join('; ')}`);
     process.stdout.write('campus browser toolbar: PASS\n');
   } finally {

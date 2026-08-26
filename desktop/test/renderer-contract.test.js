@@ -78,12 +78,31 @@ test('WebResource shelf supports ID-only open, search, categories, favorites and
 });
 
 test('control panel has responsive wide and compact layout rules', () => {
-  assert.match(css, /@media\s*\(min-width:\s*620px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*619px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*379px\)[\s\S]*\.resource-grid\s*\{[^}]*grid-template-columns:\s*1fr/u);
+  assert.match(css, /@media\s*\(min-width:\s*800px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*559px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*grid-template-columns:\s*1fr/u);
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
   assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
+});
+
+test('Campus Browser chrome keeps the minimum task set and derives external open in Main', () => {
+  const browserHtml = fs.readFileSync(path.join(rendererDir, 'campus-browser.html'), 'utf8');
+  const browserJs = fs.readFileSync(path.join(rendererDir, 'campus-browser.js'), 'utf8');
+  for (const id of ['tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'openExternal']) {
+    assert.match(browserHtml, new RegExp(`id="${id}"`, 'u'));
+  }
+  assert.match(browserJs, /command\('open-external'\)/u);
+  assert.doesNotMatch(browserJs, /openExternal\(address\.value/u,
+    'toolbar renderer must not provide URL authority for external open');
+});
+
+test('notifications keep concise help visible and raw diagnostics collapsed', () => {
+  for (const key of [
+    'notif.helpOpenTitle', 'notif.helpRouteTitle', 'notif.helpTroubleshootTitle',
+  ]) assert.match(html, new RegExp(`data-i18n="${key}"`, 'u'));
+  assert.match(html, /<details class="diagnostic-details">/u);
+  assert.doesNotMatch(html, /<details class="diagnostic-details"[^>]*open/u);
 });
 
 test('connected status remains static instead of continuously repainting Electron', () => {

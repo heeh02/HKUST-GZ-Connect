@@ -255,6 +255,7 @@ class CampusBrowser {
     profilePresentation = null,
     getWorkspaceResources = () => [],
     showItemInFolder = null,
+    openExternal = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
@@ -293,6 +294,7 @@ class CampusBrowser {
     }
     this.getWorkspaceResources = getWorkspaceResources;
     this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
+    this.openExternal = typeof openExternal === 'function' ? openExternal : () => false;
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
       : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
@@ -664,6 +666,18 @@ class CampusBrowser {
     }
     else if (command === 'manage-routing-rules') {
       if (typeof this.onManageRoutingRules === 'function') this.onManageRoutingRules();
+    }
+    else if (command === 'open-external' && active) {
+      const url = this.currentUrl(active);
+      if (url !== BLANK_CAMPUS_HOME && safePopupUrl(url)) {
+        try {
+          Promise.resolve(this.openExternal(url)).catch(() => {
+            this.onError?.(this.t('browser.openExternalFailed'));
+          });
+        } catch {
+          this.onError?.(this.t('browser.openExternalFailed'));
+        }
+      }
     }
     else if (command === 'back' && navigation.canGoBack()) {
       navigation.goBack();

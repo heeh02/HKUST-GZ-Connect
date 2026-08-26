@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 
@@ -264,8 +265,8 @@ async function assertStudentHome(window) {
       };
     })()`);
     assert.equal(view.columns, expectedColumns, `${width}px: resource grid column count`);
-    assert.ok(view.heroHeight >= 110 && view.heroHeight <= 165,
-      `${width}px: connection card lost its balanced visual hierarchy`);
+    assert.ok(view.heroHeight >= 82 && view.heroHeight <= 120,
+      `${width}px: connection header is not compact and balanced`);
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
     assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
@@ -309,6 +310,33 @@ async function assertTwoHundredPercentReflow(window) {
   }
 }
 
+async function captureVisualStates(window) {
+  const output = process.env.HKUSTGZ_LAYOUT_SCREENSHOT_DIR;
+  if (!output) return;
+  if (!path.isAbsolute(output)) throw new Error('layout screenshot directory must be absolute');
+  fs.mkdirSync(output, { recursive: true });
+  for (const [label, width, height] of [
+    ['compact', 420, 720],
+    ['standard', 620, 760],
+    ['wide', 960, 760],
+  ]) {
+    window.setContentSize(width, height);
+    await waitFor(window, `window.innerWidth === ${width}`, `${label} screenshot width`);
+    for (const page of ['connect', 'tower', 'notif', 'settings']) {
+      await window.webContents.executeJavaScript(`(() => {
+        for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+        document.querySelector('.nav[data-page="${page}"]').click();
+        document.querySelector('.content').scrollTop = 0;
+        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(
+          () => setTimeout(resolve, 260),
+        )));
+      })()`);
+      const image = await window.webContents.capturePage();
+      fs.writeFileSync(path.join(output, `${label}-${page}.png`), image.toPNG());
+    }
+  }
+}
+
 async function main() {
   await app.whenReady();
   const window = new BrowserWindow({
@@ -330,6 +358,7 @@ async function main() {
     assertCustomResourceSave(await saveCustomResource(window));
     assertCustomResourceAddAndOpen(await addAndOpenCustomResource(window));
     await exerciseBuiltinResourceRemoval(window);
+    await captureVisualStates(window);
     process.stdout.write('resource manager layout: PASS\n');
   } finally {
     if (!window.isDestroyed()) window.destroy();

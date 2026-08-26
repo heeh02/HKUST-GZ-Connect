@@ -46,11 +46,11 @@
         </svg>
       </button>
       <form id="addressForm">
-        <span id="routeBadge" class="route-badge" title="当前网络路径：校园访问"
-              data-i18n-attr="title:browser.viaCampus">校园访问</span>
         <input id="address" type="text" inputmode="url" spellcheck="false"
                aria-label="校园网站地址" placeholder="输入校园网站地址"
                data-i18n-attr="aria-label:browser.addressLabel; placeholder:browser.addressPlaceholder" />
+        <span id="routeBadge" class="route-badge" title="当前网络路径：校园访问"
+              data-i18n-attr="title:browser.viaCampus">校园访问</span>
       </form>
       <select id="routeSelector" class="route-selector" aria-label="此标签的网络路径" title="选择此标签的网络路径"
               data-i18n-attr="aria-label:browser.routeLabel; title:browser.routeTitle">
@@ -62,6 +62,13 @@
               data-i18n-attr="title:browser.routeRules; aria-label:browser.routeRules">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 7h10m4 0h2M4 17h2m4 0h10M14 4v6M10 14v6"/>
+        </svg>
+      </button>
+      <button id="openExternal" class="icon" title="在外部浏览器中打开" disabled
+              aria-label="在外部浏览器中打开"
+              data-i18n-attr="title:browser.openExternal; aria-label:browser.openExternal">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"/>
         </svg>
       </button>
       <span id="state" class="state" data-i18n="browser.stateDefault">校园网络</span>

@@ -44,6 +44,7 @@ class CampusBrowserManager {
     getProfilePresentation,
     getWorkspaceResources,
     showItemInFolder,
+    openExternal,
     showRoutingRules,
     reportError,
     CampusBrowserClass = CampusBrowser,
@@ -73,6 +74,7 @@ class CampusBrowserManager {
       browserPartition,
       getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
       getWorkspaceResources, showRoutingRules, reportError,
+      openExternal,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
@@ -105,6 +107,7 @@ class CampusBrowserManager {
       profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
       getWorkspaceResources: () => this.getWorkspaceResources(),
       showItemInFolder: this.showItemInFolder,
+      openExternal: this.openExternal,
       homeUrl: this.homeUrl,
       partition: this.browserPartition,
       routingPolicy: this.routingPolicy,

@@ -678,6 +678,18 @@ test('a custom local blank home keeps every new tab on the non-network direct ro
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
+test('opening externally derives the active safe URL in Main without renderer URL authority', async () => {
+  const opened = [];
+  const { browser } = createFakeBrowser({ openExternal: (url) => opened.push(url) });
+  await browser.open('https://portal.example.edu/path?state=opaque', 1080, ROUTE_CAMPUS);
+  assert.equal(browser.handleToolbarCommand({ command: 'open-external', value: '' }), true);
+  assert.deepEqual(opened, ['https://portal.example.edu/path?state=opaque']);
+
+  await browser.navigate('about:blank', browser.activeTab());
+  browser.handleToolbarCommand({ command: 'open-external', value: '' });
+  assert.equal(opened.length, 1, 'the local Workspace Home must not leave the app');
+});
+
 test('local Workspace Home refreshes favorites and recent resources without a network home', async () => {
   let resources = [{
     id: 'library', name: 'Library', description: 'Research',

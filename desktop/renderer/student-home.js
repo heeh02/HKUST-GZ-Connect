@@ -34,7 +34,7 @@
         ? 'resources.sourceReviewed' : 'resources.sourceLocal'))}</span></span></button>`
       + `<button class="resource-favorite${resource.favorite ? ' active' : ''}" type="button" data-resource-action="favorite"`
       + ` aria-label="${esc(resource.favorite ? translate('resources.unfavorite') : translate('resources.favorite'))}"`
-      + ` title="${esc(resource.favorite ? translate('resources.unfavorite') : translate('resources.favorite'))}">★</button></div>`).join('');
+      + ` title="${esc(resource.favorite ? translate('resources.unfavorite') : translate('resources.favorite'))}">${resource.favorite ? '★' : '☆'}</button></div>`).join('');
     const section = (title, items) => items.length
       ? `<section class="resource-section"><h3>${esc(title)}</h3><div class="resource-grid">${cards(items)}</div></section>`
       : '';

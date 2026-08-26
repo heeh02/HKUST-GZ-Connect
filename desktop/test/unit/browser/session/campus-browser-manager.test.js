@@ -58,6 +58,7 @@ function fixture(overrides = {}) {
       lastOpenedAt: null,
     }],
     showItemInFolder: () => {},
+    openExternal: () => {},
     showRoutingRules: () => {},
     reportError: (message) => errors.push(message),
     CampusBrowserClass: FakeBrowser,
@@ -81,6 +82,7 @@ test('manager creates one browser with Engine-neutral injected policies', async 
     schoolName: 'Example University', unverified: false,
   });
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
+  assert.equal(typeof browser.options.openExternal, 'function');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
 });
 
