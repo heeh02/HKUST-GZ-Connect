@@ -23,6 +23,8 @@ class FakeActivityStore {
 
 const resources = [{
   id: 'outlook', name: 'Outlook', description: '', url: 'https://outlook.office.com/owa/',
+  localizedName: { zh: '邮箱', en: 'Outlook' },
+  localizedDescription: { zh: '', en: 'Mail and calendar' },
   route: 'direct', category: 'common', keywords: [], builtin: true,
 }];
 
@@ -43,7 +45,24 @@ test('ID-only open resolves inside Main ownership and records activity after suc
   assert.deepEqual(requests, [{ url: 'https://outlook.office.com/owa/', route: 'direct' }]);
   assert.equal(result.resourceId, 'outlook');
   assert.equal(result.resources[0].lastOpenedAt, 10);
+  assert.equal(result.resources[0].name, '邮箱');
   assert.equal(Object.hasOwn(result, 'url'), false);
+});
+
+test('resource presentation selects reviewed text for the active locale', () => {
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json',
+    recentFile: '/fixture/recent.json',
+    platform: 'darwin',
+    loadResources: () => resources,
+    captureContext: () => ({ epoch: 1 }),
+    isContextCurrent: () => true,
+    openRequest: async () => ({ ok: true }),
+    ActivityStoreClass: FakeActivityStore,
+  });
+  assert.equal(runtime.listLocalized(null, 'zh')[0].name, '邮箱');
+  assert.equal(runtime.listLocalized(null, 'en')[0].name, 'Outlook');
+  assert.equal(runtime.listLocalized(null, 'en')[0].description, 'Mail and calendar');
 });
 
 test('failed or stale opens never record recent activity', async () => {

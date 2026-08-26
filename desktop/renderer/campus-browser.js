@@ -4,16 +4,30 @@
 // can switch it live later through campusBrowserUI.setLocale.
 let locale = 'zh';
 let t = window.I18N.createT(locale);
+const launchQuery = new URLSearchParams(location.search);
+const rawProfileName = launchQuery.get('school') || '';
+const profileName = rawProfileName && rawProfileName.length <= 160 &&
+  !/[\u0000-\u001f\u007f<>]/u.test(rawProfileName)
+  ? rawProfileName : '';
+const profileUnverified = launchQuery.get('unverified') === '1';
+
+function browserTitle(pageTitle = '') {
+  const context = profileName || t('browser.workspace');
+  const trust = profileUnverified ? ` · ${t('school.unverified')}` : '';
+  return pageTitle ? `${pageTitle} · ${context}${trust}` : `${context}${trust} · ${t('browser.title')}`;
+}
 
 function applyLang(lang) {
   locale = window.I18N.resolveLocale(lang);
   t = window.I18N.createT(locale);
   document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
   window.I18N.applyStatic(t, document);
-  document.title = t('browser.title');
+  document.title = browserTitle();
+  const profile = document.getElementById('browserProfileName');
+  if (profile) profile.textContent = profileName || t('browser.workspace');
 }
 
-applyLang(new URLSearchParams(location.search).get('lang'));
+applyLang(launchQuery.get('lang'));
 
 if (/Macintosh|Mac OS X/.test(navigator.userAgent)) {
   document.documentElement.classList.add('macos');
@@ -28,9 +42,12 @@ const reload = document.getElementById('reload');
 const state = document.getElementById('state');
 const tabs = document.getElementById('tabs');
 const routeSelector = document.getElementById('routeSelector');
-const security = document.getElementById('security');
+const routeBadge = document.getElementById('routeBadge');
 const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
+const downloadStatus = document.getElementById('downloadStatus');
+document.getElementById('browserProfileName').textContent = profileName || t('browser.workspace');
+document.getElementById('browserProfileTrust').hidden = !profileUnverified;
 
 function command(name, value = '') {
   return window.campusToolbar?.command(name, value) === true;
@@ -39,6 +56,7 @@ function command(name, value = '') {
 back.addEventListener('click', () => command('back'));
 forward.addEventListener('click', () => command('forward'));
 reload.addEventListener('click', () => command('reload'));
+document.getElementById('home').addEventListener('click', () => command('home'));
 document.getElementById('credential').addEventListener(
   'click',
   () => command('manage-credential'),
@@ -126,15 +144,23 @@ window.campusBrowserUI = {
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
     routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
-    security.textContent = next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
-    security.classList.toggle('direct', next.route === 'direct');
-    security.title = next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
+    routeBadge.textContent = next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
+    routeBadge.classList.toggle('direct', next.route === 'direct');
+    routeBadge.title = next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
     state.textContent = next.loading
       ? (next.slow ? t('browser.loadingSlow') : t('browser.loading'))
       : (next.routeLabel || t('browser.routeCampus'));
     state.classList.toggle('loading', !!next.loading);
+    const download = next.download && typeof next.download === 'object' ? next.download : null;
+    downloadStatus.hidden = !download;
+    downloadStatus.className = `download-status${download?.status ? ` ${download.status}` : ''}`;
+    downloadStatus.textContent = download
+      ? t(`browser.download.${download.status}`, {
+        filename: download.filename || '',
+        percent: Number.isInteger(download.percent) ? download.percent : '…',
+      }) : '';
     findBar.hidden = !next.findOpen;
-    document.title = next.title ? `${next.title} - HKUST(GZ)` : t('browser.title');
+    document.title = browserTitle(next.title || '');
   },
   focusAddress() {
     address.focus();

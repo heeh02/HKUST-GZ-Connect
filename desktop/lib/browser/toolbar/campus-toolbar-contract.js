@@ -4,6 +4,7 @@ const NO_VALUE_COMMANDS = new Set([
   'back',
   'forward',
   'reload',
+  'home',
   'manage-credential',
   'manage-routing-rules',
   'new-tab',

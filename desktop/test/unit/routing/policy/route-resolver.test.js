@@ -21,7 +21,9 @@ test('resolves exact user, suffix user, built-in, inherited, then default routes
     'user-subdomain',
   );
   assert.equal(
-    resolveRouteForUrl('https://outlook.office.com/', { inheritedRoute: 'campus' }).source,
+    resolveRouteForUrl('https://outlook.office.com/', {
+      directPartnerDomains: ['office.com'], inheritedRoute: 'campus',
+    }).source,
     'builtin',
   );
   assert.deepEqual(
@@ -59,8 +61,12 @@ test('custom websites, school defaults, and server suggestions share one precede
   const customResources = [{ url: target, route: 'campus' }];
   const serverResources = [{ url: target, route: 'direct' }];
   assert.equal(resolveRouteForUrl(target, { customResources, serverResources }).source, 'custom-resource');
-  assert.equal(resolveRouteForUrl(target, { serverResources }).source, 'builtin');
-  assert.equal(resolveRouteForUrl('https://library.hkust-gz.edu.cn/', {}).source, 'builtin');
+  assert.equal(resolveRouteForUrl(target, {
+    serverResources, directPartnerDomains: ['office.com'],
+  }).source, 'builtin');
+  assert.equal(resolveRouteForUrl('https://library.hkust-gz.edu.cn/', {
+    schoolDomains: ['hkust-gz.edu.cn'],
+  }).source, 'builtin');
   assert.deepEqual(resolveRouteForUrl('https://vendor.example/', {
     serverResources: [{ url: 'https://vendor.example/service', route: 'direct' }],
   }), {

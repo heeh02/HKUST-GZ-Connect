@@ -5,6 +5,13 @@ function requiredFunction(value, name) {
   return value;
 }
 
+function maskedAccountLabel(value) {
+  const text = typeof value === 'string' ? value : '';
+  if (!text) return '';
+  const visible = text.slice(0, Math.min(3, text.length));
+  return `${visible}${'*'.repeat(Math.max(3, Math.min(8, text.length - visible.length)))}`;
+}
+
 function createControlStateSnapshot({
   getStatus,
   loadSettings,
@@ -66,11 +73,15 @@ function createControlStateSnapshot({
     }
     const passwordPresent = dependencies.hasCredential();
     const resources = dependencies.getResources(settings);
+    const publicSettings = Object.freeze({
+      ...settings,
+      username: maskedAccountLabel(settings.username),
+    });
     const favoriteCount = resources.filter(({ favorite }) => favorite === true).length;
     const recentCount = resources.filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt)).length;
     return {
       ...common(),
-      settings,
+      settings: publicSettings,
       hasPassword: passwordPresent,
       loggedIn: passwordPresent && dependencies.hasAccountIdentity(settings),
       campusResources: resources,
@@ -85,4 +96,4 @@ function createControlStateSnapshot({
   };
 }
 
-module.exports = { createControlStateSnapshot };
+module.exports = { createControlStateSnapshot, maskedAccountLabel };

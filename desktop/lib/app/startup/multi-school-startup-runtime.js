@@ -4,6 +4,10 @@ const { CustomProfileProvisioningRuntime } = require('../../profiles/provisionin
 const { ProfileCandidateDirectory } = require('../../profiles/registry/profile-candidate-directory');
 const { validateSchoolProfileDocument } = require('../../profiles/schema/school-profile-schema');
 
+function customGatewayProductAvailability({ environment = process.env } = {}) {
+  return environment?.HKUSTGZ_DISABLE_CUSTOM_GATEWAY !== '1';
+}
+
 class MultiSchoolStartupRuntime {
   constructor({
     userData,
@@ -84,6 +88,13 @@ class MultiSchoolStartupRuntime {
     if (!this.directory) return Object.freeze([]);
     return this.directory.listViews(options);
   }
+
+  withDirectory(callback) {
+    if (!this.directory || typeof callback !== 'function') {
+      throw new Error('multi-school candidate directory is unavailable');
+    }
+    return callback(this.directory);
+  }
 }
 
-module.exports = { MultiSchoolStartupRuntime };
+module.exports = { MultiSchoolStartupRuntime, customGatewayProductAvailability };

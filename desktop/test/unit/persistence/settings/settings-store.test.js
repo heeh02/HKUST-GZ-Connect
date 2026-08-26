@@ -44,8 +44,9 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       closeAction: 'minimize',
       language: 'en',
       updateCheckedAt: 0,
-      routeDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
+      routeDomains: [],
       customResources: [],
+      hiddenBuiltinResourceIds: [],
     },
   );
 });

@@ -6,6 +6,7 @@ const {
   normalizeResource,
   MAX_CUSTOM_RESOURCES,
 } = require('../../resources/runtime/campus-resources');
+const { sanitizeCustomResourceUrl } = require('../../resources/schema/campus-resource-contract');
 const { normalizeCampusUrl } = require('../session/campus-browser');
 const { isIsolatedNetworkHost } = require('../../routing/policy/host-safety');
 
@@ -34,7 +35,7 @@ function normalizedInput(payload, existing, builtins) {
   if (!String(source.url || '').trim()) throw new Error('网站网址不能为空');
   let url;
   try {
-    url = normalizeCampusUrl(source.url);
+    url = sanitizeCustomResourceUrl(normalizeCampusUrl(source.url), { rejectSensitive: true });
   } catch (error) {
     throw new Error(error.message);
   }
@@ -73,6 +74,14 @@ function deleteCustomResource(current, id, { builtinResources = [] } = {}) {
   return resources.filter((resource) => resource.id !== key);
 }
 
+function hideBuiltinResource(current, id, { builtinResources = [] } = {}) {
+  const key = String(id || '').trim();
+  if (!builtinIdentity(builtinResources).ids.has(key)) throw new Error('内置网站不存在');
+  const hidden = Array.isArray(current) ? [...current] : [];
+  if (!hidden.includes(key)) hidden.push(key);
+  return hidden;
+}
+
 function reorderCustomResources(current, ids) {
   const resources = normalizeCustomResources(current);
   const byId = new Map(resources.map((resource) => [resource.id, resource]));
@@ -87,6 +96,7 @@ function reorderCustomResources(current, ids) {
 
 module.exports = {
   deleteCustomResource,
+  hideBuiltinResource,
   reorderCustomResources,
   upsertCustomResource,
 };

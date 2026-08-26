@@ -80,8 +80,10 @@ test('confirmed custom Gateway produces one credential-free isolated destination
     }
     const account = JSON.parse(plan.files.account.toString('utf8'));
     const workspace = JSON.parse(plan.files.workspaceSettings.toString('utf8'));
+    const integrations = JSON.parse(plan.files.externalIntegrations.toString('utf8'));
     assert.equal(account.activeCredentialVersion, null);
     assert.deepEqual(workspace.routeDomains, []);
+    assert.deepEqual(integrations, { schemaVersion: 1, records: [] });
     assert.equal(Object.hasOwn(plan.files, 'vpnCredential'), false);
     assert.deepEqual(plan.profileDocument.policy.reviewedDnsFallback, []);
     const encoded = JSON.stringify(plan);

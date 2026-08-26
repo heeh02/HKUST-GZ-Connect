@@ -2,12 +2,20 @@
 
 const { allowedKeys, boundedArray, boundedString } = require('./ipc-guard');
 const { applySettingsPatch } = require('../persistence/settings/settings-update');
+const PROFILE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
+
+function profileId(value) {
+  if (typeof value !== 'string' || !PROFILE_ID.test(value)) {
+    throw new TypeError('学校登录上下文无效');
+  }
+  return value;
+}
 
 function settingsPatchFromIpc(value) {
   const source = allowedKeys(value, [
     'username', 'password', 'port', 'autoReconnect', 'maxAttempts', 'startAtLogin',
     'autoConnect', 'strictProxyAuth', 'proxyAuthMigrationAcknowledged',
-    'closeAction', 'language', 'routeDomains',
+    'closeAction', 'language', 'routeDomains', 'expectedProfileId',
   ]);
   const result = { ...source };
   if (source.username != null) {
@@ -15,6 +23,14 @@ function settingsPatchFromIpc(value) {
   }
   if (source.password != null) {
     result.password = boundedString(source.password, { maxLength: 4096 });
+  }
+  if (source.expectedProfileId != null) {
+    result.expectedProfileId = profileId(boundedString(source.expectedProfileId, {
+      minLength: 1,
+      maxLength: 80,
+      trim: true,
+      message: '学校登录上下文无效',
+    }));
   }
   if (source.proxyAuthMigrationAcknowledged != null &&
       source.proxyAuthMigrationAcknowledged !== true) {
@@ -59,13 +75,14 @@ function registerSettingsCredentialIpc(dependencies = {}) {
     hasActiveEngine,
     reconnect,
     disconnect,
+    getActiveProfileId,
   } = dependencies;
   for (const dependency of [
     register, loadSettings, saveSettings, savePassword, removePassword,
     runCredentialMutation, applyCredentialRecovery, isCredentialBlocked,
     retryCredentialRecovery, runPolicyTransaction, runSerialTransaction,
     assertPersistence, translate, onLanguageChanged, setStartAtLogin,
-    hasActiveEngine, reconnect, disconnect,
+    hasActiveEngine, reconnect, disconnect, getActiveProfileId,
   ]) {
     if (typeof dependency !== 'function') {
       throw new TypeError('settings credential IPC dependencies are incomplete');
@@ -85,6 +102,13 @@ function registerSettingsCredentialIpc(dependencies = {}) {
       try {
         previous = loadSettings();
         patch = settingsPatchFromIpc(rawPatch);
+        const credentialPatch = patch.username != null || patch.password != null;
+        const expectedProfileId = patch.expectedProfileId;
+        delete patch.expectedProfileId;
+        if (credentialPatch && expectedProfileId !== getActiveProfileId()) {
+          const message = translate('error.profileCredentialContextChanged');
+          throw Object.assign(new Error(message), { userMessage: message });
+        }
         ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(previous, patch));
       } catch (error) {
         return {

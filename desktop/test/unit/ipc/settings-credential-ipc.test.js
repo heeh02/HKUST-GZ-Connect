@@ -54,6 +54,7 @@ function fixture(overrides = {}) {
     hasActiveEngine: () => false,
     reconnect: async () => { calls.push(['reconnect']); return { ok: true }; },
     disconnect: async () => { calls.push(['disconnect']); return { ok: true }; },
+    getActiveProfileId: () => 'hkustgz',
     ...overrides,
   };
   registerSettingsCredentialIpc(dependencies);
@@ -67,9 +68,12 @@ function fixture(overrides = {}) {
   };
 }
 
-test('IPC patch schema is exact and bounds credentials and route domains', () => {
-  assert.deepEqual(settingsPatchFromIpc({ username: 'alice', routeDomains: [' example.test '] }), {
+test('IPC patch schema is exact and bounds credentials, Profile identity, and route domains', () => {
+  assert.deepEqual(settingsPatchFromIpc({
+    username: 'alice', expectedProfileId: 'hkustgz', routeDomains: [' example.test '],
+  }), {
     username: 'alice',
+    expectedProfileId: 'hkustgz',
     routeDomains: ['example.test'],
   });
   assert.throws(() => settingsPatchFromIpc({ token: 'forbidden' }), /未知字段/);
@@ -101,7 +105,9 @@ test('an inherited compatibility choice can be acknowledged without restarting t
 
 test('password save uses the credential transaction and clears every request reference', async () => {
   const f = fixture();
-  const payload = { username: 'bob', password: 'synthetic-password' };
+  const payload = {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'hkustgz',
+  };
   const result = await f.handlers.get('save')({}, payload);
   assert.equal(result.ok, true);
   assert.equal(result.settings.username, 'bob');
@@ -114,7 +120,7 @@ test('password save uses the credential transaction and clears every request ref
 
 test('password plus network policy is rejected before writes and clears the payload', async () => {
   const f = fixture();
-  const payload = { password: 'synthetic-password', port: 6180 };
+  const payload = { password: 'synthetic-password', port: 6180, expectedProfileId: 'hkustgz' };
   const result = await f.handlers.get('save')({}, payload);
   assert.equal(result.ok, false);
   assert.equal(result.error, 'error.credentialPolicyCombined');
@@ -161,7 +167,9 @@ test('language and login-item effects run only after a successful settings commi
 
 test('username changes without a password fail and credential recovery errors stay stable', async () => {
   const f = fixture();
-  const username = await f.handlers.get('save')({}, { username: 'bob' });
+  const username = await f.handlers.get('save')({}, {
+    username: 'bob', expectedProfileId: 'hkustgz',
+  });
   assert.equal(username.ok, false);
   assert.equal(username.error, 'error.usernameNeedsPassword');
 
@@ -172,11 +180,23 @@ test('username changes without a password fail and credential recovery errors st
       error: { credentialStoreUnavailable: true },
     }),
   });
-  const payload = { password: 'synthetic-password' };
+  const payload = { password: 'synthetic-password', expectedProfileId: 'hkustgz' };
   const result = await failed.handlers.get('save')({}, payload);
   assert.equal(result.ok, false);
   assert.equal(result.error, 'error.settingsSaveFailedPasswordCleared');
   assert.equal(payload.password, '');
+});
+
+test('credential save rejects an inactive or stale Profile before any write', async () => {
+  const f = fixture();
+  const payload = {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'school-b',
+  };
+  const result = await f.handlers.get('save')({}, payload);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'error.profileCredentialContextChanged');
+  assert.equal(payload.password, '');
+  assert.equal(f.calls.some(([name]) => name === 'save' || name === 'password'), false);
 });
 
 test('logout stops the Engine then atomically removes credential and username', async () => {

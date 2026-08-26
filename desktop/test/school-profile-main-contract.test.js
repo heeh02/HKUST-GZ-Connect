@@ -28,11 +28,12 @@ test('composition root resolves one active Profile before credential recovery', 
   assert.doesNotMatch(main, /: 'remote\.hkust-gz\.edu\.cn'/u);
 });
 
-test('profile drives reviewed resources, routes, Browser home and health targets', () => {
-  assert.match(main, /activeSchoolProfile\.mergeResourceLibrary\(settings\.customResources\)/u);
+test('profile drives resources, routes and health while Browser Home stays app-owned', () => {
+  assert.match(main, /activeSchoolProfile\.mergeResourceLibrary\(settings\.customResources, settings\.hiddenBuiltinResourceIds\)/u);
   assert.match(main, /defaultRouteDomains: activeSchoolProfile\.defaultRouteDomains/u);
   assert.match(main, /directPartnerDomains: \(\) => activeSchoolProfile\.directPartnerDomains/u);
-  assert.match(main, /homeUrl: activeSchoolProfile\.browserHomeUrl/u);
+  assert.doesNotMatch(main, /homeUrl: activeSchoolProfile\.browserHomeUrl/u);
+  assert.match(main, /getWorkspaceResources: \(\) => safeCampusResourceLibrary\(\)/u);
   assert.match(main, /healthTargets: activeSchoolProfile\.healthTargets/u);
   assert.match(main, /gatewayPort: GATEWAY_PORT/u);
 });

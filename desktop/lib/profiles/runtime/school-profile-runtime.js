@@ -11,9 +11,7 @@ const {
 const { SchoolProfileRegistry } = require('../registry/school-profile-registry');
 
 const MAX_ENGINE_CONFIG_BYTES = 256 * 1024;
-const ENGINE_CONFIG_FILES = Object.freeze({
-  'hkustgz-engine-config': 'hkustgz.json',
-});
+const SAFE_PROFILE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u;
 
 function sha256(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
@@ -58,10 +56,12 @@ function parseEngineConfig(data) {
 }
 
 function engineConfigCandidate({ profile, isPackaged, resourcesPath, desktopDir }) {
-  const filename = ENGINE_CONFIG_FILES[profile?.gateway?.engineConfigRef];
-  if (!filename || profile.profileId !== 'hkustgz') {
+  const profileId = profile?.profileId;
+  if (typeof profileId !== 'string' || !SAFE_PROFILE_ID.test(profileId) ||
+      typeof profile?.gateway?.engineConfigRef !== 'string' || !profile.gateway.engineConfigRef) {
     throw new Error('school profile engine config is not compiled into this build');
   }
+  const filename = `${profileId}.json`;
   if (isPackaged) {
     if (typeof resourcesPath !== 'string' || !path.isAbsolute(resourcesPath)) {
       throw new Error('packaged resources path is invalid');
@@ -139,7 +139,6 @@ function createActiveSchoolProfileContext({
 }
 
 module.exports = {
-  ENGINE_CONFIG_FILES,
   MAX_ENGINE_CONFIG_BYTES,
   createActiveSchoolProfileContext,
   engineConfigCandidate,

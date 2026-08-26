@@ -1,9 +1,22 @@
 'use strict';
 
-const { BLANK_CAMPUS_HOME, CampusBrowser, DEFAULT_CAMPUS_HOME } = require('./campus-browser');
-const { CAMPUS_PARTITION, ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
+const { BLANK_CAMPUS_HOME, CampusBrowser } = require('./campus-browser');
+const { ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
 const { CampusCredentialVault } = require('../credentials/campus-credential-vault');
 const { normalizeOpenRequest } = require('../resources/campus-open-policy');
+
+function browserProfilePresentation(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      typeof value.schoolName !== 'string' || !value.schoolName.trim() ||
+      value.schoolName.length > 160 || /[\u0000-\u001f\u007f<>]/u.test(value.schoolName) ||
+      typeof value.unverified !== 'boolean') {
+    throw new TypeError('Campus Browser Profile presentation is invalid');
+  }
+  return Object.freeze({
+    schoolName: value.schoolName.trim(),
+    unverified: value.unverified,
+  });
+}
 
 class CampusBrowserManager {
   constructor({
@@ -19,8 +32,8 @@ class CampusBrowserManager {
     toolbarFile,
     toolbarPreload,
     campusPreload,
-    homeUrl = DEFAULT_CAMPUS_HOME,
-    browserPartition = CAMPUS_PARTITION,
+    homeUrl = BLANK_CAMPUS_HOME,
+    browserPartition,
     routingPolicy,
     ensureCampusReady,
     resolveRoute,
@@ -28,6 +41,9 @@ class CampusBrowserManager {
     getSocksPort,
     getLocale,
     getTranslator,
+    getProfilePresentation,
+    getWorkspaceResources,
+    showItemInFolder,
     showRoutingRules,
     reportError,
     CampusBrowserClass = CampusBrowser,
@@ -35,7 +51,9 @@ class CampusBrowserManager {
   } = {}) {
     for (const dependency of [
       BrowserWindow, WebContentsView, parentWindow, ensureCampusReady, resolveRoute,
-      ensureConnected, getSocksPort, getLocale, getTranslator, showRoutingRules,
+      ensureConnected, getSocksPort, getLocale, getTranslator, getProfilePresentation,
+      getWorkspaceResources, showItemInFolder,
+      showRoutingRules,
       reportError, CampusBrowserClass, CredentialVaultClass,
     ]) {
       if (typeof dependency !== 'function') {
@@ -53,7 +71,8 @@ class CampusBrowserManager {
       campusPreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       browserPartition,
-      getSocksPort, getLocale, getTranslator, showRoutingRules, reportError,
+      getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
+      getWorkspaceResources, showRoutingRules, reportError,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
@@ -83,6 +102,9 @@ class CampusBrowserManager {
       toolbarFile: this.toolbarFile,
       toolbarPreload: this.toolbarPreload,
       campusPreload: this.campusPreload,
+      profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
+      getWorkspaceResources: () => this.getWorkspaceResources(),
+      showItemInFolder: this.showItemInFolder,
       homeUrl: this.homeUrl,
       partition: this.browserPartition,
       routingPolicy: this.routingPolicy,
@@ -160,6 +182,17 @@ class CampusBrowserManager {
     return this.browser === null;
   }
 
+  async clearSiteData() {
+    if (await this.closeForContextSwitch() !== true) return false;
+    const target = this.session.fromPartition?.(this.browserPartition);
+    if (!target || typeof target.clearStorageData !== 'function' ||
+        typeof target.clearCache !== 'function') return false;
+    await target.closeAllConnections?.();
+    await target.clearStorageData();
+    await target.clearCache();
+    return true;
+  }
+
   ownsWebContents(contents) {
     return this.browser?.ownsWebContents(contents) === true;
   }
@@ -173,4 +206,4 @@ class CampusBrowserManager {
   }
 }
 
-module.exports = { CampusBrowserManager };
+module.exports = { CampusBrowserManager, browserProfilePresentation };

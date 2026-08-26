@@ -10,7 +10,6 @@ const {
 } = require('../schema/school-profile-schema');
 
 const REGISTRY_SCHEMA_VERSION = 1;
-const DEFAULT_PROFILE_ID = 'hkustgz';
 const DEFAULT_MANIFEST_PATH = 'assets/profiles/manifest.json';
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_PROFILE_BYTES = 256 * 1024;
@@ -294,11 +293,8 @@ function normalizeManifest(value) {
     throw new TypeError('profile manifest contains duplicate profile IDs');
   }
   const defaults = profiles.filter((profile) => profile.default);
-  if (defaults.length !== 1 || defaults[0].profileId !== DEFAULT_PROFILE_ID) {
-    throw new TypeError('profile manifest requires exactly one default hkustgz profile');
-  }
-  if (profiles.length !== 1 || profiles[0].profileId !== DEFAULT_PROFILE_ID) {
-    throw new TypeError('P1 profile manifest supports only the reviewed hkustgz profile');
+  if (defaults.length !== 1) {
+    throw new TypeError('profile manifest requires exactly one default reviewed profile');
   }
   return Object.freeze({ schemaVersion: REGISTRY_SCHEMA_VERSION, profiles: Object.freeze(profiles) });
 }
@@ -480,7 +476,6 @@ class SchoolProfileRegistry {
 module.exports = {
   ASSET_KINDS,
   DEFAULT_MANIFEST_PATH,
-  DEFAULT_PROFILE_ID,
   PackagedFileReader,
   REGISTRY_SCHEMA_VERSION,
   SchoolProfileRegistry,

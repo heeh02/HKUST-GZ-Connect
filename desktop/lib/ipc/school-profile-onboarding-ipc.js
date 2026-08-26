@@ -31,26 +31,58 @@ function confirmationRequest(value) {
   });
 }
 
-function registerSchoolProfileOnboardingIpc({ register, onboarding, getLocale } = {}) {
+function deletionRequest(value) {
+  const source = allowedKeys(value, ['profileId']);
+  const profileId = boundedString(source.profileId, {
+    minLength: 1, maxLength: 64, trim: true, message: '学校配置无效',
+  });
+  if (!/^custom-[a-z0-9-]{1,56}$/u.test(profileId)) throw new TypeError('学校配置无效');
+  return Object.freeze({ profileId });
+}
+
+function registerSchoolProfileOnboardingIpc({
+  register,
+  onboarding,
+  getLocale,
+  isCustomGatewayEnabled,
+  deleteProfile,
+} = {}) {
   if (typeof register !== 'function' || !onboarding ||
       typeof onboarding.list !== 'function' || typeof onboarding.probe !== 'function' ||
       typeof onboarding.confirm !== 'function' || typeof onboarding.cancel !== 'function' ||
-      typeof getLocale !== 'function') {
+      typeof getLocale !== 'function' || typeof isCustomGatewayEnabled !== 'function' ||
+      typeof deleteProfile !== 'function') {
     throw new TypeError('school Profile onboarding IPC dependencies are incomplete');
   }
   register('list-school-profiles', () => {
-    try { return { ok: true, profiles: onboarding.list({ locale: getLocale() }) }; }
-    catch { return { ok: false, code: 'PROFILE_LIST_FAILED', profiles: [] }; }
+    try {
+      return {
+        ok: true,
+        profiles: onboarding.list({ locale: getLocale() }),
+        customGatewayEnabled: isCustomGatewayEnabled() === true,
+      };
+    } catch {
+      return {
+        ok: false,
+        code: 'PROFILE_LIST_FAILED',
+        profiles: [],
+        customGatewayEnabled: false,
+      };
+    }
   });
-  register('probe-custom-gateway', (_event, value) => onboarding.probe(probeRequest(value)));
-  register('confirm-custom-gateway', (_event, value) => (
-    onboarding.confirm(confirmationRequest(value))
-  ));
+  register('probe-custom-gateway', (_event, value) => isCustomGatewayEnabled() === true
+    ? onboarding.probe(probeRequest(value))
+    : { ok: false, code: 'PROFILE_ONBOARDING_DISABLED' });
+  register('confirm-custom-gateway', (_event, value) => isCustomGatewayEnabled() === true
+    ? onboarding.confirm(confirmationRequest(value))
+    : { ok: false, code: 'PROFILE_ONBOARDING_DISABLED' });
   register('cancel-custom-gateway', () => ({ ok: true, cancelled: onboarding.cancel() }));
+  register('delete-school-profile', (_event, value) => deleteProfile(deletionRequest(value)));
 }
 
 module.exports = {
   confirmationRequest,
+  deletionRequest,
   probeRequest,
   registerSchoolProfileOnboardingIpc,
 };

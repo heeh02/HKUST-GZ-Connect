@@ -89,6 +89,9 @@ test('status projection keeps connection failures separate from local notices', 
   }, { phase: 'idle', connected: false, connecting: false }, null);
   assert.equal(projected.lastError, 'engine failed\nsettings failed\nrecovery failed');
   assert.equal(projected.notice, 'restored\nbrowser paused\nlog unavailable');
+  assert.deepEqual(projected.recovery, {
+    schemaVersion: 1, category: 'local-state', action: 'open-settings',
+  });
   assert.equal(Object.isFrozen(projected), true);
 });
 

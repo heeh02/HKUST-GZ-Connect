@@ -1,9 +1,10 @@
 'use strict';
 
-const DEFAULT_CAMPUS_HOME = 'https://www.hkust-gz.edu.cn/';
 const BLANK_CAMPUS_HOME = 'about:blank';
+const DEFAULT_CAMPUS_HOME = BLANK_CAMPUS_HOME;
 const {
   CAMPUS_PARTITION,
+  NEUTRAL_CAMPUS_PARTITION,
   ROUTE_CAMPUS,
   ROUTE_DIRECT,
 } = require('../../routing/policy/campus-route');
@@ -25,6 +26,7 @@ const TOOLBAR_HEIGHT = 76;
 const FIND_BAR_HEIGHT = 34;
 const SLOW_LOADING_HINT_MS = 10000;
 const MAX_URL_LENGTH = 2048;
+const MAX_WORKSPACE_HOME_RESOURCES = 64;
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
@@ -133,7 +135,7 @@ function redactedFailedUrl(value, fallback) {
   }
 }
 
-function errorPage(failedUrl, description, t = createT('zh')) {
+function errorPage(failedUrl, description, t = createT('zh'), route = ROUTE_CAMPUS) {
   const url = escapeHtml(redactedFailedUrl(failedUrl, t('errorPage.unknownUrl')));
   const reason = escapeHtml(description || t('errorPage.networkFailed'));
   const html = `<!doctype html><meta charset="utf-8">
@@ -147,9 +149,95 @@ function errorPage(failedUrl, description, t = createT('zh')) {
       code{display:block;margin-top:16px;padding:12px;background:#f4f7fb;border-radius:10px;word-break:break-all;color:#344054}
     </style>
     <main><h1>${escapeHtml(t('errorPage.heading'))}</h1>
-    <p>${escapeHtml(t('errorPage.body'))}</p>
+    <p>${escapeHtml(t(route === ROUTE_DIRECT ? 'errorPage.bodyDirect' : 'errorPage.bodyCampus'))}</p>
     <code>${url}</code><p>${reason}</p></main>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function workspaceHomeResources(value, t = createT('zh')) {
+  if (!Array.isArray(value) || value.length > MAX_WORKSPACE_HOME_RESOURCES) {
+    throw new TypeError('Campus Browser workspace resources are invalid');
+  }
+  const seenIds = new Set();
+  const seenUrls = new Set();
+  return Object.freeze(value.map((resource) => {
+    if (!resource || typeof resource !== 'object' || Array.isArray(resource) ||
+        typeof resource.id !== 'string' || !/^[a-z0-9-]{1,40}$/u.test(resource.id) ||
+        typeof resource.name !== 'string' || !resource.name.trim() || resource.name.length > 80 ||
+        /[\u0000-\u001f\u007f<>]/u.test(resource.name) ||
+        typeof resource.description !== 'string' || resource.description.length > 160 ||
+        /[\u0000-\u001f\u007f<>]/u.test(resource.description) ||
+        ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(resource.route) ||
+        typeof resource.favorite !== 'boolean' ||
+        (resource.lastOpenedAt !== null &&
+          (!Number.isSafeInteger(resource.lastOpenedAt) || resource.lastOpenedAt <= 0))) {
+      throw new TypeError('Campus Browser workspace resource is invalid');
+    }
+    const url = normalizeCampusUrl(resource.url, BLANK_CAMPUS_HOME, t);
+    if (url === BLANK_CAMPUS_HOME || seenIds.has(resource.id) || seenUrls.has(url)) {
+      throw new TypeError('Campus Browser workspace resources are duplicated');
+    }
+    seenIds.add(resource.id);
+    seenUrls.add(url);
+    return Object.freeze({
+      id: resource.id,
+      name: resource.name.trim(),
+      description: resource.description,
+      url,
+      route: resource.route,
+      favorite: resource.favorite,
+      lastOpenedAt: resource.lastOpenedAt,
+    });
+  }));
+}
+
+function workspaceResourceCard(resource, t) {
+  const description = resource.description
+    ? `<span class="description">${escapeHtml(resource.description)}</span>` : '';
+  const route = escapeHtml(t(resource.route === ROUTE_DIRECT ? 'route.direct' : 'route.campus'));
+  return `<a class="resource" href="${escapeHtml(resource.url)}">
+    <strong>${escapeHtml(resource.name)}</strong>${description}
+    <span class="route ${resource.route === ROUTE_DIRECT ? 'direct' : ''}">${route}</span>
+  </a>`;
+}
+
+function workspaceHomeSection(title, resources, t) {
+  if (!resources.length) return '';
+  return `<section><h2>${escapeHtml(title)}</h2><div class="grid">${resources
+    .map((resource) => workspaceResourceCard(resource, t)).join('')}</div></section>`;
+}
+
+function neutralHomePage(profile, t = createT('zh'), rawResources = []) {
+  const resources = workspaceHomeResources(rawResources, t);
+  const school = escapeHtml(profile?.schoolName || t('browser.workspace'));
+  const warning = profile?.unverified
+    ? `<p class="warning">${escapeHtml(t('browser.neutralHomeUnverified'))}</p>` : '';
+  const favorites = resources.filter((resource) => resource.favorite);
+  const claimed = new Set(favorites.map(({ id }) => id));
+  const recent = resources.filter((resource) => !claimed.has(resource.id) && resource.lastOpenedAt)
+    .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
+  for (const resource of recent) claimed.add(resource.id);
+  const services = resources.filter((resource) => !claimed.has(resource.id));
+  const sections = [
+    workspaceHomeSection(t('browser.homeFavorites'), favorites, t),
+    workspaceHomeSection(t('browser.homeRecent'), recent, t),
+    workspaceHomeSection(t('browser.homeServices'), services, t),
+  ].join('');
+  const empty = sections ? '' : `<p class="empty">${escapeHtml(t('browser.homeEmpty'))}</p>`;
+  return `<!doctype html><meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+    <title>${escapeHtml(t('browser.workspace'))}</title>
+    <style>
+      *{box-sizing:border-box}body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}
+      main{max-width:900px;margin:6vh auto;padding:32px}.hero{padding:24px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}
+      h1{margin:0 0 8px;color:#0b2a5b;font-size:25px}h2{margin:24px 0 10px;color:#0b2a5b;font-size:16px}p{margin:0;line-height:1.7;color:#667085}
+      .warning{margin-top:12px;color:#7a5200;background:#fff1cf;border-radius:10px;padding:10px 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+      .resource{display:flex;min-width:0;min-height:104px;flex-direction:column;gap:6px;padding:14px;color:#0b2a5b;text-decoration:none;background:#fff;border:1px solid #e2e8f2;border-radius:14px;transition:border-color .16s,box-shadow .16s,transform .16s}
+      .resource:hover,.resource:focus-visible{border-color:#c59a2b;box-shadow:0 8px 20px rgba(13,30,66,.08);transform:translateY(-1px);outline:none}.description{color:#7a8598;font-size:13px;line-height:1.4}.route{align-self:flex-start;margin-top:auto;padding:3px 7px;border-radius:999px;background:#eaf0fa;color:#0b2a5b;font-size:11px;font-weight:700}.route.direct{background:#fff1cf;color:#715300}.empty{margin-top:18px;text-align:center}
+      @media(max-width:560px){main{margin:0;padding:18px}.hero{padding:18px}.grid{grid-template-columns:1fr}}
+      @media(prefers-reduced-motion:reduce){.resource{transition:none}.resource:hover,.resource:focus-visible{transform:none}}
+    </style>
+    <main><div class="hero"><h1>${school}</h1><p>${escapeHtml(t('browser.neutralHomeBody'))}</p>${warning}</div>${sections}${empty}</main>`;
 }
 
 class CampusBrowser {
@@ -164,6 +252,9 @@ class CampusBrowser {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    profilePresentation = null,
+    getWorkspaceResources = () => [],
+    showItemInFolder = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
@@ -171,7 +262,7 @@ class CampusBrowser {
     locale,
     t,
     onError,
-    partition = CAMPUS_PARTITION,
+    partition = NEUTRAL_CAMPUS_PARTITION,
   }) {
     this.BrowserWindow = BrowserWindow;
     this.WebContentsView = WebContentsView;
@@ -189,6 +280,19 @@ class CampusBrowser {
     this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
+    this.profilePresentation = profilePresentation &&
+      typeof profilePresentation.schoolName === 'string' &&
+      typeof profilePresentation.unverified === 'boolean'
+      ? Object.freeze({
+        schoolName: profilePresentation.schoolName.slice(0, 160),
+        unverified: profilePresentation.unverified,
+      })
+      : Object.freeze({ schoolName: this.t('browser.workspace'), unverified: false });
+    if (typeof getWorkspaceResources !== 'function') {
+      throw new TypeError('Campus Browser workspace resource provider is invalid');
+    }
+    this.getWorkspaceResources = getWorkspaceResources;
+    this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
       : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
@@ -227,6 +331,7 @@ class CampusBrowser {
     // live exclusively in CertificateController.
     this.certificateDecisions = this.certificateController.decisions;
     this.downloadSessions = new Set();
+    this.downloadState = null;
     this.findOpen = false;
     this.lastFindQuery = '';
     this.scheduledLayout = null;
@@ -256,9 +361,28 @@ class CampusBrowser {
     this.locale = nextLocale === 'en' ? 'en' : 'zh';
     this.t = typeof nextT === 'function' ? nextT : createT(this.locale);
     if (!this.window || this.window.isDestroyed()) return;
-    this.window.setTitle(this.t('browser.windowTitle'));
+    this.window.setTitle(this.t('browser.windowTitleForSchool', {
+      school: this.profilePresentation.schoolName,
+      trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
+    }));
     this.window.webContents.send?.('campus-toolbar-locale', this.locale);
+    for (const tab of this.tabs) {
+      if (this.currentUrl(tab) === BLANK_CAMPUS_HOME) this.renderWorkspaceHome(tab);
+    }
     this.updateToolbar();
+  }
+
+  workspaceResources() {
+    try { return workspaceHomeResources(this.getWorkspaceResources(), this.t); }
+    catch { return Object.freeze([]); }
+  }
+
+  renderWorkspaceHome(tab) {
+    if (!tab || tab.view.webContents.isDestroyed()) return false;
+    const source = neutralHomePage(this.profilePresentation, this.t, this.workspaceResources());
+    const script = `document.open();document.write(${JSON.stringify(source)});document.close();`;
+    tab.view.webContents.executeJavaScript(script).catch(() => {});
+    return true;
   }
 
   async decideCertificateTrust({ origin, fingerprint, error, certificate }) {
@@ -294,9 +418,39 @@ class CampusBrowser {
         return;
       }
       item.setSavePath(result.filePath);
-      item.once('done', (_event, state) => {
+      const filename = String(item.getFilename() || '').slice(0, 160);
+      const updateProgress = () => {
+        const total = Number(item.getTotalBytes?.());
+        const received = Number(item.getReceivedBytes?.());
+        const percent = Number.isFinite(total) && total > 0 && Number.isFinite(received)
+          ? Math.max(0, Math.min(100, Math.round(received * 100 / total))) : null;
+        this.downloadState = Object.freeze({ filename, status: 'downloading', percent });
+        this.scheduleToolbarUpdate();
+      };
+      item.on?.('updated', updateProgress);
+      updateProgress();
+      item.once('done', async (_event, state) => {
+        this.downloadState = Object.freeze({
+          filename,
+          status: state === 'completed' ? 'completed' : 'interrupted',
+          percent: state === 'completed' ? 100 : null,
+        });
+        this.scheduleToolbarUpdate();
         if (state === 'interrupted' && this.onError) {
           this.onError(this.t('download.interrupted', { filename: item.getFilename() }));
+        }
+        if (state === 'completed' && typeof this.dialog.showMessageBox === 'function') {
+          try {
+            const prompt = await this.dialog.showMessageBox(this.window, {
+              type: 'info',
+              message: this.t('download.completed', { filename }),
+              buttons: [this.t('download.showInFolder'), this.t('common.close')],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true,
+            });
+            if (prompt.response === 0) this.showItemInFolder(result.filePath);
+          } catch {}
         }
       });
     } catch {
@@ -400,9 +554,9 @@ class CampusBrowser {
     return resolution;
   }
 
-  updateTabRoute(tab, rawUrl = this.currentUrl(tab)) {
+  updateTabRoute(tab, rawUrl = this.currentUrl(tab), requestedRoute = null) {
     if (!tab || !rawUrl) return null;
-    const resolution = this.resolveRoute(rawUrl);
+    const resolution = this.resolveRoute(rawUrl, null, requestedRoute);
     tab.route = resolution.route;
     tab.routeSource = resolution.source;
     tab.matchedRule = resolution.matchedRule;
@@ -467,6 +621,7 @@ class CampusBrowser {
         loading: tab.loading,
         route: tab.route,
       })),
+      download: this.downloadState,
     };
     const serialized = JSON.stringify(state);
     if (serialized === this.lastToolbarState) return;
@@ -496,6 +651,7 @@ class CampusBrowser {
     const navigation = navigationForContents(active?.view.webContents);
 
     if (command === 'new-tab') this.createTab(this.homeUrl);
+    else if (command === 'home' && active) this.navigate(this.homeUrl, active);
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -634,7 +790,7 @@ class CampusBrowser {
       tab.renderingError = true;
       this.clearCredentialCandidate(tab);
       this.clearSlowTimer(tab);
-      contents.loadURL(errorPage(failedUrl, description, this.t)).catch(() => {});
+      contents.loadURL(errorPage(failedUrl, description, this.t, tab.route)).catch(() => {});
       this.scheduleToolbarUpdate();
     };
     contents.on('did-fail-load', handleLoadFailure);
@@ -734,6 +890,7 @@ class CampusBrowser {
       tab.failedUrl,
       this.t('errorPage.rendererCrash', { reason }),
       this.t,
+      tab.route,
     )).catch(() => {
       if (this.onError) this.onError(this.t('errorPage.rendererCrash', { reason }));
     });
@@ -842,7 +999,7 @@ class CampusBrowser {
       }
       targetWindow.contentView.addChildView(view);
       this.attachPageEvents(tab);
-      if (!this.switchTab(tab.id) || !this.navigate(url, tab)) {
+      if (!this.switchTab(tab.id) || !this.navigate(url, tab, resolution.route)) {
         throw new Error('campus browser tab activation failed');
       }
       return tab;
@@ -950,7 +1107,10 @@ class CampusBrowser {
       height: 740,
       minWidth: 660,
       minHeight: 460,
-      title: this.t('browser.windowTitle'),
+      title: this.t('browser.windowTitleForSchool', {
+        school: this.profilePresentation.schoolName,
+        trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
+      }),
       backgroundColor: '#f7f9fc',
       autoHideMenuBar: true,
       ...campusWindowChrome(process.platform),
@@ -965,7 +1125,11 @@ class CampusBrowser {
         safeDialogs: true,
       },
     });
-    await this.window.loadFile(this.toolbarFile, { query: { lang: this.locale } });
+    await this.window.loadFile(this.toolbarFile, { query: {
+      lang: this.locale,
+      school: this.profilePresentation.schoolName,
+      unverified: this.profilePresentation.unverified ? '1' : '0',
+    } });
     this.window.webContents.on('ipc-message', (_event, channel, payload) => {
       if (channel === 'campus-toolbar-command') this.handleToolbarCommand(payload);
     });
@@ -986,7 +1150,7 @@ class CampusBrowser {
     });
   }
 
-  navigate(rawUrl, tab = this.activeTab()) {
+  navigate(rawUrl, tab = this.activeTab(), requestedRoute = null) {
     let url;
     try {
       url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
@@ -995,11 +1159,19 @@ class CampusBrowser {
       return false;
     }
     if (!tab || tab.view.webContents.isDestroyed()) return false;
-    this.updateTabRoute(tab, url);
+    // `open()` may carry a route already resolved from the active Profile or
+    // an ID-only WebResource. Keep that decision through the first load when
+    // the generic policy has no matching rule; later user navigation resolves
+    // afresh from the live Profile-backed policy.
+    this.updateTabRoute(tab, url, requestedRoute);
     tab.failedUrl = '';
     tab.renderingError = false;
     tab.crashed = false;
-    tab.view.webContents.loadURL(url).catch(() => {
+    const loading = tab.view.webContents.loadURL(url);
+    loading.then(() => {
+      if (url !== BLANK_CAMPUS_HOME || tab.view.webContents.isDestroyed()) return;
+      this.renderWorkspaceHome(tab);
+    }).catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
     });
@@ -1078,8 +1250,10 @@ module.exports = {
   CAMPUS_PARTITION,
   CampusBrowser,
   DEFAULT_CAMPUS_HOME,
+  NEUTRAL_CAMPUS_PARTITION,
   BLANK_CAMPUS_HOME,
   FIND_BAR_HEIGHT,
+  MAX_WORKSPACE_HOME_RESOURCES,
   MAX_TABS,
   SLOW_LOADING_HINT_MS,
   TOOLBAR_HEIGHT,
@@ -1087,6 +1261,8 @@ module.exports = {
   campusProxyConfig,
   campusWindowChrome,
   errorPage,
+  neutralHomePage,
+  workspaceHomeResources,
   nextZoomFactor,
   navigationForContents,
   normalizeCampusUrl,

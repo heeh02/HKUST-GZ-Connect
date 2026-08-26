@@ -125,11 +125,12 @@
       $('resourceEditorList').innerHTML = resources.map((resource) => {
         const custom = !resource.builtin;
         let actions;
-        if (!custom) {
-          actions = `<span class="resource-editor-route">${esc(translate('dialog.builtin'))}</span>`;
-        } else if (pendingDeleteId === resource.id) {
+        if (pendingDeleteId === resource.id) {
           actions = `<button class="row-icon confirm-delete" type="button" data-resource-action="delete">${esc(translate('dialog.confirmDelete'))}</button>`
             + actionButton('cancel-delete', translate('dialog.cancelDelete'));
+        } else if (!custom) {
+          actions = `<span class="resource-editor-route">${esc(translate('dialog.builtin'))}</span>`
+            + actionButton('delete', translate('dialog.delete'));
         } else {
           const index = customIds.indexOf(resource.id);
           actions = actionButton('edit', translate('dialog.edit'))
@@ -156,6 +157,19 @@
       $('manageResources').addEventListener('click', open);
       $('closeResourceDialog').addEventListener('click', () => dialog.close());
       $('cancelResource').addEventListener('click', clearEditor);
+      $('restoreBuiltinResources').addEventListener('click', async () => {
+        disarmDelete();
+        clearMessages();
+        const result = await api.restoreBuiltinResources();
+        if (!result?.ok) {
+          $('resourceFormError').textContent = result?.error || translate('dialog.restoreFailed');
+          return;
+        }
+        setResources(result.resources || getResources());
+        renderList();
+        clearEditor();
+        $('resourceFormSaved').textContent = translate('dialog.restoredBuiltins');
+      });
       $('resourceUrl').addEventListener('blur', () => {
         if ($('resourceName').value.trim()) return;
         const suggestion = suggestedResourceName($('resourceUrl').value);
@@ -167,7 +181,7 @@
         const resources = getResources();
         const resource = resources.find((item) => item.id === row.dataset.resourceId);
         const action = event.target.closest('[data-resource-action]')?.dataset.resourceAction;
-        if (!resource || resource.builtin) return;
+        if (!resource) return;
         if (action === 'cancel-delete') {
           disarmDelete();
           renderList();
@@ -195,6 +209,7 @@
           clearEditor();
           return;
         }
+        if (resource.builtin) return;
         disarmDelete();
         if (action === 'edit') fillEditor(resource);
         if (action === 'up' || action === 'down') {

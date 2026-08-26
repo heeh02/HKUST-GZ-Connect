@@ -22,11 +22,11 @@ function resourceOpenRequestFromIpc(value) {
 
 function registerCoreControlIpc(dependencies = {}) {
   const {
-    register, getState, connect, disconnect, reconnect, sshConfig, copyClashNode,
+    register, getState, getLoginAccount, connect, disconnect, reconnect,
     getLogs, openLog, copyText, openCampusBrowser, openResource, checkUpdate, openExternal, resize,
   } = dependencies;
   for (const dependency of [
-    register, getState, connect, disconnect, reconnect, sshConfig, copyClashNode,
+    register, getState, getLoginAccount, connect, disconnect, reconnect,
     getLogs, openLog, copyText, openCampusBrowser, openResource, checkUpdate, openExternal, resize,
   ]) {
     if (typeof dependency !== 'function') {
@@ -35,11 +35,10 @@ function registerCoreControlIpc(dependencies = {}) {
   }
 
   register('get-state', () => getState());
+  register('get-login-account', () => getLoginAccount());
   register('connect', () => connect());
   register('disconnect', () => disconnect());
   register('reconnect', () => reconnect());
-  register('ssh-config', () => sshConfig());
-  register('copy-clash-node', () => copyClashNode());
   register('get-logs', () => getLogs());
   register('open-log', () => openLog());
   register('copy', (_event, text) => (

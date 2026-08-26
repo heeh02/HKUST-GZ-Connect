@@ -55,6 +55,7 @@ async function run() {
     mode: 0o600,
   });
   fs.writeFileSync(legacy.routingRules, '{"schemaVersion":1,"rules":[]}', { mode: 0o600 });
+  fs.writeFileSync(legacy.engineLogRotated, Buffer.alloc(0), { mode: 0o600 });
   const markerPath = path.join(userData, 'persistence-e2e-ready.json');
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
@@ -80,6 +81,7 @@ async function run() {
     assert.equal(Number.isInteger(marker.pid) && marker.pid > 0, true);
     assert.equal(fs.existsSync(legacy.settings), false);
     assert.equal(fs.existsSync(legacy.vpnCredential), false);
+    assert.equal(fs.existsSync(legacy.engineLogRotated), false);
     const globalSettingsPath = path.join(userData, 'global', 'settings.json');
     assert.equal(fs.existsSync(globalSettingsPath), true);
     const globalSettings = JSON.parse(fs.readFileSync(globalSettingsPath, 'utf8'));
@@ -120,6 +122,9 @@ async function run() {
       keywords: [],
     }]);
     assert.equal(fs.statSync(layout.account.vpnCredential).size > 0, true);
+    assert.equal(fs.existsSync(layout.workspace.engineLogRotated), false);
+    const integrations = JSON.parse(fs.readFileSync(layout.workspace.externalIntegrations, 'utf8'));
+    assert.deepEqual(integrations, { schemaVersion: 1, records: [] });
   } finally {
     if (marker?.pid) await stopOwnedProcess(marker.pid);
     try { child.kill('SIGTERM'); } catch {}

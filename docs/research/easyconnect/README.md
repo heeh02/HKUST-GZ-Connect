@@ -1,5 +1,8 @@
 # EasyConnect interoperability research boundary
 
+The repeatable sanitized maintenance procedure is documented in
+[`version-diff-workflow.md`](version-diff-workflow.md).
+
 This directory contains neutral, sanitized research records only. It does not contain, and must never
 contain, official installers, application bundles, ASAR contents, native modules, captures, decompiler output
 or authentication material.

@@ -8,44 +8,30 @@ const {
 } = require('../profiles/schema/school-profile-schema');
 
 const INTEGRATION_SCHEMA_VERSION = 1;
-const INTEGRATION_ADAPTER_IDS = Object.freeze([
-  'clash_yaml',
-  'mihomo_yaml',
-  'clash_verge_rev_managed',
-  'openssh_proxy_command',
+const ACTIVE_INTEGRATION_ADAPTER_IDS = Object.freeze([
+  'clash_mihomo_yaml',
   'vscode_remote_ssh',
-  'pac',
-  'manual_export',
-  'user_selected_managed_block',
 ]);
+const INTEGRATION_ADAPTER_IDS = ACTIVE_INTEGRATION_ADAPTER_IDS;
 const INTEGRATION_ACTIONS = Object.freeze([
-  'preview', 'copy', 'save', 'install', 'update', 'remove',
+  'copy', 'save',
 ]);
 const ADAPTERS = Object.freeze({
-  clash_yaml: Object.freeze({ displayName: 'Clash YAML', actions: ['preview', 'copy', 'save'] }),
-  mihomo_yaml: Object.freeze({ displayName: 'Mihomo YAML', actions: ['preview', 'copy', 'save'] }),
-  clash_verge_rev_managed: Object.freeze({
-    displayName: 'Clash Verge Rev', actions: ['preview', 'install', 'update', 'remove'],
-  }),
-  openssh_proxy_command: Object.freeze({
-    displayName: 'OpenSSH', actions: ['preview', 'install', 'update', 'remove'],
+  clash_mihomo_yaml: Object.freeze({
+    displayName: 'Clash / Mihomo configuration', actions: ['preview', 'copy', 'save'],
   }),
   vscode_remote_ssh: Object.freeze({
     displayName: 'VS Code Remote-SSH', actions: ['preview', 'copy'],
   }),
-  pac: Object.freeze({ displayName: 'PAC', actions: ['preview', 'copy', 'save'] }),
-  manual_export: Object.freeze({
-    displayName: 'Manual configuration', actions: ['preview', 'copy', 'save'],
-  }),
-  user_selected_managed_block: Object.freeze({
-    displayName: 'Managed configuration block', actions: ['preview', 'install', 'update', 'remove'],
-  }),
 });
 const COMPATIBILITY_STATES = Object.freeze(['supported', 'unsupported', 'unavailable', 'conflict']);
 const BINDING_STATES = Object.freeze(['not-installed', 'current', 'stale', 'unavailable']);
-const LISTENER_KINDS = Object.freeze(['socks5-authenticated', 'http-connect-authenticated']);
+const LISTENER_KINDS = Object.freeze([
+  'socks5-authenticated',
+  'socks5-optional-authentication',
+  'http-connect-authenticated',
+]);
 const SHA256 = /^[a-f0-9]{64}$/u;
-const SAFE_REFERENCE = /^[a-z0-9][a-z0-9._-]{0,126}[a-z0-9]$/u;
 
 function plain(value, name) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -195,68 +181,15 @@ function normalizedTargetFile(value) {
   const windows = /^(?:[a-zA-Z]:[\\/]|\\\\)/u.test(value);
   const posix = path.posix.isAbsolute(value);
   const flavor = windows ? path.win32 : path.posix;
-  if ((!windows && !posix) || flavor.normalize(value) !== value || value === flavor.parse(value).root) {
+  if ((!windows && !posix) || flavor.normalize(value) !== value ||
+      value === flavor.parse(value).root) {
     throw new TypeError('integration target file must be an absolute normalized non-root path');
   }
   return value;
 }
 
-function safeReference(value, name, { optional = false } = {}) {
-  if (optional && value == null) return null;
-  if (typeof value !== 'string' || value.length > 128 || !SAFE_REFERENCE.test(value)) {
-    throw new TypeError(`${name} is invalid`);
-  }
-  return value;
-}
-
-function validateIntegrationRecord(value) {
-  const source = exact(value, [
-    'schemaVersion', 'adapterId', 'adapterVersion', 'profileId', 'bindingDigest',
-    'targetFile', 'installedRevision', 'installedDigest', 'managedBlockId',
-    'backupReference', 'updatedAt',
-  ], 'integration record');
-  if (source.schemaVersion !== INTEGRATION_SCHEMA_VERSION) {
-    throw new TypeError('integration record version is unsupported');
-  }
-  return Object.freeze({
-    schemaVersion: INTEGRATION_SCHEMA_VERSION,
-    adapterId: adapterId(source.adapterId),
-    adapterVersion: positive(source.adapterVersion, 'adapterVersion'),
-    profileId: validateProfileId(source.profileId),
-    bindingDigest: digest(source.bindingDigest, 'bindingDigest'),
-    targetFile: normalizedTargetFile(source.targetFile),
-    installedRevision: positive(source.installedRevision, 'installedRevision'),
-    installedDigest: digest(source.installedDigest, 'installedDigest'),
-    managedBlockId: safeReference(source.managedBlockId, 'managedBlockId'),
-    backupReference: safeReference(source.backupReference, 'backupReference', { optional: true }),
-    updatedAt: positive(source.updatedAt, 'updatedAt'),
-  });
-}
-
-function validateIntegrationRecordDocument(value) {
-  const source = exact(value, ['schemaVersion', 'records'], 'integration record document');
-  if (source.schemaVersion !== INTEGRATION_SCHEMA_VERSION || !Array.isArray(source.records) ||
-      source.records.length > 64) {
-    throw new TypeError('integration record document is invalid');
-  }
-  const records = source.records.map(validateIntegrationRecord);
-  const identities = records.map((record) => (
-    `${record.adapterId}\0${record.profileId}\0${record.managedBlockId}`
-  ));
-  if (new Set(identities).size !== identities.length) {
-    throw new TypeError('integration record document contains duplicate ownership');
-  }
-  return Object.freeze({
-    schemaVersion: INTEGRATION_SCHEMA_VERSION,
-    records: Object.freeze(records.sort((left, right) => (
-      left.adapterId.localeCompare(right.adapterId) ||
-      left.profileId.localeCompare(right.profileId) ||
-      left.managedBlockId.localeCompare(right.managedBlockId)
-    ))),
-  });
-}
-
 module.exports = {
+  ACTIVE_INTEGRATION_ADAPTER_IDS,
   BINDING_STATES,
   COMPATIBILITY_STATES,
   INTEGRATION_ACTIONS,
@@ -267,6 +200,4 @@ module.exports = {
   createIntegrationBinding,
   normalizedIntegrationTargetFile: normalizedTargetFile,
   validateIntegrationBinding,
-  validateIntegrationRecord,
-  validateIntegrationRecordDocument,
 };

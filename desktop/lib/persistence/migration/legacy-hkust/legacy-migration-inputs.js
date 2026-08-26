@@ -4,7 +4,10 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const util = require('node:util');
 const { protectedStorageAvailable } = require('../../credentials/credential-store');
-const { LEGACY_SOURCE_MAX_BYTES } = require('./legacy-flat-source-receipts');
+const {
+  LEGACY_SOURCE_MAX_BYTES,
+  collectPrivateFileReceipt,
+} = require('./legacy-flat-source-receipts');
 const { readPrivateFileBounded } = require('../../../platform/storage/private-file');
 const {
   LEGACY_SOURCE_IDS,
@@ -15,9 +18,19 @@ const { normalizeSettings } = require('../../settings/settings-store');
 const { parseCredentialField } = require('../../settings/settings-update');
 const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
 
+const EMPTY_REGENERABLE_SOURCE_IDS = new Set([
+  'engineLog',
+  'engineLogRotated',
+  'engineLogRetention',
+]);
+
 function sameReceipt(expected, data) {
   return expected.present === true && expected.bytes === data.length &&
     expected.sha256 === crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function sameReceiptDocument(left, right) {
+  return left.present === right.present && left.bytes === right.bytes && left.sha256 === right.sha256;
 }
 
 class LegacyMigrationPayloadOwner {
@@ -117,6 +130,21 @@ function readLegacyMigrationPayloads({
           if (error?.code !== 'ENOENT') throw error;
         }
         payloads[id] = null;
+        continue;
+      }
+      if (expected.bytes === 0 && EMPTY_REGENERABLE_SOURCE_IDS.has(id)) {
+        const observed = collectPrivateFileReceipt({
+          file: paths[id],
+          maxBytes: LEGACY_SOURCE_MAX_BYTES[id],
+          fileSystem,
+          platform,
+          windowsAcl,
+          label: 'legacy migration source',
+        });
+        if (!sameReceiptDocument(expected, observed)) {
+          throw new Error(`legacy migration source receipt changed: ${id}`);
+        }
+        payloads[id] = Buffer.alloc(0);
         continue;
       }
       if (platform === 'win32' && !windowsAcl.verify(paths[id])) {

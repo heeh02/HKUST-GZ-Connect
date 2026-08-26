@@ -11,6 +11,7 @@ const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../../lib/platform/storage/windows-private-file');
+const { atomicWritePrivateFile } = require('../../../../lib/platform/storage/atomic-private-file');
 
 test('Windows ACL commands keep paths out of scripts and require fixed verification output', () => {
   const calls = [];
@@ -69,4 +70,19 @@ test('real Windows ACL is current-user-only and inheritance-protected', {
   fs.writeFileSync(file, 'synthetic-sidecar');
   assert.equal(protectWindowsFileOwnerOnly(file), true);
   assert.equal(verifyWindowsFileOwnerOnly(file), true);
+});
+
+test('real Windows ACL survives the atomic temporary-file commit boundary', {
+  skip: process.platform !== 'win32',
+}, (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-windows-atomic-acl-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'workspace-state.json');
+  assert.equal(atomicWritePrivateFile(file, '{"schemaVersion":1}\n', fs, {
+    protectTemporary: protectWindowsFileOwnerOnly,
+    verifyCommitted: verifyWindowsFileOwnerOnly,
+    removeCommittedOnFailure: true,
+  }), true);
+  assert.equal(verifyWindowsFileOwnerOnly(file), true);
+  assert.equal(fs.readFileSync(file, 'utf8'), '{"schemaVersion":1}\n');
 });

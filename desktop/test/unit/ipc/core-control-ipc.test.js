@@ -18,11 +18,10 @@ function fixture() {
   registerCoreControlIpc({
     register: (channel, handler) => handlers.set(channel, handler),
     getState: operation('state'),
+    getLoginAccount: operation('login-account'),
     connect: operation('connect'),
     disconnect: operation('disconnect'),
     reconnect: operation('reconnect'),
-    sshConfig: operation('ssh'),
-    copyClashNode: operation('clash'),
     getLogs: operation('logs'),
     openLog: operation('open-log'),
     copyText: operation('copy'),
@@ -38,8 +37,8 @@ function fixture() {
 test('core facade registers the exact narrow control channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
-    'get-state', 'connect', 'disconnect', 'reconnect', 'ssh-config',
-    'copy-clash-node', 'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-resource',
+    'get-state', 'get-login-account', 'connect', 'disconnect', 'reconnect',
+    'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-resource',
     'check-update', 'open-external', 'resize',
   ]);
 });

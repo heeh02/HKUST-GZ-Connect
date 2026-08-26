@@ -5,6 +5,8 @@
       "id": "home",
       "name": "学校主页",
       "description": "新闻、院系与校园信息",
+      "localizedName": { "zh": "学校主页", "en": "School Homepage" },
+      "localizedDescription": { "zh": "新闻、院系与校园信息", "en": "News, schools, and campus information" },
       "url": "https://www.hkust-gz.edu.cn/",
       "category": "campus-service",
       "keywords": ["学校", "主页", "新闻", "HKUST(GZ)"]
@@ -13,6 +15,8 @@
       "id": "one-stop",
       "name": "一站式办事大厅",
       "description": "师生事务与在线申请",
+      "localizedName": { "zh": "一站式办事大厅", "en": "One-stop Service" },
+      "localizedDescription": { "zh": "师生事务与在线申请", "en": "Student and staff services and online applications" },
       "url": "https://onestop-online.hkust-gz.edu.cn/",
       "category": "common",
       "keywords": ["一站式", "办事", "申请", "服务大厅"]
@@ -21,6 +25,8 @@
       "id": "library",
       "name": "图书馆",
       "description": "馆藏、数据库与学习资源",
+      "localizedName": { "zh": "图书馆", "en": "Library" },
+      "localizedDescription": { "zh": "馆藏、数据库与学习资源", "en": "Collections, databases, and study resources" },
       "url": "https://library.hkust-gz.edu.cn/",
       "category": "academic",
       "keywords": ["图书馆", "数据库", "馆藏", "学习"]
@@ -29,6 +35,8 @@
       "id": "new-student",
       "name": "迎新系统",
       "description": "新生任务与入学指引",
+      "localizedName": { "zh": "迎新系统", "en": "New Student Orientation" },
+      "localizedDescription": { "zh": "新生任务与入学指引", "en": "New student tasks and enrollment guidance" },
       "url": "https://nso.hkust-gz.edu.cn/",
       "category": "campus-service",
       "keywords": ["迎新", "新生", "入学"]
@@ -37,6 +45,8 @@
       "id": "outlook",
       "name": "Outlook 邮箱",
       "description": "Microsoft 365 邮件与日历 · 直连",
+      "localizedName": { "zh": "Outlook 邮箱", "en": "Outlook Mail" },
+      "localizedDescription": { "zh": "Microsoft 365 邮件与日历 · 直连", "en": "Microsoft 365 mail and calendar" },
       "url": "https://outlook.office.com/owa/",
       "route": "direct",
       "category": "common",
@@ -46,6 +56,8 @@
       "id": "canvas",
       "name": "Canvas 教学平台",
       "description": "课程、作业与教学资料 · 直连",
+      "localizedName": { "zh": "Canvas 教学平台", "en": "Canvas Learning Platform" },
+      "localizedDescription": { "zh": "课程、作业与教学资料 · 直连", "en": "Courses, assignments, and learning materials" },
       "url": "https://hkust-gz.instructure.com/",
       "route": "direct",
       "category": "academic",
@@ -55,6 +67,8 @@
       "id": "sis",
       "name": "学生信息系统 SIS",
       "description": "学籍、选课与个人教务信息",
+      "localizedName": { "zh": "学生信息系统 SIS", "en": "Student Information System (SIS)" },
+      "localizedDescription": { "zh": "学籍、选课与个人教务信息", "en": "Student records, course enrollment, and academic information" },
       "url": "https://sisn.hkust-gz.edu.cn/auth-sign",
       "category": "academic",
       "keywords": ["SIS", "学籍", "选课", "Student Information System"]
@@ -63,6 +77,8 @@
       "id": "class-schedule",
       "name": "课表与课程容量",
       "description": "查询 Class Schedule 与 Quota",
+      "localizedName": { "zh": "课表与课程容量", "en": "Class Schedule & Quota" },
+      "localizedDescription": { "zh": "查询 Class Schedule 与 Quota", "en": "Browse class schedules and seat availability" },
       "url": "https://sisn.hkust-gz.edu.cn/cq",
       "category": "academic",
       "keywords": ["课表", "课程容量", "Class Schedule", "Quota"]
@@ -71,6 +87,8 @@
       "id": "grade-reporting",
       "name": "成绩报送系统",
       "description": "广州校区 Grade Reporting System",
+      "localizedName": { "zh": "成绩报送系统", "en": "Grade Reporting System" },
+      "localizedDescription": { "zh": "广州校区 Grade Reporting System", "en": "Grade submission for authorized teaching staff" },
       "url": "https://w3.hkust-gz.edu.cn/ssgs/gradeManage.do",
       "category": "academic",
       "keywords": ["成绩", "Grade Reporting", "教师"]
@@ -79,6 +97,8 @@
       "id": "exam-scheduling",
       "name": "考试排程系统",
       "description": "Exam Scheduling System",
+      "localizedName": { "zh": "考试排程系统", "en": "Exam Scheduling System" },
+      "localizedDescription": { "zh": "Exam Scheduling System", "en": "Exam scheduling for authorized staff" },
       "url": "https://ess.hkust-gz.edu.cn/index",
       "category": "academic",
       "keywords": ["考试", "排考", "Exam Scheduling"]
@@ -87,6 +107,8 @@
       "id": "room-booking",
       "name": "教室预约系统",
       "description": "Room Booking System",
+      "localizedName": { "zh": "教室预约系统", "en": "Room Booking System" },
+      "localizedDescription": { "zh": "Room Booking System", "en": "Classroom and room reservations" },
       "url": "https://booking.hkust-gz.edu.cn/front_page",
       "category": "academic",
       "keywords": ["教室", "预约", "Room Booking"]
@@ -95,6 +117,8 @@
       "id": "class-enrollment-request",
       "name": "课程注册申请",
       "description": "Class Enrollment Request",
+      "localizedName": { "zh": "课程注册申请", "en": "Class Enrollment Request" },
+      "localizedDescription": { "zh": "Class Enrollment Request", "en": "Submit course enrollment requests" },
       "url": "https://w3.hkust-gz.edu.cn/ssea/insCourseApprovalRequest.do",
       "category": "academic",
       "keywords": ["课程注册", "选课申请", "Enrollment Request"]
@@ -103,6 +127,8 @@
       "id": "thesis-exam",
       "name": "论文答辩系统",
       "description": "Thesis Exam System",
+      "localizedName": { "zh": "论文答辩系统", "en": "Thesis Examination System" },
+      "localizedDescription": { "zh": "Thesis Exam System", "en": "Thesis examination and defense services" },
       "url": "https://thesisexam.hkust-gz.edu.cn/",
       "category": "academic",
       "keywords": ["论文", "答辩", "Thesis Exam"]
@@ -111,6 +137,8 @@
       "id": "academic-edoc",
       "name": "教务电子文件申请",
       "description": "证明、成绩单与在读文件申请",
+      "localizedName": { "zh": "教务电子文件申请", "en": "Academic E-document Application" },
+      "localizedDescription": { "zh": "证明、成绩单与在读文件申请", "en": "Certificates, transcripts, and enrollment documents" },
       "url": "https://acad-edoc.hkust-gz.edu.cn/index",
       "category": "academic",
       "keywords": ["证明", "成绩单", "Transcript", "E-Doc"]
@@ -119,6 +147,8 @@
       "id": "ug-major-selection",
       "name": "本科专业选择系统",
       "description": "UG Major Selection System",
+      "localizedName": { "zh": "本科专业选择系统", "en": "UG Major Selection" },
+      "localizedDescription": { "zh": "UG Major Selection System", "en": "Undergraduate major selection" },
       "url": "https://ugms.hkust-gz.edu.cn/",
       "category": "academic",
       "keywords": ["本科", "专业选择", "UG Major Selection"]

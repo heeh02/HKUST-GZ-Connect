@@ -64,6 +64,22 @@ test('control preload exposes narrow routing-rule IPC methods', async () => {
   assert.equal(invocations[2].payload, identity, 'delete forwards only the stable identity');
 });
 
+test('raw account identity is available only through an explicit login-flow IPC', async () => {
+  const { api, invocations } = loadPreload();
+  await api.getLoginAccount();
+  assert.deepEqual(invocations, [{
+    channel: 'get-login-account', payload: undefined, argumentCount: 1,
+  }]);
+});
+
+test('browser-data clearing is a value-free workspace operation', async () => {
+  const { api, invocations } = loadPreload();
+  await api.clearBrowserData();
+  assert.deepEqual(invocations, [{
+    channel: 'clear-browser-data', payload: undefined, argumentCount: 1,
+  }]);
+});
+
 test('control preload exposes narrow certificate-pin IPC methods', async () => {
   const { api, invocations } = loadPreload();
   const identity = { origin: 'https://legacy-campus.example:4433' };
@@ -86,12 +102,14 @@ test('control preload exposes only bounded school onboarding operations', async 
   await api.probeCustomGateway(probe);
   await api.confirmCustomGateway(confirmation);
   await api.cancelCustomGateway();
+  await api.deleteSchoolProfile({ profileId: 'custom-example' });
   await api.switchSchoolProfile({ profileId: 'custom-example' });
   assert.deepEqual(invocations.map(({ channel }) => channel), [
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',
     'cancel-custom-gateway',
+    'delete-school-profile',
     'switch-school-profile',
   ]);
   assert.equal(invocations[0].argumentCount, 1);
@@ -99,36 +117,29 @@ test('control preload exposes only bounded school onboarding operations', async 
   assert.equal(invocations[2].payload, confirmation);
   assert.equal(invocations[3].argumentCount, 1);
   assert.deepEqual(invocations[4].payload, { profileId: 'custom-example' });
+  assert.deepEqual(invocations[5].payload, { profileId: 'custom-example' });
   assert.equal(typeof api.getProfileKey, 'undefined');
   assert.equal(typeof api.getGatewayCookie, 'undefined');
-});
-
-test('Clash copy is a value-free trusted IPC and never returns YAML through the renderer', async () => {
-  const { api, invocations } = loadPreload();
-  const result = await api.copyClashNode();
-  assert.equal(result.channel, 'copy-clash-node');
-  assert.deepEqual(invocations, [{
-    channel: 'copy-clash-node',
-    payload: undefined,
-    argumentCount: 1,
-  }]);
 });
 
 test('Integration Center preload exposes only list prepare confirm and cancel schemas', async () => {
   const { api, invocations } = loadPreload();
   await api.listIntegrations();
-  await api.prepareIntegration({ adapterId: 'clash_yaml', action: 'copy' });
+  await api.prepareIntegration({ adapterId: 'clash_mihomo_yaml', action: 'copy' });
   await api.confirmIntegration({ confirmationHandle: 'export-123' });
   await api.cancelIntegration();
   assert.deepEqual(invocations.map(({ channel }) => channel), [
     'list-integrations', 'prepare-integration', 'confirm-integration', 'cancel-integration',
   ]);
   assert.equal(invocations[0].argumentCount, 1);
-  assert.deepEqual(invocations[1].payload, { adapterId: 'clash_yaml', action: 'copy' });
+  assert.deepEqual(invocations[1].payload, { adapterId: 'clash_mihomo_yaml', action: 'copy' });
   assert.deepEqual(invocations[2].payload, { confirmationHandle: 'export-123' });
   assert.equal(invocations[3].argumentCount, 1);
   for (const forbidden of ['getIntegrationPayload', 'getProxyPassword', 'getIntegrationTarget']) {
     assert.equal(typeof api[forbidden], 'undefined');
+  }
+  for (const retired of ['copyClashNode', 'sshConfig']) {
+    assert.equal(typeof api[retired], 'undefined');
   }
 });
 

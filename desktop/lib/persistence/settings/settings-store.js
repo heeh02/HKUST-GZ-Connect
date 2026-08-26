@@ -14,6 +14,7 @@ const PROXY_SECURITY_VERSION = 3;
 const COMPATIBILITY_DEFAULT_PROXY_SECURITY_VERSION = 2;
 const BROKEN_STRICT_MIGRATION_VERSION = 1;
 const MAX_SETTINGS_DOCUMENT_BYTES = 512 * 1024;
+const MAX_HIDDEN_BUILTIN_RESOURCES = 64;
 let temporarySequence = 0;
 
 const DEFAULTS = Object.freeze({
@@ -35,7 +36,17 @@ const DEFAULTS = Object.freeze({
   updateCheckedAt: 0,
   routeDomains: DEFAULT_ROUTE_DOMAINS,
   customResources: [],
+  hiddenBuiltinResourceIds: [],
 });
+
+function normalizeHiddenBuiltinResourceIds(input) {
+  const result = [];
+  for (const value of Array.isArray(input) ? input.slice(0, MAX_HIDDEN_BUILTIN_RESOURCES) : []) {
+    const id = String(value || '').trim();
+    if (/^[a-z0-9-]{1,40}$/u.test(id) && !result.includes(id)) result.push(id);
+  }
+  return result;
+}
 
 function isValidPort(port) {
   return Number.isInteger(port) && port >= 1025 && port <= 65535;
@@ -100,6 +111,7 @@ function normalizeSettings(saved = {}, { defaultRouteDomains = DEFAULT_ROUTE_DOM
       : DEFAULTS.updateCheckedAt,
     routeDomains: normalizeRouteDomains(saved.routeDomains, defaultRouteDomains),
     customResources: normalizeCustomResources(saved.customResources),
+    hiddenBuiltinResourceIds: normalizeHiddenBuiltinResourceIds(saved.hiddenBuiltinResourceIds),
   };
 }
 
@@ -293,6 +305,7 @@ module.exports = {
   loadSettings,
   normalizeSettings,
   normalizeProxyAuthMigrationPending,
+  normalizeHiddenBuiltinResourceIds,
   normalizeStrictProxyAuth,
   saveSettings,
 };

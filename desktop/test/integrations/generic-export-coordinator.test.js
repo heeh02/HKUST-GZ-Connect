@@ -12,8 +12,8 @@ const {
   createIntegrationBinding,
 } = require('../../lib/integrations/integration-schema');
 const {
-  ManagedFileTransaction,
-} = require('../../lib/integrations/managed-file-transaction');
+  AtomicExportFileTransaction,
+} = require('../../lib/integrations/atomic-export-file-transaction');
 const {
   createProfileNetworkRules,
 } = require('../../lib/integrations/profile-network-rules');
@@ -25,7 +25,7 @@ const credential = {
   withStrings(callback) { return callback('A'.repeat(32), 'B'.repeat(32)); },
 };
 
-function binding(adapterId = 'clash_yaml', patch = {}) {
+function binding(adapterId = 'clash_mihomo_yaml', patch = {}) {
   return createIntegrationBinding({
     adapterId, adapterVersion: 1,
     profileId: rules.profileId, profileRevision: rules.profileRevision,
@@ -43,16 +43,10 @@ function binding(adapterId = 'clash_yaml', patch = {}) {
 function fixture(t, { writeClipboard = null } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'generic-export-coordinator-'));
   fs.chmodSync(root, 0o700);
-  const workspace = path.join(root, 'workspace');
   const output = path.join(root, 'output');
-  fs.mkdirSync(workspace, { mode: 0o700 });
   fs.mkdirSync(output, { mode: 0o700 });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const fileTransaction = new ManagedFileTransaction({
-    workspaceRoot: workspace,
-    backupRoot: path.join(workspace, 'backups'),
-    randomBytes: (length) => Buffer.alloc(length, 8),
-  });
+  const fileTransaction = new AtomicExportFileTransaction();
   let entropy = 0;
   const clipboard = [];
   const coordinator = createGenericExportCoordinator({
@@ -69,14 +63,14 @@ test('copy confirms once and returns no generated payload to its caller', async 
   const f = fixture(t);
   const current = binding();
   const preview = f.coordinator.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: current,
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
     networkRules: rules, port: 6180, credential,
   });
   const result = await f.coordinator.confirm({
     confirmationHandle: preview.confirmationHandle,
     currentBinding: current,
   });
-  assert.deepEqual(result, { ok: true, adapterId: 'clash_yaml', action: 'copy' });
+  assert.deepEqual(result, { ok: true, adapterId: 'clash_mihomo_yaml', action: 'copy' });
   assert.equal(Object.hasOwn(result, 'payload'), false);
   assert.match(f.clipboard[0], /Campus Connect - hkustgz/u);
   assert.match(f.clipboard[0], new RegExp('B'.repeat(32), 'u'));
@@ -85,9 +79,9 @@ test('copy confirms once and returns no generated payload to its caller', async 
 test('save applies the exact previewed file plan and commits owner-only validated output', async (t) => {
   const f = fixture(t);
   const targetFile = path.join(f.output, 'campus.yaml');
-  const current = binding('mihomo_yaml');
+  const current = binding('clash_mihomo_yaml');
   const preview = f.coordinator.prepare({
-    adapterId: 'mihomo_yaml', action: 'save', binding: current,
+    adapterId: 'clash_mihomo_yaml', action: 'save', binding: current,
     networkRules: rules, port: 6180, credential, targetFile,
   });
   assert.equal(preview.targetChange, 'create');
@@ -95,8 +89,8 @@ test('save applies the exact previewed file plan and commits owner-only validate
     confirmationHandle: preview.confirmationHandle,
     currentBinding: current,
   });
-  assert.deepEqual(result, { ok: true, adapterId: 'mihomo_yaml', action: 'save' });
-  assert.match(fs.readFileSync(targetFile, 'utf8'), /Mihomo export/u);
+  assert.deepEqual(result, { ok: true, adapterId: 'clash_mihomo_yaml', action: 'save' });
+  assert.match(fs.readFileSync(targetFile, 'utf8'), /Clash \/ Mihomo export/u);
   if (process.platform !== 'win32') assert.equal(fs.statSync(targetFile).mode & 0o077, 0);
 });
 
@@ -104,7 +98,7 @@ test('clipboard failure and binding drift surface stable codes without writing a
   const f = fixture(t, { writeClipboard: () => { throw new Error('clipboard unavailable'); } });
   const current = binding();
   let preview = f.coordinator.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: current,
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
     networkRules: rules, port: 6180, credential,
   });
   await assert.rejects(f.coordinator.confirm({
@@ -113,12 +107,12 @@ test('clipboard failure and binding drift surface stable codes without writing a
 
   const targetFile = path.join(f.output, 'stale.yaml');
   preview = f.coordinator.prepare({
-    adapterId: 'clash_yaml', action: 'save', binding: current,
+    adapterId: 'clash_mihomo_yaml', action: 'save', binding: current,
     networkRules: rules, port: 6180, credential, targetFile,
   });
   await assert.rejects(f.coordinator.confirm({
     confirmationHandle: preview.confirmationHandle,
-    currentBinding: binding('clash_yaml', { activeContextEpoch: 2 }),
+    currentBinding: binding('clash_mihomo_yaml', { activeContextEpoch: 2 }),
   }), { code: 'INTEGRATION_PROFILE_STALE' });
   assert.equal(fs.existsSync(targetFile), false);
 });

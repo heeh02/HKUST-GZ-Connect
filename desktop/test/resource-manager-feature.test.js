@@ -27,5 +27,7 @@ test('resource editor escapes dynamic values and retains explicit two-click dele
   assert.match(render, /esc\(routeLabel\(resource, translate\)\)/);
   assert.match(source, /pendingDeleteId !== resource\.id/);
   assert.match(source, /api\.deleteResource\(resource\.id\)/);
+  assert.match(source, /api\.restoreBuiltinResources\(\)/);
+  assert.match(render, /!custom/);
   assert.match(source, /api\.reorderResources\(localIds\)/);
 });

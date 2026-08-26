@@ -9,6 +9,8 @@ const { CustomGatewayConfirmationOwner } = require('../../../../lib/profiles/onb
 const { CustomProfileIndexStore } = require('../../../../lib/profiles/registry/custom-profile-index');
 const { CustomProfileMaterializer } = require('../../../../lib/profiles/provisioning/custom-profile-materializer');
 const { CustomProfileProvisioningRuntime } = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-runtime');
+const { CustomProfileDeletionRuntime } = require('../../../../lib/profiles/deletion/custom-profile-deletion-runtime');
+const { ProfileCandidateDirectory } = require('../../../../lib/profiles/registry/profile-candidate-directory');
 const {
   CustomProfileProvisioningJournalStore,
 } = require('../../../../lib/profiles/provisioning/custom-profile-provisioning-store');
@@ -133,6 +135,12 @@ test('custom Profile index is owner-only additive idempotent and bounded', (t) =
   const next = store.planAdd(second);
   assert.equal(store.applyAdd(second, next), true);
   assert.equal(store.read().entries.length, 2);
+
+  const removal = store.planRemove(entry.profileId);
+  assert.equal(store.applyRemove(entry.profileId, removal), true);
+  assert.equal(store.applyRemove(entry.profileId, removal), true);
+  assert.deepEqual(store.read().entries, [second]);
+  assert.throws(() => store.planRemove(entry.profileId), /cannot remove/u);
 });
 
 test('custom Profile index rejects broad permissions and links', {
@@ -195,6 +203,64 @@ test('runtime commits files and index then clears its journal without activating
   assert.equal(fs.existsSync(path.join(
     userData, 'profiles', result.context.profileKey, 'school-profile.json',
   )), true);
+});
+
+test('inactive custom Profile deletion clears Browser data, retires index last, and removes its namespace', async (t) => {
+  const userData = root(t);
+  const provisioned = runtime(userData).begin(consumedConfirmation(12));
+  const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const directory = new ProfileCandidateDirectory({
+    userData,
+    packageRoot: desktopRoot,
+    desktopDir: desktopRoot,
+  });
+  const calls = [];
+  const deletion = new CustomProfileDeletionRuntime({
+    userData,
+    withCandidateDirectory: (callback) => callback(directory),
+    electronSession: { fromPartition: (partition) => ({
+      closeAllConnections: async () => calls.push(['close', partition]),
+      clearStorageData: async () => calls.push(['storage', partition]),
+      clearCache: async () => calls.push(['cache', partition]),
+    }) },
+  });
+  const profileRoot = path.join(userData, 'profiles', provisioned.context.profileKey);
+  assert.equal((await deletion.deleteProfile({
+    profileId: provisioned.context.profileId,
+    activeProfileId: 'hkustgz',
+  })).ok, true);
+  assert.equal(fs.existsSync(profileRoot), false);
+  assert.deepEqual(new CustomProfileIndexStore({ userData }).read().entries, []);
+  assert.deepEqual(calls.map(([name]) => name), ['close', 'storage', 'cache']);
+});
+
+test('failed Browser cleanup tombstones the custom Profile and restart recovery completes it', async (t) => {
+  const userData = root(t);
+  const provisioned = runtime(userData).begin(consumedConfirmation(13));
+  const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const directory = new ProfileCandidateDirectory({
+    userData, packageRoot: desktopRoot, desktopDir: desktopRoot,
+  });
+  let fail = true;
+  const deletion = new CustomProfileDeletionRuntime({
+    userData,
+    withCandidateDirectory: (callback) => callback(directory),
+    electronSession: { fromPartition: () => ({
+      closeAllConnections: async () => {},
+      clearStorageData: async () => { if (fail) throw new Error('synthetic clear failure'); },
+      clearCache: async () => {},
+    }) },
+  });
+  const first = await deletion.deleteProfile({
+    profileId: provisioned.context.profileId,
+    activeProfileId: 'hkustgz',
+  });
+  assert.deepEqual(first, { ok: false, code: 'PROFILE_DELETE_INCOMPLETE' });
+  assert.equal(directory.customRegistry.reload().listViews().length, 0,
+    'a tombstoned Profile cannot be selected again');
+  fail = false;
+  assert.deepEqual(await deletion.recover(), { ok: true, recovered: 1 });
+  assert.deepEqual(new CustomProfileIndexStore({ userData }).read().entries, []);
 });
 
 test('prepared materialized and indexed crash points recover idempotently', (t) => {

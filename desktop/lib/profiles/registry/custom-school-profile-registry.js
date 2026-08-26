@@ -18,6 +18,10 @@ const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../platform/storage/windows-private-file');
+const {
+  customProfileQuarantineRoot,
+  findCustomProfileDeletionTombstones,
+} = require('../deletion/custom-profile-deletion-runtime');
 
 const MAX_CUSTOM_PROFILE_DOCUMENT_BYTES = 256 * 1024;
 
@@ -61,6 +65,11 @@ class CustomSchoolProfileRegistry {
     const records = new Map();
     for (const indexEntry of this.indexStore.read().entries) {
       const profileRoot = path.join(this.userData, 'profiles', indexEntry.profileKey);
+      const quarantined = customProfileQuarantineRoot(this.userData, indexEntry.profileKey);
+      if (findCustomProfileDeletionTombstones(profileRoot, this.fileSystem).length === 1 ||
+          findCustomProfileDeletionTombstones(quarantined, this.fileSystem).length === 1) {
+        continue;
+      }
       verifyPrivateDirectoryChain(this.userData, profileRoot, {
         fileSystem: this.fileSystem,
         platform: this.platform,

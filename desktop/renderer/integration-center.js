@@ -6,13 +6,12 @@
   'use strict';
 
   const ADAPTERS = new Set([
-    'clash_yaml', 'mihomo_yaml', 'clash_verge_rev_managed',
-    'openssh_proxy_command', 'pac', 'manual_export',
+    'clash_mihomo_yaml', 'vscode_remote_ssh',
   ]);
-  const ACTIONS = new Set(['copy', 'save', 'install', 'update', 'remove']);
+  const ACTIONS = new Set(['copy', 'save']);
   const STATES = new Set(['not-installed', 'current', 'stale', 'unavailable']);
   const COMPATIBILITY = new Set(['supported', 'unsupported', 'unavailable', 'conflict']);
-  const HANDLES = /^(?:export|managed)-[a-f0-9]{32}$/u;
+  const HANDLES = /^export-[a-f0-9]{32}$/u;
 
   function adapterView(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -28,6 +27,7 @@
       compatibilityState: value.compatibilityState,
       bindingState: value.bindingState,
       updatedAt: value.updatedAt,
+      supportedActions: Object.freeze(value.supportedActions.filter((action) => ACTIONS.has(action))),
     });
   }
 
@@ -137,31 +137,26 @@
         const main = document.createElement('div'); main.className = 'integration-main';
         const name = document.createElement('div'); name.className = 'integration-name';
         name.textContent = t(`integration.adapter.${view.adapterId}`);
+        const description = document.createElement('div');
+        description.className = 'integration-description';
+        description.textContent = t(`integration.adapterDescription.${view.adapterId}`);
         const meta = document.createElement('div'); meta.className = 'integration-meta';
         const state = document.createElement('span');
         state.className = `integration-state ${view.bindingState}`;
         state.textContent = t(`integration.state.${view.bindingState}`);
-        meta.append(state); main.append(name, meta);
+        meta.append(state); main.append(name, description, meta);
         const actions = document.createElement('div'); actions.className = 'integration-actions';
-        if (GENERIC.has(view.adapterId)) {
-          actions.append(
-            button(t('integration.action.copy'), 'copy', view.adapterId),
-            button(t('integration.action.save'), 'save', view.adapterId),
-          );
-        } else if (view.bindingState === 'not-installed') {
-          actions.append(button(t('integration.action.install'), 'install', view.adapterId));
-        } else {
-          actions.append(
-            button(t('integration.action.update'), 'update', view.adapterId),
-            button(t('integration.action.remove'), 'remove', view.adapterId, true),
-          );
+        if (view.supportedActions.includes('copy')) {
+          actions.append(button(t('integration.action.copy'), 'copy', view.adapterId));
+        }
+        if (view.supportedActions.includes('save')) {
+          actions.append(button(t('integration.action.save'), 'save', view.adapterId));
         }
         row.append(main, actions); rows.push(row);
       }
       elements.integrationList.replaceChildren(...rows);
       elements.integrationStatus.textContent = rows.length ? '' : t('integration.empty');
     }
-    const GENERIC = new Set(['clash_yaml', 'mihomo_yaml', 'pac', 'manual_export']);
     function renderPreview() {
       if (!preview) return;
       elements.integrationPreviewName.textContent = t(`integration.adapter.${preview.adapterId}`);

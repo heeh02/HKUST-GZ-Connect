@@ -8,6 +8,7 @@ const desktopRoot = path.resolve(__dirname, '..', '..', '..', '..');
 const {
   MAX_BUILTIN_RESOURCES,
   MAX_CUSTOM_RESOURCES,
+  normalizeCustomResources,
   parseBuiltinResourceDocument,
   validateBuiltinResourceDocument,
   validateBuiltinResourcesRef,
@@ -43,7 +44,7 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
   assert.deepEqual(resources[5].keywords, ['Canvas', '课程', '作业', '教学']);
   assert.equal(resources[0].schemaVersion, 1);
   assert.equal(resources[0].reviewed, true);
-  assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: '学校主页' });
+  assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: 'School Homepage' });
   assert.equal(resources[0].iconKey, null);
   for (const id of [
     'sis', 'class-schedule', 'grade-reporting', 'exam-scheduling', 'room-booking',
@@ -93,4 +94,11 @@ test('runtime custom resources have a separate strict limit and validation bound
     (_, index) => resource(index),
   )), /resource count/u);
   assert.throws(() => validateCustomResourceDocument([resource(1, { name: 'n'.repeat(41) })]));
+});
+
+test('legacy custom resources are projected without persisted query material', () => {
+  const [projected] = normalizeCustomResources([resource(1, {
+    url: 'https://resource.example.edu/start?ticket=temporary&view=student',
+  })]);
+  assert.equal(projected.url, 'https://resource.example.edu/start');
 });

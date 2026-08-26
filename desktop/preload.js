@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('get-state'),
+  getLoginAccount: () => ipcRenderer.invoke('get-login-account'),
   save: (payload) => ipcRenderer.invoke('save', payload),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
@@ -11,10 +12,9 @@ contextBridge.exposeInMainWorld('api', {
   resendAuthChallenge: () => ipcRenderer.invoke('resend-auth-challenge'),
   cancelAuthChallenge: () => ipcRenderer.invoke('cancel-auth-challenge'),
   logout: () => ipcRenderer.invoke('logout'),
+  clearBrowserData: () => ipcRenderer.invoke('clear-browser-data'),
   getLogs: () => ipcRenderer.invoke('get-logs'),
   openLog: () => ipcRenderer.invoke('open-log'),
-  sshConfig: () => ipcRenderer.invoke('ssh-config'),
-  copyClashNode: () => ipcRenderer.invoke('copy-clash-node'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openCampusBrowser: (request) => ipcRenderer.invoke('open-campus-browser', request),
   openResource: (resourceId) => ipcRenderer.invoke('open-resource', { resourceId }),
@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveResource: (resource) => ipcRenderer.invoke('save-resource', resource),
   deleteResource: (id) => ipcRenderer.invoke('delete-resource', id),
+  restoreBuiltinResources: () => ipcRenderer.invoke('restore-builtin-resources'),
   reorderResources: (ids) => ipcRenderer.invoke('reorder-resources', ids),
   toggleResourceFavorite: (resourceId) => ipcRenderer.invoke(
     'toggle-resource-favorite',
@@ -36,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   probeCustomGateway: (request) => ipcRenderer.invoke('probe-custom-gateway', request),
   confirmCustomGateway: (request) => ipcRenderer.invoke('confirm-custom-gateway', request),
   cancelCustomGateway: () => ipcRenderer.invoke('cancel-custom-gateway'),
+  deleteSchoolProfile: (request) => ipcRenderer.invoke('delete-school-profile', request),
   switchSchoolProfile: (request) => ipcRenderer.invoke('switch-school-profile', request),
   listIntegrations: () => ipcRenderer.invoke('list-integrations'),
   prepareIntegration: (request) => ipcRenderer.invoke('prepare-integration', request),

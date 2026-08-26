@@ -11,6 +11,9 @@ const js = fs.readFileSync(path.join(renderer, 'campus-browser.js'), 'utf8');
 
 test('browser toolbar exposes the active tab network route', () => {
   assert.match(html, /id="routeSelector"/);
+  assert.match(html, /id="home"/);
+  assert.match(html, /id="browserProfileTrust"/);
+  assert.doesNotMatch(html, /id="security"/);
   assert.match(html, /value="campus"/);
   assert.match(html, /value="direct"/);
   assert.match(js, /command\('set-route'/);

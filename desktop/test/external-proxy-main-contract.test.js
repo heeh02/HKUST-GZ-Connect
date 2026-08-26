@@ -26,23 +26,16 @@ test('strict and compatibility generations share one stable credential with dist
   assert.match(connectOnce, /'--control-api-v2-stdin'/);
 });
 
-test('Clash credentials stay behind Main-owned callbacks and activate optional auth for a listener', () => {
-  const start = integrationSuite.indexOf('copyClashNode: async () =>');
-  const end = integrationSuite.indexOf('\n    },\n  });', start);
-  assert.ok(start >= 0 && end > start);
-  const handler = integrationSuite.slice(start, end);
-  assert.match(handler, /ensureAccess\(Number\(settings\.port\)\)/);
-  assert.match(handler, /hasActiveEngine\(\)[\s\S]+await reconnect\(\)/);
-  assert.match(handler, /writeClipboard\(buildClashProxyYaml/);
-  assert.match(handler, /return \{ ok: true \}/);
-  assert.doesNotMatch(handler, /return[^\n]+(?:username|password)/i);
-  assert.match(source, /const legacyExternalProxyActions = createLegacyExternalProxyActions/u);
-  assert.match(source, /\.\.\.legacyExternalProxyActions/u);
+test('all advanced configuration flows through the closed Integration Center', () => {
+  assert.doesNotMatch(integrationSuite, /copyClashNode|sshConfig|buildClashProxyYaml/u);
+  assert.doesNotMatch(source, /legacyExternalProxyActions|createLegacyExternalProxyActions/u);
+  assert.match(integrationSuite, /createIntegrationCenterRuntime/u);
+  assert.match(source, /integrations: externalIntegrationRuntime/u);
 });
 
-test('SSH config contains a helper and credential-file path while sidecar follows lifecycle', () => {
-  assert.match(integrationSuite, /buildSshProxyCommand\(\{[\s\S]{0,180}credentialFile: credentialFile\(\)/u);
-  assert.match(integrationSuite, /profileId: profileId\(\)/u);
+test('VS Code snippet sidecar follows the connection and Profile lifecycle', () => {
+  assert.match(source, /helperPath: proxyHelperPath\(\), credentialFile: PROXY_HELPER_CREDENTIAL/u);
+  assert.match(source, /ensureSidecar: \(\) => ensureExternalProxyAccess\(socksPort\(\)\)/u);
   const disconnectStart = source.indexOf('async function disconnect(');
   const reconnectStart = source.indexOf('\nfunction waitForConnected(', disconnectStart);
   assert.match(source.slice(disconnectStart, reconnectStart), /removeExternalProxySidecar\(\)/);

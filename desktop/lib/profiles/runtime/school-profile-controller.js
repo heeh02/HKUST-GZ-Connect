@@ -3,7 +3,9 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { CAMPUS_PARTITION } = require('../../routing/policy/campus-route');
+const {
+  LEGACY_HKUST_BROWSER_PARTITION,
+} = require('../../persistence/paths/profile-workspace-layout');
 const {
   mergeCampusResources,
   mergeWebResourceLibrary,
@@ -40,7 +42,11 @@ function createSchoolProfileController(options = {}) {
   const context = {
     ...source,
     activeContextEpoch: 1,
-    browserPartition: CAMPUS_PARTITION,
+    // This controller is the one-release bridge for a reviewed HKUST install
+    // before GlobalSettings owns an explicit Profile/Workspace. Keep adopting
+    // the existing partition here so upgrades retain cookies and site vault
+    // scope; generic Browser code must never invent this deployment default.
+    browserPartition: LEGACY_HKUST_BROWSER_PARTITION,
     compatibility: 'reviewed',
     withProfileDocument: (callback) => source.registry.withDefaultProfileDocument(callback),
     createProfileView: (options) => source.createProfileView(options),
@@ -221,17 +227,25 @@ function createController(context, options) {
         stdinFrame,
       });
     },
-    mergeResources(customResources = []) {
-      return mergeCampusResources(builtInResources, customResources);
+    mergeResources(customResources = [], hiddenBuiltinResourceIds = []) {
+      return mergeCampusResources(builtInResources, customResources, hiddenBuiltinResourceIds);
     },
-    mergeResourceLibrary(customResources = []) {
-      return mergeWebResourceLibrary(builtInResources, customResources);
+    mergeResourceLibrary(customResources = [], hiddenBuiltinResourceIds = []) {
+      return mergeWebResourceLibrary(
+        builtInResources,
+        customResources,
+        hiddenBuiltinResourceIds,
+      );
     },
-    projectResources(customResources = []) {
-      return projectCampusResources(builtInResources, customResources);
+    projectResources(customResources = [], hiddenBuiltinResourceIds = []) {
+      return projectCampusResources(builtInResources, customResources, hiddenBuiltinResourceIds);
     },
-    projectResourceLibrary(customResources = []) {
-      return projectWebResourceLibrary(builtInResources, customResources);
+    projectResourceLibrary(customResources = [], hiddenBuiltinResourceIds = []) {
+      return projectWebResourceLibrary(
+        builtInResources,
+        customResources,
+        hiddenBuiltinResourceIds,
+      );
     },
     createCapabilitySnapshot: capabilitySnapshotFromReport,
     observeCapabilityReport(report) {

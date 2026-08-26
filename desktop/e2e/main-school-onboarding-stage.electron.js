@@ -110,6 +110,8 @@ async function verifyCustomBranding(control) {
         gateway: document.getElementById('settingsGateway').textContent,
         reviewedLogoHidden: document.getElementById('brandLogo').hidden,
         fallbackHidden: document.getElementById('brandFallback').hidden,
+        dashboardTrustVisible: !document.getElementById('profileTrustBadge').hidden,
+        settingsTrustVisible: !document.getElementById('settingsTrustBadge').hidden,
       };
     })()`);
     return result?.profiles?.profiles?.some((profile) => profile.active && profile.unverified)
@@ -119,13 +121,15 @@ async function verifyCustomBranding(control) {
   assert.match(active.profileId, /^custom-[a-f0-9]{32}$/u);
   assert.equal(active.schoolName, 'Example University');
   assert.equal(view.selected, active.profileId);
-  assert.equal(view.title, 'Example University Connect');
+  assert.equal(view.title, 'HKUST(GZ) Connect');
   assert.equal(view.titlebar, view.title);
   assert.equal(view.brand, view.title);
   assert.equal(view.school, 'Example University');
   assert.equal(view.gateway, 'https://vpn.example.edu');
   assert.equal(view.reviewedLogoHidden, true);
   assert.equal(view.fallbackHidden, false);
+  assert.equal(view.dashboardTrustVisible, true);
+  assert.equal(view.settingsTrustVisible, true);
   assert.equal(JSON.stringify(view.profiles).includes('profileKey'), false);
   process.stdout.write('school onboarding custom branding: PASS\n');
   app.quit();

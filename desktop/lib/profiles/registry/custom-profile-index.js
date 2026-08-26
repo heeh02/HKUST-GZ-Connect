@@ -89,6 +89,18 @@ function append(current, nextEntry) {
   });
 }
 
+function withoutProfile(current, profileId) {
+  const normalized = document(current);
+  const id = validateProfileId(profileId);
+  if (!id.startsWith('custom-') || !normalized.entries.some((value) => value.profileId === id)) {
+    throw new Error('custom Profile index cannot remove this Profile');
+  }
+  return document({
+    schemaVersion: CUSTOM_PROFILE_INDEX_VERSION,
+    entries: normalized.entries.filter((value) => value.profileId !== id),
+  });
+}
+
 class CustomProfileIndexStore {
   constructor({
     userData,
@@ -166,6 +178,60 @@ class CustomProfileIndexStore {
       } : {};
       if (!atomicWritePrivateFile(this.filePath, after, this.fileSystem, options)) {
         throw new Error('custom Profile index write failed');
+      }
+      const verified = this.#readCurrent();
+      try { return sameReceipt(receipt(verified.data), transition.after); }
+      finally { verified.data?.fill(0); }
+    } finally {
+      current.data?.fill(0);
+      after?.fill(0);
+    }
+  }
+
+  planRemove(profileId) {
+    const current = this.#readCurrent();
+    let after = null;
+    try {
+      const next = withoutProfile(current.document, profileId);
+      after = serialize(next);
+      return Object.freeze({
+        profileId: validateProfileId(profileId),
+        before: receipt(current.data),
+        after: receipt(after),
+      });
+    } finally {
+      current.data?.fill(0);
+      after?.fill(0);
+    }
+  }
+
+  applyRemove(profileId, transition) {
+    const id = validateProfileId(profileId);
+    const current = this.#readCurrent();
+    let after = null;
+    try {
+      const observed = receipt(current.data);
+      if (sameReceipt(observed, transition.after)) {
+        return !current.document.entries.some((candidate) => candidate.profileId === id);
+      }
+      if (!sameReceipt(observed, transition.before)) {
+        throw new Error('custom Profile index changed during deletion');
+      }
+      after = serialize(withoutProfile(current.document, id));
+      if (!sameReceipt(receipt(after), transition.after)) {
+        throw new Error('custom Profile index deletion transition drifted');
+      }
+      ensurePrivateDirectoryChain(this.userData, path.dirname(this.filePath), {
+        fileSystem: this.fileSystem,
+        platform: this.platform,
+      });
+      const options = this.platform === 'win32' ? {
+        protectTemporary: (file) => this.windowsAcl.protect(file) === true,
+        verifyCommitted: (file) => this.windowsAcl.verify(file) === true,
+        removeCommittedOnFailure: true,
+      } : {};
+      if (!atomicWritePrivateFile(this.filePath, after, this.fileSystem, options)) {
+        throw new Error('custom Profile index deletion write failed');
       }
       const verified = this.#readCurrent();
       try { return sameReceipt(receipt(verified.data), transition.after); }

@@ -136,13 +136,21 @@ test('package verification binds the reviewed school profile before signing', ()
   assert.match(packageVerifier, /assets\/profiles\/manifest\.json/u);
   assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-runtime\.js/u);
   assert.match(packageVerifier, /lib\/profiles\/runtime\/school-profile-controller\.js/u);
+  assert.match(packageVerifier, /lib\/profiles\/deletion\/custom-profile-deletion-runtime\.js/u);
   assert.match(packageVerifier, /lib\/ipc\/control-state-snapshot\.js/u);
+  assert.match(packageVerifier, /lib\/integrations\/atomic-export-file-transaction\.js/u);
   assert.match(packageVerifier, /lib\/resources\/schema\/campus-resource-contract\.js/u);
   assert.match(packageVerifier, /lib\/resources\/runtime\/resource-library-runtime\.js/u);
   assert.match(packageVerifier, /lib\/browser\/toolbar\/campus-toolbar-contract\.js/u);
   assert.match(packageVerifier, /assets\/profiles\/hkustgz\/builtin-resources\.json/u);
   assert.match(packageVerifier, /legacy duplicate campus resource asset entered the package/u);
+  assert.match(packageVerifier, /retired third-party installer entered the package/u);
+  assert.match(packageVerifier, /exposes a retired external-tool control/u);
   assert.match(packageVerifier, /packaged Desktop does not enforce private Engine profile binding/u);
+  assert.match(packageVerifier, /packaged product does not expose safe Other-school onboarding/u);
+  assert.match(packageVerifier, /assertPackagedSchoolProfiles\(archive,/u);
+  assert.match(localEngineBuild, /stage-reviewed-profile-configs\.js/u);
+  assert.doesNotMatch(workflow, /config\/hkustgz\.json \.\.\/desktop\/engine\/hkustgz\.json/u);
 });
 
 test('Electron gates exit nonzero on assertion failure', () => {
@@ -159,9 +167,9 @@ test('Electron gates exit nonzero on assertion failure', () => {
 test('every byte-bound profile asset has deterministic LF checkout semantics', () => {
   for (const rule of [
     'desktop/assets/profiles/manifest.json text eol=lf',
-    'desktop/assets/profiles/hkustgz/*.json text eol=lf',
+    'desktop/assets/profiles/**/*.json text eol=lf',
     'desktop/assets/logo.svg text eol=lf',
-    'independent/config/hkustgz.json text eol=lf',
+    'independent/config/*.json text eol=lf',
   ]) assert.ok(repositoryAttributes.split(/\r?\n/u).includes(rule), rule);
 });
 

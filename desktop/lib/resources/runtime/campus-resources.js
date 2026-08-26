@@ -10,14 +10,29 @@ const {
 } = require('../schema/campus-resource-contract');
 const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../routing/policy/campus-route');
 
-function projectCampusResources(builtIns, custom) {
+function visibleBuiltinResources(builtIns, hiddenBuiltinResourceIds = []) {
   const reviewed = validateRuntimeBuiltinResources(builtIns);
+  if (!Array.isArray(hiddenBuiltinResourceIds) || hiddenBuiltinResourceIds.length > 64 ||
+      hiddenBuiltinResourceIds.some((id) => typeof id !== 'string' || !/^[a-z0-9-]{1,40}$/u.test(id)) ||
+      new Set(hiddenBuiltinResourceIds).size !== hiddenBuiltinResourceIds.length) {
+    throw new TypeError('hidden builtin resource IDs are invalid');
+  }
+  const hidden = new Set(hiddenBuiltinResourceIds);
+  return Object.freeze({
+    all: reviewed,
+    visible: Object.freeze(reviewed.filter((resource) => !hidden.has(resource.id))),
+  });
+}
+
+function projectCampusResources(builtIns, custom, hiddenBuiltinResourceIds = []) {
+  const builtinProjection = visibleBuiltinResources(builtIns, hiddenBuiltinResourceIds);
+  const reviewed = builtinProjection.visible;
   const local = validateCustomResourceDocument(custom);
   const resources = [...reviewed];
   const seenIds = new Set(reviewed.map(({ id }) => id));
   const seenUrls = new Set(reviewed.map(({ url }) => url));
   let conflictCount = 0;
-  let hiddenCount = 0;
+  let hiddenCount = builtinProjection.all.length - reviewed.length;
   for (const resource of local) {
     // Old releases intentionally kept builtin-first behavior. A previously
     // stored custom duplicate must remain removable from settings, but cannot
@@ -34,7 +49,7 @@ function projectCampusResources(builtIns, custom) {
   return Object.freeze({
     resources: Object.freeze(resources),
     receipt: Object.freeze({
-      sourceCount: reviewed.length + local.length,
+      sourceCount: builtinProjection.all.length + local.length,
       visibleCount: resources.length,
       conflictCount,
       hiddenCount,
@@ -42,12 +57,13 @@ function projectCampusResources(builtIns, custom) {
   });
 }
 
-function mergeCampusResources(builtIns, custom) {
-  return projectCampusResources(builtIns, custom).resources;
+function mergeCampusResources(builtIns, custom, hiddenBuiltinResourceIds = []) {
+  return projectCampusResources(builtIns, custom, hiddenBuiltinResourceIds).resources;
 }
 
-function projectWebResourceLibrary(builtIns, custom) {
-  const reviewed = validateRuntimeBuiltinResources(builtIns);
+function projectWebResourceLibrary(builtIns, custom, hiddenBuiltinResourceIds = []) {
+  const builtinProjection = visibleBuiltinResources(builtIns, hiddenBuiltinResourceIds);
+  const reviewed = builtinProjection.visible;
   const local = validateCustomResourceDocument(custom);
   const resources = [...reviewed];
   const seenIds = new Set(reviewed.map(({ id }) => id));
@@ -65,16 +81,16 @@ function projectWebResourceLibrary(builtIns, custom) {
   return Object.freeze({
     resources: Object.freeze(resources),
     receipt: Object.freeze({
-      sourceCount: reviewed.length + local.length,
+      sourceCount: builtinProjection.all.length + local.length,
       visibleCount: resources.length,
       conflictCount,
-      hiddenCount: 0,
+      hiddenCount: builtinProjection.all.length - reviewed.length,
     }),
   });
 }
 
-function mergeWebResourceLibrary(builtIns, custom) {
-  return projectWebResourceLibrary(builtIns, custom).resources;
+function mergeWebResourceLibrary(builtIns, custom, hiddenBuiltinResourceIds = []) {
+  return projectWebResourceLibrary(builtIns, custom, hiddenBuiltinResourceIds).resources;
 }
 
 function resourceRoute(resource) {
@@ -107,4 +123,5 @@ module.exports = {
   projectWebResourceLibrary,
   resourceRoute,
   resolveResourceById,
+  visibleBuiltinResources,
 };

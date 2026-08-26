@@ -42,7 +42,8 @@ test('real renderer can supply its active locale to the shared login logic', () 
 
 test('renderer handles a rejected password-save IPC without clearing the form', () => {
   const source = fs.readFileSync(path.join(desktopRoot, 'renderer', 'app.js'), 'utf8');
-  assert.match(source, /try\s*\{\s*saved\s*=\s*await window\.api\.save\(\{ username: u, password: p \}\)/s);
+  assert.match(source, /const expectedProfileId = activeLoginProfileId\(\)/s);
+  assert.match(source, /try\s*\{\s*saved\s*=\s*await window\.api\.save\(\{ username: u, password: p, expectedProfileId \}\)/s);
   assert.match(source, /catch \(error\)\s*\{\s*\$\('lgErr'\)\.textContent/s);
   assert.doesNotMatch(source, /catch \(error\)[\s\S]{0,180}\$\('lgPass'\)\.value\s*=\s*''/);
 });

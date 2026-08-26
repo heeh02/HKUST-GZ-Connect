@@ -21,6 +21,15 @@ function pacDigest(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
+function validatedAccountAuthority(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) &&
+      value.gatewayOrigin && typeof value.gatewayOrigin === 'object' &&
+      typeof value.gatewayOrigin.origin === 'string'
+    ? { ...value, gatewayOrigin: value.gatewayOrigin.origin }
+    : value;
+  return validateCampusAccountDocument(source);
+}
+
 function createIntegrationRuntimeContext({
   authority,
   profileDocument,
@@ -33,19 +42,17 @@ function createIntegrationRuntimeContext({
   engineGeneration = null,
 } = {}) {
   const profile = validateSchoolProfileDocument(profileDocument);
-  const account = validateCampusAccountDocument(authority?.account);
+  const account = validatedAccountAuthority(authority?.account);
   const workspace = validateWorkspaceScopeDocument(authority?.workspaceState, { account });
   if (account.profileId !== profile.profileId || account.profileRevision !== profile.profileRevision ||
       account.gatewayOrigin.origin !== profile.gateway.origin.origin ||
       account.accountKey !== workspace.accountKey || typeof settings !== 'object' ||
-      settings.strictProxyAuth !== true || !Number.isInteger(settings.port) ||
+      typeof settings.strictProxyAuth !== 'boolean' || !Number.isInteger(settings.port) ||
       settings.port < 1025 || settings.port > 65535 ||
       !proxyCredential || typeof proxyCredential.reference !== 'function' ||
       typeof proxyCredential.withStrings !== 'function') {
     const error = new Error('integration runtime context is unavailable or incompatible');
-    error.code = settings?.strictProxyAuth === false
-      ? 'INTEGRATION_AUTH_INCOMPATIBLE'
-      : 'INTEGRATION_LISTENER_UNAVAILABLE';
+    error.code = 'INTEGRATION_LISTENER_UNAVAILABLE';
     throw error;
   }
   const networkRules = createProfileNetworkRules({
@@ -65,7 +72,9 @@ function createIntegrationRuntimeContext({
     accountCredentialRevision: account.accountCredentialRevision,
     workspaceKey: workspace.workspaceKey,
     activeContextEpoch: workspace.activeContextEpoch,
-    listenerKind: 'socks5-authenticated',
+    listenerKind: settings.strictProxyAuth
+      ? 'socks5-authenticated'
+      : 'socks5-optional-authentication',
     loopbackHost: '127.0.0.1',
     loopbackPort: settings.port,
     proxySecurityRevision: settings.proxySecurityVersion,
@@ -87,4 +96,8 @@ function createIntegrationRuntimeContext({
   });
 }
 
-module.exports = { createIntegrationRuntimeContext, integrationPacDigest: pacDigest };
+module.exports = {
+  createIntegrationRuntimeContext,
+  integrationPacDigest: pacDigest,
+  validateIntegrationAccountAuthority: validatedAccountAuthority,
+};

@@ -64,7 +64,7 @@
   } = {}) {
     for (const method of [
       'listSchoolProfiles', 'probeCustomGateway', 'confirmCustomGateway',
-      'cancelCustomGateway', 'switchSchoolProfile',
+      'cancelCustomGateway', 'switchSchoolProfile', 'deleteSchoolProfile',
     ]) {
       if (typeof api?.[method] !== 'function') {
         throw new TypeError('school selector API is incomplete');
@@ -83,6 +83,8 @@
       'customGatewaySummary', 'confirmCustomGateway', 'backCustomGateway',
       'schoolProfileError', 'brandLogo', 'brandFallback', 'brandTitle', 'brandSub',
       'titlebarText', 'connectSchoolName', 'gatewaySchoolName', 'gwName', 'settingsGateway',
+      'schoolPicker', 'lgUser', 'lgPass', 'lgBtn', 'profileTrustBadge', 'settingsTrustBadge',
+      'deleteSchoolProfile',
     ];
     const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     if (Object.values(elements).some((element) => !element)) {
@@ -95,6 +97,8 @@
     let expiryTimer = null;
     let busy = false;
     let bound = false;
+    let customGatewayEnabled = false;
+    let deleteArmedProfileId = null;
 
     function setError(message = '') { elements.schoolProfileError.textContent = message; }
     function codeMessage(code) {
@@ -102,9 +106,10 @@
         'GATEWAY_PROBE_ALREADY_RUNNING', 'GATEWAY_PROBE_CANCELLED', 'GATEWAY_PROBE_FAILED',
         'GATEWAY_PROBE_OUTPUT_INVALID', 'GATEWAY_PROBE_START_FAILED', 'GATEWAY_PROBE_TIMEOUT',
         'GATEWAY_PROBE_UNSUPPORTED', 'PROFILE_CONFIRMATION_STALE',
-        'PROFILE_ONBOARDING_NOT_READY', 'PROFILE_PROVISIONING_FAILED', 'PROFILE_LIST_FAILED',
+        'PROFILE_ONBOARDING_NOT_READY', 'PROFILE_ONBOARDING_DISABLED',
+        'PROFILE_PROVISIONING_FAILED', 'PROFILE_LIST_FAILED',
         'PROFILE_ALREADY_ACTIVE', 'PROFILE_UNAVAILABLE', 'PROFILE_SWITCH_NOT_READY',
-        'PROFILE_SWITCH_FAILED',
+        'PROFILE_SWITCH_FAILED', 'PROFILE_DELETE_NOT_ALLOWED', 'PROFILE_DELETE_INCOMPLETE',
       ]);
       if (/^ACTIVE_CONTEXT_SWITCH_[A-Z_]{1,64}$/u.test(String(code || ''))) {
         return t('school.error.PROFILE_SWITCH_FAILED');
@@ -125,6 +130,7 @@
       busy = value === true;
       for (const element of [
         elements.schoolProfileSelect, elements.switchSchoolProfile,
+        elements.deleteSchoolProfile,
         elements.customSchoolName, elements.customGatewayOrigin,
         elements.probeCustomGateway, elements.cancelCustomGateway,
         elements.confirmCustomGateway, elements.backCustomGateway,
@@ -136,18 +142,15 @@
       const view = profileView({ ...raw, active: true });
       if (!view) return false;
       active = view;
-      const product = `${view.shortName} Connect`;
+      const product = 'HKUST(GZ) Connect';
       document.title = product;
       elements.titlebarText.textContent = product;
-      if (view.bundledAssetKey === 'hkustgz-logo') {
-        const base = document.createElement('span'); base.textContent = 'HKUST';
-        const accent = document.createElement('span'); accent.className = 'paren'; accent.textContent = '(GZ)';
-        const suffix = document.createElement('span'); suffix.textContent = ' Connect';
-        elements.brandTitle.replaceChildren(base, accent, suffix);
-      } else {
-        elements.brandTitle.textContent = product;
-      }
-      elements.brandSub.textContent = `${view.schoolName} · ${t('school.campusVpn')}`;
+      const base = document.createElement('span'); base.textContent = 'HKUST';
+      const accent = document.createElement('span'); accent.className = 'paren'; accent.textContent = '(GZ)';
+      const suffix = document.createElement('span'); suffix.textContent = ' Connect';
+      elements.brandTitle.replaceChildren(base, accent, suffix);
+      elements.brandSub.textContent = `${view.schoolName} · ${t('school.campusVpn')}` +
+        `${view.unverified ? ` · ${t('school.unverified')}` : ''}`;
       elements.connectSchoolName.textContent = view.schoolName;
       elements.gatewaySchoolName.textContent = view.schoolName;
       elements.gwName.textContent = new URL(view.normalizedGatewayOrigin).host;
@@ -156,6 +159,10 @@
       elements.brandLogo.hidden = !reviewedLogo;
       elements.brandFallback.hidden = reviewedLogo;
       elements.brandFallback.textContent = view.shortName.slice(0, 1).toUpperCase();
+      for (const badge of [elements.profileTrustBadge, elements.settingsTrustBadge]) {
+        badge.hidden = !view.unverified;
+        badge.textContent = t('school.unverified');
+      }
       return true;
     }
     function option(value, label) {
@@ -170,33 +177,56 @@
         `${profile.schoolName}${profile.active ? ` · ${t('school.current')}` : ''}` +
           `${profile.unverified ? ` · ${t('school.unverified')}` : ''}`,
       ));
-      items.push(option(OTHER_PROFILE, t('school.other')));
+      if (customGatewayEnabled) items.push(option(OTHER_PROFILE, t('school.other')));
       elements.schoolProfileSelect.replaceChildren(...items);
+      elements.schoolPicker.hidden = profiles.length === 1 && !customGatewayEnabled;
       const available = profiles.some((profile) => profile.profileId === preferred);
       elements.schoolProfileSelect.value = available
         ? preferred
-        : profiles.find((profile) => profile.active)?.profileId || OTHER_PROFILE;
+        : profiles.find((profile) => profile.active)?.profileId ||
+          (customGatewayEnabled ? OTHER_PROFILE : '');
       updateSelection();
+    }
+    function credentialProfileId() {
+      if (busy || confirmation) return null;
+      const selected = profiles.find((candidate) => (
+        candidate.profileId === elements.schoolProfileSelect.value
+      ));
+      return selected?.active ? selected.profileId : null;
+    }
+    function updateCredentialGate() {
+      const enabled = credentialProfileId() !== null;
+      elements.lgUser.disabled = !enabled;
+      elements.lgPass.disabled = !enabled;
+      elements.lgBtn.disabled = !enabled;
     }
     function updateSelection() {
       const selected = elements.schoolProfileSelect.value;
-      const other = selected === OTHER_PROFILE;
+      const other = customGatewayEnabled && selected === OTHER_PROFILE;
       const profile = profiles.find((candidate) => candidate.profileId === selected) || null;
       elements.customSchoolPanel.hidden = !other || confirmation !== null;
       elements.switchSchoolProfile.hidden = other;
       elements.switchSchoolProfile.disabled = busy || !profile || profile.active;
       elements.switchSchoolProfile.textContent = profile?.active
         ? t('school.current') : t('school.switch');
+      const deletable = profile?.unverified === true && profile.active !== true;
+      elements.deleteSchoolProfile.hidden = !deletable;
+      elements.deleteSchoolProfile.disabled = busy || !deletable;
+      elements.deleteSchoolProfile.textContent = deleteArmedProfileId === profile?.profileId
+        ? t('school.confirmDelete') : t('school.delete');
       if (profile?.active) applyActiveProfile(profile);
+      updateCredentialGate();
     }
     async function refresh(preferred = null) {
       const result = await api.listSchoolProfiles();
       if (!result?.ok || !Array.isArray(result.profiles)) {
         profiles = [];
+        customGatewayEnabled = false;
         setError(codeMessage(result?.code || 'PROFILE_LIST_FAILED'));
         renderProfiles(OTHER_PROFILE);
         return false;
       }
+      customGatewayEnabled = result.customGatewayEnabled === true;
       profiles = result.profiles.map(profileView).filter(Boolean);
       if (profiles.length !== result.profiles.length || profiles.length > 64) {
         profiles = [];
@@ -215,15 +245,16 @@
       clearConfirmation();
       try { await api.cancelCustomGateway(); } catch {}
       if (closePanel) {
-        elements.schoolProfileSelect.value = profiles.find((profile) => profile.active)?.profileId || OTHER_PROFILE;
+        elements.schoolProfileSelect.value = profiles.find((profile) => profile.active)?.profileId ||
+          (customGatewayEnabled ? OTHER_PROFILE : '');
         updateSelection();
-      } else {
+      } else if (customGatewayEnabled) {
         elements.customSchoolPanel.hidden = false;
       }
       setBusy(false);
     }
     async function probe() {
-      if (busy) return;
+      if (busy || !customGatewayEnabled) return;
       const origin = elements.customGatewayOrigin.value.trim();
       if (!origin) { setError(t('school.error.gatewayRequired')); return; }
       clearConfirmation();
@@ -306,16 +337,42 @@
         setError(codeMessage(result?.code));
       }
     }
+    async function deleteExisting() {
+      if (busy) return;
+      const profile = profiles.find((candidate) => (
+        candidate.profileId === elements.schoolProfileSelect.value
+      ));
+      if (!profile?.unverified || profile.active) return;
+      if (deleteArmedProfileId !== profile.profileId) {
+        deleteArmedProfileId = profile.profileId;
+        updateSelection();
+        return;
+      }
+      deleteArmedProfileId = null;
+      setBusy(true, t('school.deleting'));
+      let result;
+      try { result = await api.deleteSchoolProfile({ profileId: profile.profileId }); }
+      catch { result = { ok: false, code: 'PROFILE_DELETE_INCOMPLETE' }; }
+      if (!result?.ok) {
+        setBusy(false);
+        setError(codeMessage(result?.code));
+        return;
+      }
+      await refresh(active?.profileId || null);
+      setBusy(false);
+    }
     function bind() {
       if (bound) return;
       bound = true;
       elements.schoolProfileSelect.addEventListener('change', () => {
+        deleteArmedProfileId = null;
         clearConfirmation();
         api.cancelCustomGateway().catch(() => {});
         setError();
         updateSelection();
       });
       elements.switchSchoolProfile.addEventListener('click', switchExisting);
+      elements.deleteSchoolProfile.addEventListener('click', deleteExisting);
       elements.probeCustomGateway.addEventListener('click', probe);
       elements.confirmCustomGateway.addEventListener('click', confirm);
       elements.cancelCustomGateway.addEventListener('click', () => cancel());
@@ -356,6 +413,8 @@
     return Object.freeze({
       cancel,
       confirm,
+      credentialProfileId,
+      deleteExisting,
       probe,
       refresh,
       setActiveProfile,

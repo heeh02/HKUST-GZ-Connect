@@ -24,7 +24,7 @@ const credential = {
 
 function binding(patch = {}) {
   return createIntegrationBinding({
-    adapterId: 'clash_yaml', adapterVersion: 1,
+    adapterId: 'clash_mihomo_yaml', adapterVersion: 1,
     profileId: rules.profileId, profileRevision: rules.profileRevision,
     profileCredentialBindingRevision: rules.profileCredentialBindingRevision,
     accountKey: `account-${'a'.repeat(32)}`, accountRevision: 1,
@@ -61,7 +61,7 @@ test('preview is redacted and explicit execute exposes payload only to one Main 
   const value = owner();
   const current = binding();
   const preview = value.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: current,
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
     networkRules: rules, port: 6180, credential,
   });
   assert.equal(preview.targetChange, null);
@@ -84,7 +84,7 @@ test('preview is redacted and explicit execute exposes payload only to one Main 
       assert.equal(action, 'copy');
       assert.equal(targetFile, null);
     },
-  }), { ok: true, adapterId: 'clash_yaml', action: 'copy' });
+  }), { ok: true, adapterId: 'clash_mihomo_yaml', action: 'copy' });
   assert.match(observed, new RegExp(material.password, 'u'));
   assert.equal(borrowed.every((byte) => byte === 0), true);
   assert.equal(value.snapshot(), null);
@@ -93,7 +93,7 @@ test('preview is redacted and explicit execute exposes payload only to one Main 
 test('binding drift fails stale and erases the prepared secret payload', async () => {
   const value = owner();
   const preview = value.prepare({
-    adapterId: 'clash_yaml', action: 'save', binding: binding(),
+    adapterId: 'clash_mihomo_yaml', action: 'save', binding: binding(),
     networkRules: rules, port: 6180, credential,
     targetFile: '/Users/student/Desktop/campus.yaml',
   });
@@ -112,11 +112,11 @@ test('expiry cancellation and replacement invalidate old handles without returni
   let now = 1_800_000_000_000;
   const value = owner({ now: () => now });
   const first = value.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: binding(),
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: binding(),
     networkRules: rules, port: 6180, credential,
   });
   const second = value.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: binding(),
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: binding(),
     networkRules: rules, port: 6180, credential,
   });
   await assert.rejects(value.execute({
@@ -126,7 +126,7 @@ test('expiry cancellation and replacement invalidate old handles without returni
   assert.equal(value.snapshot(), null, 'an invalid handle fails closed and invalidates newer material');
 
   const expiring = value.prepare({
-    adapterId: 'clash_yaml', action: 'copy', binding: binding(),
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: binding(),
     networkRules: rules, port: 6180, credential,
   });
   now = expiring.expiresAt;

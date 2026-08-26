@@ -106,6 +106,7 @@ async function run() {
     toolbarFile: path.join(__dirname, '..', 'renderer', 'campus-browser.html'),
     toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
+    partition: CAMPUS_PARTITION,
     ensureCampusReady: async () => true,
     onError: (message) => errors.push(message),
   });

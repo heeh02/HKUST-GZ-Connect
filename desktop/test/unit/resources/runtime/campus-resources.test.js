@@ -73,9 +73,9 @@ test('invalid or executable resource entries are rejected', () => {
   assert.equal(normalizeResource({ id: 'bad', name: 'Bad', url: 'javascript:alert(1)' }), null);
 });
 
-test('partner sites default to direct while campus sites default to tunnel', () => {
-  assert.equal(routeForUrl('https://outlook.office.com/owa/'), ROUTE_DIRECT);
-  assert.equal(routeForUrl('https://hkust-gz.instructure.com/'), ROUTE_DIRECT);
+test('generic URL fallback contains no school or partner defaults and fails safe to campus', () => {
+  assert.equal(routeForUrl('https://outlook.office.com/owa/'), ROUTE_CAMPUS);
+  assert.equal(routeForUrl('https://hkust-gz.instructure.com/'), ROUTE_CAMPUS);
   assert.equal(routeForUrl('https://onestop-online.hkust-gz.edu.cn/'), ROUTE_CAMPUS);
 });
 
@@ -86,8 +86,8 @@ test('route proxy configs stay isolated from system networking', () => {
     proxyBypassRules: '<-loopback>',
   });
   assert.deepEqual(proxyConfigForRoute(ROUTE_DIRECT, 6180), { mode: 'direct' });
-  assert.equal(partitionForRoute(ROUTE_CAMPUS), 'persist:hkustgz-campus-browser');
-  assert.equal(partitionForRoute(ROUTE_DIRECT), 'persist:hkustgz-direct-browser');
+  assert.equal(partitionForRoute(ROUTE_CAMPUS), 'persist:campus-workspace-campus');
+  assert.equal(partitionForRoute(ROUTE_DIRECT), 'persist:campus-workspace-direct');
 });
 
 test('custom resources are bounded, normalized, and merged after built-ins', () => {

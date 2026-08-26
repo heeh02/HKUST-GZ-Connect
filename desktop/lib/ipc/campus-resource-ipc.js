@@ -2,6 +2,7 @@
 
 const {
   deleteCustomResource,
+  hideBuiltinResource,
   reorderCustomResources,
   upsertCustomResource,
 } = require('../browser/resources/campus-resource-store');
@@ -59,11 +60,43 @@ function registerCampusResourceIpc({
       const safeId = boundedString(id, { minLength: 1, maxLength: 40, trim: true });
       await runTransaction(() => {
         const previous = loadSettings();
-        const resources = deleteCustomResource(previous.customResources, safeId, {
-          builtinResources: safeResources(),
-        });
+        const visibleResources = safeResources(previous);
+        const target = visibleResources.find((resource) => resource?.id === safeId);
+        if (!target) throw new Error('网站不存在');
+        const next = target.builtin === true
+          ? {
+            ...previous,
+            hiddenBuiltinResourceIds: hideBuiltinResource(
+              previous.hiddenBuiltinResourceIds,
+              safeId,
+              { builtinResources: visibleResources },
+            ),
+          }
+          : {
+            ...previous,
+            customResources: deleteCustomResource(previous.customResources, safeId),
+          };
         return {
-          commit: () => saveSettings({ ...previous, customResources: resources }),
+          commit: () => saveSettings(next),
+          rollback: () => saveSettings(previous),
+        };
+      });
+      return { ok: true, resources: safeResources(), warning: null };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message,
+        rollbackIncomplete: error.rollbackIncomplete === true,
+        resources: safeResources(),
+      };
+    }
+  });
+  register('restore-builtin-resources', async () => {
+    try {
+      await runTransaction(() => {
+        const previous = loadSettings();
+        return {
+          commit: () => saveSettings({ ...previous, hiddenBuiltinResourceIds: [] }),
           rollback: () => saveSettings(previous),
         };
       });

@@ -144,28 +144,9 @@ function buildSshProxyCommand({ helperPath, credentialFile, profileId = null }) 
   ].join('\n');
 }
 
-function buildClashProxyYaml({ port, credential = null, name = 'HKUST(GZ) Connect' } = {}) {
-  const lines = [
-    'proxies:',
-    `  - name: ${JSON.stringify(String(name))}`,
-    `    type: ${JSON.stringify('socks5')}`,
-    `    server: ${JSON.stringify(LOOPBACK_HOST)}`,
-    `    port: ${validPort(port)}`,
-  ];
-  if (credential) {
-    credentialText(credential, (username, password) => {
-      lines.push(`    username: ${JSON.stringify(username)}`);
-      lines.push(`    password: ${JSON.stringify(password)}`);
-    });
-  }
-  lines.push('    udp: false');
-  return `${lines.join('\n')}\n`;
-}
-
 module.exports = {
   LOOPBACK_HOST,
   MAX_PROXY_SIDECAR_BYTES,
-  buildClashProxyYaml,
   buildSshProxyCommand,
   ensureProxyCredentialSidecar,
   externalProxyHelperPath,

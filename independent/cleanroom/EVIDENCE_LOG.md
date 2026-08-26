@@ -3,6 +3,16 @@
 This file records provenance and sanitized outcomes only. It is not a
 substitute for the completed authorization record.
 
+## 2026-08-26 — deterministic version-diff receipts
+
+- Added a sanitized binary report diff that compares only package metadata,
+  hashes, sizes and reviewed capability-marker booleans.
+- Capability, architecture and binary-set changes require manual review.
+- Existing package and Gateway baselines compared byte-for-byte with
+  themselves produced zero changes.
+- Workflow: `docs/research/easyconnect/version-diff-workflow.md` from the
+  repository root.
+
 ## 2026-07-25 — production public metadata
 
 - Target: `https://remote.hkust-gz.edu.cn`

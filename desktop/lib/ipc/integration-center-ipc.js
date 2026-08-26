@@ -2,8 +2,8 @@
 
 const { allowedKeys, boundedString, enumValue } = require('./ipc-guard');
 const {
+  ACTIVE_INTEGRATION_ADAPTER_IDS,
   INTEGRATION_ACTIONS,
-  INTEGRATION_ADAPTER_IDS,
 } = require('../integrations/integration-schema');
 
 const PUBLIC_CODES = new Set([
@@ -19,16 +19,13 @@ const PUBLIC_CODES = new Set([
   'INTEGRATION_EXPORT_CONFLICT',
   'INTEGRATION_EXPORT_FAILED',
   'INTEGRATION_TARGET_CHANGED',
-  'INTEGRATION_INSTALL_FAILED',
-  'INTEGRATION_UPDATE_FAILED',
-  'INTEGRATION_REMOVE_FAILED',
   'INTEGRATION_ROLLBACK_INCOMPLETE',
 ]);
 
 function prepareRequest(value) {
   const source = allowedKeys(value, ['adapterId', 'action']);
   return Object.freeze({
-    adapterId: enumValue(source.adapterId, INTEGRATION_ADAPTER_IDS, '集成类型无效'),
+    adapterId: enumValue(source.adapterId, ACTIVE_INTEGRATION_ADAPTER_IDS, '集成类型无效'),
     action: enumValue(source.action, INTEGRATION_ACTIONS, '集成操作无效'),
   });
 }
