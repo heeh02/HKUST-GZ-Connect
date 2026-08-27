@@ -431,6 +431,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-browser.css',
     '/renderer/campus-workspace.html',
     '/renderer/campus-workspace.js',
+    '/renderer/campus-workspace-model.js',
     '/renderer/campus-workspace.css',
     '/lib/browser/workspace/campus-workspace-controller.js',
     '/lib/browser/workspace/campus-workspace-preload.js',

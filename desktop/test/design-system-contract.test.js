@@ -31,7 +31,7 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('2.0.1 portal shelf grows from two columns into modular three and four-column layouts', () => {
+test('2.0.1 quick shelf stays compact and delegates the full catalogue to Workspace', () => {
   assert.match(controlCss, /\.resource-grid\s*\{[^}]*repeat\(2,/u);
   assert.match(controlCss, /data-resource-layout="standard"[^}]*[\s\S]{0,80}repeat\(3,/u);
   assert.match(controlCss, /data-resource-layout="wide"[\s\S]{0,900}repeat\(4,/u);
@@ -41,7 +41,8 @@ test('2.0.1 portal shelf grows from two columns into modular three and four-colu
   assert.match(controlCss, /\.resource-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
   assert.match(controlCss, /\.resource-route-short\s*\{[^}]*position:\s*absolute/u);
   assert.match(controlHtml, /id="resourceViewChips"/u);
-  assert.match(controlCss, /\.resource-view-chips\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/u);
+  assert.match(controlHtml, /class="resource-library-controls" hidden aria-hidden="true"/u);
+  assert.match(controlHtml, /id="resourceViewChips"[^>]*hidden/u);
   assert.match(controlHtml, /id="resourceView"[^>]*hidden[^>]*tabindex="-1"/u);
   assert.match(controlHtml, /EasyConnect[\s\S]{0,100}connect\.easyConnectCompatible/u);
 });

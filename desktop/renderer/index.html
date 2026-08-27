@@ -116,8 +116,8 @@
                 <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
               </span>
             </div>
-            <div class="resource-library-controls">
-              <input id="resourceSearch" class="resource-search" type="search" maxlength="80"
+            <div class="resource-library-controls" hidden aria-hidden="true">
+              <input id="resourceSearch" class="resource-search" type="search" maxlength="80" tabindex="-1"
                      placeholder="搜索网站" data-i18n-attr="placeholder:resources.searchPlaceholder"
                      aria-label="搜索校园网站" />
               <select id="resourceView" class="resource-view-select" aria-label="网站分类" hidden
@@ -126,29 +126,35 @@
                 <option value="all" data-i18n="resources.viewAll">全部</option>
                 <option value="favorites" data-i18n="resources.viewFavorites">已收藏</option>
                 <option value="recent" data-i18n="resources.viewRecent">最近打开</option>
-                <option value="getting-started" data-i18n="resources.categoryGettingStarted">入学与学籍</option>
-                <option value="learning" data-i18n="resources.categoryLearning">上课与考试</option>
+                <option value="newcomer" data-i18n="resources.categoryNewcomer">新生入学</option>
+                <option value="courses" data-i18n="resources.categoryCourses">课程与考试</option>
                 <option value="research" data-i18n="resources.categoryResearch">科研与实验</option>
-                <option value="finance" data-i18n="resources.categoryFinance">缴费与报销</option>
+                <option value="labs" data-i18n="resources.categoryLabs">实验与仪器</option>
+                <option value="student-finance" data-i18n="resources.categoryStudentFinance">财务缴费</option>
+                <option value="expenses" data-i18n="resources.categoryExpenses">报销与采购</option>
                 <option value="career" data-i18n="resources.categoryCareer">实习与发展</option>
                 <option value="campus-life" data-i18n="resources.categoryCampusLife">校园生活</option>
-                <option value="applications" data-i18n="resources.categoryApplications">申请与离校</option>
-                <option value="services" data-i18n="resources.categoryServices">通用工具</option>
+                <option value="documents" data-i18n="resources.categoryDocuments">证明、毕业与离校</option>
+                <option value="tools" data-i18n="resources.categoryTools">通用工具</option>
+                <option value="staff" data-i18n="resources.categoryStaff">教职工工具</option>
                 <option value="custom" data-i18n="resources.categoryCustom">自定义</option>
               </select>
-              <div id="resourceViewChips" class="resource-view-chips" role="group" aria-label="网站分类"
+              <div id="resourceViewChips" class="resource-view-chips" role="group" aria-label="网站分类" hidden
                    data-i18n-attr="aria-label:resources.viewLabel">
                 <button type="button" data-resource-view="all" data-i18n="resources.viewAll">全部</button>
                 <button type="button" data-resource-view="favorites" data-i18n="resources.viewFavorites">已收藏</button>
                 <button type="button" data-resource-view="recent" data-i18n="resources.viewRecent">最近打开</button>
-                <button type="button" data-resource-view="getting-started" data-i18n="resources.categoryGettingStarted">入学与学籍</button>
-                <button type="button" data-resource-view="learning" data-i18n="resources.categoryLearning">上课与考试</button>
+                <button type="button" data-resource-view="newcomer" data-i18n="resources.categoryNewcomer">新生入学</button>
+                <button type="button" data-resource-view="courses" data-i18n="resources.categoryCourses">课程与考试</button>
                 <button type="button" data-resource-view="research" data-i18n="resources.categoryResearch">科研与实验</button>
-                <button type="button" data-resource-view="finance" data-i18n="resources.categoryFinance">缴费与报销</button>
+                <button type="button" data-resource-view="labs" data-i18n="resources.categoryLabs">实验与仪器</button>
+                <button type="button" data-resource-view="student-finance" data-i18n="resources.categoryStudentFinance">财务缴费</button>
+                <button type="button" data-resource-view="expenses" data-i18n="resources.categoryExpenses">报销与采购</button>
                 <button type="button" data-resource-view="career" data-i18n="resources.categoryCareer">实习与发展</button>
                 <button type="button" data-resource-view="campus-life" data-i18n="resources.categoryCampusLife">校园生活</button>
-                <button type="button" data-resource-view="applications" data-i18n="resources.categoryApplications">申请与离校</button>
-                <button type="button" data-resource-view="services" data-i18n="resources.categoryServices">通用工具</button>
+                <button type="button" data-resource-view="documents" data-i18n="resources.categoryDocuments">证明、毕业与离校</button>
+                <button type="button" data-resource-view="tools" data-i18n="resources.categoryTools">通用工具</button>
+                <button type="button" data-resource-view="staff" data-i18n="resources.categoryStaff">教职工工具</button>
                 <button type="button" data-resource-view="custom" data-i18n="resources.categoryCustom">自定义</button>
               </div>
             </div>

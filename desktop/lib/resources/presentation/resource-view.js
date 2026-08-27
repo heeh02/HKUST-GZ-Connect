@@ -2,9 +2,14 @@
 
 (function initializeResourceView(globalScope) {
   const CATEGORY_ALIASES = Object.freeze({
-    common: 'services',
-    academic: 'learning',
+    common: 'tools',
+    academic: 'courses',
     'campus-service': 'campus-life',
+    'getting-started': 'newcomer',
+    learning: 'courses',
+    finance: 'student-finance',
+    applications: 'documents',
+    services: 'tools',
   });
 
   function categoryView(category) {
@@ -26,8 +31,9 @@
   function filteredResources(resources, { query = '', view = 'all' } = {}) {
     const normalizedQuery = String(query || '').trim().toLocaleLowerCase();
     const supportedViews = new Set([
-      'all', 'favorites', 'recent', 'getting-started', 'learning', 'research', 'finance',
-      'career', 'campus-life', 'applications', 'services', 'custom',
+      'all', 'favorites', 'recent', 'newcomer', 'courses', 'research', 'labs',
+      'student-finance', 'expenses', 'career', 'campus-life', 'documents', 'tools',
+      'staff', 'custom',
     ]);
     const requestedView = CATEGORY_ALIASES[view] || view;
     const selectedView = supportedViews.has(requestedView) ? requestedView : 'all';

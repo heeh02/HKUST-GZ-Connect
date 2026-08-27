@@ -4,6 +4,8 @@ const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
 const GROUP_NAME_MAX = 30;
 const RESOURCE_CATEGORIES = new Set([
+  'gateway', 'newcomer', 'courses', 'labs', 'student-finance', 'expenses',
+  'documents', 'tools', 'staff',
   'getting-started', 'learning', 'research', 'finance', 'career', 'campus-life',
   'applications', 'services', 'common', 'academic', 'campus-service', 'custom',
 ]);

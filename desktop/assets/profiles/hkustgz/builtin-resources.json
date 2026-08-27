@@ -8,7 +8,7 @@
       "localizedName": { "zh": "myPortal 官方门户", "en": "myPortal Official Portal" },
       "localizedDescription": { "zh": "学校完整应用、资讯与学生服务入口", "en": "The official hub for campus apps, information, and student services" },
       "url": "https://myportal.hkust-gz.edu.cn/",
-      "category": "services",
+      "category": "gateway",
       "keywords": ["myPortal", "官方门户", "我的应用", "学生服务台", "校园门户"]
     },
     {
@@ -18,18 +18,18 @@
       "localizedName": { "zh": "迎新系统", "en": "New Student Orientation" },
       "localizedDescription": { "zh": "新生任务、报到与入学指引", "en": "New student tasks, registration, and enrollment guidance" },
       "url": "https://nso.hkust-gz.edu.cn/",
-      "category": "getting-started",
+      "category": "newcomer",
       "keywords": ["迎新", "新生", "报到", "入学", "注册"]
     },
     {
       "id": "sis",
       "name": "学生信息系统 SIS",
-      "description": "学籍、选课与个人教务信息",
+      "description": "选课、退课与课程注册信息",
       "localizedName": { "zh": "学生信息系统 SIS", "en": "Student Information System (SIS)" },
-      "localizedDescription": { "zh": "学籍、选课与个人教务信息", "en": "Student records, course enrollment, and academic information" },
+      "localizedDescription": { "zh": "选课、退课与课程注册信息", "en": "Course selection, add/drop, and enrollment information" },
       "url": "https://sisn.hkust-gz.edu.cn/auth-sign",
-      "category": "getting-started",
-      "keywords": ["SIS", "学籍", "注册", "选课", "个人信息", "Student Information System"]
+      "category": "courses",
+      "keywords": ["SIS", "选课", "退课", "课程注册", "课程", "Student Information System"]
     },
     {
       "id": "ug-major-selection",
@@ -38,7 +38,7 @@
       "localizedName": { "zh": "本科专业选择系统", "en": "UG Major Selection" },
       "localizedDescription": { "zh": "本科专业与培养方向选择", "en": "Undergraduate major and study-path selection" },
       "url": "https://ugms.hkust-gz.edu.cn/",
-      "category": "getting-started",
+      "category": "courses",
       "keywords": ["本科", "专业选择", "培养方向", "UG Major Selection"]
     },
     {
@@ -48,7 +48,7 @@
       "localizedName": { "zh": "本科转学分数据库", "en": "UG Credit Transfer Database" },
       "localizedDescription": { "zh": "查询本科课程转学分记录", "en": "Browse undergraduate credit-transfer records" },
       "url": "https://ugctd.hkust-gz.edu.cn/website/home",
-      "category": "getting-started",
+      "category": "documents",
       "keywords": ["转学分", "学分转换", "Credit Transfer", "本科"]
     },
     {
@@ -59,7 +59,7 @@
       "localizedDescription": { "zh": "课程、作业与教学资料 · 直连", "en": "Courses, assignments, and learning materials" },
       "url": "https://hkust-gz.instructure.com/",
       "route": "direct",
-      "category": "learning",
+      "category": "courses",
       "keywords": ["Canvas", "上课", "课程", "作业", "教学", "课件"]
     },
     {
@@ -69,7 +69,7 @@
       "localizedName": { "zh": "课表与课程容量", "en": "Class Schedule & Quota" },
       "localizedDescription": { "zh": "查询课表、上课时间与选课余量", "en": "Browse class schedules, times, and seat availability" },
       "url": "https://sisn.hkust-gz.edu.cn/cq",
-      "category": "learning",
+      "category": "courses",
       "keywords": ["课表", "上课", "课程容量", "选课", "Class Schedule", "Quota"]
     },
     {
@@ -79,7 +79,7 @@
       "localizedName": { "zh": "课程注册申请", "en": "Class Enrollment Request" },
       "localizedDescription": { "zh": "提交加课、退课与课程注册申请", "en": "Submit add, drop, and course-enrollment requests" },
       "url": "https://w3.hkust-gz.edu.cn/ssea/insCourseApprovalRequest.do",
-      "category": "learning",
+      "category": "courses",
       "keywords": ["课程注册", "加课", "退课", "选课申请", "Enrollment Request"]
     },
     {
@@ -89,7 +89,7 @@
       "localizedName": { "zh": "教室预约系统", "en": "Room Booking System" },
       "localizedDescription": { "zh": "预约教室、会议室与学习空间", "en": "Reserve classrooms, meeting rooms, and study spaces" },
       "url": "https://booking.hkust-gz.edu.cn/front_page",
-      "category": "learning",
+      "category": "campus-life",
       "keywords": ["教室", "会议室", "学习空间", "预约", "Room Booking"]
     },
     {
@@ -99,7 +99,7 @@
       "localizedName": { "zh": "考试排程系统", "en": "Exam Scheduling System" },
       "localizedDescription": { "zh": "考试安排与排程入口", "en": "Examination arrangement and scheduling" },
       "url": "https://ess.hkust-gz.edu.cn/index",
-      "category": "learning",
+      "category": "staff",
       "keywords": ["考试", "排考", "考场", "Exam Scheduling"]
     },
     {
@@ -109,7 +109,7 @@
       "localizedName": { "zh": "成绩报送系统", "en": "Grade Reporting System" },
       "localizedDescription": { "zh": "教师成绩录入与报送", "en": "Grade entry and submission for authorized teaching staff" },
       "url": "https://w3.hkust-gz.edu.cn/ssgs/gradeManage.do",
-      "category": "learning",
+      "category": "staff",
       "keywords": ["成绩", "教师", "成绩录入", "Grade Reporting"]
     },
     {
@@ -119,7 +119,7 @@
       "localizedName": { "zh": "校历", "en": "Academic Calendar" },
       "localizedDescription": { "zh": "学期、假期与重要教务日期", "en": "Terms, holidays, and important academic dates" },
       "url": "https://www.hkust-gz.edu.cn/academics/academic-calendar/",
-      "category": "learning",
+      "category": "courses",
       "keywords": ["校历", "学期", "假期", "开学", "考试周", "Academic Calendar"]
     },
     {
@@ -129,7 +129,7 @@
       "localizedName": { "zh": "教务系统与工具", "en": "Academic Systems & Tools" },
       "localizedDescription": { "zh": "学校审核的教务系统与当前考试入口目录", "en": "Official directory of academic systems and current examination links" },
       "url": "https://ars.hkust-gz.edu.cn/systems-tools/",
-      "category": "learning",
+      "category": "courses",
       "keywords": ["教务", "期末考试", "考试安排", "系统目录", "Systems & Tools"]
     },
     {
@@ -139,7 +139,7 @@
       "localizedName": { "zh": "图书馆", "en": "Library" },
       "localizedDescription": { "zh": "馆藏、数据库与学习资源", "en": "Collections, databases, and study resources" },
       "url": "https://library.hkust-gz.edu.cn/",
-      "category": "learning",
+      "category": "tools",
       "keywords": ["图书馆", "数据库", "馆藏", "论文", "学习"]
     },
     {
@@ -149,7 +149,7 @@
       "localizedName": { "zh": "论文答辩系统", "en": "Thesis Examination System" },
       "localizedDescription": { "zh": "论文评审、答辩与毕业研究流程", "en": "Thesis review, examination, and defense workflow" },
       "url": "https://thesisexam.hkust-gz.edu.cn/",
-      "category": "research",
+      "category": "documents",
       "keywords": ["论文", "答辩", "毕业", "研究生", "Thesis Exam"]
     },
     {
@@ -159,7 +159,7 @@
       "localizedName": { "zh": "LIMS 实验预约", "en": "LIMS Experiment Booking" },
       "localizedDescription": { "zh": "预约实验、设备与实验台", "en": "Reserve experiments, equipment, and workbenches" },
       "url": "https://lims.hkust-gz.edu.cn/",
-      "category": "research",
+      "category": "labs",
       "keywords": ["LIMS", "实验", "实验预约", "设备", "实验台", "本科实验"]
     },
     {
@@ -169,7 +169,7 @@
       "localizedName": { "zh": "大型仪器共享平台", "en": "Instrument Sharing Platform" },
       "localizedDescription": { "zh": "仪器准入、培训、预约与耗材申请", "en": "Instrument access, training, reservations, and consumable requests" },
       "url": "https://instrumentsharelab.hkust-gz.edu.cn/",
-      "category": "research",
+      "category": "labs",
       "keywords": ["仪器", "实验平台", "设备预约", "培训", "安全考试", "耗材", "Instrument"]
     },
     {
@@ -189,7 +189,7 @@
       "localizedName": { "zh": "学生财务系统 SFS", "en": "Student Finance System (SFS)" },
       "localizedDescription": { "zh": "学费、住宿费、奖学金与在线缴费", "en": "Tuition, accommodation fees, scholarships, and online payment" },
       "url": "https://sfs.hkust-gz.edu.cn/",
-      "category": "finance",
+      "category": "student-finance",
       "keywords": ["SFS", "缴费", "学费", "住宿费", "账单", "奖学金", "财务"]
     },
     {
@@ -199,7 +199,7 @@
       "localizedName": { "zh": "项目资金管理系统 PBMS", "en": "Project Budget Management (PBMS)" },
       "localizedDescription": { "zh": "科研项目经费、预算与报销管理", "en": "Research project funding, budgets, and expense management" },
       "url": "https://pbms.hkust-gz.edu.cn/",
-      "category": "finance",
+      "category": "expenses",
       "keywords": ["PBMS", "报销", "项目经费", "预算", "财务", "科研经费"]
     },
     {
@@ -209,7 +209,7 @@
       "localizedName": { "zh": "E-Tender 采购系统", "en": "E-Tender Procurement" },
       "localizedDescription": { "zh": "采购、招标与相关报销前置流程", "en": "Procurement, tendering, and related expense workflows" },
       "url": "https://u-etender.hkust-gz.edu.cn/",
-      "category": "finance",
+      "category": "expenses",
       "keywords": ["采购", "招标", "E-Tender", "报销", "订单", "供应商"]
     },
     {
@@ -229,7 +229,7 @@
       "localizedName": { "zh": "一站式办事大厅", "en": "One-stop Service" },
       "localizedDescription": { "zh": "住宿、校园卡、交通、活动与 IT 在线申请", "en": "Accommodation, campus card, transport, activities, and IT requests" },
       "url": "https://onestop-online.hkust-gz.edu.cn/",
-      "category": "campus-life",
+      "category": "gateway",
       "keywords": ["一站式", "宿舍", "住宿", "校园卡", "车辆", "学生活动", "勤工助学", "HPC申请", "网络申请"]
     },
     {
@@ -239,7 +239,7 @@
       "localizedName": { "zh": "学生申请事项指南", "en": "Student Request Guide" },
       "localizedDescription": { "zh": "查找请假、转专业、转学分与毕业申请入口", "en": "Find leave, program transfer, credit transfer, and graduation requests" },
       "url": "https://ars.hkust-gz.edu.cn/student-services/",
-      "category": "applications",
+      "category": "documents",
       "keywords": ["请假", "休学", "转专业", "转学分", "个人资料", "毕业", "离校", "申请指南"]
     },
     {
@@ -249,7 +249,7 @@
       "localizedName": { "zh": "E-Form 在线申请", "en": "E-Form Applications" },
       "localizedDescription": { "zh": "请假、课程、学籍、差旅与行政申请", "en": "Leave, course, student-status, travel, and administrative requests" },
       "url": "https://eform.hkust-gz.edu.cn/BPM/",
-      "category": "applications",
+      "category": "gateway",
       "keywords": ["E-Form", "请假", "休学", "课程申请", "差旅", "报销", "行政", "离校"]
     },
     {
@@ -259,7 +259,7 @@
       "localizedName": { "zh": "教务电子文件申请", "en": "Academic E-document Application" },
       "localizedDescription": { "zh": "在读证明、成绩单与教务证明申请", "en": "Enrollment certificates, transcripts, and academic documents" },
       "url": "https://acad-edoc.hkust-gz.edu.cn/index",
-      "category": "applications",
+      "category": "documents",
       "keywords": ["证明", "在读证明", "成绩单", "Transcript", "E-Doc", "毕业"]
     },
     {
@@ -269,7 +269,7 @@
       "localizedName": { "zh": "电子文件验证", "en": "Electronic Document Verification" },
       "localizedDescription": { "zh": "验证学校签发的电子证明与成绩单", "en": "Verify electronic certificates and transcripts issued by the University" },
       "url": "https://edoc.hkust-gz.edu.cn/home",
-      "category": "applications",
+      "category": "documents",
       "keywords": ["文件验证", "证明验证", "成绩单验证", "Electronic Documents"]
     },
     {
@@ -280,7 +280,7 @@
       "localizedDescription": { "zh": "Microsoft 365 邮件与日历 · 直连", "en": "Microsoft 365 mail and calendar" },
       "url": "https://outlook.office.com/owa/",
       "route": "direct",
-      "category": "services",
+      "category": "tools",
       "keywords": ["Outlook", "邮箱", "邮件", "日历", "Microsoft 365"]
     },
     {
@@ -290,7 +290,7 @@
       "localizedName": { "zh": "IT 服务与使用指南", "en": "IT Services & Guides" },
       "localizedDescription": { "zh": "账号、网络、校园卡、打印与软件支持", "en": "Accounts, network, campus card, printing, and software support" },
       "url": "https://itd.hkust-gz.edu.cn/",
-      "category": "services",
+      "category": "tools",
       "keywords": ["IT", "账号", "密码", "网络", "校园卡", "打印机", "软件", "帮助"]
     },
     {
@@ -300,7 +300,7 @@
       "localizedName": { "zh": "学校主页", "en": "School Homepage" },
       "localizedDescription": { "zh": "新闻、院系与校园公开信息", "en": "News, schools, and public campus information" },
       "url": "https://www.hkust-gz.edu.cn/",
-      "category": "services",
+      "category": "tools",
       "keywords": ["学校", "主页", "新闻", "院系", "HKUST(GZ)"]
     }
   ]

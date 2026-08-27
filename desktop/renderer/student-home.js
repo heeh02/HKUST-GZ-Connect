@@ -27,7 +27,12 @@
   });
 
   function resourceIconKind(category) {
-    const aliases = { common: 'services', academic: 'learning', 'campus-service': 'campus-life' };
+    const aliases = {
+      gateway: 'services', newcomer: 'getting-started', courses: 'learning', labs: 'research',
+      'student-finance': 'finance', expenses: 'finance', documents: 'applications',
+      tools: 'services', staff: 'services', common: 'services', academic: 'learning',
+      'campus-service': 'campus-life',
+    };
     const normalized = aliases[category] || category;
     return Object.hasOwn(RESOURCE_ICONS, normalized) ? normalized : 'custom';
   }
@@ -105,11 +110,12 @@
         .filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt) && lastOpenedAt > 0)
         .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
       const uniqueRecent = take(recent);
-      const recommended = take(source.filter((resource) =>
-        resource.reviewed === true || resource.builtin === true));
+      const starterIds = new Set(['sis', 'canvas', 'library', 'outlook']);
+      const starter = favorites.length < 3
+        ? take(source.filter(({ id }) => starterIds.has(id))) : [];
       html = section('favorites', translate('resources.favoritesSection'), favorites)
         + section('recent', translate('resources.recentSection'), uniqueRecent)
-        + section('recommended', translate('resources.recommendedSection'), recommended);
+        + section('starter', translate('resources.starterSection'), starter);
       if (!html) html = section('all', translate('resources.allSection'),
         visibleResources(filtered, false, normalizedLayout.sectionLimit));
       if (!html) html = emptyState(false);

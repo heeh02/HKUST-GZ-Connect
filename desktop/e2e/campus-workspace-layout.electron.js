@@ -36,13 +36,7 @@ const resources = Object.freeze([
 
 async function inspect(window) {
   return window.webContents.executeJavaScript(`(() => {
-    const serviceContainer = document.getElementById('servicesGrid');
-    const serviceGrid = serviceContainer.querySelector('.resource-grid') || serviceContainer;
-    const serviceColumns = getComputedStyle(serviceGrid).gridTemplateColumns
-      .split(' ').filter(Boolean).length;
-    const serviceModules = serviceContainer.classList.contains('task-service-groups')
-      ? getComputedStyle(serviceContainer).gridTemplateColumns.split(' ').filter(Boolean).length : 1;
-    const groupGrid = document.querySelector('.favorite-group .resource-grid');
+    const groupGrid = document.querySelector('#favoriteGroups .resource-grid');
     const groupColumns = groupGrid
       ? getComputedStyle(groupGrid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
     const groupContainer = document.getElementById('favoriteGroups');
@@ -50,14 +44,13 @@ async function inspect(window) {
       .split(' ').filter(Boolean).length;
     return {
       width: innerWidth,
-      columns: serviceColumns * serviceModules,
+      noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
+      navigation: [...document.querySelectorAll('[data-workspace-screen]')]
+        .map((button) => button.textContent.trim()),
+      gateways: document.querySelectorAll('.gateway-button').length,
       groupColumns,
       groupModules,
-      cards: new Set([...document.querySelectorAll('.resource-item')].map((card) => card.dataset.resourceId)).size,
-      visibleCards: [...document.querySelectorAll('.resource-item')].filter((card) => !card.hidden).length,
       hasSearch: !!document.getElementById('workspaceSearch'),
-      chipLabels: [...document.querySelectorAll('.filter-button')].map((button) => button.textContent.trim()),
-      officialVisible: !document.getElementById('officialLaunch').hidden,
     };
   })()`);
 }
@@ -95,81 +88,82 @@ async function main() {
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
 
-  for (const [label, width, height, minimumColumns] of [
-    ['compact', 660, 560, 2],
-    ['standard', 1040, 740, 3],
-    ['wide', 1400, 900, 4],
+  for (const [label, width, height, minimumFavoriteColumns, minimumCategoryColumns] of [
+    ['compact', 660, 560, 2, 1],
+    ['standard', 1040, 740, 3, 3],
+    ['wide', 1400, 900, 4, 3],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 80));
-    const state = await inspect(window);
-    process.stdout.write(`${label}: ${JSON.stringify(state)}\n`);
-    assert.equal(state.width, width);
-    assert.equal(state.cards, resources.length - 1);
-    assert.equal(state.hasSearch, true);
-    assert.equal(state.officialVisible, true);
-    assert.ok(state.columns >= minimumColumns, `${label} did not use available width`);
-    assert.ok(state.groupColumns * state.groupModules >= minimumColumns,
-      `${label} group layout did not use available width`);
-    await capture(window, label);
+    const home = await inspect(window);
+    assert.equal(home.width, width);
+    assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
+    assert.deepEqual(home.navigation, ['首页', '服务目录', '整理收藏']);
+    assert.equal(home.gateways, 3);
+    assert.equal(home.hasSearch, true);
+    assert.ok(home.groupColumns * home.groupModules >= minimumFavoriteColumns,
+      `${label} favorites did not use available width`);
+    await capture(window, `${label}-home`);
+
+    const categoryColumns = await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('[data-workspace-screen="catalog"]').click();
+      return getComputedStyle(document.getElementById('categoryOverview'))
+        .gridTemplateColumns.split(' ').filter(Boolean).length;
+    })()`);
+    assert.ok(categoryColumns >= minimumCategoryColumns, `${label} catalogue is too sparse`);
+    await capture(window, `${label}-catalog`);
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-workspace-screen="home"]').click()`,
+    );
   }
 
-  const taskTaxonomy = await window.webContents.executeJavaScript(`(() => {
-    const visibleIds = () => [...new Set([...document.querySelectorAll('.resource-item')]
-      .filter((card) => !card.closest('[hidden]')).map((card) => card.dataset.resourceId))];
+  const courses = await window.webContents.executeJavaScript(`(() => {
+    document.querySelector('[data-workspace-screen="catalog"]').click();
+    [...document.querySelectorAll('.category-card')]
+      .find((button) => button.textContent.includes('课程与考试')).click();
+    return {
+      ids: [...document.querySelectorAll('#categoryResults .resource-item')]
+        .map((item) => item.dataset.resourceId),
+      favoritesHidden: document.getElementById('homeScreen').hidden,
+      backVisible: !document.getElementById('catalogBack').hidden,
+    };
+  })()`);
+  assert.equal(courses.ids.includes('sis'), true);
+  assert.equal(courses.ids.includes('canvas'), true);
+  assert.equal(courses.ids.includes('new-student'), false);
+  assert.equal(courses.favoritesHidden, true);
+  assert.equal(courses.backVisible, true);
+
+  const leaveSearch = await window.webContents.executeJavaScript(`(() => {
     const search = document.getElementById('workspaceSearch');
     search.value = '请假';
     search.dispatchEvent(new Event('input', { bubbles: true }));
-    const leave = visibleIds().sort();
-    search.value = '';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
-    [...document.querySelectorAll('.filter-button')]
-      .find((button) => button.textContent === '缴费与报销').click();
-    const finance = visibleIds().sort();
-    [...document.querySelectorAll('.filter-button')]
-      .find((button) => button.textContent === '全部').click();
-    return { leave, finance };
+    const ids = [...document.querySelectorAll('#searchGrid .resource-item')]
+      .map((item) => item.dataset.resourceId).sort();
+    document.getElementById('clearWorkspaceSearch').click();
+    return ids;
   })()`);
-  assert.deepEqual(taskTaxonomy.leave, ['e-form', 'student-request-guide']);
-  assert.deepEqual(taskTaxonomy.finance, ['e-tender', 'pbms', 'student-finance']);
+  assert.deepEqual(leaveSearch, ['e-form', 'student-request-guide']);
 
-  const filtered = await window.webContents.executeJavaScript(`(() => {
-    const search = document.getElementById('workspaceSearch');
-    search.value = 'Canvas';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
-    return [...new Set([...document.querySelectorAll('.resource-item')]
-      .filter((card) => !card.closest('[hidden]')).map((card) => card.dataset.resourceId))];
-  })()`);
-  assert.deepEqual(filtered, ['canvas']);
-  const favoriteFilter = await window.webContents.executeJavaScript(`(() => {
-    document.getElementById('workspaceSearch').value = '';
-    document.getElementById('workspaceSearch').dispatchEvent(new Event('input', { bubbles: true }));
-    [...document.querySelectorAll('.filter-button')].find((button) => button.textContent === '已收藏').click();
-    return [...new Set([...document.querySelectorAll('.resource-item')]
-      .filter((card) => !card.closest('[hidden]')).map((card) => card.dataset.resourceId))];
-  })()`);
-  assert.deepEqual(favoriteFilter.sort(), ['canvas', 'hpc', 'library', 'outlook']);
   await window.webContents.executeJavaScript(`(() => {
-    document.querySelector('.resource-star').click();
-    document.getElementById('officialLaunch').click();
+    document.querySelector('[data-workspace-screen="manage"]').click();
+    document.querySelector('#resourcePool .resource-star').click();
+    document.querySelector('.gateway-button').click();
     document.getElementById('manageRules').click();
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
     document.getElementById('saveGroup').click();
-    document.getElementById('toggleManage').click();
-    [...document.querySelectorAll('.filter-button')]
-      .find((button) => button.textContent === '全部').click();
-    const select = document.querySelector('.resource-group-select');
+    const select = document.querySelector('#resourcePool .resource-group-select');
     select.value = 'group_abcdefghijkl';
     select.dispatchEvent(new Event('change', { bubbles: true }));
     const dragData = new DataTransfer();
-    const discovered = document.querySelector('[data-resource-id="class-schedule"]');
-    const targetGroup = document.querySelector('[data-group-id="group_abcdefghijkl"]');
+    const discovered = document.querySelector('#resourcePool [data-resource-id="class-schedule"]');
+    const targetGroup = document.querySelector('#manageGroups [data-group-id="group_abcdefghijkl"]');
     discovered.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dragData }));
     targetGroup.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     targetGroup.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     discovered.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dragData }));
-    const custom = document.querySelector('[data-resource-id="hpc"]');
+    const custom = document.querySelector('#resourcePool [data-resource-id="hpc"]');
     custom.querySelector('.resource-rename').click();
     document.getElementById('groupName').value = '科研服务器';
     document.getElementById('saveGroup').click();
@@ -182,7 +176,6 @@ async function main() {
     command === 'open-resource' && resourceId === 'official-portal'), true);
   assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);
   assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
-  assert.equal(commands.some(({ command }) => command === 'move-resource'), true);
   assert.equal(commands.some(({ command, resourceId, groupId }) =>
     command === 'move-resource' && resourceId === 'class-schedule' &&
     groupId === 'group_abcdefghijkl'), true);

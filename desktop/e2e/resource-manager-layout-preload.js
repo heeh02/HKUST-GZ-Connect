@@ -29,6 +29,7 @@ let resources = [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
   builtin: false,
 }))];
 let lastOpenRequest = null;
+let workspaceOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
 
@@ -102,6 +103,7 @@ contextBridge.exposeInMainWorld('api', {
   openLog: async () => ({ ok: true }),
   copy: async () => ({ ok: true }),
   openCampusBrowser: async (request) => {
+    if (request == null) workspaceOpenCount += 1;
     lastOpenRequest = request;
     return { ok: true };
   },
@@ -181,5 +183,5 @@ contextBridge.exposeInMainWorld('api', {
   resize: async () => ({ ok: true }),
   onStatus: () => {},
   onTelemetry: () => {},
-  testState: () => ({ lastOpenRequest }),
+  testState: () => ({ lastOpenRequest, workspaceOpenCount }),
 });

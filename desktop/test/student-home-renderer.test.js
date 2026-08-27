@@ -13,14 +13,14 @@ const resources = [
 const translate = (key) => key;
 const escapeHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;');
 
-test('ordinary Student Home renders unique favorites recent and recommendations', () => {
+test('ordinary Student Home renders unique favorites recent and first-use shortcuts', () => {
   const view = renderStudentHome({
     resources, query: '', view: 'all', expanded: false,
     layout: { mode: 'compact', columns: 2, sectionLimit: 4 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.favoritesSection/u);
   assert.match(view.html, /resources\.recentSection/u);
-  assert.match(view.html, /resources\.recommendedSection/u);
+  assert.match(view.html, /resources\.starterSection/u);
   assert.match(view.html, /data-campus-id="home"/u);
   assert.equal((view.html.match(/data-campus-id="home"/gu) || []).length, 1);
   assert.equal((view.html.match(/data-campus-id="mail"/gu) || []).length, 1);

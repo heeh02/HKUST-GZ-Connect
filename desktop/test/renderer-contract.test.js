@@ -85,8 +85,9 @@ test('WebResource shelf supports responsive ID-only search categories favorites 
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
   for (const view of [
-    'favorites', 'recent', 'getting-started', 'learning', 'research', 'finance',
-    'career', 'campus-life', 'applications', 'services', 'custom',
+    'favorites', 'recent', 'newcomer', 'courses', 'research', 'labs',
+    'student-finance', 'expenses', 'career', 'campus-life', 'documents', 'tools',
+    'staff', 'custom',
   ]) {
     assert.match(html, new RegExp(`value="${view}"`, 'u'));
   }
@@ -130,11 +131,15 @@ test('Campus Browser chrome keeps the minimum task set and derives external open
 test('Campus Workspace is a real local renderer with ID-only actions and modular portal surfaces', () => {
   const workspaceHtml = fs.readFileSync(path.join(rendererDir, 'campus-workspace.html'), 'utf8');
   const workspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-workspace.js'), 'utf8');
+  const workspaceModel = fs.readFileSync(path.join(rendererDir, 'campus-workspace-model.js'), 'utf8');
   const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
   for (const id of [
-    'workspaceSearch', 'workspaceFilters', 'officialLaunch', 'favoritesModule',
-    'favoriteGroups', 'recentModule', 'servicesModule', 'manageRules', 'createGroup',
+    'workspaceSearch', 'workspaceNavigation', 'gatewayLinks', 'homeScreen', 'catalogScreen',
+    'manageScreen', 'favoriteGroups', 'recentModule', 'categoryOverview', 'resourcePool',
+    'manageGroups', 'manageRules', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*catalog[\s\S]*manage/u);
+  assert.match(workspaceModel, /TASK_CATEGORIES[\s\S]*id:\s*'courses'[\s\S]*categoryOf/u);
   assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
   assert.match(workspaceJs, /command\('toggle-favorite',\s*\{\s*resourceId:/u);
   assert.match(workspaceJs, /command\('manage-rules'\)/u);

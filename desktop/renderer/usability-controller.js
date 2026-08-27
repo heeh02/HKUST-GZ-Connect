@@ -40,11 +40,9 @@
     function focusResourceSearch() {
       if (document.getElementById('dash').hidden) return;
       openPage('connect');
-      window.requestAnimationFrame(() => {
-        const search = document.getElementById('resourceSearch');
-        search.focus();
-        search.select();
-      });
+      Promise.resolve(openCampusWorkspace()).then((result) => {
+        if (!result?.ok) toast(result?.error || translate('quick.browserOpenFailed'), 'error');
+      }).catch(() => toast(translate('quick.browserOpenFailed'), 'error'));
     }
 
     function start() {

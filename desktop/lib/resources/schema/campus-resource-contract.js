@@ -20,12 +20,23 @@ const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|i
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
 const RESOURCE_CATEGORIES = Object.freeze([
-  'getting-started',
-  'learning',
+  'gateway',
+  'newcomer',
+  'courses',
   'research',
-  'finance',
+  'labs',
+  'student-finance',
+  'expenses',
   'career',
   'campus-life',
+  'documents',
+  'tools',
+  'staff',
+  'custom',
+  // Transitional categories produced by the first 2.0.1 taxonomy draft.
+  'getting-started',
+  'learning',
+  'finance',
   'applications',
   'services',
   // Compatibility aliases retained for reviewed Profiles produced before the
@@ -33,7 +44,6 @@ const RESOURCE_CATEGORIES = Object.freeze([
   'common',
   'academic',
   'campus-service',
-  'custom',
 ]);
 const SAFE_RESOURCE_ID = /^[a-z0-9-]+$/u;
 const SAFE_RESOURCE_REF = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;

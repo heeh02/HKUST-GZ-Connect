@@ -242,9 +242,9 @@ async function exerciseBuiltinResourceRemoval(window) {
 
 async function assertStudentHome(window) {
   for (const [width, expectedMode, expectedColumns, expectedItems] of [
-    [420, 'compact', 2, 12],
-    [620, 'standard', 3, 18],
-    [960, 'wide', 2, 24],
+    [420, 'compact', 2, 8],
+    [620, 'standard', 3, 12],
+    [960, 'wide', 2, 16],
   ]) {
     window.setContentSize(width, 720);
     await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
@@ -258,15 +258,13 @@ async function assertStudentHome(window) {
       document.querySelector('.nav[data-page="connect"]').click();
       const grid = document.querySelector('.resource-section .resource-grid');
       const hero = document.getElementById('connTop').getBoundingClientRect();
-      const search = document.getElementById('resourceSearch').getBoundingClientRect();
-      const manual = document.querySelector('.custom-url-details').getBoundingClientRect();
       const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
       const firstItem = document.querySelector('.resource-card');
       const chips = document.getElementById('resourceViewChips');
       const select = document.getElementById('resourceView');
       const sectionColumns = getComputedStyle(document.getElementById('campusResources'))
         .gridTemplateColumns.split(' ').filter(Boolean).length;
-      const recommended = document.querySelector('.resource-section-recommended .resource-grid');
+      const controls = document.querySelector('.resource-library-controls');
       const content = document.querySelector('.content');
       const snapshot = {
         columns,
@@ -276,13 +274,10 @@ async function assertStudentHome(window) {
         firstDivider: getComputedStyle(firstItem).borderBottomStyle,
         chipsDisplay: getComputedStyle(chips).display,
         selectDisplay: getComputedStyle(select).display,
+        controlsDisplay: getComputedStyle(controls).display,
         sectionColumns,
-        recommendedColumns: recommended
-          ? getComputedStyle(recommended).gridTemplateColumns.split(' ').filter(Boolean).length
-          : 0,
         heroHeight: hero.height,
         resourceSections: document.querySelectorAll('.resource-section').length,
-        searchBeforeManual: search.top < manual.top,
         towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
         diagnosticsClosed: !document.querySelector('.diagnostic-details').open,
       };
@@ -296,11 +291,11 @@ async function assertStudentHome(window) {
     assert.equal(view.visibleItems, expectedItems, `${width}px: responsive resource budget`);
     assert.equal(view.descriptions, 0, `${width}px: website explanation text returned`);
     assert.equal(view.firstDivider, 'solid', `${width}px: website divider disappeared`);
-    assert.notEqual(view.chipsDisplay, 'none', `${width}px: category chips disappeared`);
+    assert.equal(view.controlsDisplay, 'none', `${width}px: delegated catalogue controls became visible`);
+    assert.equal(view.chipsDisplay, 'none', `${width}px: duplicate category chips became visible`);
     assert.equal(view.selectDisplay, 'none', `${width}px: legacy category select became visible`);
     if (width >= 900) {
       assert.equal(view.sectionColumns, 2, `${width}px: wide resource modules`);
-      assert.equal(view.recommendedColumns, 4, `${width}px: wide recommended resource columns`);
     }
     if (width < 900) {
       assert.ok(view.heroHeight >= 195 && view.heroHeight <= 235,
@@ -310,7 +305,6 @@ async function assertStudentHome(window) {
         `${width}px: wide connection module wastes vertical space`);
     }
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
-    assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
     assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);
     assert.equal(view.scrollTopAfterPageSwitch, 0, `${width}px: page switch retained stale scroll`);
@@ -320,23 +314,6 @@ async function assertStudentHome(window) {
     );
     assert.match(workspaceEntry, /校园工作台/u, `${width}px: Workspace entry disappeared`);
 
-    {
-      const chips = await window.webContents.executeJavaScript(`(() => {
-        document.querySelector('[data-resource-view="custom"]').click();
-        const selected = document.getElementById('resourceView').value;
-        const pressed = document.querySelector('[data-resource-view="custom"]')
-          .getAttribute('aria-pressed');
-        const allCustom = [...document.querySelectorAll('.resource-card')].every((row) => {
-          const id = row.dataset.campusId;
-          return Number(id.replace('fixture-', '')) % 4 === 3;
-        });
-        document.querySelector('[data-resource-view="all"]').click();
-        return { selected, pressed, allCustom };
-      })()`);
-      assert.equal(chips.selected, 'custom', `${width}px: category chips did not sync state`);
-      assert.equal(chips.pressed, 'true', `${width}px: category chip active state`);
-      assert.equal(chips.allCustom, true, `${width}px: category chip did not filter resources`);
-    }
   }
 }
 
@@ -386,27 +363,12 @@ async function assertUsabilityLayer(window) {
     const towerActive = document.querySelector('.page.active').dataset.page;
     key('k', { metaKey: true });
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const search = document.getElementById('resourceSearch');
-    const searchFocused = document.activeElement === search;
     const connectActive = document.querySelector('.page.active').dataset.page;
-
-    const allChip = document.querySelector('[data-resource-view="all"]');
-    allChip.focus();
-    allChip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-    const chipView = document.getElementById('resourceView').value;
-    const chipFocused = document.activeElement?.dataset?.resourceView;
-    document.querySelector('[data-resource-view="all"]').click();
-
-    search.value = 'no-such-campus-service';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
-    const emptyActions = [...document.querySelectorAll('[data-resource-empty-action]')]
-      .map((button) => button.dataset.resourceEmptyAction);
-    document.querySelector('[data-resource-empty-action="manage"]').click();
+    const workspaceOpenCount = window.api.testState().workspaceOpenCount;
+    document.getElementById('manageResources').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
     const managerOpened = document.getElementById('resourceDialog').open;
     document.getElementById('closeResourceDialog').click();
-    key('Escape');
-    const searchCleared = search.value === '' && document.querySelectorAll('.resource-card').length > 0;
 
     const favorite = document.querySelector('.resource-favorite');
     favorite.click();
@@ -414,8 +376,7 @@ async function assertUsabilityLayer(window) {
     const toast = document.getElementById('globalToast');
     const nav = document.querySelector('.nav[data-page="connect"]');
     return {
-      towerActive, connectActive, searchFocused, chipView, chipFocused,
-      emptyActions, managerOpened, searchCleared,
+      towerActive, connectActive, workspaceOpenCount, managerOpened,
       toastVisible: !toast.hidden, toastText: toast.textContent,
       statusClass: document.getElementById('navConnectionState').className,
       statusLabel: nav.getAttribute('aria-label'),
@@ -423,12 +384,8 @@ async function assertUsabilityLayer(window) {
   })()`);
   assert.equal(result.towerActive, 'tower', 'Command-2 did not open Control Tower');
   assert.equal(result.connectActive, 'connect', 'Command-K did not open Campus Services');
-  assert.equal(result.searchFocused, true, 'Command-K did not focus search');
-  assert.equal(result.chipView, 'favorites', 'ArrowRight did not select the next category');
-  assert.equal(result.chipFocused, 'favorites', 'category keyboard focus did not move');
-  assert.deepEqual(result.emptyActions, ['clear', 'manage']);
-  assert.equal(result.managerOpened, true, 'empty state Manage did not open the local manager');
-  assert.equal(result.searchCleared, true, 'Escape did not restore the resource shelf');
+  assert.equal(result.workspaceOpenCount, 1, 'Command-K did not open Campus Workspace');
+  assert.equal(result.managerOpened, true, 'Manage did not open the local website manager');
   assert.equal(result.toastVisible, true, 'favorite feedback toast stayed hidden');
   assert.match(result.toastText, /收藏/u);
   assert.match(result.statusClass, /disconnected/u);
