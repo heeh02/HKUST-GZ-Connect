@@ -241,7 +241,7 @@ async function exerciseBuiltinResourceRemoval(window) {
 }
 
 async function assertStudentHome(window) {
-  for (const [width, expectedColumns] of [[420, 2], [960, 3]]) {
+  for (const [width, expectedColumns] of [[420, 2], [960, 2]]) {
     window.setContentSize(width, 720);
     await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
     const view = await window.webContents.executeJavaScript(`(() => {
@@ -265,8 +265,8 @@ async function assertStudentHome(window) {
       };
     })()`);
     assert.equal(view.columns, expectedColumns, `${width}px: resource grid column count`);
-    assert.ok(view.heroHeight >= 82 && view.heroHeight <= 120,
-      `${width}px: connection header is not compact and balanced`);
+    assert.ok(view.heroHeight >= 180 && view.heroHeight <= 270,
+      `${width}px: classic connection card proportions changed unexpectedly`);
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
     assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);

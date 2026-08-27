@@ -31,22 +31,22 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('2.0.1 desktop density keeps two columns in compact/standard and three in wide', () => {
+test('2.0.1 portal shelf keeps a stable two-column desktop rhythm', () => {
   assert.match(controlCss, /\.resource-grid\s*\{[^}]*repeat\(2,/u);
-  assert.match(controlCss, /@media\s*\(min-width:\s*800px\)[\s\S]*\.resource-grid\s*\{[^}]*repeat\(3,/u);
   assert.match(controlCss, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*1fr/u);
+  assert.match(controlCss, /\.resource-link\s*\{[^}]*grid-template-columns:\s*38px minmax\(0, 1fr\)[^}]*border:\s*0/u);
+  assert.match(controlCss, /\.resource-icon\s*\{[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
 });
 
-test('2.0.1 visual grammar reserves cards and shadows for semantic objects', () => {
-  assert.match(controlCss, /\.titlebar\s*\{[^}]*justify-content:\s*flex-start[^}]*rgba\(168,132,44,\.28\)/u);
-  assert.match(controlCss, /--sidebar-compact\)/u);
-  assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*none/u);
-  assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/u);
-  assert.match(controlCss, /\.tower-card\s*\{[^}]*border-radius:\s*0[^}]*box-shadow:\s*none/u);
+test('2.0.1 restores the compact classic shell while avoiding nested website cards', () => {
+  assert.match(controlCss, /\.titlebar\s*\{[^}]*justify-content:\s*center[^}]*1\.5px solid var\(--gold\)/u);
+  assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 70px/u);
+  assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 4px 14px/u);
+  assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--gold-soft\)[^}]*box-shadow:\s*var\(--shadow\)/u);
+  assert.match(controlCss, /\.hero-card\s*\{[^}]*flex-direction:\s*column[^}]*border-radius:\s*20px/u);
   assert.match(controlCss, /\.resource-favorite:hover,\s*\.resource-favorite\.active\s*\{[^}]*background:\s*transparent/u);
-  assert.match(controlCss, /\.logs\s*\{[^}]*height:\s*260px[^}]*max-height:\s*260px/u);
-  assert.match(controlCss, /\.settings-card\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)[^}]*box-shadow:\s*none/u);
-  assert.match(controlHtml, /class="help-section"/u);
+  assert.match(controlCss, /\.logs\s*\{[^}]*min-height:\s*320px[^}]*max-height:\s*420px/u);
+  assert.doesNotMatch(controlHtml, /class="help-section"/u);
   assert.match(browserCss, /\.icon\s*\{[^}]*border:\s*0/u);
   assert.match(browserCss, /\.state\.loading\s*\{[^}]*display:\s*block/u);
   assert.ok(browserHtml.indexOf('id="address"') < browserHtml.indexOf('id="routeBadge"'),

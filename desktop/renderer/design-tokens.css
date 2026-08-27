@@ -7,13 +7,13 @@
   --color-brand-navy-raised: #163a72;
   --color-brand-gold: #a8842c;
   --color-brand-gold-raised: #c79b3c;
-  --color-brand-gold-soft: #eee5d0;
+  --color-brand-gold-soft: #ece1c6;
   --color-text: #1b2536;
-  --color-text-muted: #7d899b;
-  --color-border: #e1e7f0;
-  --color-field: #f3f6fa;
-  --color-panel: #edf2f8;
-  --color-background: #f5f7fb;
+  --color-text-muted: #8793a5;
+  --color-border: #e5eaf2;
+  --color-field: #f4f7fb;
+  --color-panel: #eef2f8;
+  --color-background: #f6f8fc;
   --color-surface: #ffffff;
   --color-success: #1aa568;
   --color-danger: #d9534f;
@@ -25,10 +25,10 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --radius-control: 9px;
-  --radius-compact-card: 12px;
-  --radius-card: 14px;
-  --radius-feature-card: 18px;
+  --radius-control: 10px;
+  --radius-compact-card: 14px;
+  --radius-card: 18px;
+  --radius-feature-card: 22px;
   --radius-pill: 999px;
 
   --motion-fast: 140ms;
@@ -36,12 +36,9 @@
   --motion-slow: 220ms;
   --ease-standard: cubic-bezier(.2, .7, .2, 1);
 
-  --shadow-sm: 0 1px 2px rgba(13,30,66,.025);
-  --shadow: 0 2px 8px rgba(13,30,66,.055);
-  --shadow-lg: 0 12px 34px rgba(13,30,66,.14);
-
-  --sidebar-compact: 88px;
-  --sidebar-wide: 96px;
+  --shadow-sm: 0 1px 2px rgba(13,30,66,.035);
+  --shadow: 0 1px 2px rgba(13,30,66,.04), 0 6px 16px rgba(13,30,66,.05);
+  --shadow-lg: 0 2px 6px rgba(13,30,66,.05), 0 14px 30px rgba(13,30,66,.08);
 
   /* Compatibility aliases used by existing renderer features. New rules
      should prefer the semantic names above. */

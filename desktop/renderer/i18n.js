@@ -141,7 +141,7 @@
       'quick.addFailed': '添加网站失败',
       'quick.browserOpenFailed': '校园浏览器打开失败',
 
-      'resources.title': '校园网站',
+      'resources.title': '我的应用',
       'resources.homeTitle': '校园服务',
       'resources.homeSub': '搜索、收藏并直接打开校园网页，需要时会自动连接。',
       'resources.openOther': '打开其他网址',
@@ -198,7 +198,7 @@
 
       'tower.title': '控制塔',
       'tower.subtitle': '连接参数、网站分流与高级工具集中管理。',
-      'tower.advancedBadge': '高级模式',
+      'tower.advancedBadge': '高级',
       'tower.connectionPort': '连接与端口',
       'tower.connectionPortSub': '管理本地入口与自动恢复策略。',
       'tower.socksPort': '本地 SOCKS 端口',
@@ -323,13 +323,6 @@
 
       'notif.title': '通知与帮助',
       'notif.subtitle': '查看当前连接状态；需要排错时再展开诊断日志。',
-      'notif.helpTitle': '使用说明',
-      'notif.helpOpenTitle': '打开校园服务',
-      'notif.helpOpenBody': '需要校园网络时会自动连接，无需先操作开关。',
-      'notif.helpRouteTitle': '查看访问路径',
-      'notif.helpRouteBody': '校园隧道与直连都是正常路径，可在浏览器地址栏旁查看。',
-      'notif.helpTroubleshootTitle': '遇到问题',
-      'notif.helpTroubleshootBody': '先重新加载或重连，需要排错时再展开下方日志。',
       'notif.refresh': '刷新',
       'notif.empty': '(暂无日志,连接后这里显示运行/错误信息)',
       'notif.currentStatus': '当前状态',
@@ -596,7 +589,7 @@
       'quick.addFailed': 'Failed to add the site',
       'quick.browserOpenFailed': 'Failed to open the campus browser',
 
-      'resources.title': 'Campus Sites',
+      'resources.title': 'My Apps',
       'resources.homeTitle': 'Campus Services',
       'resources.homeSub': 'Search, save, and open campus sites. Campus access connects automatically when needed.',
       'resources.openOther': 'Open another URL',
@@ -653,7 +646,7 @@
 
       'tower.title': 'Control Tower',
       'tower.subtitle': 'Manage connection options, site routing, and advanced tools in one place.',
-      'tower.advancedBadge': 'Advanced mode',
+      'tower.advancedBadge': 'Advanced',
       'tower.connectionPort': 'Connection & Port',
       'tower.connectionPortSub': 'Manage the local entry point and automatic recovery.',
       'tower.socksPort': 'Local SOCKS Port',
@@ -778,13 +771,6 @@
 
       'notif.title': 'Notifications & Help',
       'notif.subtitle': 'Review the current state and open diagnostics only when troubleshooting.',
-      'notif.helpTitle': 'How it works',
-      'notif.helpOpenTitle': 'Open a campus service',
-      'notif.helpOpenBody': 'The app connects automatically when campus access is required.',
-      'notif.helpRouteTitle': 'See the network path',
-      'notif.helpRouteBody': 'Campus tunnel and Direct are both normal paths, shown beside the address bar.',
-      'notif.helpTroubleshootTitle': 'When something fails',
-      'notif.helpTroubleshootBody': 'Reload or reconnect first, then expand diagnostics only when needed.',
       'notif.refresh': 'Refresh',
       'notif.empty': '(No logs yet; runtime/error info appears here after connecting)',
       'notif.currentStatus': 'Current Status',

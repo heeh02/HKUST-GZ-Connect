@@ -78,8 +78,7 @@ test('WebResource shelf supports ID-only open, search, categories, favorites and
 });
 
 test('control panel has responsive wide and compact layout rules', () => {
-  assert.match(css, /@media\s*\(min-width:\s*800px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*559px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*459px\)/);
   assert.match(css, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*grid-template-columns:\s*1fr/u);
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
@@ -97,10 +96,9 @@ test('Campus Browser chrome keeps the minimum task set and derives external open
     'toolbar renderer must not provide URL authority for external open');
 });
 
-test('notifications keep concise help visible and raw diagnostics collapsed', () => {
-  for (const key of [
-    'notif.helpOpenTitle', 'notif.helpRouteTitle', 'notif.helpTroubleshootTitle',
-  ]) assert.match(html, new RegExp(`data-i18n="${key}"`, 'u'));
+test('notifications keep a compact state summary and raw diagnostics collapsed', () => {
+  assert.match(html, /id="notificationCard"/u);
+  assert.doesNotMatch(html, /class="help-section"/u);
   assert.match(html, /<details class="diagnostic-details">/u);
   assert.doesNotMatch(html, /<details class="diagnostic-details"[^>]*open/u);
 });

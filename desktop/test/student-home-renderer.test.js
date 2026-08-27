@@ -26,6 +26,10 @@ test('ordinary Student Home renders unique favorites recent and recommendations'
   assert.equal((view.html.match(/data-campus-id="library"/gu) || []).length, 1);
   assert.match(view.html, /resources\.sourceReviewed/u);
   assert.match(view.html, /resources\.sourceLocal/u);
+  assert.match(view.html, /class="resource-icon resource-icon-common"/u);
+  assert.match(view.html, /class="resource-icon resource-icon-academic"/u);
+  assert.match(view.html, /class="resource-copy"/u);
+  assert.doesNotMatch(view.html, /<img/u);
   assert.equal(view.hasMore, false);
 });
 
@@ -42,11 +46,14 @@ test('expanded Student Home replaces curated sections with one complete service 
 test('search result mode is bounded and escapes resource markup', () => {
   const view = renderStudentHome({
     resources: [...resources, {
-      ...resources[0], id: 'unsafe', name: '<img>', url: 'https://unsafe.example/', favorite: false,
+      ...resources[0], id: 'unsafe', name: '<img>', url: 'https://unsafe.example/',
+      category: 'x\" onmouseover=\"bad', favorite: false,
     }],
     query: 'img', view: 'all', expanded: true, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.results/u);
   assert.match(view.html, /&lt;img>/u);
   assert.doesNotMatch(view.html, /<img>/u);
+  assert.match(view.html, /resource-icon-custom/u);
+  assert.doesNotMatch(view.html, /onmouseover/u);
 });
