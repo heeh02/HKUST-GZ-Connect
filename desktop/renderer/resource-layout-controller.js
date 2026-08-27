@@ -2,8 +2,12 @@
 
 (function initializeResourceLayoutController(globalScope) {
   const RESOURCE_VIEWS = new Set([
-    'all', 'favorites', 'recent', 'common', 'academic', 'campus-service', 'custom',
+    'all', 'favorites', 'recent', 'getting-started', 'learning', 'research', 'finance',
+    'career', 'campus-life', 'applications', 'services', 'custom',
   ]);
+  const VIEW_ALIASES = Object.freeze({
+    common: 'services', academic: 'learning', 'campus-service': 'campus-life',
+  });
 
   function create({ window, document, policy, onChange }) {
     if (!window || !document || !policy || typeof policy.layoutForWidth !== 'function' ||
@@ -31,7 +35,8 @@
     }
 
     function select(nextView) {
-      const normalized = RESOURCE_VIEWS.has(nextView) ? nextView : 'all';
+      const requested = VIEW_ALIASES[nextView] || nextView;
+      const normalized = RESOURCE_VIEWS.has(requested) ? requested : 'all';
       if (normalized === view) {
         syncControls();
         return false;

@@ -169,6 +169,7 @@ function validateLocalResourcesDocument(value) {
     route: resource.route,
     category: resource.category,
     keywords: resource.keywords,
+    ...(resource.favoriteOnly === true ? { favoriteOnly: true } : {}),
   }));
   const hiddenBuiltinResourceIds = normalizeHiddenBuiltinResourceIds(
     source.hiddenBuiltinResourceIds,

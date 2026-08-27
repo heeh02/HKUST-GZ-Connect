@@ -11,6 +11,7 @@ const {
   mergeWebResourceLibrary,
   projectCampusResources,
   projectWebResourceLibrary,
+  resourceActivityAliases,
 } = require('../../resources/runtime/campus-resources');
 const { createActiveSchoolProfileContext } = require('./school-profile-runtime');
 const { ProfileCandidateDirectory } = require('../registry/profile-candidate-directory');
@@ -246,6 +247,9 @@ function createController(context, options) {
         customResources,
         hiddenBuiltinResourceIds,
       );
+    },
+    resourceActivityAliases(customResources = []) {
+      return resourceActivityAliases(builtInResources, customResources);
     },
     createCapabilitySnapshot: capabilitySnapshotFromReport,
     observeCapabilityReport(report) {

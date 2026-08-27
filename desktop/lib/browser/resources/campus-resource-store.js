@@ -31,6 +31,7 @@ function normalizedInput(payload, existing, builtins) {
   const source = payload && typeof payload === 'object' ? payload : {};
   if (!String(source.name || '').trim()) throw new Error('网站名称不能为空');
   const id = String(source.id || '').trim() || generatedId(String(source.url || '').trim(), existing);
+  const previous = existing.find((resource) => resource.id === id) || null;
   if (builtins.ids.has(id)) throw new Error('内置网站不能被覆盖');
   if (!String(source.url || '').trim()) throw new Error('网站网址不能为空');
   let url;
@@ -42,7 +43,12 @@ function normalizedInput(payload, existing, builtins) {
   if (source.route === 'direct' && isIsolatedNetworkHost(new URL(url).hostname)) {
     throw new Error('本机、私网和特殊地址不能设为直连');
   }
-  const normalized = normalizeResource({ ...source, id, url });
+  const normalized = normalizeResource({
+    ...source,
+    id,
+    url,
+    ...(previous?.favoriteOnly === true ? { favoriteOnly: true } : {}),
+  });
   if (!normalized) throw new Error('网站名称、描述或网址无效');
   const resource = normalizeCustomResources([normalized])[0];
   if (!resource) throw new Error('网站名称、描述或网址无效');

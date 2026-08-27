@@ -24,6 +24,7 @@ function capturedResource(existing, candidate) {
     route: candidate.route,
     category: 'custom',
     keywords: [],
+    favoriteOnly: true,
   }]);
   const resource = next.find((entry) => entry.id === id);
   if (!resource) throw new Error('当前页面不能保存到收藏');
@@ -88,16 +89,26 @@ class PageFavoriteController {
         nextSettings = { ...previousSettings, customResources: saved.resources };
       }
 
+      const removesCapturedResource = target.favoriteOnly === true &&
+        previousFavorites.entries.includes(target.id);
+      if (removesCapturedResource) {
+        nextSettings = {
+          ...previousSettings,
+          customResources: previousSettings.customResources.filter(({ id }) => id !== target.id),
+        };
+      }
+
       const commit = () => {
         this.saveSettings(nextSettings);
         const nextFavorites = this.activityStore.toggleFavorite(
           target.id,
-          this.visibleResources(nextSettings),
+          this.visibleResources(removesCapturedResource ? previousSettings : nextSettings),
         );
         outcome = Object.freeze({
           ok: true,
           favorite: nextFavorites.entries.includes(target.id),
           resourceId: target.id,
+          removedResource: removesCapturedResource,
         });
         this.onChanged?.(outcome);
         return outcome;
@@ -122,8 +133,52 @@ class PageFavoriteController {
       const previousGroups = this.activityStore.groupsSnapshot();
       const commit = () => {
         if (command.command === 'toggle-favorite') {
+          const target = resources.find(({ id }) => id === command.resourceId);
+          const removeCaptured = target?.favoriteOnly === true &&
+            previousFavorites.entries.includes(command.resourceId);
+          if (removeCaptured) {
+            this.saveSettings({
+              ...settings,
+              customResources: settings.customResources.filter(({ id }) => id !== command.resourceId),
+            });
+          }
           const favorites = this.activityStore.toggleFavorite(command.resourceId, resources);
-          outcome = { ok: true, favorite: favorites.entries.includes(command.resourceId) };
+          outcome = {
+            ok: true,
+            favorite: favorites.entries.includes(command.resourceId),
+            removedResource: removeCaptured,
+          };
+        } else if (command.command === 'rename-resource') {
+          const current = settings.customResources.find(({ id }) => id === command.resourceId);
+          if (!current) throw new Error('custom resource is unavailable');
+          const customResources = normalizeCustomResources(settings.customResources.map((resource) => (
+            resource.id === command.resourceId ? { ...resource, name: command.name } : resource
+          )));
+          if (customResources.length !== settings.customResources.length) {
+            throw new Error('custom resource rename failed');
+          }
+          this.saveSettings({ ...settings, customResources });
+          outcome = { ok: true, resourceId: command.resourceId };
+        } else if (command.command === 'delete-resource') {
+          if (!settings.customResources.some(({ id }) => id === command.resourceId)) {
+            throw new Error('custom resource is unavailable');
+          }
+          this.saveSettings({
+            ...settings,
+            customResources: settings.customResources.filter(({ id }) => id !== command.resourceId),
+          });
+          this.activityStore.replaceFavorites({
+            schemaVersion: 1,
+            entries: previousFavorites.entries.filter((id) => id !== command.resourceId),
+          });
+          this.activityStore.replaceGroups({
+            schemaVersion: 1,
+            groups: previousGroups.groups.map((group) => ({
+              ...group,
+              resourceIds: group.resourceIds.filter((id) => id !== command.resourceId),
+            })),
+          });
+          outcome = { ok: true, resourceId: command.resourceId };
         } else if (command.command === 'create-group') {
           this.activityStore.createGroup(command.name); outcome = { ok: true };
         } else if (command.command === 'rename-group') {
@@ -133,10 +188,13 @@ class PageFavoriteController {
         } else if (command.command === 'reorder-groups') {
           this.activityStore.reorderGroups(command.groupIds); outcome = { ok: true };
         } else if (command.command === 'move-resource') {
+          if (!previousFavorites.entries.includes(command.resourceId)) {
+            this.activityStore.toggleFavorite(command.resourceId, resources);
+          }
           this.activityStore.moveResource(
             command.resourceId, command.groupId, command.index,
           );
-          outcome = { ok: true };
+          outcome = { ok: true, favorite: true };
         } else {
           throw new Error('workspace command is unsupported');
         }
@@ -146,6 +204,7 @@ class PageFavoriteController {
       return {
         commit,
         rollback: () => {
+          this.saveSettings(settings);
           this.activityStore.replaceFavorites(previousFavorites);
           this.activityStore.replaceGroups(previousGroups);
         },

@@ -3,10 +3,16 @@
 const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
 const GROUP_NAME_MAX = 30;
+const RESOURCE_CATEGORIES = new Set([
+  'getting-started', 'learning', 'research', 'finance', 'career', 'campus-life',
+  'applications', 'services', 'common', 'academic', 'campus-service', 'custom',
+]);
 const COMMANDS = new Set([
   'ready',
   'open-resource',
   'toggle-favorite',
+  'rename-resource',
+  'delete-resource',
   'manage-rules',
   'create-group',
   'rename-group',
@@ -28,6 +34,16 @@ function normalizeWorkspaceCommand(value) {
     return keys.length === 1 ? Object.freeze({ command: source.command }) : null;
   }
   if (source.command === 'open-resource' || source.command === 'toggle-favorite') {
+    return keys.length === 2 && RESOURCE_ID.test(source.resourceId)
+      ? Object.freeze({ command: source.command, resourceId: source.resourceId }) : null;
+  }
+  if (source.command === 'rename-resource') {
+    const name = typeof source.name === 'string' ? source.name.trim() : '';
+    return keys.length === 3 && RESOURCE_ID.test(source.resourceId) && name &&
+      name.length <= 40 && !/[\u0000-\u001f\u007f<>]/u.test(name)
+      ? Object.freeze({ command: source.command, resourceId: source.resourceId, name }) : null;
+  }
+  if (source.command === 'delete-resource') {
     return keys.length === 2 && RESOURCE_ID.test(source.resourceId)
       ? Object.freeze({ command: source.command, resourceId: source.resourceId }) : null;
   }
@@ -79,7 +95,7 @@ function projectWorkspaceResources(value) {
         !resource.name.trim() || resource.name.length > 80 ||
         /[\u0000-\u001f\u007f<>]/u.test(resource.name) ||
         !['campus', 'direct'].includes(resource.route) ||
-        !['common', 'academic', 'campus-service', 'custom'].includes(resource.category) ||
+        !RESOURCE_CATEGORIES.has(resource.category) ||
         !Array.isArray(keywords) || keywords.length > 12 ||
         keywords.some((keyword) => typeof keyword !== 'string' || keyword.length > 40 ||
           /[\u0000-\u001f\u007f<>]/u.test(keyword)) ||

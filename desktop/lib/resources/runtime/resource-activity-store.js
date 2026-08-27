@@ -98,6 +98,12 @@ class ResourceActivityStore {
     return next;
   }
 
+  replaceRecent(document) {
+    const next = validateRecentResourceDocument(document);
+    this.#write(this.recentFile, next);
+    return next;
+  }
+
   recordOpen(resourceId, resources) {
     const current = this.#read(
       this.recentFile,

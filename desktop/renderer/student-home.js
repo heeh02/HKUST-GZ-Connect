@@ -12,6 +12,14 @@
   'use strict';
 
   const RESOURCE_ICONS = Object.freeze({
+    'getting-started': '<svg viewBox="0 0 24 24"><path d="m4 9 8-5 8 5M6 10v9h12v-9M9 19v-5h6v5"/></svg>',
+    learning: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6.5A2.5 2.5 0 0 1 13 8v11a2.5 2.5 0 0 0-2.5-2.5H4zM20 5.5h-4.5A2.5 2.5 0 0 0 13 8v11a2.5 2.5 0 0 1 2.5-2.5H20z"/></svg>',
+    research: '<svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3M8 15h8"/></svg>',
+    finance: '<svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h3M14 12h2M8 16h3M14 16h2"/></svg>',
+    career: '<svg viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 12h16M10 12v2h4v-2"/></svg>',
+    'campus-life': '<svg viewBox="0 0 24 24"><path d="m4 9 8-5 8 5M5.5 9.5h13v10h-13zM9 19.5v-6h6v6M3.5 20h17"/></svg>',
+    applications: '<svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM14 3v4h4M9 11h6M9 15h6M9 19h4"/></svg>',
+    services: '<svg viewBox="0 0 24 24"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z"/></svg>',
     common: '<svg viewBox="0 0 24 24"><path d="M7 4.5h10M8 3h8v3H8zM6 5.5h12v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/></svg>',
     academic: '<svg viewBox="0 0 24 24"><path d="M4 5.5h6.5A2.5 2.5 0 0 1 13 8v11a2.5 2.5 0 0 0-2.5-2.5H4z"/><path d="M20 5.5h-4.5A2.5 2.5 0 0 0 13 8v11a2.5 2.5 0 0 1 2.5-2.5H20z"/></svg>',
     'campus-service': '<svg viewBox="0 0 24 24"><path d="m4 9 8-5 8 5M5.5 9.5h13v10h-13z"/><path d="M9 19.5v-6h6v6M3.5 20h17"/></svg>',
@@ -19,7 +27,9 @@
   });
 
   function resourceIconKind(category) {
-    return Object.hasOwn(RESOURCE_ICONS, category) ? category : 'custom';
+    const aliases = { common: 'services', academic: 'learning', 'campus-service': 'campus-life' };
+    const normalized = aliases[category] || category;
+    return Object.hasOwn(RESOURCE_ICONS, normalized) ? normalized : 'custom';
   }
 
   function resourceIcon(category) {

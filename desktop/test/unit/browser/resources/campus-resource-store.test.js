@@ -42,6 +42,16 @@ test('editing a shortcut preserves its id and replaces its fields', () => {
   assert.equal(edited.resources.length, 1);
 });
 
+test('editing a browser-captured shortcut preserves its favorite-only lifecycle', () => {
+  const first = upsertCustomResource([], {
+    name: 'Captured', url: 'https://captured.example.edu/', favoriteOnly: true,
+  });
+  const edited = upsertCustomResource(first.resources, {
+    id: first.resource.id, name: 'Renamed', url: first.resource.url, route: 'campus',
+  });
+  assert.equal(edited.resource.favoriteOnly, true);
+});
+
 test('deleting and reordering only affect local shortcuts', () => {
   const first = upsertCustomResource([], { name: 'A', url: 'https://a.example.com' });
   const second = upsertCustomResource(first.resources, { name: 'B', url: 'https://b.example.com' });

@@ -183,7 +183,7 @@ test('loads the reviewed HKUST packaged registry and bounded views', () => {
   ]);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
   assert.equal(profile.browser.officialPortalResourceId, 'official-portal');
-  assert.equal(registry.getBuiltinResources('hkustgz').length, 16);
+  assert.equal(registry.getBuiltinResources('hkustgz').length, 30);
   assert.equal(registry.getBuiltinResources('hkustgz').find(
     ({ id }) => id === profile.browser.officialPortalResourceId,
   )?.url, 'https://myportal.hkust-gz.edu.cn/');

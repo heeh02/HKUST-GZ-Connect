@@ -12,6 +12,11 @@ function command(name, payload = {}) {
   if (NO_VALUE.has(name)) message = { command: name };
   else if (RESOURCE.has(name) && RESOURCE_ID.test(payload.resourceId)) {
     message = { command: name, resourceId: payload.resourceId };
+  } else if (name === 'rename-resource' && RESOURCE_ID.test(payload.resourceId) &&
+             typeof payload.name === 'string') {
+    message = { command: name, resourceId: payload.resourceId, name: payload.name };
+  } else if (name === 'delete-resource' && RESOURCE_ID.test(payload.resourceId)) {
+    message = { command: name, resourceId: payload.resourceId };
   } else if (name === 'create-group' && typeof payload.name === 'string') {
     message = { command: name, name: payload.name };
   } else if (name === 'rename-group' && GROUP_ID.test(payload.groupId) &&

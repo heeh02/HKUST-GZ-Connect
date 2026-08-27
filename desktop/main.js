@@ -217,7 +217,7 @@ const resourceLibraryRuntime = new ResourceLibraryRuntime({
   favoritesFile: RESOURCE_FAVORITES,
   recentFile: RESOURCE_RECENTS,
   platform: process.platform,
-  loadResources: (settings) => safeCampusResources(settings),
+  loadResources: (settings) => safeCampusResources(settings), loadAliases: (settings) => activeSchoolProfile.resourceActivityAliases((settings || loadSettingsOrReport()).customResources),
   captureContext: () => activeContextLease.captureContext(),
   isContextCurrent: (context) => activeContextLease.isContextCurrent(context),
   openRequest: (request) => campusBrowserManager.open(request),

@@ -12,6 +12,7 @@ const {
   normalizeResource,
   projectCampusResources,
   projectWebResourceLibrary,
+  resourceActivityAliases,
 } = require('../../../../lib/resources/runtime/campus-resources');
 const {
   MAX_BUILTIN_RESOURCES,
@@ -193,4 +194,7 @@ test('legacy cross-source duplicates keep builtin-first startup behavior and pro
   });
   assert.equal(custom.length, 1, 'legacy duplicate remains in settings so the user can delete it');
   assert.deepEqual(mergeCampusResources(builtins, custom), projection.resources);
+  assert.deepEqual(resourceActivityAliases(builtins, custom), [{
+    from: 'legacy-home-copy', to: 'home',
+  }]);
 });

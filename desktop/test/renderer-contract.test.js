@@ -84,7 +84,10 @@ test('WebResource shelf supports responsive ID-only search categories favorites 
   for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
-  for (const view of ['favorites', 'recent', 'common', 'academic', 'campus-service', 'custom']) {
+  for (const view of [
+    'favorites', 'recent', 'getting-started', 'learning', 'research', 'finance',
+    'career', 'campus-life', 'applications', 'services', 'custom',
+  ]) {
     assert.match(html, new RegExp(`value="${view}"`, 'u'));
   }
   assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
@@ -129,7 +132,7 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   const workspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-workspace.js'), 'utf8');
   const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
   for (const id of [
-    'workspaceSearch', 'workspaceFilters', 'officialModule', 'favoritesModule',
+    'workspaceSearch', 'workspaceFilters', 'officialLaunch', 'favoritesModule',
     'favoriteGroups', 'recentModule', 'servicesModule', 'manageRules', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
   assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);

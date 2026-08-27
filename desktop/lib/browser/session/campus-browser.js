@@ -13,7 +13,10 @@ const { normalizeRuleHost } = require('../../routing/rules/routing-rule-store');
 const { normalizeToolbarCommand } = require('../toolbar/campus-toolbar-contract');
 const { CertificateController } = require('../certificates/certificate-controller');
 const { CredentialController } = require('../credentials/credential-controller');
-const { normalizePageFavoriteCandidate } = require('../../resources/schema/campus-resource-contract');
+const {
+  RESOURCE_CATEGORIES,
+  normalizePageFavoriteCandidate,
+} = require('../../resources/schema/campus-resource-contract');
 const {
   BrowserSessionManager,
   applyCampusSessionPolicy,
@@ -186,7 +189,7 @@ function workspaceHomeResources(value, t = createT('zh')) {
       description: resource.description,
       url,
       route: resource.route,
-      category: ['common', 'academic', 'campus-service', 'custom'].includes(resource.category)
+      category: RESOURCE_CATEGORIES.includes(resource.category)
         ? resource.category : 'custom',
       favorite: resource.favorite,
       lastOpenedAt: resource.lastOpenedAt,

@@ -5,27 +5,43 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { CampusWorkspaceController } = require('../lib/browser/workspace/campus-workspace-controller');
+const {
+  parseBuiltinResourceDocument,
+} = require('../lib/resources/schema/campus-resource-contract');
 
+const favoriteTimes = new Map([
+  ['canvas', [true, 900]], ['library', [true, 800]], ['outlook', [true, 600]],
+  ['sis', [false, 500]], ['class-schedule', [false, 400]], ['room-booking', [false, 300]],
+]);
+const reviewed = parseBuiltinResourceDocument(fs.readFileSync(path.join(
+  __dirname, '..', 'assets', 'profiles', 'hkustgz', 'builtin-resources.json',
+)));
 const resources = Object.freeze([
-  ['official-portal', 'myPortal 官方门户', 'common', 'campus', false, null],
-  ['canvas', 'Canvas 教学平台', 'academic', 'direct', true, 900],
-  ['library', '图书馆', 'academic', 'campus', true, 800],
-  ['hpc', 'HPC 登录入口', 'custom', 'campus', true, 700],
-  ['outlook', 'Outlook 邮箱', 'common', 'direct', true, 600],
-  ['sis', '学生信息系统 SIS', 'academic', 'campus', false, 500],
-  ['schedule', '课表与课程容量', 'academic', 'campus', false, 400],
-  ['booking', '教室预约系统', 'campus-service', 'campus', false, 300],
-  ['forms', 'E-form System', 'campus-service', 'campus', false, null],
-  ['home', '学校主页', 'campus-service', 'campus', false, null],
-].map(([id, name, category, route, favorite, lastOpenedAt]) => Object.freeze({
-  id, name, description: `${name} fixture`, url: `https://${id}.example.edu/`,
-  category, route, favorite, lastOpenedAt,
-})));
+  ...reviewed.map((resource) => {
+    const [favorite = false, lastOpenedAt = null] = favoriteTimes.get(resource.id) || [];
+    return Object.freeze({
+      ...resource,
+      name: resource.localizedName.zh,
+      description: resource.localizedDescription.zh,
+      favorite,
+      lastOpenedAt,
+    });
+  }),
+  Object.freeze({
+    id: 'hpc', name: 'HPC 登录入口', description: 'Fixture',
+    url: 'https://hpc.example.edu/', category: 'custom', route: 'campus',
+    favorite: true, lastOpenedAt: 700, builtin: false, keywords: ['HPC'],
+  }),
+]);
 
 async function inspect(window) {
   return window.webContents.executeJavaScript(`(() => {
-    const grid = document.getElementById('servicesGrid');
-    const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+    const serviceContainer = document.getElementById('servicesGrid');
+    const serviceGrid = serviceContainer.querySelector('.resource-grid') || serviceContainer;
+    const serviceColumns = getComputedStyle(serviceGrid).gridTemplateColumns
+      .split(' ').filter(Boolean).length;
+    const serviceModules = serviceContainer.classList.contains('task-service-groups')
+      ? getComputedStyle(serviceContainer).gridTemplateColumns.split(' ').filter(Boolean).length : 1;
     const groupGrid = document.querySelector('.favorite-group .resource-grid');
     const groupColumns = groupGrid
       ? getComputedStyle(groupGrid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
@@ -34,14 +50,14 @@ async function inspect(window) {
       .split(' ').filter(Boolean).length;
     return {
       width: innerWidth,
-      columns,
+      columns: serviceColumns * serviceModules,
       groupColumns,
       groupModules,
       cards: new Set([...document.querySelectorAll('.resource-item')].map((card) => card.dataset.resourceId)).size,
       visibleCards: [...document.querySelectorAll('.resource-item')].filter((card) => !card.hidden).length,
       hasSearch: !!document.getElementById('workspaceSearch'),
       chipLabels: [...document.querySelectorAll('.filter-button')].map((button) => button.textContent.trim()),
-      officialVisible: !document.getElementById('officialModule').hidden,
+      officialVisible: !document.getElementById('officialLaunch').hidden,
     };
   })()`);
 }
@@ -89,7 +105,7 @@ async function main() {
     const state = await inspect(window);
     process.stdout.write(`${label}: ${JSON.stringify(state)}\n`);
     assert.equal(state.width, width);
-    assert.equal(state.cards, resources.length);
+    assert.equal(state.cards, resources.length - 1);
     assert.equal(state.hasSearch, true);
     assert.equal(state.officialVisible, true);
     assert.ok(state.columns >= minimumColumns, `${label} did not use available width`);
@@ -97,6 +113,25 @@ async function main() {
       `${label} group layout did not use available width`);
     await capture(window, label);
   }
+
+  const taskTaxonomy = await window.webContents.executeJavaScript(`(() => {
+    const visibleIds = () => [...new Set([...document.querySelectorAll('.resource-item')]
+      .filter((card) => !card.closest('[hidden]')).map((card) => card.dataset.resourceId))];
+    const search = document.getElementById('workspaceSearch');
+    search.value = '请假';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const leave = visibleIds().sort();
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    [...document.querySelectorAll('.filter-button')]
+      .find((button) => button.textContent === '缴费与报销').click();
+    const finance = visibleIds().sort();
+    [...document.querySelectorAll('.filter-button')]
+      .find((button) => button.textContent === '全部').click();
+    return { leave, finance };
+  })()`);
+  assert.deepEqual(taskTaxonomy.leave, ['e-form', 'student-request-guide']);
+  assert.deepEqual(taskTaxonomy.finance, ['e-tender', 'pbms', 'student-finance']);
 
   const filtered = await window.webContents.executeJavaScript(`(() => {
     const search = document.getElementById('workspaceSearch');
@@ -116,20 +151,46 @@ async function main() {
   assert.deepEqual(favoriteFilter.sort(), ['canvas', 'hpc', 'library', 'outlook']);
   await window.webContents.executeJavaScript(`(() => {
     document.querySelector('.resource-star').click();
+    document.getElementById('officialLaunch').click();
     document.getElementById('manageRules').click();
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
     document.getElementById('saveGroup').click();
     document.getElementById('toggleManage').click();
+    [...document.querySelectorAll('.filter-button')]
+      .find((button) => button.textContent === '全部').click();
     const select = document.querySelector('.resource-group-select');
     select.value = 'group_abcdefghijkl';
     select.dispatchEvent(new Event('change', { bubbles: true }));
+    const dragData = new DataTransfer();
+    const discovered = document.querySelector('[data-resource-id="class-schedule"]');
+    const targetGroup = document.querySelector('[data-group-id="group_abcdefghijkl"]');
+    discovered.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dragData }));
+    targetGroup.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dragData }));
+    targetGroup.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dragData }));
+    discovered.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dragData }));
+    const custom = document.querySelector('[data-resource-id="hpc"]');
+    custom.querySelector('.resource-rename').click();
+    document.getElementById('groupName').value = '科研服务器';
+    document.getElementById('saveGroup').click();
+    custom.querySelector('.resource-delete').click();
+    custom.querySelector('.resource-delete').click();
   })()`);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
+  assert.equal(commands.some(({ command, resourceId }) =>
+    command === 'open-resource' && resourceId === 'official-portal'), true);
   assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);
   assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
   assert.equal(commands.some(({ command }) => command === 'move-resource'), true);
+  assert.equal(commands.some(({ command, resourceId, groupId }) =>
+    command === 'move-resource' && resourceId === 'class-schedule' &&
+    groupId === 'group_abcdefghijkl'), true);
+  assert.equal(commands.some(({ command, resourceId, name }) =>
+    command === 'rename-resource' && resourceId === 'hpc' && name === '科研服务器'), true);
+  assert.equal(commands.some(({ command, resourceId }) =>
+    command === 'delete-resource' && resourceId === 'hpc'), true);
+  await capture(window, 'manage');
   window.destroy();
   process.stdout.write('campus workspace layout: PASS\n');
   app.quit();

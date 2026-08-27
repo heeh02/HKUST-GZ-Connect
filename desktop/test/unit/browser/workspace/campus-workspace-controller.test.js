@@ -16,6 +16,16 @@ test('Workspace command contract is ID-only bounded and one-level', () => {
     command: 'manage-rules',
   });
   assert.deepEqual(normalizeWorkspaceCommand({
+    command: 'rename-resource', resourceId: 'custom-site', name: '科研入口',
+  }), {
+    command: 'rename-resource', resourceId: 'custom-site', name: '科研入口',
+  });
+  assert.deepEqual(normalizeWorkspaceCommand({
+    command: 'delete-resource', resourceId: 'custom-site',
+  }), {
+    command: 'delete-resource', resourceId: 'custom-site',
+  });
+  assert.deepEqual(normalizeWorkspaceCommand({
     command: 'move-resource', resourceId: 'canvas', groupId: 'group_abcdefghijkl', index: 2,
   }), {
     command: 'move-resource', resourceId: 'canvas', groupId: 'group_abcdefghijkl', index: 2,
@@ -24,6 +34,9 @@ test('Workspace command contract is ID-only bounded and one-level', () => {
     command: 'open-resource', resourceId: 'canvas', url: 'https://evil.example/',
   }), null);
   assert.equal(normalizeWorkspaceCommand({ command: 'create-group', name: '<script>' }), null);
+  assert.equal(normalizeWorkspaceCommand({
+    command: 'rename-resource', resourceId: 'custom-site', name: '<script>',
+  }), null);
   assert.equal(normalizeWorkspaceCommand({
     command: 'move-resource', resourceId: 'canvas', groupId: 'nested/path', index: 0,
   }), null);

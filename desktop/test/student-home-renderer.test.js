@@ -27,8 +27,8 @@ test('ordinary Student Home renders unique favorites recent and recommendations'
   assert.equal((view.html.match(/data-campus-id="library"/gu) || []).length, 1);
   assert.doesNotMatch(view.html, /resources\.sourceReviewed|resources\.sourceLocal/u);
   assert.doesNotMatch(view.html, /class="resource-desc"/u);
-  assert.match(view.html, /class="resource-icon resource-icon-common"/u);
-  assert.match(view.html, /class="resource-icon resource-icon-academic"/u);
+  assert.match(view.html, /class="resource-icon resource-icon-services"/u);
+  assert.match(view.html, /class="resource-icon resource-icon-learning"/u);
   assert.match(view.html, /class="resource-copy"/u);
   assert.match(view.html, /resource-section-favorites/u);
   assert.match(view.html, /resource-route-short/u);

@@ -16,6 +16,7 @@ class FakeActivityStore {
     return this.favorites;
   }
   replaceFavorites(document) { this.favorites = document; return document; }
+  replaceRecent(document) { this.recent = document; return document; }
   recordOpen(resourceId) {
     this.recent = { schemaVersion: 1, entries: [{ resourceId, openedAt: 10 }] };
   }
@@ -47,6 +48,43 @@ test('ID-only open resolves inside Main ownership and records activity after suc
   assert.equal(result.resources[0].lastOpenedAt, 10);
   assert.equal(result.resources[0].name, '邮箱');
   assert.equal(Object.hasOwn(result, 'url'), false);
+});
+
+test('reviewed URL additions migrate favorite recent and group IDs without losing activity', () => {
+  class AliasedActivityStore extends FakeActivityStore {
+    constructor(options) {
+      super(options);
+      this.favorites = { schemaVersion: 1, entries: ['custom-old'] };
+      this.recent = {
+        schemaVersion: 1,
+        entries: [{ resourceId: 'custom-old', openedAt: 20 }],
+      };
+    }
+  }
+  class GroupStore {
+    constructor() {
+      this.document = { schemaVersion: 1, groups: [{
+        id: 'group_abcdefghijkl', name: '学习', resourceIds: ['custom-old'],
+      }] };
+    }
+    snapshot() { return structuredClone(this.document); }
+    replace(document) { this.document = structuredClone(document); return this.document; }
+  }
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json', recentFile: '/fixture/recent.json',
+    platform: 'darwin', loadResources: () => resources,
+    loadAliases: () => [{ from: 'custom-old', to: 'outlook' }],
+    captureContext: () => ({ epoch: 1 }), isContextCurrent: () => true,
+    openRequest: async () => ({ ok: true }), ActivityStoreClass: AliasedActivityStore,
+    GroupStoreClass: GroupStore,
+  });
+  assert.equal(runtime.list()[0].favorite, true);
+  assert.equal(runtime.list()[0].lastOpenedAt, 20);
+  assert.deepEqual(runtime.listGroups()[0].resourceIds, ['outlook']);
+  assert.deepEqual(runtime.snapshot(), {
+    favorites: { schemaVersion: 1, entries: ['outlook'] },
+    recent: { schemaVersion: 1, entries: [{ resourceId: 'outlook', openedAt: 20 }] },
+  });
 });
 
 test('resource presentation selects reviewed text for the active locale', () => {

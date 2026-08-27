@@ -20,6 +20,16 @@ const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|i
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
 const RESOURCE_CATEGORIES = Object.freeze([
+  'getting-started',
+  'learning',
+  'research',
+  'finance',
+  'career',
+  'campus-life',
+  'applications',
+  'services',
+  // Compatibility aliases retained for reviewed Profiles produced before the
+  // student-task taxonomy was introduced.
   'common',
   'academic',
   'campus-service',
@@ -122,8 +132,13 @@ function normalizedResource(value, {
   exact,
   defaultRoute = ROUTE_CAMPUS,
 } = {}) {
+  const allowedKeys = [
+    'id', 'name', 'description', 'localizedName', 'localizedDescription',
+    'url', 'route', 'category', 'keywords',
+  ];
+  if (builtin !== true) allowedKeys.push('favoriteOnly');
   const source = exact
-    ? exactKeys(value, ['id', 'name', 'description', 'localizedName', 'localizedDescription', 'url', 'route', 'category', 'keywords'],
+    ? exactKeys(value, allowedKeys,
       ['id', 'name', 'description', 'url'], 'WebResource')
     : plainObject(value, 'WebResource');
   const id = boundedText(source.id, MAX_RESOURCE_ID_LENGTH, 'resource id');
@@ -177,7 +192,10 @@ function normalizedResource(value, {
   if (builtin === true && (localizedName.zh !== name || localizedDescription.zh !== description)) {
     throw new TypeError('reviewed resource Chinese compatibility text drifted');
   }
-  return deepFreeze({
+  if (source.favoriteOnly != null && typeof source.favoriteOnly !== 'boolean') {
+    throw new TypeError('resource favorite lifecycle is invalid');
+  }
+  const resource = {
     schemaVersion: WEB_RESOURCE_SCHEMA_VERSION,
     id,
     localizedName,
@@ -191,7 +209,9 @@ function normalizedResource(value, {
     iconKey: null,
     reviewed: reviewed === true,
     builtin: builtin === true,
-  });
+  };
+  if (builtin !== true && source.favoriteOnly === true) resource.favoriteOnly = true;
+  return deepFreeze(resource);
 }
 
 function validateUniqueResources(resources, name) {
@@ -326,6 +346,7 @@ function normalizeResource(value) {
     route,
     category: value.category,
     keywords: value.keywords,
+    favoriteOnly: value.favoriteOnly,
   }, route);
 }
 
