@@ -296,8 +296,8 @@ async function assertStudentHome(window) {
     assert.equal(view.visibleItems, expectedItems, `${width}px: responsive resource budget`);
     assert.equal(view.descriptions, 0, `${width}px: website explanation text returned`);
     assert.equal(view.firstDivider, 'solid', `${width}px: website divider disappeared`);
-    assert.equal(view.chipsDisplay === 'none', width < 900, `${width}px: category chip visibility`);
-    assert.equal(view.selectDisplay !== 'none', width < 900, `${width}px: category select visibility`);
+    assert.notEqual(view.chipsDisplay, 'none', `${width}px: category chips disappeared`);
+    assert.equal(view.selectDisplay, 'none', `${width}px: legacy category select became visible`);
     if (width >= 900) {
       assert.equal(view.sectionColumns, 2, `${width}px: wide resource modules`);
       assert.equal(view.recommendedColumns, 4, `${width}px: wide recommended resource columns`);
@@ -332,22 +332,22 @@ async function assertStudentHome(window) {
       `${width}px: Show All column count`);
     assert.equal(expanded.expanded, 'true', `${width}px: Show All accessibility state`);
 
-    if (width >= 900) {
+    {
       const chips = await window.webContents.executeJavaScript(`(() => {
-        document.querySelector('[data-resource-view="academic"]').click();
+        document.querySelector('[data-resource-view="custom"]').click();
         const selected = document.getElementById('resourceView').value;
-        const pressed = document.querySelector('[data-resource-view="academic"]')
+        const pressed = document.querySelector('[data-resource-view="custom"]')
           .getAttribute('aria-pressed');
-        const allAcademic = [...document.querySelectorAll('.resource-card')].every((row) => {
+        const allCustom = [...document.querySelectorAll('.resource-card')].every((row) => {
           const id = row.dataset.campusId;
-          return Number(id.replace('fixture-', '')) % 4 === 1;
+          return Number(id.replace('fixture-', '')) % 4 === 3;
         });
         document.querySelector('[data-resource-view="all"]').click();
-        return { selected, pressed, allAcademic };
+        return { selected, pressed, allCustom };
       })()`);
-      assert.equal(chips.selected, 'academic', 'wide category chips did not sync the select');
-      assert.equal(chips.pressed, 'true', 'wide category chip did not expose its active state');
-      assert.equal(chips.allAcademic, true, 'wide category chip did not filter resources');
+      assert.equal(chips.selected, 'custom', `${width}px: category chips did not sync state`);
+      assert.equal(chips.pressed, 'true', `${width}px: category chip active state`);
+      assert.equal(chips.allCustom, true, `${width}px: category chip did not filter resources`);
     }
   }
 }

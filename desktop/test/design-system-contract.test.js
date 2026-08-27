@@ -41,6 +41,8 @@ test('2.0.1 portal shelf grows from two columns into modular three and four-colu
   assert.match(controlCss, /\.resource-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
   assert.match(controlCss, /\.resource-route-short\s*\{[^}]*position:\s*absolute/u);
   assert.match(controlHtml, /id="resourceViewChips"/u);
+  assert.match(controlCss, /\.resource-view-chips\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/u);
+  assert.match(controlHtml, /id="resourceView"[^>]*hidden[^>]*tabindex="-1"/u);
   assert.match(controlHtml, /EasyConnect[\s\S]{0,100}connect\.easyConnectCompatible/u);
 });
 
