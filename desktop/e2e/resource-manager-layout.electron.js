@@ -241,9 +241,19 @@ async function exerciseBuiltinResourceRemoval(window) {
 }
 
 async function assertStudentHome(window) {
-  for (const [width, expectedColumns] of [[420, 2], [960, 2]]) {
+  for (const [width, expectedMode, expectedColumns, expectedItems] of [
+    [420, 'compact', 2, 12],
+    [620, 'standard', 3, 18],
+    [960, 'wide', 2, 24],
+  ]) {
     window.setContentSize(width, 720);
     await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
+    await window.webContents.executeJavaScript(
+      `document.querySelector('.nav[data-page="connect"]').click()`,
+    );
+    await waitFor(window,
+      `document.getElementById('resourceShelf').dataset.resourceLayout === '${expectedMode}'`,
+      `Student Home ${width}px resource layout`);
     const view = await window.webContents.executeJavaScript(`(() => {
       document.querySelector('.nav[data-page="connect"]').click();
       const grid = document.querySelector('.resource-section .resource-grid');
@@ -251,27 +261,94 @@ async function assertStudentHome(window) {
       const search = document.getElementById('resourceSearch').getBoundingClientRect();
       const manual = document.querySelector('.custom-url-details').getBoundingClientRect();
       const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+      const firstItem = document.querySelector('.resource-card');
+      const chips = document.getElementById('resourceViewChips');
+      const select = document.getElementById('resourceView');
+      const sectionColumns = getComputedStyle(document.getElementById('campusResources'))
+        .gridTemplateColumns.split(' ').filter(Boolean).length;
+      const recommended = document.querySelector('.resource-section-recommended .resource-grid');
       const content = document.querySelector('.content');
-      content.scrollTop = content.scrollHeight;
-      document.querySelector('.nav[data-page="settings"]').click();
-      return {
+      const snapshot = {
         columns,
+        layoutMode: document.getElementById('resourceShelf').dataset.resourceLayout,
+        visibleItems: document.querySelectorAll('.resource-card').length,
+        descriptions: document.querySelectorAll('.resource-desc, .resource-origin').length,
+        firstDivider: getComputedStyle(firstItem).borderBottomStyle,
+        chipsDisplay: getComputedStyle(chips).display,
+        selectDisplay: getComputedStyle(select).display,
+        sectionColumns,
+        recommendedColumns: recommended
+          ? getComputedStyle(recommended).gridTemplateColumns.split(' ').filter(Boolean).length
+          : 0,
         heroHeight: hero.height,
         resourceSections: document.querySelectorAll('.resource-section').length,
         searchBeforeManual: search.top < manual.top,
         towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
         diagnosticsClosed: !document.querySelector('.diagnostic-details').open,
-        scrollTopAfterPageSwitch: content.scrollTop,
       };
+      content.scrollTop = content.scrollHeight;
+      document.querySelector('.nav[data-page="settings"]').click();
+      snapshot.scrollTopAfterPageSwitch = content.scrollTop;
+      return snapshot;
     })()`);
     assert.equal(view.columns, expectedColumns, `${width}px: resource grid column count`);
-    assert.ok(view.heroHeight >= 180 && view.heroHeight <= 270,
-      `${width}px: classic connection card proportions changed unexpectedly`);
+    assert.equal(view.layoutMode, expectedMode, `${width}px: resource layout mode`);
+    assert.equal(view.visibleItems, expectedItems, `${width}px: responsive resource budget`);
+    assert.equal(view.descriptions, 0, `${width}px: website explanation text returned`);
+    assert.equal(view.firstDivider, 'solid', `${width}px: website divider disappeared`);
+    assert.equal(view.chipsDisplay === 'none', width < 900, `${width}px: category chip visibility`);
+    assert.equal(view.selectDisplay !== 'none', width < 900, `${width}px: category select visibility`);
+    if (width >= 900) {
+      assert.equal(view.sectionColumns, 2, `${width}px: wide resource modules`);
+      assert.equal(view.recommendedColumns, 4, `${width}px: wide recommended resource columns`);
+    }
+    if (width < 900) {
+      assert.ok(view.heroHeight >= 180 && view.heroHeight <= 270,
+        `${width}px: classic connection card proportions changed unexpectedly`);
+    } else {
+      assert.ok(view.heroHeight >= 100 && view.heroHeight <= 155,
+        `${width}px: wide connection module wastes vertical space`);
+    }
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
     assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
     assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);
     assert.equal(view.scrollTopAfterPageSwitch, 0, `${width}px: page switch retained stale scroll`);
+
+    const expanded = await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('.nav[data-page="connect"]').click();
+      document.getElementById('toggleResources').click();
+      const grid = document.querySelector('.resource-section-all .resource-grid');
+      const result = {
+        items: document.querySelectorAll('.resource-card').length,
+        columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
+        expanded: document.getElementById('toggleResources').getAttribute('aria-expanded'),
+      };
+      document.getElementById('toggleResources').click();
+      return result;
+    })()`);
+    assert.ok(expanded.items > expectedItems, `${width}px: Show All did not reveal more websites`);
+    assert.equal(expanded.columns, expectedMode === 'wide' ? 4 : expectedColumns,
+      `${width}px: Show All column count`);
+    assert.equal(expanded.expanded, 'true', `${width}px: Show All accessibility state`);
+
+    if (width >= 900) {
+      const chips = await window.webContents.executeJavaScript(`(() => {
+        document.querySelector('[data-resource-view="academic"]').click();
+        const selected = document.getElementById('resourceView').value;
+        const pressed = document.querySelector('[data-resource-view="academic"]')
+          .getAttribute('aria-pressed');
+        const allAcademic = [...document.querySelectorAll('.resource-card')].every((row) => {
+          const id = row.dataset.campusId;
+          return Number(id.replace('fixture-', '')) % 4 === 1;
+        });
+        document.querySelector('[data-resource-view="all"]').click();
+        return { selected, pressed, allAcademic };
+      })()`);
+      assert.equal(chips.selected, 'academic', 'wide category chips did not sync the select');
+      assert.equal(chips.pressed, 'true', 'wide category chip did not expose its active state');
+      assert.equal(chips.allAcademic, true, 'wide category chip did not filter resources');
+    }
   }
 }
 
@@ -319,6 +396,7 @@ async function captureVisualStates(window) {
     ['compact', 420, 720],
     ['standard', 620, 760],
     ['wide', 960, 760],
+    ['wide-tall', 1200, 900],
   ]) {
     window.setContentSize(width, height);
     await waitFor(window, `window.innerWidth === ${width}`, `${label} screenshot width`);

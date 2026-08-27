@@ -15,7 +15,8 @@ const escapeHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll(
 
 test('ordinary Student Home renders unique favorites recent and recommendations', () => {
   const view = renderStudentHome({
-    resources, query: '', view: 'all', expanded: false, translate, escapeHtml,
+    resources, query: '', view: 'all', expanded: false,
+    layout: { mode: 'compact', columns: 2, sectionLimit: 4 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.favoritesSection/u);
   assert.match(view.html, /resources\.recentSection/u);
@@ -24,20 +25,41 @@ test('ordinary Student Home renders unique favorites recent and recommendations'
   assert.equal((view.html.match(/data-campus-id="home"/gu) || []).length, 1);
   assert.equal((view.html.match(/data-campus-id="mail"/gu) || []).length, 1);
   assert.equal((view.html.match(/data-campus-id="library"/gu) || []).length, 1);
-  assert.match(view.html, /resources\.sourceReviewed/u);
-  assert.match(view.html, /resources\.sourceLocal/u);
+  assert.doesNotMatch(view.html, /resources\.sourceReviewed|resources\.sourceLocal/u);
+  assert.doesNotMatch(view.html, /class="resource-desc"/u);
   assert.match(view.html, /class="resource-icon resource-icon-common"/u);
   assert.match(view.html, /class="resource-icon resource-icon-academic"/u);
   assert.match(view.html, /class="resource-copy"/u);
+  assert.match(view.html, /resource-section-favorites/u);
+  assert.match(view.html, /resource-route-short/u);
   assert.doesNotMatch(view.html, /<img/u);
-  assert.equal(view.hasMore, false);
+  assert.equal(view.hasMore, true);
+});
+
+test('ordinary Student Home increases each section budget with the container layout', () => {
+  const many = Array.from({ length: 12 }, (_, index) => ({
+    ...resources[0], id: `favorite-${index}`, name: `Favorite ${index}`, favorite: true,
+    lastOpenedAt: null, reviewed: false, builtin: false,
+  }));
+  const compact = renderStudentHome({
+    resources: many, query: '', view: 'all', expanded: false,
+    layout: { mode: 'compact' }, translate, escapeHtml,
+  });
+  const wide = renderStudentHome({
+    resources: many, query: '', view: 'all', expanded: false,
+    layout: { mode: 'wide' }, translate, escapeHtml,
+  });
+  assert.equal((compact.html.match(/data-campus-id=/gu) || []).length, 4);
+  assert.equal((wide.html.match(/data-campus-id=/gu) || []).length, 8);
 });
 
 test('expanded Student Home replaces curated sections with one complete service grid', () => {
   const view = renderStudentHome({
-    resources, query: '', view: 'all', expanded: true, translate, escapeHtml,
+    resources, query: '', view: 'all', expanded: true,
+    layout: { mode: 'wide', columns: 4, sectionLimit: 8 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.allSection/u);
+  assert.match(view.html, /resource-section-all/u);
   assert.doesNotMatch(view.html, /resources\.favoritesSection|resources\.recentSection/u);
   assert.equal((view.html.match(/data-campus-id=/gu) || []).length, resources.length);
   assert.equal(view.hasMore, true);

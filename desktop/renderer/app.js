@@ -18,7 +18,7 @@ let campusActionBusy = false;
 let campusResources = [];
 let resourcesExpanded = false;
 let resourceQuery = '';
-let resourceView = 'all';
+let resourceLayoutFeature = null;
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
@@ -122,15 +122,24 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
+  const presentation = resourceLayoutFeature?.snapshot() || {
+    view: 'all', layout: window.resourceLayoutPolicy.layoutForWidth(0),
+  };
   const rendered = window.studentHome.renderStudentHome({
     resources: campusResources,
     query: resourceQuery,
-    view: resourceView,
+    view: presentation.view,
     expanded: resourcesExpanded,
+    layout: presentation.layout,
     translate: t,
     escapeHtml: esc,
   });
-  $('campusResources').innerHTML = rendered.html;
+  const shelf = $('resourceShelf');
+  const sections = $('campusResources');
+  shelf.dataset.resourceLayout = presentation.layout.mode;
+  sections.classList.toggle('focused', resourcesExpanded || resourceQuery.length > 0 || presentation.view !== 'all');
+  sections.innerHTML = rendered.html;
+  resourceLayoutFeature?.syncControls();
   const toggle = $('toggleResources');
   toggle.hidden = !rendered.hasMore;
   toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
@@ -372,10 +381,6 @@ $('resourceSearch').addEventListener('input', (event) => {
   resourceQuery = event.target.value.trim();
   renderResources();
 });
-$('resourceView').addEventListener('change', (event) => {
-  resourceView = event.target.value;
-  renderResources();
-});
 
 // control tower
 async function saveTower() {
@@ -554,4 +559,6 @@ resourceEditorManager = window.resourceManager.start({
   saveResource: saveCampusResource,
   setSaved: setResourceSaved,
 });
+resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
+resourceLayoutFeature.start();
 init();

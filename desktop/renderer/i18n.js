@@ -127,6 +127,7 @@
       'connect.disconnected': '未连接',
       'connect.connecting': '连接中…',
       'connect.connected': '已连接',
+      'connect.easyConnectCompatible': '兼容接入',
 
       'quick.title': '打开校园网站',
       'quick.sub': '应用内多标签浏览器，无需 Clash，不影响其他软件上网',
@@ -158,6 +159,8 @@
       'resources.changesSaved': '已保存修改',
       'resources.routeCampus': '校园隧道',
       'resources.routeDirect': '直连',
+      'resources.routeCampusShort': '校',
+      'resources.routeDirectShort': '直',
       'resources.sourceReviewed': '学校预设',
       'resources.sourceLocal': '本机添加',
       'resources.searchPlaceholder': '搜索网站',
@@ -575,6 +578,7 @@
       'connect.disconnected': 'Disconnected',
       'connect.connecting': 'Connecting…',
       'connect.connected': 'Connected',
+      'connect.easyConnectCompatible': 'compatible access',
 
       'quick.title': 'Open Campus Sites',
       'quick.sub': 'Built-in tabbed browser — no Clash needed, other apps are unaffected',
@@ -606,6 +610,8 @@
       'resources.changesSaved': 'Changes saved',
       'resources.routeCampus': 'Campus tunnel',
       'resources.routeDirect': 'Direct',
+      'resources.routeCampusShort': 'Campus',
+      'resources.routeDirectShort': 'Direct',
       'resources.sourceReviewed': 'School preset',
       'resources.sourceLocal': 'Added on this device',
       'resources.searchPlaceholder': 'Search sites',

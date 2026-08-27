@@ -31,11 +31,17 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('2.0.1 portal shelf keeps a stable two-column desktop rhythm', () => {
+test('2.0.1 portal shelf grows from two columns into modular three and four-column layouts', () => {
   assert.match(controlCss, /\.resource-grid\s*\{[^}]*repeat\(2,/u);
+  assert.match(controlCss, /data-resource-layout="standard"[^}]*[\s\S]{0,80}repeat\(3,/u);
+  assert.match(controlCss, /data-resource-layout="wide"[\s\S]{0,900}repeat\(4,/u);
   assert.match(controlCss, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*1fr/u);
   assert.match(controlCss, /\.resource-link\s*\{[^}]*grid-template-columns:\s*38px minmax\(0, 1fr\)[^}]*border:\s*0/u);
-  assert.match(controlCss, /\.resource-icon\s*\{[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
+  assert.match(controlCss, /\.resource-card\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/u);
+  assert.match(controlCss, /\.resource-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
+  assert.match(controlCss, /\.resource-route-short\s*\{[^}]*position:\s*absolute/u);
+  assert.match(controlHtml, /id="resourceViewChips"/u);
+  assert.match(controlHtml, /EasyConnect[\s\S]{0,100}connect\.easyConnectCompatible/u);
 });
 
 test('2.0.1 restores the compact classic shell while avoiding nested website cards', () => {

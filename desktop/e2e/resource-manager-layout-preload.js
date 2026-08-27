@@ -15,7 +15,7 @@ const builtinResource = Object.freeze({
   lastOpenedAt: null,
   builtin: true,
 });
-let resources = [builtinResource, ...Array.from({ length: 18 }, (_, index) => ({
+let resources = [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
   id: `fixture-${index}`,
   name: fixtureLocale === 'en' ? `Test Site ${index + 1}` : `测试网站 ${index + 1}`,
   url: `https://fixture-${index}.example.edu/`,
@@ -23,9 +23,9 @@ let resources = [builtinResource, ...Array.from({ length: 18 }, (_, index) => ({
   route: index % 2 ? 'direct' : 'campus',
   category: ['common', 'academic', 'campus-service', 'custom'][index % 4],
   keywords: [],
-  favorite: index < 4,
-  lastOpenedAt: index >= 4 && index < 8 ? 100 - index : null,
-  reviewed: index >= 8 && index < 12,
+  favorite: index < 10,
+  lastOpenedAt: index >= 10 && index < 20 ? 100 - index : null,
+  reviewed: index >= 20,
   builtin: false,
 }))];
 let lastOpenRequest = null;

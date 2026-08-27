@@ -90,15 +90,18 @@
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
         <div class="hero-card" id="connTop">
-          <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
-          <span id="profileTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
+          <div class="conn-brand">
+            <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
+            <div class="connection-compat"><span>EasyConnect</span><span data-i18n="connect.easyConnectCompatible">兼容接入</span></div>
+            <span id="profileTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
+          </div>
           <div class="conn-ip">IP <span id="connIp">—</span></div>
           <button class="switch" id="power" aria-label="连接开关" data-i18n-attr="aria-label:connect.powerLabel"><span class="knob"></span></button>
           <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
           <p class="conn-err" id="connErr"></p>
         </div>
         <div class="conn-body">
-          <div class="quick-card">
+          <div class="quick-card" id="resourceShelf" data-resource-layout="compact">
             <div class="quick-head">
               <div>
                 <div class="quick-title" data-i18n="resources.homeTitle">校园服务</div>
@@ -126,6 +129,16 @@
                 <option value="campus-service" data-i18n="resources.categoryCampus">校园服务</option>
                 <option value="custom" data-i18n="resources.categoryCustom">自定义</option>
               </select>
+              <div id="resourceViewChips" class="resource-view-chips" role="group" aria-label="网站分类"
+                   data-i18n-attr="aria-label:resources.viewLabel">
+                <button type="button" data-resource-view="all" data-i18n="resources.viewAll">全部</button>
+                <button type="button" data-resource-view="favorites" data-i18n="resources.viewFavorites">已收藏</button>
+                <button type="button" data-resource-view="recent" data-i18n="resources.viewRecent">最近打开</button>
+                <button type="button" data-resource-view="common" data-i18n="resources.categoryCommon">常用</button>
+                <button type="button" data-resource-view="academic" data-i18n="resources.categoryAcademic">教务与学习</button>
+                <button type="button" data-resource-view="campus-service" data-i18n="resources.categoryCampus">校园服务</button>
+                <button type="button" data-resource-view="custom" data-i18n="resources.categoryCustom">自定义</button>
+              </div>
             </div>
             <div id="campusResources" class="resource-sections" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
             <details class="custom-url-details">
@@ -554,6 +567,8 @@
   <script src="i18n.js"></script>
   <script src="../lib/browser/auth/login-flow.js"></script>
   <script src="../lib/resources/presentation/resource-view.js"></script>
+  <script src="resource-layout-policy.js"></script>
+  <script src="resource-layout-controller.js"></script>
   <script src="student-home.js"></script>
   <script src="notification-view.js"></script>
   <script src="browser-data-settings.js"></script>

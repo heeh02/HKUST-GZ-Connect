@@ -9,6 +9,8 @@ const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
+const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
+const layoutControllerJs = fs.readFileSync(path.join(rendererDir, 'resource-layout-controller.js'), 'utf8');
 
 test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgUser"[^>]*name="username"/);
@@ -63,8 +65,8 @@ test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /id="toggleResources"/);
 });
 
-test('WebResource shelf supports ID-only open, search, categories, favorites and recent views', () => {
-  for (const id of ['resourceSearch', 'resourceView', 'campusResources']) {
+test('WebResource shelf supports responsive ID-only search categories favorites and recent views', () => {
+  for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
   for (const view of ['favorites', 'recent', 'common', 'academic', 'campus-service', 'custom']) {
@@ -75,12 +77,23 @@ test('WebResource shelf supports ID-only open, search, categories, favorites and
   assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
   assert.match(css, /\.resource-library-controls/u);
   assert.match(css, /\.resource-favorite\.active/u);
+  assert.match(layoutControllerJs, /new window\.ResizeObserver/u);
+  assert.match(layoutControllerJs, /window\.requestAnimationFrame/u);
+  assert.match(appJs, /layout:\s*presentation\.layout/u);
+  assert.doesNotMatch(studentHomeJs, /class="resource-desc"|class="resource-origin"/u);
+  const policyScript = html.indexOf('<script src="resource-layout-policy.js"></script>');
+  const controllerScript = html.indexOf('<script src="resource-layout-controller.js"></script>');
+  const studentHomeScript = html.indexOf('<script src="student-home.js"></script>');
+  assert.ok(policyScript > 0 && policyScript < controllerScript && controllerScript < studentHomeScript,
+    'resource layout modules must load before Student Home');
 });
 
 test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /@media\s*\(max-width:\s*459px\)/);
   assert.match(css, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*grid-template-columns:\s*1fr/u);
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
+  assert.match(css, /data-resource-layout="standard"/u);
+  assert.match(css, /data-resource-layout="wide"/u);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
   assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
 });
