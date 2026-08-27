@@ -13,6 +13,7 @@ const {
   FIND_BAR_HEIGHT,
   TOOLBAR_HEIGHT,
 } = require('../lib/browser/session/campus-browser');
+const { CampusWorkspaceController } = require('../lib/browser/workspace/campus-workspace-controller');
 const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing/policy/campus-route');
 
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
@@ -65,11 +66,41 @@ async function assertDragRegions(browser) {
       findPrev: pick('#findPrev'),
       findNext: pick('#findNext'),
       findClose: pick('#findClose'),
+      bookmarkBar: pick('#bookmarkBar'),
+      manageBookmarks: pick('#manageBookmarks'),
     };
   })()`);
   for (const [control, region] of Object.entries(regions)) {
     assert.equal(region, 'no-drag', `${control} must not be part of the window drag region`);
   }
+}
+
+async function assertBookmarkBar(browser, openedResources) {
+  await waitFor(browser.window,
+    "document.querySelectorAll('#bookmarkItems > .bookmark-entry').length === 2 && document.querySelectorAll('#bookmarkItems > .bookmark-folder').length === 1",
+    'Chrome-style bookmark bar');
+  const state = await browser.window.webContents.executeJavaScript(`(() => ({
+    labels: [...document.querySelectorAll('#bookmarkItems > .bookmark-entry')]
+      .map((button) => button.textContent.trim()),
+    official: [...document.querySelectorAll('#bookmarkItems > .bookmark-entry')]
+      .map((button) => button.classList.contains('official')),
+    manage: document.getElementById('manageBookmarks').textContent.trim(),
+    barHeight: document.getElementById('bookmarkBar').getBoundingClientRect().height,
+  }))()`);
+  assert.deepEqual(state.labels, ['Service', 'Favorite']);
+  assert.deepEqual(state.official, [true, false]);
+  assert.equal(state.manage, '整理书签');
+  assert.equal(state.barHeight, 32);
+  await browser.window.webContents.executeJavaScript(
+    `document.querySelector('[data-bookmark-id="favorite"]').click()`,
+  );
+  await waitForMain(() => openedResources.includes('favorite'), 'bookmark click to reach Main');
+  await browser.window.webContents.executeJavaScript(`(() => {
+    const folder = document.querySelector('#bookmarkItems > .bookmark-folder');
+    folder.querySelector(':scope > .bookmark-control').click();
+    folder.querySelector('[data-bookmark-id="grouped"]').click();
+  })()`);
+  await waitForMain(() => openedResources.includes('grouped'), 'folder bookmark click to reach Main');
 }
 
 async function assertRouteSwitch(browser) {
@@ -146,24 +177,31 @@ async function assertFindBar(browser) {
 async function assertWorkspaceHome(browser) {
   const contents = browser.activeTab().view.webContents;
   await waitForPage(contents,
-    "document.querySelectorAll('.resource').length === 3",
+    "document.querySelectorAll('#favoriteGroups .resource-item').length === 2",
     'local Workspace Home resources');
   const state = await contents.executeJavaScript(`(() => ({
-    title: document.querySelector('h1')?.textContent,
-    warning: document.querySelector('.warning')?.textContent,
-    sections: [...document.querySelectorAll('h2')].map((value) => value.textContent),
-    names: [...document.querySelectorAll('.resource strong')].map((value) => value.textContent),
-    routes: [...document.querySelectorAll('.resource .route')].map((value) => value.textContent),
-    hrefs: [...document.querySelectorAll('.resource')].map((value) => value.href),
+    title: document.getElementById('workspaceSchool')?.textContent,
+    warning: document.getElementById('workspaceTrust')?.textContent,
+    warningVisible: !document.getElementById('workspaceTrust')?.hidden,
+    navigation: [...document.querySelectorAll('[data-workspace-screen]')]
+      .map((value) => value.textContent),
+    favoriteNames: [...document.querySelectorAll('#favoriteGroups .resource-name')]
+      .map((value) => value.textContent),
+    recentNames: [...document.querySelectorAll('#recentGrid .resource-name')]
+      .map((value) => value.textContent),
+    gateways: [...document.querySelectorAll('.gateway-button')].map((value) => value.textContent),
+    leakedUrls: document.body.textContent.includes('example.invalid'),
   }))()`);
   assert.equal(state.title, 'Example University');
+  assert.equal(state.warningVisible, true);
   assert.match(state.warning, /未审核/u);
-  assert.deepEqual(state.sections, ['收藏', '最近打开', '校园服务']);
-  assert.deepEqual(state.names, ['Favorite', 'Recent', 'Service']);
-  assert.deepEqual(state.routes, ['校园隧道', '直连', '校园隧道']);
-  assert.equal(state.hrefs.every((value) => value.startsWith('http://')), true);
-  assert.equal(contents.getURL(), BLANK_CAMPUS_HOME,
-    'Workspace Home must remain an app-owned non-network page');
+  assert.deepEqual(state.navigation, ['校园服务', '整理收藏']);
+  assert.deepEqual(state.favoriteNames, ['Grouped Site', 'Favorite']);
+  assert.deepEqual(state.recentNames, ['Recent']);
+  assert.deepEqual(state.gateways, ['Service']);
+  assert.equal(state.leakedUrls, false, 'Workspace renderer received URL authority');
+  assert.match(contents.getURL(), /\/renderer\/campus-workspace\.html$/u,
+    'Workspace Home must remain an app-owned local page');
 }
 
 async function captureBrowserChrome(browser) {
@@ -187,6 +225,38 @@ async function captureBrowserChrome(browser) {
 async function main() {
   await app.whenReady();
   const errors = [];
+  const openedResources = [];
+  const workspaceResources = [
+    { id: 'favorite', name: 'Favorite', description: 'Pinned',
+      url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
+      category: 'custom', keywords: [], builtin: false,
+      favorite: true, lastOpenedAt: null },
+    { id: 'recent', name: 'Recent', description: 'Opened',
+      url: 'http://recent.example.invalid:1/', route: ROUTE_DIRECT,
+      category: 'custom', keywords: [], builtin: false,
+      favorite: false, lastOpenedAt: 200 },
+    { id: 'service', name: 'Service', description: 'Available',
+      url: 'http://service.example.invalid:1/', route: ROUTE_CAMPUS,
+      category: 'gateway', keywords: [], builtin: true,
+      favorite: false, lastOpenedAt: null },
+    { id: 'grouped', name: 'Grouped Site', description: 'Folder bookmark',
+      url: 'http://grouped.example.invalid:1/', route: ROUTE_CAMPUS,
+      category: 'custom', keywords: [], builtin: false,
+      favorite: true, lastOpenedAt: null },
+  ];
+  const workspaceController = new CampusWorkspaceController({
+    workspaceFile: path.join(__dirname, '..', 'renderer', 'campus-workspace.html'),
+    workspacePreload: path.join(__dirname, '..', 'lib', 'browser', 'workspace', 'campus-workspace-preload.js'),
+    getProfilePresentation: () => ({
+      schoolName: 'Example University', unverified: true, officialPortalResourceId: 'service',
+    }),
+    getResources: () => workspaceResources,
+    getGroups: () => [{
+      id: 'group_abcdefghijkl', name: '学习', resourceIds: ['grouped'],
+    }],
+    getLocale: () => 'zh',
+    onCommand: async () => ({ ok: true }),
+  });
   const browser = new CampusBrowser({
     BrowserWindow,
     WebContentsView,
@@ -202,18 +272,15 @@ async function main() {
     toolbarPreload: path.join(__dirname, '..', 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
     campusPreload: path.join(__dirname, '..', 'campus-preload.js'),
     homeUrl: BLANK_CAMPUS_HOME,
-    profilePresentation: { schoolName: 'Example University', unverified: true },
-    getWorkspaceResources: () => [
-      { id: 'favorite', name: 'Favorite', description: 'Pinned',
-        url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
-        favorite: true, lastOpenedAt: null },
-      { id: 'recent', name: 'Recent', description: 'Opened',
-        url: 'http://recent.example.invalid:1/', route: ROUTE_DIRECT,
-        favorite: false, lastOpenedAt: 200 },
-      { id: 'service', name: 'Service', description: 'Available',
-        url: 'http://service.example.invalid:1/', route: ROUTE_CAMPUS,
-        favorite: false, lastOpenedAt: null },
-    ],
+    profilePresentation: {
+      schoolName: 'Example University', unverified: true, officialPortalResourceId: 'service',
+    },
+    getWorkspaceResources: () => workspaceResources,
+    getWorkspaceGroups: () => [{
+      id: 'group_abcdefghijkl', name: '学习', resourceIds: ['grouped'],
+    }],
+    workspaceController,
+    onOpenResource: async (resourceId) => { openedResources.push(resourceId); return { ok: true }; },
     partition: CAMPUS_PARTITION,
     onError: (message) => errors.push(message),
   });
@@ -223,6 +290,7 @@ async function main() {
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
+    await assertBookmarkBar(browser, openedResources);
     await browser.open(DEAD_URL, 11080, 'campus');
 
     await assertDragRegions(browser);

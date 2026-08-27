@@ -24,7 +24,7 @@ async function measureAt(window, width, height) {
   return window.webContents.executeJavaScript(`(() => {
     const dialog = document.getElementById('resourceDialog');
     if (dialog.open) dialog.close();
-    document.getElementById('manageResources').click();
+    document.getElementById('legacyResourceManager').click();
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
       document.querySelector('[data-resource-action="edit"]').click();
       const rect = (element) => {
@@ -79,7 +79,7 @@ function assertLayout(view, width, height) {
 async function saveCustomResource(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
-    if (!dialog.open) document.getElementById('manageResources').click();
+    if (!dialog.open) document.getElementById('legacyResourceManager').click();
     document.getElementById('cancelResource').click();
     document.getElementById('resourceName').value = '';
     const url = document.getElementById('resourceUrl');
@@ -222,7 +222,7 @@ async function exerciseIntegrationCenter(window) {
 async function exerciseBuiltinResourceRemoval(window) {
   const result = await window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
-    if (!dialog.open) document.getElementById('manageResources').click();
+    if (!dialog.open) document.getElementById('legacyResourceManager').click();
     document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
     document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -242,9 +242,9 @@ async function exerciseBuiltinResourceRemoval(window) {
 
 async function assertStudentHome(window) {
   for (const [width, expectedMode, expectedColumns, expectedItems] of [
-    [420, 'compact', 2, 8],
-    [620, 'standard', 3, 12],
-    [960, 'wide', 2, 16],
+    [420, 'compact', 2, 10],
+    [620, 'standard', 3, 10],
+    [960, 'wide', 2, 10],
   ]) {
     window.setContentSize(width, 720);
     await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
@@ -312,7 +312,7 @@ async function assertStudentHome(window) {
     const workspaceEntry = await window.webContents.executeJavaScript(
       `document.getElementById('openCampusWorkspace').textContent.trim()`,
     );
-    assert.match(workspaceEntry, /校园工作台/u, `${width}px: Workspace entry disappeared`);
+    assert.match(workspaceEntry, /校园浏览器/u, `${width}px: Browser entry disappeared`);
 
   }
 }
@@ -367,8 +367,8 @@ async function assertUsabilityLayer(window) {
     const workspaceOpenCount = window.api.testState().workspaceOpenCount;
     document.getElementById('manageResources').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
-    const managerOpened = document.getElementById('resourceDialog').open;
-    document.getElementById('closeResourceDialog').click();
+    const bookmarkManagerOpenCount = window.api.testState().bookmarkManagerOpenCount;
+    const legacyManagerClosed = !document.getElementById('resourceDialog').open;
 
     const favorite = document.querySelector('.resource-favorite');
     favorite.click();
@@ -376,7 +376,7 @@ async function assertUsabilityLayer(window) {
     const toast = document.getElementById('globalToast');
     const nav = document.querySelector('.nav[data-page="connect"]');
     return {
-      towerActive, connectActive, workspaceOpenCount, managerOpened,
+      towerActive, connectActive, workspaceOpenCount, bookmarkManagerOpenCount, legacyManagerClosed,
       toastVisible: !toast.hidden, toastText: toast.textContent,
       statusClass: document.getElementById('navConnectionState').className,
       statusLabel: nav.getAttribute('aria-label'),
@@ -385,7 +385,8 @@ async function assertUsabilityLayer(window) {
   assert.equal(result.towerActive, 'tower', 'Command-2 did not open Control Tower');
   assert.equal(result.connectActive, 'connect', 'Command-K did not open Campus Services');
   assert.equal(result.workspaceOpenCount, 1, 'Command-K did not open Campus Workspace');
-  assert.equal(result.managerOpened, true, 'Manage did not open the local website manager');
+  assert.equal(result.bookmarkManagerOpenCount, 1, 'Organize did not open the bookmark manager');
+  assert.equal(result.legacyManagerClosed, true, 'Organize reopened the legacy website dialog');
   assert.equal(result.toastVisible, true, 'favorite feedback toast stayed hidden');
   assert.match(result.toastText, /收藏/u);
   assert.match(result.statusClass, /disconnected/u);

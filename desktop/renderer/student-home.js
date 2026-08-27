@@ -43,6 +43,7 @@
 
   function renderStudentHome({
     resources,
+    groups,
     query,
     view,
     expanded,
@@ -55,7 +56,6 @@
       throw new TypeError('Student Home dependencies are incomplete');
     }
     const { filteredResources, routeLabel, visibleResources } = resourceView;
-    const normalizedLayout = resourceLayoutPolicy.normalizeLayout(layout);
     const source = Array.isArray(resources) ? resources : [];
     const filtered = filteredResources(source, { query, view });
     const focused = String(query || '').length > 0 || view !== 'all';
@@ -101,25 +101,26 @@
         html = section('all', translate('resources.allSection'), filtered);
         return Object.freeze({ html, hasMore: filtered.length > 0 });
       }
-      const shown = new Set();
-      const take = (items, limit = normalizedLayout.sectionLimit) =>
-        items.filter(({ id }) => !shown.has(id)).slice(0, limit)
-        .map((resource) => { shown.add(resource.id); return resource; });
-      const favorites = take(source.filter(({ favorite }) => favorite === true));
-      const recent = [...source]
-        .filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt) && lastOpenedAt > 0)
-        .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
-      const uniqueRecent = take(recent);
-      const starterIds = new Set(['sis', 'canvas', 'library', 'outlook']);
-      const starter = favorites.length < 3
-        ? take(source.filter(({ id }) => starterIds.has(id))) : [];
-      html = section('favorites', translate('resources.favoritesSection'), favorites)
-        + section('recent', translate('resources.recentSection'), uniqueRecent)
-        + section('starter', translate('resources.starterSection'), starter);
-      if (!html) html = section('all', translate('resources.allSection'),
-        visibleResources(filtered, false, normalizedLayout.sectionLimit));
+      const favorites = source.filter(({ favorite }) => favorite === true);
+      const byId = new Map(favorites.map((resource) => [resource.id, resource]));
+      const assigned = new Set();
+      const safeGroups = Array.isArray(groups) && groups.length <= 16 ? groups : [];
+      html = safeGroups.map((group) => {
+        const name = typeof group?.name === 'string' && group.name.trim() &&
+          group.name.length <= 30 && !/[\u0000-\u001f\u007f<>]/u.test(group.name)
+          ? group.name.trim() : '';
+        const ids = Array.isArray(group?.resourceIds) ? group.resourceIds : [];
+        if (!name || ids.length > 64) return '';
+        const items = ids.map((id) => byId.get(id)).filter((resource) => {
+          if (!resource || assigned.has(resource.id)) return false;
+          assigned.add(resource.id); return true;
+        });
+        return section('bookmark-folder', name, items);
+      }).join('');
+      const ungrouped = favorites.filter(({ id }) => !assigned.has(id));
+      html = section('favorites', translate('resources.favoritesSection'), ungrouped) + html;
       if (!html) html = emptyState(false);
-      return Object.freeze({ html, hasMore: filtered.length > 0 });
+      return Object.freeze({ html, hasMore: false });
     }
     return Object.freeze({ html, hasMore: false });
   }

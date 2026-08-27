@@ -3,10 +3,10 @@
 const I18N = Object.freeze({
   zh: Object.freeze({
     title: '校园工作台', auto: '自动选择网络', rules: '网站规则', unverified: '未审核',
-    home: '首页', catalog: '服务目录', manage: '整理收藏', search: '搜索校园服务', clear: '清除',
-    favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '按使用场景查找',
+    home: '校园服务', manage: '整理收藏', search: '搜索校园服务', clear: '清除',
+    favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '全部服务',
     manageTitle: '整理收藏', resourcePool: '网站库', groups: '我的分组', createGroup: '＋ 新建分组',
-    searchResults: '搜索结果', back: '返回分类', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
+    searchResults: '搜索结果', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
     createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
     cancel: '取消', save: '保存', edit: '重命名', remove: '删除', confirmDelete: '确认删除',
@@ -19,10 +19,10 @@ const I18N = Object.freeze({
   }),
   en: Object.freeze({
     title: 'Campus Workspace', auto: 'Automatic network', rules: 'Site Rules', unverified: 'Unreviewed',
-    home: 'Home', catalog: 'Service Directory', manage: 'Organize Favorites', search: 'Search campus services', clear: 'Clear',
-    favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'Browse by Task',
+    home: 'Campus Services', manage: 'Organize Favorites', search: 'Search campus services', clear: 'Clear',
+    favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'All Services',
     manageTitle: 'Organize Favorites', resourcePool: 'Service Library', groups: 'My Groups', createGroup: '+ New Group',
-    searchResults: 'Search Results', back: 'Back to Categories', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
+    searchResults: 'Search Results', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
     createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
     cancel: 'Cancel', save: 'Save', edit: 'Rename', remove: 'Delete', confirmDelete: 'Confirm delete',
@@ -304,32 +304,40 @@ function renderHome() {
   $('recentModule').hidden = projected.recent.length === 0;
   renderGrid($('starterGrid'), projected.starter);
   $('starterModule').hidden = projected.starter.length === 0;
+  renderCatalog();
 }
 
 function renderCatalog() {
-  const projected = model.catalogProjection(state.resources, navigation.category);
-  $('catalogBack').hidden = navigation.category === null;
-  $('categoryOverview').hidden = navigation.category !== null;
-  $('categoryResults').hidden = navigation.category === null;
-  $('catalogTitle').textContent = navigation.category
-    ? categoryLabel(navigation.category) : text().catalogTitle;
-  if (navigation.category) {
-    renderGrid($('categoryResults'), projected.items);
-    return;
-  }
-  $('categoryOverview').replaceChildren(...projected.categories.map((category) => {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'category-card';
+  const projected = model.catalogProjection(state.resources);
+  $('catalogTitle').textContent = text().catalogTitle;
+  const sections = projected.categories.map((category) => {
+    const section = document.createElement('section');
+    section.className = 'service-category-section';
+    section.id = `service-category-${category.id}`;
+    const heading = document.createElement('div');
+    heading.className = 'service-category-heading';
     const icon = document.createElement('span');
     icon.className = 'category-icon';
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.innerHTML = ICONS[category.id] || ICONS.custom;
     icon.appendChild(svg);
-    const label = document.createElement('strong'); label.textContent = categoryLabel(category.id);
-    const count = document.createElement('span'); count.textContent = String(category.count);
-    button.append(icon, label, count);
+    const label = document.createElement('h3'); label.textContent = categoryLabel(category.id);
+    const count = document.createElement('span'); count.className = 'group-count'; count.textContent = String(category.count);
+    heading.append(icon, label, count);
+    const grid = document.createElement('div'); grid.className = 'resource-grid';
+    renderGrid(grid, model.catalogProjection(state.resources, category.id).items);
+    section.append(heading, grid);
+    return section;
+  });
+  $('categorySections').replaceChildren(...sections);
+  $('categoryJumpBar').replaceChildren(...projected.categories.map((category) => {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'category-jump';
+    button.textContent = categoryLabel(category.id);
     button.addEventListener('click', () => {
-      navigation = model.normalizeNavigation({ screen: 'catalog', category: category.id }); render();
+      document.getElementById(`service-category-${category.id}`)?.scrollIntoView({
+        behavior: 'smooth', block: 'start', inline: 'nearest',
+      });
     });
     return button;
   }));
@@ -371,7 +379,6 @@ function syncText() {
   $('resourcePoolTitle').textContent = strings.resourcePool;
   $('manageGroupsTitle').textContent = strings.groups;
   $('createGroup').textContent = strings.createGroup;
-  $('catalogBack').textContent = strings.back;
   $('emptyTitle').textContent = strings.noMatch;
   $('emptyHint').textContent = strings.noMatchHint;
   $('clearWorkspaceFilter').textContent = strings.clearSearch;
@@ -390,7 +397,6 @@ function render() {
   const searchMode = navigation.query && navigation.screen !== 'manage';
   $('searchScreen').hidden = !searchMode;
   $('homeScreen').hidden = searchMode || navigation.screen !== 'home';
-  $('catalogScreen').hidden = searchMode || navigation.screen !== 'catalog';
   $('manageScreen').hidden = searchMode || navigation.screen !== 'manage';
   $('workspaceEmpty').hidden = true;
   $('clearWorkspaceSearch').hidden = !navigation.query;
@@ -401,7 +407,6 @@ function render() {
   }
   if (searchMode) renderSearch();
   else if (navigation.screen === 'home') renderHome();
-  else if (navigation.screen === 'catalog') renderCatalog();
   else renderManage();
 }
 
@@ -425,9 +430,6 @@ $('workspaceNavigation').addEventListener('click', (event) => {
 });
 $('openManage').addEventListener('click', () => {
   navigation = model.normalizeNavigation({ screen: 'manage' }); render();
-});
-$('catalogBack').addEventListener('click', () => {
-  navigation = model.normalizeNavigation({ screen: 'catalog' }); render();
 });
 $('workspaceSearch').addEventListener('input', (event) => {
   navigation = model.normalizeNavigation({ ...navigation, query: event.target.value }); render();
@@ -462,5 +464,10 @@ document.addEventListener('keydown', (event) => {
 window.campusWorkspace?.onState((next) => { state = next; render(); });
 window.campusWorkspace?.onFocus((target) => {
   if (target === 'search') { $('workspaceSearch').focus(); $('workspaceSearch').select(); }
+  else if (target === 'manage') {
+    navigation = model.normalizeNavigation({ screen: 'manage' });
+    $('workspaceSearch').value = '';
+    render();
+  }
 });
 command('ready');

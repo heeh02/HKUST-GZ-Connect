@@ -25,6 +25,9 @@ function fixture(overrides = {}) {
       { id: 'home', favorite: true, lastOpenedAt: 20 },
       { id: 'hpc', favorite: false, lastOpenedAt: null },
     ],
+    getResourceGroups: () => [{
+      id: 'group_abcdefghijkl', name: '学习', resourceIds: ['home'],
+    }],
     getFallbackResources: () => [{ id: 'home', favorite: false, lastOpenedAt: null }],
     getProfilePresentation: (options) => {
       calls.push(options);
@@ -50,6 +53,9 @@ test('projects settings, resources and key-free profile compatibility views', ()
   assert.equal(value.settings.username, 'stu****');
   assert.equal(value.capabilitySnapshot, null);
   assert.deepEqual(value.campusResources.map(({ id }) => id), ['home', 'hpc']);
+  assert.deepEqual(value.resourceGroups, [{
+    id: 'group_abcdefghijkl', name: '学习', resourceIds: ['home'],
+  }]);
   assert.deepEqual(calls, [{
     locale: 'zh-CN',
     hasCredential: true,
@@ -79,6 +85,7 @@ test('settings failure returns the bounded fallback without probing credentials'
   assert.equal(value.loggedIn, false);
   assert.equal(value.hasPassword, false);
   assert.deepEqual(value.campusResources, [{ id: 'home', favorite: false, lastOpenedAt: null }]);
+  assert.deepEqual(value.resourceGroups, []);
   assert.equal(credentialReads, 0);
   assert.deepEqual(calls, [{ locale: 'zh-CN' }]);
 });

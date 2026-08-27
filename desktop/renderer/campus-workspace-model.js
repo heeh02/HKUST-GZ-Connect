@@ -29,7 +29,7 @@
     common: 'tools',
     'campus-service': 'campus-life',
   });
-  const SCREENS = new Set(['home', 'catalog', 'manage']);
+  const SCREENS = new Set(['home', 'manage']);
   const STARTER_IDS = Object.freeze(['sis', 'canvas', 'library', 'outlook']);
 
   function categoryOf(resource) {
@@ -39,10 +39,8 @@
 
   function normalizeNavigation(value = {}) {
     const screen = SCREENS.has(value.screen) ? value.screen : 'home';
-    const category = TASK_CATEGORIES.some(({ id }) => id === value.category)
-      ? value.category : null;
     const query = String(value.query || '').trim().slice(0, 80).toLocaleLowerCase();
-    return Object.freeze({ screen, category: screen === 'catalog' ? category : null, query });
+    return Object.freeze({ screen, query });
   }
 
   function searchResources(resources, query) {

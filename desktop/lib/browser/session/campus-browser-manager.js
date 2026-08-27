@@ -121,7 +121,9 @@ class CampusBrowserManager {
       onCommand: async (command) => {
         if (command.command === 'open-resource') return this.onOpenResource(command.resourceId);
         if (command.command === 'manage-rules') return this.showRoutingRules();
-        return this.onWorkspaceMutation(command);
+        const result = await this.onWorkspaceMutation(command);
+        this.browser?.updateToolbar();
+        return result;
       },
     });
     this.browser = new this.CampusBrowserClass({
@@ -137,6 +139,8 @@ class CampusBrowserManager {
       campusPreload: this.campusPreload,
       profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
       getWorkspaceResources: () => this.getWorkspaceResources(),
+      getWorkspaceGroups: () => this.getWorkspaceGroups(),
+      onOpenResource: (resourceId) => this.onOpenResource(resourceId),
       onTogglePageFavorite: (candidate) => this.onTogglePageFavorite(candidate),
       workspaceController,
       onRecordPageOpen: (url) => this.onRecordPageOpen(url),
@@ -194,6 +198,12 @@ class CampusBrowserManager {
       this.reportError(message);
       return { ok: false, error: message };
     }
+  }
+
+  async openBookmarkManager() {
+    const result = await this.open();
+    if (result?.ok) this.browser?.focusWorkspace('manage');
+    return result;
   }
 
   suspendRoutingPolicy() {

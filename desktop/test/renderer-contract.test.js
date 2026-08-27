@@ -65,6 +65,8 @@ test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="gateway"/);
   assert.match(html, /id="openCampusWorkspace"/u);
   assert.match(appJs, /openCampusWorkspace[\s\S]*openCampusBrowser/u);
+  assert.match(appJs, /manageResources[\s\S]*openBookmarkManager/u);
+  assert.match(html, /class="custom-url-details" hidden/u);
 });
 
 test('dashboard usability layer keeps status shortcuts feedback and recovery outside Main', () => {
@@ -120,10 +122,15 @@ test('control panel has responsive wide and compact layout rules', () => {
 test('Campus Browser chrome keeps the minimum task set and derives external open in Main', () => {
   const browserHtml = fs.readFileSync(path.join(rendererDir, 'campus-browser.html'), 'utf8');
   const browserJs = fs.readFileSync(path.join(rendererDir, 'campus-browser.js'), 'utf8');
-  for (const id of ['tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'openExternal']) {
+  for (const id of [
+    'tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'openExternal',
+    'bookmarkBar', 'bookmarkItems', 'bookmarkMore', 'manageBookmarks',
+  ]) {
     assert.match(browserHtml, new RegExp(`id="${id}"`, 'u'));
   }
   assert.match(browserJs, /command\('open-external'\)/u);
+  assert.match(browserJs, /command\('open-resource',\s*entry\.id\)/u);
+  assert.match(browserJs, /command\('manage-bookmarks'\)/u);
   assert.doesNotMatch(browserJs, /openExternal\(address\.value/u,
     'toolbar renderer must not provide URL authority for external open');
 });
@@ -134,11 +141,12 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   const workspaceModel = fs.readFileSync(path.join(rendererDir, 'campus-workspace-model.js'), 'utf8');
   const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
   for (const id of [
-    'workspaceSearch', 'workspaceNavigation', 'gatewayLinks', 'homeScreen', 'catalogScreen',
-    'manageScreen', 'favoriteGroups', 'recentModule', 'categoryOverview', 'resourcePool',
+    'workspaceSearch', 'workspaceNavigation', 'gatewayLinks', 'homeScreen', 'catalogModule',
+    'manageScreen', 'favoriteGroups', 'recentModule', 'categoryJumpBar', 'categorySections', 'resourcePool',
     'manageGroups', 'manageRules', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
-  assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*catalog[\s\S]*manage/u);
+  assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*manage/u);
+  assert.doesNotMatch(workspaceModel, /SCREENS[^\n]*catalog/u);
   assert.match(workspaceModel, /TASK_CATEGORIES[\s\S]*id:\s*'courses'[\s\S]*categoryOf/u);
   assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
   assert.match(workspaceJs, /command\('toggle-favorite',\s*\{\s*resourceId:/u);
@@ -147,6 +155,7 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
   assert.match(workspaceCss, /@media\s*\(min-width:\s*1280px\)[\s\S]*repeat\(4/u);
   assert.match(workspaceCss, /@media\s*\(max-width:\s*880px\)[\s\S]*repeat\(2/u);
+  assert.match(workspaceCss, /\.service-category-list\s*\{[^}]*columns:\s*2/u);
 });
 
 test('notifications keep a compact state summary and raw diagnostics collapsed', () => {

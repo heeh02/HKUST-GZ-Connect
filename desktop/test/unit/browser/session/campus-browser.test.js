@@ -78,6 +78,50 @@ test('toolbar favorite derives current-page authority in Main and refreshes Work
   assert.ok(workspaceStates.length > 0);
 });
 
+test('toolbar bookmark bar exposes only IDs names and user folders and opens through Main', async () => {
+  const opened = [];
+  const focused = [];
+  const resources = [
+    { id: 'portal', name: 'Official Portal', description: '', url: 'https://portal.example.edu/',
+      route: ROUTE_CAMPUS, category: 'gateway', favorite: false, lastOpenedAt: null },
+    { id: 'canvas', name: 'Canvas', description: '', url: 'https://canvas.example.edu/',
+      route: ROUTE_DIRECT, category: 'courses', favorite: true, lastOpenedAt: null },
+    { id: 'library', name: 'Library', description: '', url: 'https://library.example.edu/',
+      route: ROUTE_CAMPUS, category: 'tools', favorite: true, lastOpenedAt: null },
+  ];
+  const workspaceController = {
+    createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+    load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+    sendState: () => true,
+    focus: (_contents, target) => { focused.push(target); return true; },
+  };
+  const { browser } = createFakeBrowser({
+    profilePresentation: {
+      schoolName: 'Example University', unverified: false, officialPortalResourceId: 'portal',
+    },
+    getWorkspaceResources: () => resources,
+    getWorkspaceGroups: () => [{
+      id: 'group_abcdefghijkl', name: '学习', resourceIds: ['canvas'],
+    }],
+    onOpenResource: async (resourceId) => { opened.push(resourceId); return { ok: true }; },
+    workspaceController,
+  });
+  assert.deepEqual(browser.bookmarkBarState(), [
+    { type: 'bookmark', id: 'portal', name: 'Official Portal', official: true },
+    { type: 'bookmark', id: 'library', name: 'Library', official: false },
+    { type: 'folder', id: 'group_abcdefghijkl', name: '学习', children: [
+      { id: 'canvas', name: 'Canvas' },
+    ] },
+  ]);
+  assert.equal(browser.handleToolbarCommand({ command: 'open-resource', value: 'canvas' }), true);
+  await nextImmediate();
+  assert.deepEqual(opened, ['canvas']);
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  assert.equal(browser.handleToolbarCommand({ command: 'manage-bookmarks', value: '' }), true);
+  await nextImmediate();
+  assert.deepEqual(focused, ['manage']);
+});
+
 test('Workspace Home resource projection rejects unsafe, duplicate and unbounded input', () => {
   const valid = { id: 'site', name: 'Site', description: '',
     url: 'https://site.example.edu/', route: ROUTE_CAMPUS, favorite: false,

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   openLog: () => ipcRenderer.invoke('open-log'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openCampusBrowser: (request) => ipcRenderer.invoke('open-campus-browser', request),
+  openBookmarkManager: () => ipcRenderer.invoke('open-bookmark-manager'),
   openResource: (resourceId) => ipcRenderer.invoke('open-resource', { resourceId }),
   checkUpdate: (force) => ipcRenderer.invoke('check-update', force),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

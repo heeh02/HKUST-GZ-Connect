@@ -11,6 +11,7 @@ const {
 const { resolveDomainRouteForUrl } = require('../../routing/policy/domain-route-policy');
 const { normalizeRuleHost } = require('../../routing/rules/routing-rule-store');
 const { normalizeToolbarCommand } = require('../toolbar/campus-toolbar-contract');
+const { projectWorkspaceGroups } = require('../workspace/campus-workspace-controller');
 const { CertificateController } = require('../certificates/certificate-controller');
 const { CredentialController } = require('../credentials/credential-controller');
 const {
@@ -26,7 +27,7 @@ const {
 } = require('./browser-session-manager');
 const { DEFAULT_MAX_TABS, TabManager } = require('../tabs/tab-manager');
 const { createT } = require('../../platform/i18n/i18n');
-const TOOLBAR_HEIGHT = 76;
+const TOOLBAR_HEIGHT = 108;
 const FIND_BAR_HEIGHT = 34;
 const SLOW_LOADING_HINT_MS = 10000;
 const MAX_URL_LENGTH = 2048;
@@ -211,6 +212,8 @@ class CampusBrowser {
     campusPreload,
     profilePresentation = null,
     getWorkspaceResources = () => [],
+    getWorkspaceGroups = () => [],
+    onOpenResource = null,
     onTogglePageFavorite = null,
     onRecordPageOpen = null,
     workspaceController = null,
@@ -254,10 +257,12 @@ class CampusBrowser {
         schoolName: this.t('browser.workspace'), unverified: false,
         officialPortalResourceId: null,
       });
-    if (typeof getWorkspaceResources !== 'function') {
-      throw new TypeError('Campus Browser workspace resource provider is invalid');
+    if (typeof getWorkspaceResources !== 'function' || typeof getWorkspaceGroups !== 'function') {
+      throw new TypeError('Campus Browser workspace provider is invalid');
     }
     this.getWorkspaceResources = getWorkspaceResources;
+    this.getWorkspaceGroups = getWorkspaceGroups;
+    this.onOpenResource = typeof onOpenResource === 'function' ? onOpenResource : null;
     this.onTogglePageFavorite = typeof onTogglePageFavorite === 'function'
       ? onTogglePageFavorite : null;
     this.onRecordPageOpen = typeof onRecordPageOpen === 'function' ? onRecordPageOpen : null;
@@ -351,6 +356,37 @@ class CampusBrowser {
     catch { return Object.freeze([]); }
   }
 
+  workspaceGroups() {
+    try { return projectWorkspaceGroups(this.getWorkspaceGroups()); }
+    catch { return Object.freeze([]); }
+  }
+
+  bookmarkBarState() {
+    const resources = this.workspaceResources();
+    const favorites = resources.filter(({ favorite }) => favorite === true);
+    const byId = new Map(favorites.map((resource) => [resource.id, resource]));
+    const assigned = new Set();
+    const officialId = this.profilePresentation.officialPortalResourceId;
+    const groups = this.workspaceGroups().map((group) => {
+      const children = group.resourceIds.filter((id) => id !== officialId)
+        .map((id) => byId.get(id)).filter(Boolean)
+        .map(({ id, name }) => Object.freeze({ id, name }));
+      for (const child of children) assigned.add(child.id);
+      return Object.freeze({ type: 'folder', id: group.id, name: group.name, children });
+    }).filter(({ children }) => children.length > 0);
+    const entries = [];
+    const official = resources.find(({ id }) => id === officialId);
+    if (official) {
+      entries.push(Object.freeze({ type: 'bookmark', id: official.id, name: official.name, official: true }));
+      assigned.add(official.id);
+    }
+    for (const { id, name } of favorites) {
+      if (!assigned.has(id)) entries.push(Object.freeze({ type: 'bookmark', id, name, official: false }));
+    }
+    entries.push(...groups);
+    return Object.freeze(entries);
+  }
+
   refreshWorkspaceHomes() {
     if (!this.workspaceController) return;
     for (const tab of this.tabs) {
@@ -358,7 +394,7 @@ class CampusBrowser {
     }
   }
 
-  focusWorkspaceSearch() {
+  focusWorkspace(target = 'search') {
     if (!this.workspaceController) return false;
     let tab = this.activeTab();
     if (!tab || tab.kind !== 'workspace') {
@@ -367,9 +403,19 @@ class CampusBrowser {
       if (existing) this.switchTab(existing.id);
     }
     if (!tab || tab.view.webContents.isDestroyed()) return false;
-    setImmediate(() => this.workspaceController.focusSearch(tab.view.webContents));
+    const focus = () => {
+      if (typeof this.workspaceController.focus === 'function') {
+        this.workspaceController.focus(tab.view.webContents, target);
+      } else if (target === 'search') {
+        this.workspaceController.focusSearch?.(tab.view.webContents);
+      }
+    };
+    if (tab.loading) tab.pendingWorkspaceFocus = target;
+    else setImmediate(focus);
     return true;
   }
+
+  focusWorkspaceSearch() { return this.focusWorkspace('search'); }
 
   pageFavoriteState(tab = this.activeTab()) {
     const url = this.currentUrl(tab);
@@ -646,6 +692,7 @@ class CampusBrowser {
       })),
       download: this.downloadState,
       workspace: active?.kind === 'workspace',
+      bookmarks: this.bookmarkBarState(),
       ...this.pageFavoriteState(active),
     };
     const serialized = JSON.stringify(state);
@@ -677,6 +724,12 @@ class CampusBrowser {
 
     if (command === 'new-tab') this.focusWorkspaceSearch();
     else if (command === 'home') this.focusWorkspaceSearch();
+    else if (command === 'manage-bookmarks') this.focusWorkspace('manage');
+    else if (command === 'open-resource' && this.onOpenResource) {
+      Promise.resolve(this.onOpenResource(value)).then(() => this.updateToolbar()).catch((error) => {
+        this.onError?.(error?.message || this.t('browser.favoriteFailed'));
+      });
+    }
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -1096,6 +1149,7 @@ class CampusBrowser {
         slowTimer: null, renderingError: false, crashed: false,
         pendingCredential: null, pendingCredentialTimer: null,
         route: ROUTE_DIRECT, routeSource: 'local-workspace', matchedRule: null,
+        pendingWorkspaceFocus: null,
       };
       this.tabManager.add(tab);
       view.setVisible(false);
@@ -1104,6 +1158,15 @@ class CampusBrowser {
       this.workspaceController.load(view).then(() => {
         tab.loading = false;
         this.workspaceController.sendState(view.webContents);
+        if (tab.pendingWorkspaceFocus) {
+          const target = tab.pendingWorkspaceFocus;
+          tab.pendingWorkspaceFocus = null;
+          if (typeof this.workspaceController.focus === 'function') {
+            this.workspaceController.focus(view.webContents, target);
+          } else if (target === 'search') {
+            this.workspaceController.focusSearch?.(view.webContents);
+          }
+        }
         this.updateToolbar();
       }).catch(() => this.onError?.(this.t('tab.createFailed')));
       view.webContents.on('render-process-gone', () => {

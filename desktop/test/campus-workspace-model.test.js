@@ -12,12 +12,12 @@ const resources = [
   { id: 'grade', name: 'Grade Reporting', category: 'staff', favorite: false, lastOpenedAt: null, keywords: ['教师'] },
 ];
 
-test('Workspace navigation has one exclusive screen and a transient search', () => {
+test('Workspace navigation has one service screen, one organizer, and a transient search', () => {
   assert.deepEqual(model.normalizeNavigation({ screen: 'catalog', category: 'courses' }), {
-    screen: 'catalog', category: 'courses', query: '',
+    screen: 'home', query: '',
   });
   assert.deepEqual(model.normalizeNavigation({ screen: 'home', category: 'courses', query: ' SIS ' }), {
-    screen: 'home', category: null, query: 'sis',
+    screen: 'home', query: 'sis',
   });
 });
 

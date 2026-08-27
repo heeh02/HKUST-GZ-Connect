@@ -26,6 +26,7 @@ function fixture() {
     openLog: operation('open-log'),
     copyText: operation('copy'),
     openCampusBrowser: operation('browser'),
+    openBookmarkManager: operation('bookmark-manager'),
     openResource: operation('resource'),
     checkUpdate: operation('update'),
     openExternal: operation('external'),
@@ -38,7 +39,7 @@ test('core facade registers the exact narrow control channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
     'get-state', 'get-login-account', 'connect', 'disconnect', 'reconnect',
-    'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-resource',
+    'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-bookmark-manager', 'open-resource',
     'check-update', 'open-external', 'resize',
   ]);
 });
@@ -73,8 +74,10 @@ test('copy, update, external and resize reject malformed renderer values', () =>
   assert.throws(() => f.handlers.get('resize')({}, Number.NaN), /尺寸/);
   f.handlers.get('copy')({}, 'safe');
   f.handlers.get('open-campus-browser')({}, { url: '' });
+  f.handlers.get('open-bookmark-manager')({});
   assert.deepEqual(f.calls.filter(([name]) => name === 'copy' || name === 'browser'), [
     ['copy', 'safe'],
     ['browser', { url: '' }],
   ]);
+  assert.deepEqual(f.calls.find(([name]) => name === 'bookmark-manager'), ['bookmark-manager']);
 });

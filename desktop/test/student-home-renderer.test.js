@@ -13,30 +13,32 @@ const resources = [
 const translate = (key) => key;
 const escapeHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;');
 
-test('ordinary Student Home renders unique favorites recent and first-use shortcuts', () => {
+test('ordinary Student Home renders only direct favorites and user folders', () => {
   const view = renderStudentHome({
-    resources, query: '', view: 'all', expanded: false,
+    resources: resources.map((resource) => resource.id === 'mail'
+      ? { ...resource, favorite: true } : resource),
+    groups: [{ id: 'group_abcdefghijkl', name: '学习', resourceIds: ['home'] }],
+    query: '', view: 'all', expanded: false,
     layout: { mode: 'compact', columns: 2, sectionLimit: 4 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.favoritesSection/u);
-  assert.match(view.html, /resources\.recentSection/u);
-  assert.match(view.html, /resources\.starterSection/u);
+  assert.match(view.html, />学习</u);
+  assert.doesNotMatch(view.html, /resources\.recentSection|resources\.starterSection/u);
   assert.match(view.html, /data-campus-id="home"/u);
   assert.equal((view.html.match(/data-campus-id="home"/gu) || []).length, 1);
   assert.equal((view.html.match(/data-campus-id="mail"/gu) || []).length, 1);
-  assert.equal((view.html.match(/data-campus-id="library"/gu) || []).length, 1);
+  assert.equal((view.html.match(/data-campus-id="library"/gu) || []).length, 0);
   assert.doesNotMatch(view.html, /resources\.sourceReviewed|resources\.sourceLocal/u);
   assert.doesNotMatch(view.html, /class="resource-desc"/u);
   assert.match(view.html, /class="resource-icon resource-icon-services"/u);
-  assert.match(view.html, /class="resource-icon resource-icon-learning"/u);
   assert.match(view.html, /class="resource-copy"/u);
   assert.match(view.html, /resource-section-favorites/u);
   assert.match(view.html, /resource-route-short/u);
   assert.doesNotMatch(view.html, /<img/u);
-  assert.equal(view.hasMore, true);
+  assert.equal(view.hasMore, false);
 });
 
-test('ordinary Student Home increases each section budget with the container layout', () => {
+test('ordinary Student Home never hides saved bookmarks because of window width', () => {
   const many = Array.from({ length: 12 }, (_, index) => ({
     ...resources[0], id: `favorite-${index}`, name: `Favorite ${index}`, favorite: true,
     lastOpenedAt: null, reviewed: false, builtin: false,
@@ -49,8 +51,8 @@ test('ordinary Student Home increases each section budget with the container lay
     resources: many, query: '', view: 'all', expanded: false,
     layout: { mode: 'wide' }, translate, escapeHtml,
   });
-  assert.equal((compact.html.match(/data-campus-id=/gu) || []).length, 4);
-  assert.equal((wide.html.match(/data-campus-id=/gu) || []).length, 8);
+  assert.equal((compact.html.match(/data-campus-id=/gu) || []).length, 12);
+  assert.equal((wide.html.match(/data-campus-id=/gu) || []).length, 12);
 });
 
 test('expanded Student Home replaces curated sections with one complete service grid', () => {

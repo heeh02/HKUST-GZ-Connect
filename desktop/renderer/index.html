@@ -105,15 +105,16 @@
           <div class="quick-card" id="resourceShelf" data-resource-layout="compact">
             <div class="quick-head">
               <div>
-                <div class="quick-title" data-i18n="resources.homeTitle">校园服务</div>
+                <div class="quick-title" data-i18n="resources.homeTitle">校园书签</div>
               </div>
               <button id="openCampusWorkspace" class="workspace-launch" type="button"
-                      data-i18n="resources.openWorkspace">打开校园工作台 ↗</button>
+                      data-i18n="resources.openWorkspace">打开校园浏览器 ↗</button>
             </div>
             <div class="resource-toolbar">
-              <span class="resource-toolbar-title" data-i18n="resources.title">我的应用</span>
+              <span class="resource-toolbar-title" data-i18n="resources.title">收藏与文件夹</span>
               <span class="resource-toolbar-actions">
-                <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
+                <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理</button>
+                <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
               </span>
             </div>
             <div class="resource-library-controls" hidden aria-hidden="true">
@@ -159,7 +160,7 @@
               </div>
             </div>
             <div id="campusResources" class="resource-sections" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
-            <details class="custom-url-details">
+            <details class="custom-url-details" hidden aria-hidden="true">
               <summary data-i18n="resources.openOther">打开其他网址</summary>
               <div class="custom-url-body">
                 <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"

@@ -79,6 +79,18 @@
       <span id="state" class="state" data-i18n="browser.stateDefault">校园网络</span>
       <span id="downloadStatus" class="download-status" hidden></span>
     </div>
+    <div id="bookmarkBar" class="bookmark-bar" aria-label="书签栏"
+         data-i18n-attr="aria-label:browser.bookmarkBar">
+      <div id="bookmarkItems" class="bookmark-items"></div>
+      <div id="bookmarkMoreWrap" class="bookmark-folder" hidden>
+        <button id="bookmarkMore" class="bookmark-control" type="button" aria-expanded="false"
+                title="更多书签" aria-label="更多书签"
+                data-i18n-attr="title:browser.moreBookmarks; aria-label:browser.moreBookmarks">»</button>
+        <div id="bookmarkMoreMenu" class="bookmark-menu bookmark-more-menu" hidden></div>
+      </div>
+      <button id="manageBookmarks" class="bookmark-control bookmark-manage" type="button"
+              data-i18n="browser.manageBookmarks">整理书签</button>
+    </div>
     <div id="findBar" class="find-bar" hidden>
       <input id="findInput" type="text" spellcheck="false"
              aria-label="在页面中查找" placeholder="在页面中查找"

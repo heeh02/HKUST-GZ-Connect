@@ -1234,7 +1234,8 @@ const browserRoutingPolicy = {
   }),
   proxyConfig: (port) => browserPolicyProxyConfig(port),
 };
-const pageFavoriteController = createPageFavoriteController({ activeSchoolProfile, loadSettings: loadSettingsOrReport, saveSettings, activityStore: resourceLibraryRuntime, runTransaction: runDomainPolicyTransaction, onChanged: emit });
+const resourcesChanged = () => { emit(); campusBrowserManager?.browser?.updateToolbar(); };
+const pageFavoriteController = createPageFavoriteController({ activeSchoolProfile, loadSettings: loadSettingsOrReport, saveSettings, activityStore: resourceLibraryRuntime, runTransaction: runDomainPolicyTransaction, onChanged: resourcesChanged });
 async function ensureCampusReady() {
   if (connectionState.isConnected()) return true;
   const result = await connect();
@@ -1383,8 +1384,7 @@ const controlStateSnapshot = createControlStateSnapshot({
   hasCredential: hasStoredCredential, hasAccountIdentity: () => persistenceRuntime.hasAccountIdentity(),
   getPacUrl: pacUrl, getLocale: () => locale, platform: process.platform,
   getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
-  getResources: safeCampusResourceLibrary,
-  getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
+  getResources: safeCampusResourceLibrary, getResourceGroups: () => resourceLibraryRuntime.listGroups(), getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
   getCapabilitySnapshot: () => activeSchoolProfile.capabilitySnapshot(),
@@ -1406,7 +1406,7 @@ registerControlDataIpc({
     saveSettings,
     runTransaction: runDomainPolicyTransaction,
     safeResources: safeCampusResourceLibrary,
-    activityStore: resourceLibraryRuntime,
+    activityStore: resourceLibraryRuntime, onChanged: resourcesChanged,
   },
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
     isCustomGatewayEnabled: () => customGatewayOnboardingEnabled,
@@ -1469,7 +1469,7 @@ registerCoreControlIpc({
     clipboard.writeText(text);
     return { ok: true };
   },
-  openCampusBrowser: (request) => connectAndOpenCampusBrowser(request),
+  openCampusBrowser: (request) => connectAndOpenCampusBrowser(request), openBookmarkManager: () => campusBrowserManager.openBookmarkManager(),
   openResource: (request) => openCampusResourceById(request),
   checkUpdate: (force) => force ? runUpdateCheck() : runAutomaticUpdateCheck(),
   openExternal: (url) => {

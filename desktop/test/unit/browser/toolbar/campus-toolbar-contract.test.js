@@ -22,6 +22,13 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.deepEqual(normalizeToolbarCommand('focus-workspace', 'ignored'), {
     command: 'focus-workspace', value: '',
   });
+  assert.deepEqual(normalizeToolbarCommand('manage-bookmarks', 'ignored'), {
+    command: 'manage-bookmarks', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('open-resource', 'canvas'), {
+    command: 'open-resource', value: 'canvas',
+  });
+  assert.equal(normalizeToolbarCommand('open-resource', '../canvas'), null);
   assert.equal(normalizeToolbarCommand('execute-javascript', 'alert(1)'), null);
   assert.equal(normalizeToolbarCommand('switch-tab', '-1'), null);
   assert.equal(normalizeToolbarCommand('set-route', 'system'), null);

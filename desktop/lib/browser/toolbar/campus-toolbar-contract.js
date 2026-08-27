@@ -10,6 +10,7 @@ const NO_VALUE_COMMANDS = new Set([
   'open-external',
   'toggle-favorite',
   'focus-workspace',
+  'manage-bookmarks',
   'new-tab',
   'find-open',
   'find-close',
@@ -18,6 +19,7 @@ const NO_VALUE_COMMANDS = new Set([
 ]);
 const TAB_COMMANDS = new Set(['switch-tab', 'close-tab']);
 const TEXT_LIMITS = Object.freeze({ navigate: 2048, find: 512 });
+const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const ROUTES = new Set(['campus', 'direct']);
 
 function normalizeToolbarCommand(rawCommand, rawValue = '') {
@@ -31,6 +33,10 @@ function normalizeToolbarCommand(rawCommand, rawValue = '') {
   }
   if (command === 'set-route') {
     return ROUTES.has(rawValue) ? { command, value: rawValue } : null;
+  }
+  if (command === 'open-resource') {
+    return typeof rawValue === 'string' && RESOURCE_ID.test(rawValue)
+      ? { command, value: rawValue } : null;
   }
   if (Object.hasOwn(TEXT_LIMITS, command)) {
     if (typeof rawValue !== 'string' || rawValue.length > TEXT_LIMITS[command] ||

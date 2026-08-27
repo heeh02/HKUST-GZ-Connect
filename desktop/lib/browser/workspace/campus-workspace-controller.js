@@ -215,11 +215,14 @@ class CampusWorkspaceController {
     return true;
   }
 
-  focusSearch(contents) {
+  focus(contents, target = 'search') {
     if (!contents || contents.isDestroyed?.()) return false;
-    contents.send?.('campus-workspace-focus', 'search');
+    if (!['search', 'manage'].includes(target)) return false;
+    contents.send?.('campus-workspace-focus', target);
     return true;
   }
+
+  focusSearch(contents) { return this.focus(contents, 'search'); }
 
   attach(contents) {
     contents.on('ipc-message', (_event, channel, payload) => {

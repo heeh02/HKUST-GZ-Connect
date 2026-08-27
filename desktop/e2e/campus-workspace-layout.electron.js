@@ -90,7 +90,7 @@ async function main() {
 
   for (const [label, width, height, minimumFavoriteColumns, minimumCategoryColumns] of [
     ['compact', 660, 560, 2, 1],
-    ['standard', 1040, 740, 3, 3],
+    ['standard', 1040, 740, 3, 2],
     ['wide', 1400, 900, 4, 3],
   ]) {
     window.setContentSize(width, height);
@@ -98,41 +98,35 @@ async function main() {
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
-    assert.deepEqual(home.navigation, ['首页', '服务目录', '整理收藏']);
+    assert.deepEqual(home.navigation, ['校园服务', '整理收藏']);
     assert.equal(home.gateways, 3);
     assert.equal(home.hasSearch, true);
     assert.ok(home.groupColumns * home.groupModules >= minimumFavoriteColumns,
       `${label} favorites did not use available width`);
     await capture(window, `${label}-home`);
 
-    const categoryColumns = await window.webContents.executeJavaScript(`(() => {
-      document.querySelector('[data-workspace-screen="catalog"]').click();
-      return getComputedStyle(document.getElementById('categoryOverview'))
-        .gridTemplateColumns.split(' ').filter(Boolean).length;
-    })()`);
-    assert.ok(categoryColumns >= minimumCategoryColumns, `${label} catalogue is too sparse`);
-    await capture(window, `${label}-catalog`);
-    await window.webContents.executeJavaScript(
-      `document.querySelector('[data-workspace-screen="home"]').click()`,
+    const categoryColumns = await window.webContents.executeJavaScript(
+      `Number.parseInt(getComputedStyle(document.getElementById('categorySections')).columnCount, 10)`,
     );
+    assert.ok(categoryColumns >= minimumCategoryColumns, `${label} catalogue is too sparse`);
+    await capture(window, `${label}-services`);
   }
 
   const courses = await window.webContents.executeJavaScript(`(() => {
-    document.querySelector('[data-workspace-screen="catalog"]').click();
-    [...document.querySelectorAll('.category-card')]
-      .find((button) => button.textContent.includes('课程与考试')).click();
+    const section = document.getElementById('service-category-courses');
+    section.querySelector('[data-resource-id="sis"] .resource-open').click();
     return {
-      ids: [...document.querySelectorAll('#categoryResults .resource-item')]
+      ids: [...section.querySelectorAll('.resource-item')]
         .map((item) => item.dataset.resourceId),
-      favoritesHidden: document.getElementById('homeScreen').hidden,
-      backVisible: !document.getElementById('catalogBack').hidden,
+      serviceScreenVisible: !document.getElementById('homeScreen').hidden,
+      categoryJumpCount: document.querySelectorAll('.category-jump').length,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
   assert.equal(courses.ids.includes('new-student'), false);
-  assert.equal(courses.favoritesHidden, true);
-  assert.equal(courses.backVisible, true);
+  assert.equal(courses.serviceScreenVisible, true);
+  assert.ok(courses.categoryJumpCount >= 10);
 
   const leaveSearch = await window.webContents.executeJavaScript(`(() => {
     const search = document.getElementById('workspaceSearch');
@@ -172,6 +166,8 @@ async function main() {
   })()`);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
+  assert.equal(commands.some(({ command, resourceId }) =>
+    command === 'open-resource' && resourceId === 'sis'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'open-resource' && resourceId === 'official-portal'), true);
   assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);

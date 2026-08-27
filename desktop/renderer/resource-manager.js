@@ -37,6 +37,7 @@
     setResources,
     saveResource,
     setSaved,
+    launcherId = 'manageResources',
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
   } = {}) {
@@ -154,7 +155,7 @@
     function start() {
       if (started) return false;
       started = true;
-      $('manageResources').addEventListener('click', open);
+      $(launcherId).addEventListener('click', open);
       $('closeResourceDialog').addEventListener('click', () => dialog.close());
       $('cancelResource').addEventListener('click', clearEditor);
       $('restoreBuiltinResources').addEventListener('click', async () => {

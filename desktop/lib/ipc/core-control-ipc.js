@@ -24,11 +24,11 @@ function resourceOpenRequestFromIpc(value) {
 function registerCoreControlIpc(dependencies = {}) {
   const {
     register, getState, getLoginAccount, connect, disconnect, reconnect,
-    getLogs, openLog, copyText, openCampusBrowser, openResource, checkUpdate, openExternal, resize,
+    getLogs, openLog, copyText, openCampusBrowser, openBookmarkManager, openResource, checkUpdate, openExternal, resize,
   } = dependencies;
   for (const dependency of [
     register, getState, getLoginAccount, connect, disconnect, reconnect,
-    getLogs, openLog, copyText, openCampusBrowser, openResource, checkUpdate, openExternal, resize,
+    getLogs, openLog, copyText, openCampusBrowser, openBookmarkManager, openResource, checkUpdate, openExternal, resize,
   ]) {
     if (typeof dependency !== 'function') {
       throw new TypeError('core control IPC dependencies are incomplete');
@@ -48,6 +48,7 @@ function registerCoreControlIpc(dependencies = {}) {
   register('open-campus-browser', (_event, request) => (
     openCampusBrowser(campusOpenRequestFromIpc(request))
   ));
+  register('open-bookmark-manager', () => openBookmarkManager());
   register('open-resource', (_event, request) => (
     openResource(resourceOpenRequestFromIpc(request))
   ));

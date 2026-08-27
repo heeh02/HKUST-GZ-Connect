@@ -16,6 +16,7 @@ let connectedAt = null;
 let durTimer = null;
 let campusActionBusy = false;
 let campusResources = [];
+let resourceGroups = [];
 let resourceQuery = '';
 let resourceLayoutFeature = null;
 let towerDirty = false;
@@ -127,6 +128,7 @@ function renderResources() {
   };
   const rendered = window.studentHome.renderStudentHome({
     resources: campusResources,
+    groups: resourceGroups,
     query: resourceQuery,
     view: presentation.view,
     expanded: false,
@@ -172,6 +174,7 @@ async function refreshState({ preserveTower = false } = {}) {
   document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn, capabilitySnapshot: s.capabilitySnapshot } }));
   settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
+  resourceGroups = Array.isArray(s.resourceGroups) ? s.resourceGroups : [];
   renderConnect(s);
   renderResources();
   $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
@@ -548,6 +551,12 @@ resourceEditorManager = window.resourceManager.start({
   setResources: (resources) => { campusResources = resources; renderResources(); },
   saveResource: saveCampusResource,
   setSaved: setResourceSaved,
+  launcherId: 'legacyResourceManager',
+});
+$('manageResources').addEventListener('click', () => {
+  window.api.openBookmarkManager().catch(() => {
+    usabilityFeature?.toast(t('quick.browserOpenFailed'), 'error');
+  });
 });
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();

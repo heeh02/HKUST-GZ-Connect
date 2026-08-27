@@ -15,6 +15,7 @@ function registerCampusResourceIpc({
   runTransaction,
   safeResources,
   activityStore,
+  onChanged = () => {},
 } = {}) {
   for (const dependency of [register, loadSettings, saveSettings, runTransaction, safeResources]) {
     if (typeof dependency !== 'function') {
@@ -26,6 +27,7 @@ function registerCampusResourceIpc({
       typeof activityStore.replaceFavorites !== 'function') {
     throw new TypeError('campus resource activity dependencies are incomplete');
   }
+  if (typeof onChanged !== 'function') throw new TypeError('campus resource change hook is invalid');
   register('save-resource', async (_event, payload) => {
     try {
       const resource = allowedKeys(payload, ['id', 'name', 'url', 'description', 'route']);
@@ -40,6 +42,7 @@ function registerCampusResourceIpc({
           rollback: () => saveSettings(previous),
         };
       });
+      onChanged();
       return {
         ok: true,
         resource: result.resource,
@@ -81,6 +84,7 @@ function registerCampusResourceIpc({
           rollback: () => saveSettings(previous),
         };
       });
+      onChanged();
       return { ok: true, resources: safeResources(), warning: null };
     } catch (error) {
       return {
@@ -100,6 +104,7 @@ function registerCampusResourceIpc({
           rollback: () => saveSettings(previous),
         };
       });
+      onChanged();
       return { ok: true, resources: safeResources(), warning: null };
     } catch (error) {
       return {
@@ -125,6 +130,7 @@ function registerCampusResourceIpc({
           rollback: () => saveSettings(previous),
         };
       });
+      onChanged();
       return { ok: true, resources: safeResources(), warning: null };
     } catch (error) {
       return {
@@ -155,6 +161,7 @@ function registerCampusResourceIpc({
           },
         };
       });
+      onChanged();
       return { ok: true, resources: safeResources() };
     } catch (error) {
       return {

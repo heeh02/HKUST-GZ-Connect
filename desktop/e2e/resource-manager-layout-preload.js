@@ -30,6 +30,7 @@ let resources = [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
 }))];
 let lastOpenRequest = null;
 let workspaceOpenCount = 0;
+let bookmarkManagerOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
 
@@ -64,6 +65,10 @@ const state = {
     closeAction: 'ask',
   },
   campusResources: resources,
+  resourceGroups: [
+    { id: 'group_abcdefghijkl', name: '学习', resourceIds: ['fixture-0', 'fixture-1'] },
+    { id: 'group_mnopqrstuvwx', name: '常用工具', resourceIds: ['fixture-2', 'fixture-3'] },
+  ],
   connected: false,
   connecting: false,
   clientIp: null,
@@ -105,6 +110,10 @@ contextBridge.exposeInMainWorld('api', {
   openCampusBrowser: async (request) => {
     if (request == null) workspaceOpenCount += 1;
     lastOpenRequest = request;
+    return { ok: true };
+  },
+  openBookmarkManager: async () => {
+    bookmarkManagerOpenCount += 1;
     return { ok: true };
   },
   openResource: async (resourceId) => {
@@ -183,5 +192,5 @@ contextBridge.exposeInMainWorld('api', {
   resize: async () => ({ ok: true }),
   onStatus: () => {},
   onTelemetry: () => {},
-  testState: () => ({ lastOpenRequest, workspaceOpenCount }),
+  testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount }),
 });

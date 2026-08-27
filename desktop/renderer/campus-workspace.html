@@ -25,8 +25,7 @@
     </header>
 
     <nav id="workspaceNavigation" class="workspace-navigation surface" aria-label="校园工作台页面">
-      <button type="button" data-workspace-screen="home" class="active">首页</button>
-      <button type="button" data-workspace-screen="catalog">服务目录</button>
+      <button type="button" data-workspace-screen="home" class="active">校园服务</button>
       <button type="button" data-workspace-screen="manage">整理收藏</button>
     </nav>
 
@@ -65,16 +64,13 @@
         <div class="module-heading"><div><span class="module-eyebrow">START HERE</span><h2 id="starterTitle">常用入口</h2></div></div>
         <div id="starterGrid" class="resource-grid"></div>
       </section>
-    </section>
 
-    <section id="catalogScreen" class="workspace-screen" hidden>
-      <section class="module surface">
+      <section id="catalogModule" class="module surface service-directory">
         <div class="module-heading">
-          <div><span class="module-eyebrow">CATALOG</span><h2 id="catalogTitle">按使用场景查找</h2></div>
-          <button id="catalogBack" class="text-button" type="button" hidden>返回分类</button>
+          <div><span class="module-eyebrow">ALL SERVICES</span><h2 id="catalogTitle">全部服务</h2></div>
         </div>
-        <div id="categoryOverview" class="category-overview"></div>
-        <div id="categoryResults" class="resource-grid" hidden></div>
+        <div id="categoryJumpBar" class="category-jump-bar" aria-label="服务分类"></div>
+        <div id="categorySections" class="service-category-list"></div>
       </section>
     </section>
 
