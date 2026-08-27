@@ -303,7 +303,7 @@ async function assertStudentHome(window) {
       assert.equal(view.recommendedColumns, 4, `${width}px: wide recommended resource columns`);
     }
     if (width < 900) {
-      assert.ok(view.heroHeight >= 180 && view.heroHeight <= 270,
+      assert.ok(view.heroHeight >= 195 && view.heroHeight <= 235,
         `${width}px: classic connection card proportions changed unexpectedly`);
     } else {
       assert.ok(view.heroHeight >= 100 && view.heroHeight <= 155,
