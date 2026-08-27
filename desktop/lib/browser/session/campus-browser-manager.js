@@ -4,17 +4,22 @@ const { BLANK_CAMPUS_HOME, CampusBrowser } = require('./campus-browser');
 const { ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
 const { CampusCredentialVault } = require('../credentials/campus-credential-vault');
 const { normalizeOpenRequest } = require('../resources/campus-open-policy');
+const { CampusWorkspaceController } = require('../workspace/campus-workspace-controller');
 
 function browserProfilePresentation(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       typeof value.schoolName !== 'string' || !value.schoolName.trim() ||
       value.schoolName.length > 160 || /[\u0000-\u001f\u007f<>]/u.test(value.schoolName) ||
-      typeof value.unverified !== 'boolean') {
+      typeof value.unverified !== 'boolean' ||
+      (value.officialPortalResourceId != null &&
+       (typeof value.officialPortalResourceId !== 'string' ||
+        !/^[a-z0-9-]{1,40}$/u.test(value.officialPortalResourceId)))) {
     throw new TypeError('Campus Browser Profile presentation is invalid');
   }
   return Object.freeze({
     schoolName: value.schoolName.trim(),
     unverified: value.unverified,
+    officialPortalResourceId: value.officialPortalResourceId || null,
   });
 }
 
@@ -32,6 +37,8 @@ class CampusBrowserManager {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    workspaceFile,
+    workspacePreload,
     homeUrl = BLANK_CAMPUS_HOME,
     browserPartition,
     routingPolicy,
@@ -43,6 +50,11 @@ class CampusBrowserManager {
     getTranslator,
     getProfilePresentation,
     getWorkspaceResources,
+    getWorkspaceGroups = () => [],
+    onTogglePageFavorite,
+    onOpenResource,
+    onWorkspaceMutation,
+    onRecordPageOpen,
     showItemInFolder,
     openExternal,
     showRoutingRules,
@@ -53,7 +65,8 @@ class CampusBrowserManager {
     for (const dependency of [
       BrowserWindow, WebContentsView, parentWindow, ensureCampusReady, resolveRoute,
       ensureConnected, getSocksPort, getLocale, getTranslator, getProfilePresentation,
-      getWorkspaceResources, showItemInFolder,
+      getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      showItemInFolder,
       showRoutingRules,
       reportError, CampusBrowserClass, CredentialVaultClass,
     ]) {
@@ -62,18 +75,23 @@ class CampusBrowserManager {
       }
     }
     if (!session || !dialog || !safeStorage || !certificateTrust || !routingPolicy ||
-        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, browserPartition]
+        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, workspaceFile,
+          workspacePreload, browserPartition]
           .every((value) => typeof value === 'string' && value)) {
       throw new TypeError('Campus Browser manager environment is incomplete');
     }
     Object.assign(this, {
       BrowserWindow, WebContentsView, session, dialog, safeStorage, platform,
       credentialFile, certificateTrust, parentWindow, toolbarFile, toolbarPreload,
-      campusPreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
+      campusPreload, workspaceFile, workspacePreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       browserPartition,
       getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
-      getWorkspaceResources, showRoutingRules, reportError,
+      getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      onTogglePageFavorite: typeof onTogglePageFavorite === 'function'
+        ? onTogglePageFavorite : async () => ({ ok: false }),
+      onRecordPageOpen: typeof onRecordPageOpen === 'function' ? onRecordPageOpen : () => false,
+      showRoutingRules, reportError,
       openExternal,
       CampusBrowserClass, CredentialVaultClass,
     });
@@ -93,6 +111,19 @@ class CampusBrowserManager {
       safeStorage: this.safeStorage,
       platform: this.platform,
     });
+    const workspaceController = new CampusWorkspaceController({
+      workspaceFile: this.workspaceFile,
+      workspacePreload: this.workspacePreload,
+      getProfilePresentation: () => browserProfilePresentation(this.getProfilePresentation()),
+      getResources: () => this.getWorkspaceResources(),
+      getGroups: () => this.getWorkspaceGroups(),
+      getLocale: this.getLocale,
+      onCommand: async (command) => {
+        if (command.command === 'open-resource') return this.onOpenResource(command.resourceId);
+        if (command.command === 'manage-rules') return this.showRoutingRules();
+        return this.onWorkspaceMutation(command);
+      },
+    });
     this.browser = new this.CampusBrowserClass({
       BrowserWindow: this.BrowserWindow,
       WebContentsView: this.WebContentsView,
@@ -106,6 +137,9 @@ class CampusBrowserManager {
       campusPreload: this.campusPreload,
       profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
       getWorkspaceResources: () => this.getWorkspaceResources(),
+      onTogglePageFavorite: (candidate) => this.onTogglePageFavorite(candidate),
+      workspaceController,
+      onRecordPageOpen: (url) => this.onRecordPageOpen(url),
       showItemInFolder: this.showItemInFolder,
       openExternal: this.openExternal,
       homeUrl: this.homeUrl,

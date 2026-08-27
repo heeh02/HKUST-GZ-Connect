@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>校园工作台</title>
+  <link rel="stylesheet" href="design-tokens.css" />
+  <link rel="stylesheet" href="campus-workspace.css" />
+</head>
+<body>
+  <main class="workspace-shell">
+    <header class="workspace-header surface">
+      <div class="workspace-brand">
+        <span class="workspace-kicker">EASYCONNECT · CAMPUS WORKSPACE</span>
+        <h1 id="workspaceSchool">校园工作台</h1>
+      </div>
+      <div class="workspace-header-actions">
+        <span id="workspaceTrust" class="trust-badge" hidden>未审核</span>
+        <span class="route-ready"><span class="ready-dot"></span><span id="workspaceReady">自动选择网络</span></span>
+        <button id="manageRules" class="soft-button" type="button">网站规则</button>
+      </div>
+    </header>
+
+    <section class="workspace-command surface" aria-label="校园服务搜索">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <input id="workspaceSearch" type="search" maxlength="80"
+               placeholder="搜索收藏、最近使用或校园服务" />
+        <kbd>⌘K</kbd>
+      </div>
+      <div id="workspaceFilters" class="filter-row" role="group" aria-label="校园服务分类"></div>
+    </section>
+
+    <section id="officialModule" class="module official-module surface" hidden>
+      <div class="module-heading">
+        <div><span class="module-eyebrow">OFFICIAL</span><h2 id="officialTitle">学校官方门户</h2></div>
+      </div>
+      <div id="officialContent"></div>
+    </section>
+
+    <section id="favoritesModule" class="module surface">
+      <div class="module-heading">
+        <div><span class="module-eyebrow">MY WORKSPACE</span><h2 id="favoritesTitle">我的收藏</h2></div>
+        <div class="module-actions">
+          <button id="toggleManage" class="text-button" type="button">管理</button>
+          <button id="createGroup" class="soft-button" type="button">＋ 新建分组</button>
+        </div>
+      </div>
+      <div id="favoriteGroups" class="favorite-groups"></div>
+    </section>
+
+    <section id="recentModule" class="module surface">
+      <div class="module-heading"><div><span class="module-eyebrow">RECENT</span><h2 id="recentTitle">最近打开</h2></div></div>
+      <div id="recentGrid" class="resource-grid"></div>
+    </section>
+
+    <section id="servicesModule" class="module surface">
+      <div class="module-heading"><div><span class="module-eyebrow">DISCOVER</span><h2 id="servicesTitle">学校建议服务</h2></div></div>
+      <div id="servicesGrid" class="resource-grid"></div>
+    </section>
+
+    <section id="workspaceEmpty" class="empty-state surface" hidden>
+      <strong id="emptyTitle">没有符合条件的校园服务</strong>
+      <span id="emptyHint">尝试清除搜索或选择其他分类。</span>
+      <button id="clearWorkspaceFilter" class="soft-button" type="button">清除筛选</button>
+    </section>
+  </main>
+
+  <dialog id="groupDialog" class="group-dialog">
+    <form method="dialog">
+      <h2 id="groupDialogTitle">新建分组</h2>
+      <label id="groupNameLabel" for="groupName">分组名称</label>
+      <input id="groupName" maxlength="30" autocomplete="off" />
+      <p id="groupError" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="cancelGroup" value="cancel" class="text-button">取消</button>
+        <button id="saveGroup" value="default" class="primary-button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="campus-workspace.js"></script>
+</body>
+</html>

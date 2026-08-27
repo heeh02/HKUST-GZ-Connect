@@ -20,6 +20,10 @@ const {
   ResourceActivityStore,
 } = require('../../../../lib/resources/runtime/resource-activity-store');
 const {
+  FavoriteGroupStore,
+  emptyGroupDocument,
+} = require('../../../../lib/resources/runtime/favorite-group-store');
+const {
   validateLocalResourcesDocument,
 } = require('../../../../lib/persistence/schema/profile-workspace-documents');
 const {
@@ -56,6 +60,7 @@ test('2.0 workspace upgrade keeps URLs favorites recents hidden sites and routin
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-upgrade-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const favoritesFile = path.join(root, 'favorites.json');
+  const groupsFile = path.join(root, 'favorite-groups.json');
   const recentFile = path.join(root, 'recent-resources.json');
   const routingFile = path.join(root, 'routing-rules.json');
   writeFixture(favoritesFile, fixture.favorites);
@@ -67,6 +72,32 @@ test('2.0 workspace upgrade keeps URLs favorites recents hidden sites and routin
     favorites: fixture.favorites,
     recent: fixture.recentResources,
   });
+
+  // 2.0.1 introduces folders as a sidecar. An existing workspace has no such
+  // file, so every old favorite must remain visible as "ungrouped" without
+  // rewriting favorites.json. Once created, folder order and membership must
+  // survive a restart independently from the original activity documents.
+  const originalFavorites = fs.readFileSync(favoritesFile, 'utf8');
+  const groups = new FavoriteGroupStore({
+    filePath: groupsFile,
+    platform: 'darwin',
+    randomBytes: () => Buffer.alloc(12, 7),
+  });
+  assert.deepEqual(groups.snapshot(), emptyGroupDocument());
+  assert.equal(fs.existsSync(groupsFile), false);
+  const created = groups.create('学习与科研');
+  groups.move(
+    'custom-upgrade-fixture',
+    created.groups[0].id,
+    0,
+    fixture.favorites.entries,
+  );
+  const restartedGroups = new FavoriteGroupStore({ filePath: groupsFile, platform: 'darwin' });
+  assert.deepEqual(restartedGroups.snapshot().groups.map(({ name, resourceIds }) => ({
+    name, resourceIds,
+  })), [{ name: '学习与科研', resourceIds: ['custom-upgrade-fixture'] }]);
+  assert.equal(fs.readFileSync(favoritesFile, 'utf8'), originalFavorites);
+  assert.deepEqual(restarted.snapshot().favorites, fixture.favorites);
   const projected = projectResourceActivity(
     resources, fixture.favorites, fixture.recentResources,
   );

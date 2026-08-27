@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, webContents } = require('electron');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { projectRuntimeSettings } = require('../lib/persistence/settings/profile-workspace-settings-bundle');
 const { saveSettings } = require('../lib/persistence/settings/settings-store');
@@ -52,6 +52,16 @@ async function waitForControlWindow() {
 
 async function invoke(window, expression) {
   return window.webContents.executeJavaScript(`(async () => (${expression}))()`);
+}
+
+async function waitFor(condition, message, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = condition();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
 }
 
 async function run() {
@@ -141,6 +151,32 @@ async function run() {
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), true);
+  const workspaceOpen = await invoke(control, 'window.api.openCampusBrowser({})');
+  assert.equal(workspaceOpen.ok, true);
+  const workspace = await waitFor(() => webContents.getAllWebContents().find((contents) => (
+    contents.getURL().endsWith('/renderer/campus-workspace.html') && !contents.isLoading()
+  )), 'Campus Workspace renderer did not start');
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('toggle-favorite', { resourceId: 'canvas' })`,
+  ), true);
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('create-group', { name: '学习' })`,
+  ), true);
+  const groupFile = path.join(path.dirname(persistence.paths.resourceFavorites), 'favorite-groups.json');
+  const groupDocument = await waitFor(() => {
+    try { return JSON.parse(fs.readFileSync(groupFile, 'utf8')); } catch { return null; }
+  }, 'Campus Workspace group was not persisted');
+  assert.equal(groupDocument.groups[0].name, '学习');
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('move-resource', {
+      resourceId: 'canvas', groupId: '${groupDocument.groups[0].id}', index: 0,
+    })`,
+  ), true);
+  const movedGroup = await waitFor(() => {
+    const document = JSON.parse(fs.readFileSync(groupFile, 'utf8'));
+    return document.groups[0].resourceIds.includes('canvas') ? document : null;
+  }, 'Campus Workspace favorite was not moved into its group');
+  assert.deepEqual(movedGroup.groups[0].resourceIds, ['canvas']);
 
   const settings = projectRuntimeSettings(persistence.reloadAuthority());
   assert.equal(settings.username, '');

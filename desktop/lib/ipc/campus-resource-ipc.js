@@ -146,9 +146,13 @@ function registerCampusResourceIpc({
       await runTransaction(() => {
         const resources = safeResources();
         const previous = activityStore.snapshot().favorites;
+        const previousGroups = activityStore.groupsSnapshot?.() || null;
         return {
           commit: () => activityStore.toggleFavorite(resourceId, resources),
-          rollback: () => activityStore.replaceFavorites(previous),
+          rollback: () => {
+            activityStore.replaceFavorites(previous);
+            if (previousGroups) activityStore.replaceGroups(previousGroups);
+          },
         };
       });
       return { ok: true, resources: safeResources() };

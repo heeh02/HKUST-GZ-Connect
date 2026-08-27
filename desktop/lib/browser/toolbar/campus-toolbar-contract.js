@@ -8,6 +8,8 @@ const NO_VALUE_COMMANDS = new Set([
   'manage-credential',
   'manage-routing-rules',
   'open-external',
+  'toggle-favorite',
+  'focus-workspace',
   'new-tab',
   'find-open',
   'find-close',

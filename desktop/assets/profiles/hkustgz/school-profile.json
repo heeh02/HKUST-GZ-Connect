@@ -19,6 +19,7 @@
   },
   "browser": {
     "homeUrl": "https://www.hkust-gz.edu.cn/",
+    "officialPortalResourceId": "official-portal",
     "campusDomains": [
       "hkust-gz.edu.cn",
       "hkust.edu.hk"

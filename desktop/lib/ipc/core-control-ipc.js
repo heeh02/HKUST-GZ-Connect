@@ -3,6 +3,7 @@
 const { allowedKeys, boundedString } = require('./ipc-guard');
 
 function campusOpenRequestFromIpc(value) {
+  if (value == null) return { url: '' };
   if (typeof value === 'string') return boundedString(value, { maxLength: 4096 });
   const source = allowedKeys(value, ['url']);
   return { url: boundedString(source.url ?? '', { maxLength: 4096 }) };

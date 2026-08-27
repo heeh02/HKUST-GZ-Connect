@@ -43,6 +43,8 @@ function fixture(overrides = {}) {
     toolbarFile: '/fixture/campus-browser.html',
     toolbarPreload: '/fixture/toolbar.js',
     campusPreload: '/fixture/preload.js',
+    workspaceFile: '/fixture/campus-workspace.html',
+    workspacePreload: '/fixture/workspace-preload.js',
     browserPartition: 'persist:campus-workspace-test',
     routingPolicy: {},
     ensureCampusReady: async () => true,
@@ -51,12 +53,18 @@ function fixture(overrides = {}) {
     getSocksPort: () => 6180,
     getLocale: () => 'zh',
     getTranslator: () => (key, vars) => vars?.message ? `${key}:${vars.message}` : key,
-    getProfilePresentation: () => ({ schoolName: 'Example University', unverified: false }),
+    getProfilePresentation: () => ({
+      schoolName: 'Example University', unverified: false,
+      officialPortalResourceId: 'official-portal',
+    }),
     getWorkspaceResources: () => [{
       id: 'library', name: 'Library', description: 'Research resources',
       url: 'https://library.example.edu/', route: 'campus', favorite: true,
-      lastOpenedAt: null,
+      lastOpenedAt: null, category: 'academic', builtin: true,
     }],
+    getWorkspaceGroups: () => [],
+    onOpenResource: async () => ({ ok: true }),
+    onWorkspaceMutation: async () => ({ ok: true }),
     showItemInFolder: () => {},
     openExternal: () => {},
     showRoutingRules: () => {},
@@ -80,6 +88,7 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.equal(browser.options.credentialVault.options.filePath, '/fixture/campus-credentials.json');
   assert.deepEqual(browser.options.profilePresentation, {
     schoolName: 'Example University', unverified: false,
+    officialPortalResourceId: 'official-portal',
   });
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
   assert.equal(typeof browser.options.openExternal, 'function');
@@ -88,8 +97,12 @@ test('manager creates one browser with Engine-neutral injected policies', async 
 
 test('Browser presentation keeps only bounded school and trust display fields', () => {
   assert.deepEqual(browserProfilePresentation({
-    schoolName: ' Example University ', unverified: true, profileKey: 'must-not-cross',
-  }), { schoolName: 'Example University', unverified: true });
+    schoolName: ' Example University ', unverified: true,
+    officialPortalResourceId: 'official-portal', profileKey: 'must-not-cross',
+  }), {
+    schoolName: 'Example University', unverified: true,
+    officialPortalResourceId: 'official-portal',
+  });
   assert.throws(() => browserProfilePresentation({
     schoolName: '<script>', unverified: false,
   }), /presentation/u);

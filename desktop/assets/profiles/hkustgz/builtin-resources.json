@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "resources": [
     {
+      "id": "official-portal",
+      "name": "myPortal 官方门户",
+      "description": "学校提供的完整应用、办事、资讯与日程入口",
+      "localizedName": { "zh": "myPortal 官方门户", "en": "myPortal Official Portal" },
+      "localizedDescription": { "zh": "学校提供的完整应用、办事、资讯与日程入口", "en": "The official hub for campus apps, services, news, and schedules" },
+      "url": "https://myportal.hkust-gz.edu.cn/",
+      "category": "common",
+      "keywords": ["myPortal", "官方门户", "我的应用", "学生服务台", "校园门户"]
+    },
+    {
       "id": "home",
       "name": "学校主页",
       "description": "新闻、院系与校园信息",

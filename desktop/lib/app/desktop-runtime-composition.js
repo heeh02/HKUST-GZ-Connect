@@ -20,7 +20,10 @@ const { relaunchAfterProfileSwitch, scheduleProfileSwitchRelaunch,
   writeProfileSwitchE2EMarker } =
   require('../switching/runtime/profile-switch-relaunch');
 const { createLegacyRuntimeStoragePaths } = require('../persistence/paths/runtime-storage-paths');
-const { ResourceLibraryRuntime } = require('../resources/runtime/resource-library-runtime');
+const {
+  PageFavoriteController,
+  ResourceLibraryRuntime,
+} = require('../resources/runtime/resource-library-runtime');
 
 function resolveUserDataOverride(rawValue) {
   if (rawValue == null || String(rawValue).trim() === '') return null;
@@ -43,6 +46,29 @@ function createMultiSchoolStartupInitializer(options) {
   return Object.freeze(initialize);
 }
 
+function createPageFavoriteController({
+  activeSchoolProfile,
+  loadSettings,
+  saveSettings,
+  activityStore,
+  runTransaction,
+  onChanged,
+} = {}) {
+  return new PageFavoriteController({
+    loadSettings,
+    saveSettings,
+    allResources: (settings) => activeSchoolProfile.mergeResourceLibrary(
+      settings.customResources, [],
+    ),
+    visibleResources: (settings) => activeSchoolProfile.mergeResourceLibrary(
+      settings.customResources, settings.hiddenBuiltinResourceIds,
+    ),
+    activityStore,
+    runTransaction,
+    onChanged,
+  });
+}
+
 const desktopRuntimeComposition = Object.freeze({
   ActiveContextLease,
   assertActiveContextSwitchStartupClear,
@@ -50,6 +76,7 @@ const desktopRuntimeComposition = Object.freeze({
   createMainProfileSwitchComposition,
   createMainProfileSwitchRuntime,
   createMultiSchoolStartupInitializer,
+  createPageFavoriteController,
   customGatewayProductAvailability,
   createProfileSwitchBarrierEffects,
   DesktopPersistenceRuntime,

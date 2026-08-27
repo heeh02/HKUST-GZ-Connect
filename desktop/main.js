@@ -21,7 +21,7 @@ const {
   runCredentialSettingsMutation,
 } = require('./lib/persistence/credentials/credential-settings-transaction');
 const { desktopRuntimeComposition } = require('./lib/app/desktop-runtime-composition');
-const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, customGatewayProductAvailability, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, ResourceLibraryRuntime, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
+const { ActiveContextLease, assertActiveContextSwitchStartupClear, createLegacyRuntimeStoragePaths, createMainProfileSwitchComposition, createMultiSchoolStartupInitializer, createPageFavoriteController, customGatewayProductAvailability, DesktopPersistenceRuntime, LegacyMigrationCredentialOwner, ProfileWorkspaceStartupRuntime, relaunchAfterPersistenceMigration, ResourceLibraryRuntime, resolveUserDataOverride, selectProfileWorkspacePreReadyStorage, writePersistenceE2EMarker, writeProfileSwitchE2EMarker } = desktopRuntimeComposition;
 const {
   classifyEngineCode,
   classifyEngineOutput,
@@ -1234,14 +1234,13 @@ const browserRoutingPolicy = {
   }),
   proxyConfig: (port) => browserPolicyProxyConfig(port),
 };
-
+const pageFavoriteController = createPageFavoriteController({ activeSchoolProfile, loadSettings: loadSettingsOrReport, saveSettings, activityStore: resourceLibraryRuntime, runTransaction: runDomainPolicyTransaction, onChanged: emit });
 async function ensureCampusReady() {
   if (connectionState.isConnected()) return true;
   const result = await connect();
   if (!result?.ok && !connectionState.isConnecting()) return false;
   return waitForConnected(result.intent);
 }
-
 campusBrowserManager = new CampusBrowserManager({
   BrowserWindow,
   WebContentsView,
@@ -1255,8 +1254,8 @@ campusBrowserManager = new CampusBrowserManager({
     trust: (origin, fingerprint) => certificateTrustStore.trust(origin, fingerprint),
   },
   parentWindow: () => desktopShell?.window || null,
-  toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'),
-  toolbarPreload: path.join(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'),
+  toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'), workspaceFile: path.join(__dirname, 'renderer', 'campus-workspace.html'),
+  toolbarPreload: path.join(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'), workspacePreload: path.join(__dirname, 'lib', 'browser', 'workspace', 'campus-workspace-preload.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
   browserPartition: preReadyStorage.authority?.layout?.browserPartition || activeSchoolProfile.browserPartition,
   routingPolicy: browserRoutingPolicy,
@@ -1274,7 +1273,8 @@ campusBrowserManager = new CampusBrowserManager({
   getSocksPort: socksPort,
   getLocale: () => locale,
   getTranslator: () => t,
-  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(),
+  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(), getWorkspaceGroups: () => resourceLibraryRuntime.listGroups(),
+  onTogglePageFavorite: (candidate) => pageFavoriteController.toggle(candidate).catch((error) => ({ ok: false, error: error.message })), onRecordPageOpen: (url) => (resourceLibraryRuntime.recordOpenByUrl(url) && (emit(), true)), onOpenResource: (resourceId) => openCampusResourceById({ resourceId }), onWorkspaceMutation: (command) => pageFavoriteController.handleWorkspaceCommand(command),
   showItemInFolder: (file) => shell.showItemInFolder(file), openExternal: (url) => shell.openExternal(url),
   showRoutingRules: () => {
     desktopShell?.showWindow();

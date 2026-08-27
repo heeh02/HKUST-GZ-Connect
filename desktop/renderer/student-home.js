@@ -68,12 +68,19 @@
     const section = (kind, title, items) => items.length
       ? `<section class="resource-section resource-section-${kind}"><h3>${esc(title)}</h3><div class="resource-grid">${cards(items)}</div></section>`
       : '';
+    const emptyState = (clearable) => '<div class="resource-empty">'
+      + `<strong>${esc(translate('resources.empty'))}</strong>`
+      + `<span>${esc(translate(clearable ? 'resources.emptyFilteredHint' : 'resources.emptyHint'))}</span>`
+      + '<div class="resource-empty-actions">'
+      + (clearable ? `<button class="mini" type="button" data-resource-empty-action="clear">${esc(translate('resources.clearFilter'))}</button>` : '')
+      + `<button class="mini" type="button" data-resource-empty-action="manage">${esc(translate('resources.manage'))}</button>`
+      + '</div></div>';
     let html;
     if (focused) {
       const visible = visibleResources(filtered, true);
       html = visible.length
         ? section('results', translate('resources.results'), visible)
-        : `<div class="resource-empty">${esc(translate('resources.empty'))}</div>`;
+        : emptyState(true);
     } else {
       if (expanded === true) {
         html = section('all', translate('resources.allSection'), filtered);
@@ -95,7 +102,7 @@
         + section('recommended', translate('resources.recommendedSection'), recommended);
       if (!html) html = section('all', translate('resources.allSection'),
         visibleResources(filtered, false, normalizedLayout.sectionLimit));
-      if (!html) html = `<div class="resource-empty">${esc(translate('resources.empty'))}</div>`;
+      if (!html) html = emptyState(false);
       return Object.freeze({ html, hasMore: filtered.length > 0 });
     }
     return Object.freeze({ html, hasMore: false });

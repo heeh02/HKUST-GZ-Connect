@@ -37,15 +37,17 @@ function resource(index, overrides = {}) {
 
 test('the sole reviewed resource document is bounded, frozen and route-compatible', () => {
   const resources = parseBuiltinResourceDocument(fs.readFileSync(sourceFile));
-  assert.equal(resources.length, 15);
-  assert.equal(resources[0].route, 'campus');
-  assert.equal(resources[4].route, 'direct');
-  assert.equal(resources[0].category, 'campus-service');
-  assert.deepEqual(resources[5].keywords, ['Canvas', '课程', '作业', '教学']);
-  assert.equal(resources[0].schemaVersion, 1);
-  assert.equal(resources[0].reviewed, true);
-  assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: 'School Homepage' });
-  assert.equal(resources[0].iconKey, null);
+  assert.equal(resources.length, 16);
+  const byId = new Map(resources.map((resource) => [resource.id, resource]));
+  assert.equal(byId.get('official-portal').url, 'https://myportal.hkust-gz.edu.cn/');
+  assert.equal(byId.get('home').route, 'campus');
+  assert.equal(byId.get('outlook').route, 'direct');
+  assert.equal(byId.get('home').category, 'campus-service');
+  assert.deepEqual(byId.get('canvas').keywords, ['Canvas', '课程', '作业', '教学']);
+  assert.equal(byId.get('home').schemaVersion, 1);
+  assert.equal(byId.get('home').reviewed, true);
+  assert.deepEqual(byId.get('home').localizedName, { zh: '学校主页', en: 'School Homepage' });
+  assert.equal(byId.get('home').iconKey, null);
   for (const id of [
     'sis', 'class-schedule', 'grade-reporting', 'exam-scheduling', 'room-booking',
     'class-enrollment-request', 'thesis-exam', 'academic-edoc', 'ug-major-selection',

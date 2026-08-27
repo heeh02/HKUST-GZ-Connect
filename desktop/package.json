@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "2.0.1-beta.4",
+  "version": "2.0.1-beta.6",
   "description": "HKUST(GZ) EasyConnect-compatible client with an independent Rust engine",
   "main": "main.js",
   "author": "heeh02",
@@ -20,6 +20,7 @@
     "test:idle-performance": "electron scripts/idle-performance-baseline.js",
     "test:routing-restart": "node e2e/routing-restart.electron.js",
     "test:renderer-layout": "electron e2e/resource-manager-layout.electron.js",
+    "test:workspace-layout": "electron e2e/campus-workspace-layout.electron.js",
     "test:main-integration": "electron e2e/main-integration.electron.js",
     "test:main-custom-profile": "electron e2e/main-custom-profile.electron.js",
     "test:main-school-onboarding": "node e2e/main-school-onboarding.electron.js",

@@ -66,6 +66,7 @@
     <aside class="sidebar">
       <div class="side-group">
         <button class="nav active" data-page="connect" title="连接" data-i18n-attr="title:nav.connect">
+          <span id="navConnectionState" class="nav-connection-state disconnected" aria-hidden="true"></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 11.5a4 4 0 0 1 6 0M11 13.6a1.6 1.6 0 0 1 2 0"/></svg>
           <span class="nav-label" data-i18n="nav.connect">连接</span>
         </button>
@@ -105,13 +106,13 @@
             <div class="quick-head">
               <div>
                 <div class="quick-title" data-i18n="resources.homeTitle">校园服务</div>
-                <div class="quick-sub" data-i18n="resources.homeSub">搜索、收藏并直接打开校园网页，需要时会自动连接。</div>
               </div>
+              <button id="openCampusWorkspace" class="workspace-launch" type="button"
+                      data-i18n="resources.openWorkspace">打开校园工作台 ↗</button>
             </div>
             <div class="resource-toolbar">
               <span class="resource-toolbar-title" data-i18n="resources.title">我的应用</span>
               <span class="resource-toolbar-actions">
-                <button id="toggleResources" class="mini" type="button">展开全部</button>
                 <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">管理</button>
               </span>
             </div>
@@ -416,6 +417,7 @@
         <p id="updateHint" class="foot update-hint" hidden></p>
       </section>
     </main>
+    <div id="globalToast" class="global-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   </div>
 
   <dialog id="integrationDialog" class="manager-dialog integration-dialog" aria-labelledby="integrationDialogTitle" aria-describedby="integrationDialogDescription">
@@ -570,6 +572,7 @@
   <script src="../lib/resources/presentation/resource-view.js"></script>
   <script src="resource-layout-policy.js"></script>
   <script src="resource-layout-controller.js"></script>
+  <script src="usability-controller.js"></script>
   <script src="student-home.js"></script>
   <script src="notification-view.js"></script>
   <script src="browser-data-settings.js"></script>

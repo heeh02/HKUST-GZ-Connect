@@ -79,3 +79,13 @@ test('search result mode is bounded and escapes resource markup', () => {
   assert.match(view.html, /resource-icon-custom/u);
   assert.doesNotMatch(view.html, /onmouseover/u);
 });
+
+test('empty search offers local recovery actions without opening a network target', () => {
+  const view = renderStudentHome({
+    resources, query: 'does-not-exist', view: 'all', expanded: false,
+    layout: { mode: 'compact' }, translate, escapeHtml,
+  });
+  assert.match(view.html, /data-resource-empty-action="clear"/u);
+  assert.match(view.html, /data-resource-empty-action="manage"/u);
+  assert.doesNotMatch(view.html, /data-resource-action="open"/u);
+});

@@ -158,6 +158,8 @@ button, input, select, form { -webkit-app-region: no-drag; }
 }
 .icon:hover:not(:disabled) { background: #edf2f8; }
 .icon:disabled { color: #c6ced9; cursor: default; }
+.favorite-page.active { color: #a9790c; background: #fff3cc; }
+.favorite-page.active svg { fill: currentColor; }
 .credential { color: #8a6814; }
 form {
   flex: 1;

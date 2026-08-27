@@ -315,22 +315,10 @@ async function assertStudentHome(window) {
     assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);
     assert.equal(view.scrollTopAfterPageSwitch, 0, `${width}px: page switch retained stale scroll`);
 
-    const expanded = await window.webContents.executeJavaScript(`(() => {
-      document.querySelector('.nav[data-page="connect"]').click();
-      document.getElementById('toggleResources').click();
-      const grid = document.querySelector('.resource-section-all .resource-grid');
-      const result = {
-        items: document.querySelectorAll('.resource-card').length,
-        columns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
-        expanded: document.getElementById('toggleResources').getAttribute('aria-expanded'),
-      };
-      document.getElementById('toggleResources').click();
-      return result;
-    })()`);
-    assert.ok(expanded.items > expectedItems, `${width}px: Show All did not reveal more websites`);
-    assert.equal(expanded.columns, expectedMode === 'wide' ? 4 : expectedColumns,
-      `${width}px: Show All column count`);
-    assert.equal(expanded.expanded, 'true', `${width}px: Show All accessibility state`);
+    const workspaceEntry = await window.webContents.executeJavaScript(
+      `document.getElementById('openCampusWorkspace').textContent.trim()`,
+    );
+    assert.match(workspaceEntry, /校园工作台/u, `${width}px: Workspace entry disappeared`);
 
     {
       const chips = await window.webContents.executeJavaScript(`(() => {
@@ -387,6 +375,66 @@ async function assertTwoHundredPercentReflow(window) {
   }
 }
 
+async function assertUsabilityLayer(window) {
+  window.setContentSize(500, 720);
+  await waitFor(window, 'window.innerWidth === 500', 'usability fixture width');
+  const result = await window.webContents.executeJavaScript(`(async () => {
+    const key = (value, options = {}) => document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: value, bubbles: true, cancelable: true, ...options,
+    }));
+    key('2', { metaKey: true });
+    const towerActive = document.querySelector('.page.active').dataset.page;
+    key('k', { metaKey: true });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const search = document.getElementById('resourceSearch');
+    const searchFocused = document.activeElement === search;
+    const connectActive = document.querySelector('.page.active').dataset.page;
+
+    const allChip = document.querySelector('[data-resource-view="all"]');
+    allChip.focus();
+    allChip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    const chipView = document.getElementById('resourceView').value;
+    const chipFocused = document.activeElement?.dataset?.resourceView;
+    document.querySelector('[data-resource-view="all"]').click();
+
+    search.value = 'no-such-campus-service';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    const emptyActions = [...document.querySelectorAll('[data-resource-empty-action]')]
+      .map((button) => button.dataset.resourceEmptyAction);
+    document.querySelector('[data-resource-empty-action="manage"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const managerOpened = document.getElementById('resourceDialog').open;
+    document.getElementById('closeResourceDialog').click();
+    key('Escape');
+    const searchCleared = search.value === '' && document.querySelectorAll('.resource-card').length > 0;
+
+    const favorite = document.querySelector('.resource-favorite');
+    favorite.click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const toast = document.getElementById('globalToast');
+    const nav = document.querySelector('.nav[data-page="connect"]');
+    return {
+      towerActive, connectActive, searchFocused, chipView, chipFocused,
+      emptyActions, managerOpened, searchCleared,
+      toastVisible: !toast.hidden, toastText: toast.textContent,
+      statusClass: document.getElementById('navConnectionState').className,
+      statusLabel: nav.getAttribute('aria-label'),
+    };
+  })()`);
+  assert.equal(result.towerActive, 'tower', 'Command-2 did not open Control Tower');
+  assert.equal(result.connectActive, 'connect', 'Command-K did not open Campus Services');
+  assert.equal(result.searchFocused, true, 'Command-K did not focus search');
+  assert.equal(result.chipView, 'favorites', 'ArrowRight did not select the next category');
+  assert.equal(result.chipFocused, 'favorites', 'category keyboard focus did not move');
+  assert.deepEqual(result.emptyActions, ['clear', 'manage']);
+  assert.equal(result.managerOpened, true, 'empty state Manage did not open the local manager');
+  assert.equal(result.searchCleared, true, 'Escape did not restore the resource shelf');
+  assert.equal(result.toastVisible, true, 'favorite feedback toast stayed hidden');
+  assert.match(result.toastText, /收藏/u);
+  assert.match(result.statusClass, /disconnected/u);
+  assert.match(result.statusLabel, /未连接[\s\S]*⌘1/u);
+}
+
 async function captureVisualStates(window) {
   const output = process.env.HKUSTGZ_LAYOUT_SCREENSHOT_DIR;
   if (!output) return;
@@ -403,6 +451,7 @@ async function captureVisualStates(window) {
     for (const page of ['connect', 'tower', 'notif', 'settings']) {
       await window.webContents.executeJavaScript(`(() => {
         for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+        document.getElementById('globalToast').hidden = true;
         document.querySelector('.nav[data-page="${page}"]').click();
         document.querySelector('.content').scrollTop = 0;
         return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(
@@ -411,6 +460,32 @@ async function captureVisualStates(window) {
       })()`);
       const image = await window.webContents.capturePage();
       fs.writeFileSync(path.join(output, `${label}-${page}.png`), image.toPNG());
+    }
+    if (label === 'compact') {
+      await window.webContents.executeJavaScript(`(async () => {
+        for (const dialog of document.querySelectorAll('dialog[open]')) { try { dialog.close(); } catch {} }
+        document.getElementById('globalToast').hidden = true;
+        document.querySelectorAll('.nav').forEach((nav) => nav.classList.toggle('active', nav.dataset.page === 'connect'));
+        document.querySelectorAll('.page').forEach((page) => {
+          const active = page.dataset.page === 'connect';
+          page.classList.toggle('active', active);
+          page.hidden = !active;
+        });
+        const search = document.getElementById('resourceSearch');
+        search.value = 'no-such-campus-service';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(
+          () => setTimeout(resolve, 240),
+        )));
+      })()`);
+      fs.writeFileSync(path.join(output, 'compact-empty.png'), (await window.webContents.capturePage()).toPNG());
+      await window.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-resource-empty-action="clear"]').click();
+        document.querySelector('.resource-favorite').click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      fs.writeFileSync(path.join(output, 'compact-toast.png'), (await window.webContents.capturePage()).toPNG());
     }
   }
 }
@@ -428,6 +503,8 @@ async function main() {
     await window.loadFile(renderer);
     await waitFor(window, "document.getElementById('dash').hidden === false", 'dashboard initialization');
     await assertStudentHome(window);
+    await captureVisualStates(window);
+    await assertUsabilityLayer(window);
     await assertTwoHundredPercentReflow(window);
     await exerciseIntegrationCenter(window);
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
@@ -436,7 +513,6 @@ async function main() {
     assertCustomResourceSave(await saveCustomResource(window));
     assertCustomResourceAddAndOpen(await addAndOpenCustomResource(window));
     await exerciseBuiltinResourceRemoval(window);
-    await captureVisualStates(window);
     process.stdout.write('resource manager layout: PASS\n');
   } finally {
     if (!window.isDestroyed()) window.destroy();

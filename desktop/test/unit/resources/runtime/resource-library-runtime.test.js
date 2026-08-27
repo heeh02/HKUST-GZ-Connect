@@ -65,6 +65,24 @@ test('resource presentation selects reviewed text for the active locale', () => 
   assert.equal(runtime.listLocalized(null, 'en')[0].description, 'Mail and calendar');
 });
 
+test('Browser navigation records a known resource by canonical URL without retaining SSO state', () => {
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json',
+    recentFile: '/fixture/recent.json',
+    platform: 'darwin',
+    loadResources: () => resources,
+    captureContext: () => ({ epoch: 1 }),
+    isContextCurrent: () => true,
+    openRequest: async () => ({ ok: true }),
+    ActivityStoreClass: FakeActivityStore,
+  });
+  assert.equal(runtime.recordOpenByUrl(
+    'https://outlook.office.com/owa/?code=opaque#fragment',
+  ), true);
+  assert.deepEqual(runtime.snapshot().recent.entries, [{ resourceId: 'outlook', openedAt: 10 }]);
+  assert.equal(runtime.recordOpenByUrl('https://unlisted.example/'), false);
+});
+
 test('failed or stale opens never record recent activity', async () => {
   const runtime = new ResourceLibraryRuntime({
     favoritesFile: '/fixture/favorites.json',

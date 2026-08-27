@@ -57,6 +57,7 @@ test('WebResource open accepts only one bounded opaque ID', () => {
 });
 
 test('Campus Browser URL IPC leaves route authority in Main', () => {
+  assert.deepEqual(campusOpenRequestFromIpc(), { url: '' });
   assert.deepEqual(campusOpenRequestFromIpc({ url: 'https://x.test' }), {
     url: 'https://x.test',
   });

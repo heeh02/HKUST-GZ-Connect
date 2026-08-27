@@ -25,6 +25,8 @@
         const active = button.dataset.resourceView === view;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', String(active));
+        button.tabIndex = active ? 0 : -1;
+        if (active) button.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
       });
     }
 
@@ -32,10 +34,11 @@
       const normalized = RESOURCE_VIEWS.has(nextView) ? nextView : 'all';
       if (normalized === view) {
         syncControls();
-        return;
+        return false;
       }
       view = normalized;
       onChange();
+      return true;
     }
 
     function updateWidth(width) {
@@ -62,6 +65,16 @@
         const button = event.target.closest('[data-resource-view]');
         if (button) select(button.dataset.resourceView);
       });
+      chipControls.addEventListener('keydown', (event) => {
+        const buttons = [...chipControls.querySelectorAll('[data-resource-view]')];
+        const index = buttons.indexOf(event.target.closest('[data-resource-view]'));
+        if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next].focus();
+        select(buttons[next].dataset.resourceView);
+      });
       scheduleWidth(shelf.getBoundingClientRect().width);
       if (typeof window.ResizeObserver !== 'function') {
         window.addEventListener('resize', () => scheduleWidth(shelf.getBoundingClientRect().width));
@@ -74,7 +87,7 @@
       observer.observe(shelf);
     }
 
-    return Object.freeze({ start, snapshot, syncControls });
+    return Object.freeze({ select, start, snapshot, syncControls });
   }
 
   const api = Object.freeze({ create });

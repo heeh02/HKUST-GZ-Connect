@@ -1,9 +1,13 @@
 'use strict';
 
+const path = require('node:path');
 const { resolveResourceById } = require('./campus-resources');
 const { projectResourceActivity } = require('./resource-activity');
 const { ResourceActivityStore } = require('./resource-activity-store');
 const { localizeResources } = require('../presentation/localized-resource-view');
+const { normalizePageFavoriteCandidate } = require('../schema/campus-resource-contract');
+const { PageFavoriteController } = require('./page-favorite-controller');
+const { FavoriteGroupStore } = require('./favorite-group-store');
 
 class ResourceLibraryRuntime {
   constructor({
@@ -15,6 +19,7 @@ class ResourceLibraryRuntime {
     isContextCurrent,
     openRequest,
     ActivityStoreClass = ResourceActivityStore,
+    GroupStoreClass = FavoriteGroupStore,
   } = {}) {
     for (const dependency of [loadResources, captureContext, isContextCurrent, openRequest]) {
       if (typeof dependency !== 'function') {
@@ -26,6 +31,10 @@ class ResourceLibraryRuntime {
     this.isContextCurrent = isContextCurrent;
     this.openRequest = openRequest;
     this.activityStore = new ActivityStoreClass({ favoritesFile, recentFile, platform });
+    this.groupStore = new GroupStoreClass({
+      filePath: path.join(path.dirname(favoritesFile), 'favorite-groups.json'),
+      platform,
+    });
   }
 
   list(settings = null) {
@@ -49,11 +58,75 @@ class ResourceLibraryRuntime {
   snapshot() { return this.activityStore.snapshot(); }
 
   toggleFavorite(resourceId, resources) {
-    return this.activityStore.toggleFavorite(resourceId, resources);
+    const next = this.activityStore.toggleFavorite(resourceId, resources);
+    if (!next.entries.includes(resourceId)) this.groupStore.removeResource(resourceId);
+    return next;
   }
 
   replaceFavorites(document) {
     return this.activityStore.replaceFavorites(document);
+  }
+
+  listGroups() {
+    let favorites;
+    let resources;
+    let document;
+    try {
+      favorites = new Set(this.activityStore.snapshot().favorites.entries);
+      resources = new Set(this.loadResources().map(({ id }) => id));
+      document = this.groupStore.snapshot();
+    }
+    catch { return Object.freeze([]); }
+    const groups = document.groups.map((group) => Object.freeze({
+      ...group,
+      resourceIds: Object.freeze(group.resourceIds.filter((id) => favorites.has(id) && resources.has(id))),
+    }));
+    return Object.freeze(groups);
+  }
+
+  groupsSnapshot() { return this.groupStore.snapshot(); }
+
+  replaceGroups(document) { return this.groupStore.replace(document); }
+
+  createGroup(name) { return this.groupStore.create(name); }
+
+  renameGroup(groupId, name) { return this.groupStore.rename(groupId, name); }
+
+  deleteGroup(groupId) { return this.groupStore.remove(groupId); }
+
+  reorderGroups(groupIds) { return this.groupStore.reorder(groupIds); }
+
+  moveResource(resourceId, groupId, index) {
+    return this.groupStore.move(
+      resourceId,
+      groupId,
+      index,
+      this.activityStore.snapshot().favorites.entries,
+    );
+  }
+
+  recordOpenByUrl(rawUrl) {
+    let canonical;
+    try {
+      canonical = normalizePageFavoriteCandidate({
+        url: rawUrl, title: '', route: 'campus',
+      }).url;
+    } catch {
+      return false;
+    }
+    const resources = this.loadResources();
+    const resource = resources.find((entry) => {
+      try {
+        return normalizePageFavoriteCandidate({
+          url: entry.url, title: '', route: entry.route,
+        }).url === canonical;
+      } catch {
+        return false;
+      }
+    });
+    if (!resource) return false;
+    this.activityStore.recordOpen(resource.id, resources);
+    return true;
   }
 
   async openById(resourceId, locale = 'zh') {
@@ -74,4 +147,4 @@ class ResourceLibraryRuntime {
   }
 }
 
-module.exports = { ResourceLibraryRuntime };
+module.exports = { FavoriteGroupStore, PageFavoriteController, ResourceLibraryRuntime };

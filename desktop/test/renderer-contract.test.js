@@ -11,6 +11,7 @@ const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
 const layoutControllerJs = fs.readFileSync(path.join(rendererDir, 'resource-layout-controller.js'), 'utf8');
+const usabilityControllerJs = fs.readFileSync(path.join(rendererDir, 'usability-controller.js'), 'utf8');
 
 test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgUser"[^>]*name="username"/);
@@ -62,7 +63,21 @@ test('Control Tower owns a modular Integration Center instead of scattered secre
 test('dashboard exposes collapsible secondary sections', () => {
   assert.match(html, /data-collapsible="stats"/);
   assert.match(html, /data-collapsible="gateway"/);
-  assert.match(html, /id="toggleResources"/);
+  assert.match(html, /id="openCampusWorkspace"/u);
+  assert.match(appJs, /openCampusWorkspace[\s\S]*openCampusBrowser/u);
+});
+
+test('dashboard usability layer keeps status shortcuts feedback and recovery outside Main', () => {
+  assert.match(html, /id="navConnectionState"/u);
+  assert.match(html, /id="globalToast"[^>]*aria-live="polite"/u);
+  assert.match(html, /<script src="usability-controller\.js"><\/script>/u);
+  assert.match(usabilityControllerJs, /PAGE_SHORTCUTS/u);
+  assert.match(usabilityControllerJs, /event\.key\.toLowerCase\(\) === 'k'/u);
+  assert.match(usabilityControllerJs, /data-resource-empty-action/u);
+  assert.match(layoutControllerJs, /ArrowLeft[\s\S]*ArrowRight[\s\S]*Home[\s\S]*End/u);
+  assert.match(layoutControllerJs, /scrollIntoView/u);
+  assert.doesNotMatch(appJs, /addEventListener\('keydown'[\s\S]*PAGE_SHORTCUTS/u,
+    'global shortcuts belong to the usability module');
 });
 
 test('WebResource shelf supports responsive ID-only search categories favorites and recent views', () => {
@@ -107,6 +122,23 @@ test('Campus Browser chrome keeps the minimum task set and derives external open
   assert.match(browserJs, /command\('open-external'\)/u);
   assert.doesNotMatch(browserJs, /openExternal\(address\.value/u,
     'toolbar renderer must not provide URL authority for external open');
+});
+
+test('Campus Workspace is a real local renderer with ID-only actions and modular portal surfaces', () => {
+  const workspaceHtml = fs.readFileSync(path.join(rendererDir, 'campus-workspace.html'), 'utf8');
+  const workspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-workspace.js'), 'utf8');
+  const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
+  for (const id of [
+    'workspaceSearch', 'workspaceFilters', 'officialModule', 'favoritesModule',
+    'favoriteGroups', 'recentModule', 'servicesModule', 'manageRules', 'createGroup',
+  ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /command\('toggle-favorite',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /command\('manage-rules'\)/u);
+  assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
+  assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
+  assert.match(workspaceCss, /@media\s*\(min-width:\s*1280px\)[\s\S]*repeat\(4/u);
+  assert.match(workspaceCss, /@media\s*\(max-width:\s*880px\)[\s\S]*repeat\(2/u);
 });
 
 test('notifications keep a compact state summary and raw diagnostics collapsed', () => {

@@ -92,6 +92,30 @@ function sanitizeCustomResourceUrl(value, { rejectSensitive = false } = {}) {
   return parsed.href;
 }
 
+function normalizePageFavoriteCandidate(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(value.route)) {
+    throw new TypeError('page favorite candidate is invalid');
+  }
+  let url;
+  try {
+    const parsed = new URL(String(value.url || '').trim());
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+        parsed.username || parsed.password) throw new TypeError('unsafe URL');
+    parsed.search = '';
+    parsed.hash = '';
+    url = sanitizeCustomResourceUrl(parsed.href);
+  } catch {
+    throw new TypeError('page favorite URL must use HTTP or HTTPS');
+  }
+  const rawTitle = String(value.title || '').replace(/[\u0000-\u001f\u007f<>]/gu, ' ')
+    .trim().replace(/\s+/gu, ' ');
+  const title = rawTitle
+    ? [...rawTitle].slice(0, MAX_RESOURCE_NAME_LENGTH).join('')
+    : new URL(url).hostname.slice(0, MAX_RESOURCE_NAME_LENGTH);
+  return Object.freeze({ url, title, route: value.route });
+}
+
 function normalizedResource(value, {
   builtin,
   reviewed,
@@ -345,6 +369,7 @@ module.exports = {
   WEB_RESOURCE_SCHEMA_VERSION,
   normalizeCustomResources,
   normalizeLegacyCustomResource,
+  normalizePageFavoriteCandidate,
   normalizeResource,
   sanitizeCustomResourceUrl,
   parseBuiltinResourceDocument,

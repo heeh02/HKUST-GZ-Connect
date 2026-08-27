@@ -16,13 +16,12 @@ let connectedAt = null;
 let durTimer = null;
 let campusActionBusy = false;
 let campusResources = [];
-let resourcesExpanded = false;
 let resourceQuery = '';
 let resourceLayoutFeature = null;
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
-let resourceEditorManager = null;
+let resourceEditorManager = null, usabilityFeature = null;
 let proxyAuthFeature = null;
 
 function activeLoginProfileId() {
@@ -84,6 +83,7 @@ function renderConnect(s) {
   // live; locally constructed state has no locale and keeps the current one.
   if (typeof s.locale === 'string') applyLocale(s.locale);
   st = s;
+  usabilityFeature?.updateConnection(s);
   connectedAt = s.connected ? (s.connectedAt || connectedAt) : null;
   $('power').classList.toggle('on', s.connected);
   $('power').classList.toggle('busy', s.connecting);
@@ -129,7 +129,7 @@ function renderResources() {
     resources: campusResources,
     query: resourceQuery,
     view: presentation.view,
-    expanded: resourcesExpanded,
+    expanded: false,
     layout: presentation.layout,
     translate: t,
     escapeHtml: esc,
@@ -137,13 +137,9 @@ function renderResources() {
   const shelf = $('resourceShelf');
   const sections = $('campusResources');
   shelf.dataset.resourceLayout = presentation.layout.mode;
-  sections.classList.toggle('focused', resourcesExpanded || resourceQuery.length > 0 || presentation.view !== 'all');
+  sections.classList.toggle('focused', resourceQuery.length > 0 || presentation.view !== 'all');
   sections.innerHTML = rendered.html;
   resourceLayoutFeature?.syncControls();
-  const toggle = $('toggleResources');
-  toggle.hidden = !rendered.hasMore;
-  toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
-  toggle.setAttribute('aria-expanded', String(resourcesExpanded));
 }
 
 function setResourceSaved(message) {
@@ -364,6 +360,7 @@ $('campusResources').addEventListener('click', (event) => {
       }
       campusResources = result.resources || campusResources;
       renderResources();
+      usabilityFeature?.toast(t(resource.favorite ? 'resources.unfavoriteSaved' : 'resources.favoriteSaved'));
     }).catch(() => { $('quickErr').textContent = t('resources.favoriteFailed'); });
     return;
   }
@@ -373,10 +370,6 @@ $('campusUrl').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') openCampus();
 });
 
-$('toggleResources').addEventListener('click', () => {
-  resourcesExpanded = !resourcesExpanded;
-  renderResources();
-});
 $('resourceSearch').addEventListener('input', (event) => {
   resourceQuery = event.target.value.trim();
   renderResources();
@@ -552,13 +545,11 @@ window.routingManager.start({
 window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) });
 resourceEditorManager = window.resourceManager.start({
   getResources: () => campusResources,
-  setResources: (resources) => {
-    campusResources = resources;
-    renderResources();
-  },
+  setResources: (resources) => { campusResources = resources; renderResources(); },
   saveResource: saveCampusResource,
   setSaved: setResourceSaved,
 });
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();
+usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

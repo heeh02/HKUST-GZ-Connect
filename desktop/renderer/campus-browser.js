@@ -47,6 +47,9 @@ const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
 const downloadStatus = document.getElementById('downloadStatus');
 const openExternal = document.getElementById('openExternal');
+const favoritePage = document.getElementById('favoritePage');
+const credential = document.getElementById('credential');
+const routeRules = document.getElementById('routeRules');
 document.getElementById('browserProfileName').textContent = profileName || t('browser.workspace');
 document.getElementById('browserProfileTrust').hidden = !profileUnverified;
 
@@ -76,6 +79,13 @@ openExternal.addEventListener(
   'click',
   () => command('open-external'),
 );
+favoritePage.addEventListener('click', () => command('toggle-favorite'));
+document.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    command('focus-workspace');
+  }
+});
 
 findInput.addEventListener('input', () => command('find', findInput.value));
 findInput.addEventListener('keydown', (event) => {
@@ -145,14 +155,27 @@ window.campusBrowserUI = {
   },
   setState(next) {
     renderTabs(next.tabs, next.activeTabId);
-    if (document.activeElement !== address) address.value = next.url || '';
+    if (document.activeElement !== address) address.value = next.workspace ? '' : (next.url || '');
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
     routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
-    openExternal.disabled = !/^https?:\/\//iu.test(String(next.url || ''));
-    routeBadge.textContent = next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
-    routeBadge.classList.toggle('direct', next.route === 'direct');
-    routeBadge.title = next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
+    routeSelector.disabled = next.workspace === true;
+    credential.disabled = next.workspace === true;
+    routeSelector.hidden = next.workspace === true;
+    routeRules.hidden = next.workspace === true;
+    credential.hidden = next.workspace === true;
+    favoritePage.hidden = next.workspace === true;
+    openExternal.hidden = next.workspace === true;
+    openExternal.disabled = next.workspace === true || !/^https?:\/\//iu.test(String(next.url || ''));
+    favoritePage.disabled = next.workspace === true || next.canFavorite !== true;
+    favoritePage.classList.toggle('active', next.favorite === true);
+    favoritePage.title = t(next.favorite ? 'browser.unfavoritePage' : 'browser.favoritePage');
+    favoritePage.setAttribute('aria-label', favoritePage.title);
+    routeBadge.textContent = next.workspace ? t('browser.badgeAutomatic')
+      : next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
+    routeBadge.classList.toggle('direct', !next.workspace && next.route === 'direct');
+    routeBadge.title = next.workspace ? t('browser.workspace')
+      : next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
     state.textContent = next.loading
       ? (next.slow ? t('browser.loadingSlow') : t('browser.loading'))
       : (next.routeLabel || t('browser.routeCampus'));
