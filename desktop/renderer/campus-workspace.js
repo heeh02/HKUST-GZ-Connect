@@ -7,6 +7,7 @@ const I18N = Object.freeze({
     favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '全部服务',
     manageTitle: '整理收藏', resourcePool: '收藏', groups: '书签文件夹', createGroup: '＋ 新建分组',
     allSites: '网站库', allFavorites: '全部收藏',
+    myGroups: '我的分组', systemViews: '系统视图', categories: '按类别', chooseCategory: '选择类别',
     searchResults: '搜索结果', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
     createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
@@ -24,6 +25,7 @@ const I18N = Object.freeze({
     favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'All Services',
     manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'Bookmark Folders', createGroup: '+ New Group',
     allSites: 'Site Library', allFavorites: 'All Favorites',
+    myGroups: 'My Groups', systemViews: 'System Views', categories: 'Category', chooseCategory: 'Choose Category',
     searchResults: 'Search Results', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
     createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
@@ -60,7 +62,7 @@ let editingResourceId = null;
 let draggedGroupId = null;
 let draggedResourceId = null;
 let selectedManageFolder = 'favorites';
-let selectedServiceView = 'favorites';
+let selectedServiceView = null;
 let servicePage = 0;
 let searchPage = 0;
 let managePage = 0;
@@ -339,25 +341,27 @@ function renderHome() {
     .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
   const byId = new Map(resources.map((resource) => [resource.id, resource]));
   const categories = model.catalogProjection(state.resources).categories;
-  const views = [
-    { id: 'favorites', name: text().allFavorites, items: favorites },
-    ...state.groups.map((group) => ({
+  const groupViews = state.groups.map((group) => ({
       id: group.id, name: group.name,
       items: group.resourceIds.map((id) => byId.get(id)).filter(Boolean),
-    })),
+    })).filter(({ items }) => items.length);
+  const systemViews = [
+    { id: 'favorites', name: text().allFavorites, items: favorites },
     { id: 'recent', name: text().recent, items: recent },
     { id: 'all', name: text().allSites, items: resources },
-    ...categories.map(({ id }) => ({
-      id, name: categoryLabel(id), items: model.catalogProjection(state.resources, id).items,
-    })),
   ].filter(({ id, items }) => ['favorites', 'all'].includes(id) || items.length);
+  const categoryViews = categories.map(({ id }) => ({
+    id: `category:${id}`, name: categoryLabel(id),
+    items: model.catalogProjection(state.resources, id).items,
+  }));
+  const views = [...groupViews, ...systemViews, ...categoryViews];
   let selected = views.find(({ id }) => id === selectedServiceView);
   if (!selected) {
-    selected = views.find(({ id }) => id === 'favorites' && favorites.length) ||
+    selected = groupViews[0] || views.find(({ id }) => id === 'favorites' && favorites.length) ||
       views.find(({ id }) => id === 'all');
     selectedServiceView = selected.id; servicePage = 0;
   }
-  $('serviceViewTabs').replaceChildren(...views.map((view) => {
+  const tab = (view) => {
     const button = document.createElement('button'); button.type = 'button';
     button.className = `service-view-tab${view.id === selected.id ? ' active' : ''}`;
     button.setAttribute('role', 'tab');
@@ -367,7 +371,24 @@ function renderHome() {
       selectedServiceView = view.id; servicePage = 0; renderHome();
     });
     return button;
+  };
+  const label = (value) => {
+    const span = document.createElement('span'); span.className = 'service-view-label';
+    span.textContent = value; return span;
+  };
+  const tabs = [];
+  if (groupViews.length) tabs.push(label(text().myGroups), ...groupViews.map(tab));
+  tabs.push(label(text().systemViews), ...systemViews.map(tab));
+  $('serviceViewTabs').replaceChildren(...tabs);
+  $('serviceCategoryLabel').textContent = text().categories;
+  const categorySelect = $('serviceCategorySelect');
+  const emptyOption = document.createElement('option'); emptyOption.value = '';
+  emptyOption.textContent = text().chooseCategory;
+  categorySelect.replaceChildren(emptyOption, ...categoryViews.map((view) => {
+    const option = document.createElement('option'); option.value = view.id;
+    option.textContent = `${view.name} ${view.items.length}`; return option;
   }));
+  categorySelect.value = selected.id.startsWith('category:') ? selected.id : '';
   $('serviceViewTitle').textContent = selected.name;
   const page = paged(selected.items, servicePage, $('serviceViewGrid')); servicePage = page.current;
   renderGrid($('serviceViewGrid'), page.items);
@@ -540,6 +561,10 @@ function openGroupDialog(group = null) {
 }
 
 $('manageRules').addEventListener('click', () => command('manage-rules'));
+$('serviceCategorySelect').addEventListener('change', (event) => {
+  if (!event.target.value) return;
+  selectedServiceView = event.target.value; servicePage = 0; renderHome();
+});
 $('workspaceNavigation').addEventListener('click', (event) => {
   const button = event.target.closest('[data-workspace-screen]');
   if (!button) return;

@@ -52,6 +52,7 @@ async function inspect(window) {
       everyResourceFits: itemRects.every((rect) =>
         rect.top >= gridRect.top - 1 && rect.bottom <= gridRect.bottom + 1),
       serviceTabs: document.querySelectorAll('.service-view-tab').length,
+      categoryOptions: Math.max(0, document.querySelectorAll('#serviceCategorySelect option').length - 1),
       hasSearch: !!document.getElementById('workspaceSearch'),
     };
   })()`);
@@ -118,7 +119,8 @@ async function main() {
         'wide layout should fit the complete website library on one page');
     }
     assert.equal(home.everyResourceFits, true, `${label} clips a resource row`);
-    assert.ok(home.serviceTabs >= 10, `${label} service switch bar is incomplete`);
+    assert.ok(home.serviceTabs >= 4, `${label} primary service views are incomplete`);
+    assert.ok(home.categoryOptions >= 10, `${label} category filter is incomplete`);
     await capture(window, `${label}-home`);
     await capture(window, `${label}-services`);
   }
@@ -135,8 +137,9 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 80));
 
   const courses = await window.webContents.executeJavaScript(`(() => {
-    [...document.querySelectorAll('.service-view-tab')]
-      .find((button) => button.textContent.includes('课程与考试')).click();
+    const select = document.getElementById('serviceCategorySelect');
+    select.value = 'category:courses';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
     const grid = document.getElementById('serviceViewGrid');
     grid.querySelector('[data-resource-id="sis"] .resource-open').click();
     return {
@@ -144,13 +147,15 @@ async function main() {
         .map((item) => item.dataset.resourceId),
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
       serviceTabCount: document.querySelectorAll('.service-view-tab').length,
+      selectedCategory: select.value,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
   assert.equal(courses.ids.includes('new-student'), false);
   assert.equal(courses.serviceScreenVisible, true);
-  assert.ok(courses.serviceTabCount >= 10);
+  assert.equal(courses.selectedCategory, 'category:courses');
+  assert.ok(courses.serviceTabCount >= 4);
 
   const leaveSearch = await window.webContents.executeJavaScript(`(() => {
     const search = document.getElementById('workspaceSearch');

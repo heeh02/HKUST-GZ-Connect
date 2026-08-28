@@ -53,7 +53,13 @@
           <div><span class="module-eyebrow">CAMPUS SERVICES</span><h2 id="serviceViewTitle">我的收藏</h2></div>
           <button id="openManage" class="soft-button" type="button">整理收藏</button>
         </div>
-        <div id="serviceViewTabs" class="service-view-tabs" role="tablist" aria-label="校园服务分类"></div>
+        <div class="service-view-navigation">
+          <div id="serviceViewTabs" class="service-view-tabs" role="tablist" aria-label="校园服务视图"></div>
+          <label class="service-category-control" for="serviceCategorySelect">
+            <span id="serviceCategoryLabel">按类别</span>
+            <select id="serviceCategorySelect" aria-label="按网站类别筛选"></select>
+          </label>
+        </div>
         <div id="serviceViewGrid" class="resource-grid service-view-grid"></div>
         <div id="servicePager" class="workspace-pager" aria-label="服务页码"></div>
       </section>

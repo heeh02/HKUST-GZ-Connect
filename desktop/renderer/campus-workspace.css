@@ -187,14 +187,23 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: flex;
   flex-direction: column;
 }
-.service-view-tabs {
+.service-view-navigation {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  align-items: flex-end;
+  gap: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--workspace-line);
 }
+.service-view-tabs {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.service-view-label { color: var(--workspace-muted); font-size: 9px; font-weight: 750; white-space: nowrap; }
 .service-view-tab {
   min-height: 27px;
   padding: 0 9px;
@@ -208,6 +217,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .service-view-tab:hover { background: #dfe8f5; }
 .service-view-tab.active { color: #fff; background: var(--workspace-blue); }
+.service-category-control { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; color: var(--workspace-muted); font-size: 9px; font-weight: 750; }
+.service-category-control select {
+  max-width: 154px; height: 27px; padding: 0 25px 0 8px; border: 1px solid var(--workspace-line);
+  border-radius: 8px; color: var(--workspace-blue); background: #fff; font-size: 10px; font-weight: 700;
+}
 .service-view-grid,
 #searchGrid {
   min-height: 0;
@@ -572,13 +586,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
   .resource-name { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .search-box kbd { display: none; }
-  .service-view-tabs { gap: 4px; padding-bottom: 7px; }
+  .service-view-tabs { gap: 4px; }
   .service-view-tab { min-height: 27px; padding: 0 8px; font-size: 9.5px; }
   .resource-grid { --resource-row-height: 56px; }
   .resource-item { min-height: 54px; }
   .resource-open { min-height: 53px; }
   .resource-icon { width: 32px; height: 32px; flex-basis: 32px; }
   .resource-icon svg { width: 19px; height: 19px; }
+  .service-view-navigation { align-items: stretch; flex-direction: column; gap: 6px; }
+  .service-category-control { justify-content: flex-end; }
 }
 @media (max-width: 430px) {
   .resource-grid { grid-template-columns: 1fr; }
