@@ -678,9 +678,23 @@ new ResizeObserver(scheduleLayoutRender).observe(document.querySelector('.worksp
 window.addEventListener('resize', scheduleLayoutRender);
 
 window.campusWorkspace?.onState((next) => { state = next; render(); });
-window.campusWorkspace?.onFocus((target) => {
-  if (target === 'search') { $('workspaceSearch').focus(); $('workspaceSearch').select(); }
-  else if (target === 'manage') {
+window.campusWorkspace?.onFocus(({ target, query = '' }) => {
+  if (target === 'search') {
+    const normalized = query.trim().toLocaleLowerCase();
+    const group = normalized && state.groups.find(({ name }) =>
+      name.toLocaleLowerCase().includes(normalized));
+    if (group) {
+      selectedServiceView = group.id;
+      navigation = model.normalizeNavigation({ screen: 'home' });
+      $('workspaceSearch').value = '';
+      render();
+    } else if (query) {
+      $('workspaceSearch').value = query;
+      navigation = model.normalizeNavigation({ screen: 'home', query });
+      searchPage = 0; render();
+    }
+    $('workspaceSearch').focus(); $('workspaceSearch').select();
+  } else if (target === 'manage') {
     navigation = model.normalizeNavigation({ screen: 'manage' });
     $('workspaceSearch').value = '';
     render();

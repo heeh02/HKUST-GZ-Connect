@@ -21,6 +21,7 @@ const {
   errorPage,
   redactedFailedUrl,
   safePopupUrl,
+  workspaceSearchQuery,
 } = require('../../../../lib/browser/session/campus-browser');
 const {
   DIRECT_PARTITION,
@@ -46,6 +47,16 @@ test('campus URLs reject executable schemes and embedded credentials', () => {
   assert.throws(() => normalizeCampusUrl('https://user:pass@example.internal'), /格式/);
   assert.equal(safePopupUrl('https://example.internal/sso'), true);
   assert.equal(safePopupUrl('file:///etc/passwd'), false);
+});
+
+test('address input distinguishes local workspace queries from URLs', () => {
+  assert.equal(workspaceSearchQuery('SIS'), 'SIS');
+  assert.equal(workspaceSearchQuery('科研 与 实验'), '科研 与 实验');
+  assert.equal(workspaceSearchQuery('请假'), '请假');
+  assert.equal(workspaceSearchQuery('https://sis.example.edu/'), null);
+  assert.equal(workspaceSearchQuery('sis.example.edu'), null);
+  assert.equal(workspaceSearchQuery('10.0.0.8'), null);
+  assert.equal(workspaceSearchQuery('x'.repeat(81)), null);
 });
 
 test('toolbar favorite derives current-page authority in Main and refreshes Workspace Home', async () => {
@@ -769,6 +780,23 @@ test('Command-K opens one local Workspace Home tab and focuses its search', asyn
   await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
   assert.equal(browser.tabs.filter((tab) => tab.kind === 'workspace').length, 1,
     'opening the Workspace again focuses its existing tab');
+});
+
+test('address keywords open one Workspace and retain only a bounded local query', async () => {
+  let focused = null;
+  const workspaceController = {
+    createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+    load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+    sendState: () => true,
+    focus: (contents, target, query) => { focused = { contents, target, query }; return true; },
+  };
+  const { browser } = createFakeBrowser({ homeUrl: BLANK_CAMPUS_HOME, workspaceController });
+  await browser.open('https://portal.example.edu/', 1080, ROUTE_CAMPUS);
+  assert.equal(browser.handleToolbarCommand({ command: 'navigate', value: 'SIS' }), true);
+  await nextImmediate();
+  assert.equal(browser.activeTab().kind, 'workspace');
+  assert.equal(focused.target, 'search');
+  assert.equal(focused.query, 'SIS');
 });
 
 test('local Workspace Home refreshes favorites and recent resources without a network home', async () => {

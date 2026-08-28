@@ -222,10 +222,12 @@ class CampusWorkspaceController {
     return true;
   }
 
-  focus(contents, target = 'search') {
+  focus(contents, target = 'search', query = '') {
     if (!contents || contents.isDestroyed?.()) return false;
     if (!['search', 'manage'].includes(target)) return false;
-    contents.send?.('campus-workspace-focus', target);
+    const normalizedQuery = String(query || '').trim();
+    if (normalizedQuery.length > 80 || /[\u0000-\u001f\u007f]/u.test(normalizedQuery)) return false;
+    contents.send?.('campus-workspace-focus', Object.freeze({ target, query: normalizedQuery }));
     return true;
   }
 

@@ -58,6 +58,14 @@ function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('
   return parsed.href;
 }
 
+function workspaceSearchQuery(value) {
+  const query = String(value || '').trim();
+  if (!query || query.length > 80 || /[\u0000-\u001f\u007f]/u.test(query)) return null;
+  if (/\s/u.test(query)) return query;
+  if (/[./:@]/u.test(query)) return null;
+  return /^[\p{L}\p{N}_-]+$/u.test(query) ? query : null;
+}
+
 function campusWindowChrome(platform) {
   if (platform === 'darwin') {
     return {
@@ -396,7 +404,7 @@ class CampusBrowser {
     }
   }
 
-  focusWorkspace(target = 'search') {
+  focusWorkspace(target = 'search', query = '') {
     if (!this.workspaceController) return false;
     let tab = this.activeTab();
     if (!tab || tab.kind !== 'workspace') {
@@ -407,12 +415,12 @@ class CampusBrowser {
     if (!tab || tab.view.webContents.isDestroyed()) return false;
     const focus = () => {
       if (typeof this.workspaceController.focus === 'function') {
-        this.workspaceController.focus(tab.view.webContents, target);
+        this.workspaceController.focus(tab.view.webContents, target, query);
       } else if (target === 'search') {
         this.workspaceController.focusSearch?.(tab.view.webContents);
       }
     };
-    if (tab.loading) tab.pendingWorkspaceFocus = target;
+    if (tab.loading) tab.pendingWorkspaceFocus = { target, query };
     else setImmediate(focus);
     return true;
   }
@@ -781,7 +789,9 @@ class CampusBrowser {
         ? this.navigate(active.failedUrl, active)
         : active.view.webContents.reload();
     } else if (command === 'navigate' && active) {
-      if (active.kind === 'workspace') this.createTab(value);
+      const query = workspaceSearchQuery(value);
+      if (query) this.focusWorkspace('search', query);
+      else if (active.kind === 'workspace') this.createTab(value);
       else this.navigate(value, active);
     } else if (command === 'find-open') {
       this.setFindBar(true);
@@ -1168,10 +1178,10 @@ class CampusBrowser {
         tab.loading = false;
         this.workspaceController.sendState(view.webContents);
         if (tab.pendingWorkspaceFocus) {
-          const target = tab.pendingWorkspaceFocus;
+          const { target, query } = tab.pendingWorkspaceFocus;
           tab.pendingWorkspaceFocus = null;
           if (typeof this.workspaceController.focus === 'function') {
-            this.workspaceController.focus(view.webContents, target);
+            this.workspaceController.focus(view.webContents, target, query);
           } else if (target === 'search') {
             this.workspaceController.focusSearch?.(view.webContents);
           }
@@ -1447,4 +1457,5 @@ module.exports = {
   pacDataUrl,
   redactedFailedUrl,
   safePopupUrl,
+  workspaceSearchQuery,
 };

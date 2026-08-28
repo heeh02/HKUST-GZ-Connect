@@ -77,6 +77,9 @@ test('Workspace state exposes presentation only and executes validated actions',
   contents.isDestroyed = () => false;
   contents.send = (channel, payload) => { contents.sent = [channel, payload]; };
   controller.attach(contents);
+  assert.equal(controller.focus(contents, 'search', 'SIS'), true);
+  assert.deepEqual(contents.sent, ['campus-workspace-focus', { target: 'search', query: 'SIS' }]);
+  assert.equal(controller.focus(contents, 'search', 'x'.repeat(81)), false);
   contents.emit('ipc-message', {}, 'campus-workspace-command', {
     command: 'open-resource', resourceId: 'portal',
   });

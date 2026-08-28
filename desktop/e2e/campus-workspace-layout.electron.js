@@ -136,6 +136,24 @@ async function main() {
   window.webContents.setZoomFactor(1);
   await new Promise((resolve) => setTimeout(resolve, 80));
 
+  assert.equal(controller.focus(window.webContents, 'search', '请假'), true);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const addressSearch = await window.webContents.executeJavaScript(`({
+    query: document.getElementById('workspaceSearch').value,
+    ids: [...document.querySelectorAll('#searchGrid .resource-item')]
+      .map((item) => item.dataset.resourceId).sort(),
+  })`);
+  assert.equal(addressSearch.query, '请假');
+  assert.deepEqual(addressSearch.ids, ['e-form', 'student-request-guide']);
+  assert.equal(controller.focus(window.webContents, 'search', '学习'), true);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const groupSearch = await window.webContents.executeJavaScript(`({
+    title: document.getElementById('serviceViewTitle').textContent,
+    homeVisible: !document.getElementById('homeScreen').hidden,
+    query: document.getElementById('workspaceSearch').value,
+  })`);
+  assert.deepEqual(groupSearch, { title: '学习', homeVisible: true, query: '' });
+
   const courses = await window.webContents.executeJavaScript(`(() => {
     const select = document.getElementById('serviceCategorySelect');
     select.value = 'category:courses';

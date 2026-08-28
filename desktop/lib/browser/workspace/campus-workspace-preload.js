@@ -57,7 +57,13 @@ contextBridge.exposeInMainWorld('campusWorkspace', Object.freeze({
   },
   onFocus(callback) {
     if (typeof callback !== 'function') return () => {};
-    const listener = (_event, target) => callback(target);
+    const listener = (_event, value) => {
+      const target = typeof value === 'string' ? value : value?.target;
+      const query = typeof value?.query === 'string' ? value.query : '';
+      if (!['search', 'manage'].includes(target) || query.length > 80 ||
+          /[\u0000-\u001f\u007f]/u.test(query)) return;
+      callback(Object.freeze({ target, query }));
+    };
     ipcRenderer.on('campus-workspace-focus', listener);
     return () => ipcRenderer.removeListener('campus-workspace-focus', listener);
   },
