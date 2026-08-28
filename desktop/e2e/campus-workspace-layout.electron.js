@@ -37,6 +37,9 @@ const resources = Object.freeze([
 async function inspect(window) {
   return window.webContents.executeJavaScript(`(() => {
     const grid = document.getElementById('serviceViewGrid');
+    const gridRect = grid.getBoundingClientRect();
+    const itemRects = [...grid.querySelectorAll('.resource-item')]
+      .map((item) => item.getBoundingClientRect());
     return {
       width: innerWidth,
       noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
@@ -46,6 +49,8 @@ async function inspect(window) {
       gateways: document.querySelectorAll('.gateway-button').length,
       gridColumns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
       visibleResources: grid.querySelectorAll('.resource-item').length,
+      everyResourceFits: itemRects.every((rect) =>
+        rect.top >= gridRect.top - 1 && rect.bottom <= gridRect.bottom + 1),
       serviceTabs: document.querySelectorAll('.service-view-tab').length,
       hasSearch: !!document.getElementById('workspaceSearch'),
     };
@@ -85,13 +90,18 @@ async function main() {
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
 
-  for (const [label, width, height, expectedColumns, maximumItems] of [
-    ['compact', 660, 560, 2, 4],
-    ['standard', 1040, 740, 3, 8],
-    ['wide', 1400, 900, 4, 12],
+  for (const [label, width, height, expectedColumns] of [
+    ['compact', 660, 560, 2],
+    ['standard', 1040, 740, 3],
+    ['wide', 1400, 900, 4],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 80));
+    await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
+      [...document.querySelectorAll('.service-view-tab')]
+        .find((button) => button.textContent.includes('网站库')).click();
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }))()`);
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
@@ -100,12 +110,24 @@ async function main() {
     assert.equal(home.gateways, 3);
     assert.equal(home.hasSearch, true);
     assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
-    assert.ok(home.visibleResources > 0 && home.visibleResources <= maximumItems,
+    assert.ok(home.visibleResources > 0 && home.visibleResources <= 12,
       `${label} page capacity is not bounded`);
+    assert.equal(home.everyResourceFits, true, `${label} clips a resource row`);
     assert.ok(home.serviceTabs >= 10, `${label} service switch bar is incomplete`);
     await capture(window, `${label}-home`);
     await capture(window, `${label}-services`);
   }
+
+  window.setContentSize(1040, 900);
+  window.webContents.setZoomFactor(1.25);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const zoomed = await inspect(window);
+  assert.equal(zoomed.noHorizontalOverflow, true, '125% zoom overflowed horizontally');
+  assert.equal(zoomed.noVerticalPageScroll, true, '125% zoom requires whole-page scrolling');
+  assert.equal(zoomed.everyResourceFits, true, '125% zoom clips a resource row');
+  await capture(window, 'zoomed-services');
+  window.webContents.setZoomFactor(1);
+  await new Promise((resolve) => setTimeout(resolve, 80));
 
   const courses = await window.webContents.executeJavaScript(`(() => {
     [...document.querySelectorAll('.service-view-tab')]

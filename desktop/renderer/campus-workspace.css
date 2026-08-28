@@ -537,7 +537,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 880px) {
   .workspace-shell { padding: 12px 14px; }
   .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 15px; }
-  .workspace-header { align-items: flex-start; }
+  .workspace-header { min-height: 62px; align-items: center; }
+  .workspace-kicker { display: none; }
+  .workspace-brand h1 { margin-top: 0; font-size: 21px; white-space: nowrap; }
+  .gateway-links { display: none; }
   .service-category-list { columns: 1; }
   .manage-layout { grid-template-columns: 180px minmax(0, 1fr); }
   .manage-content > .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

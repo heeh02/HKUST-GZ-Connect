@@ -191,14 +191,16 @@ function renderGrid(target, resources, options = {}) {
   target.replaceChildren(...resources.map((resource) => resourceItem(resource, options)));
 }
 
-function pageCapacity() {
-  if (innerWidth >= 1280 && innerHeight >= 700) return 12;
-  if (innerWidth >= 900 && innerHeight >= 580) return 8;
-  return 4;
+function pageCapacity(target, rowHeight = 78) {
+  if (!target) return 4;
+  const columns = Math.max(1, getComputedStyle(target).gridTemplateColumns
+    .split(' ').filter(Boolean).length);
+  const rows = Math.max(1, Math.floor(target.clientHeight / rowHeight));
+  return Math.max(columns, Math.min(12, columns * rows));
 }
 
-function paged(items, page) {
-  const size = pageCapacity();
+function paged(items, page, target, rowHeight) {
+  const size = pageCapacity(target, rowHeight);
   const pages = Math.max(1, Math.ceil(items.length / size));
   const current = Math.min(Math.max(0, page), pages - 1);
   return { current, pages, items: items.slice(current * size, (current + 1) * size) };
@@ -365,7 +367,7 @@ function renderHome() {
     return button;
   }));
   $('serviceViewTitle').textContent = selected.name;
-  const page = paged(selected.items, servicePage); servicePage = page.current;
+  const page = paged(selected.items, servicePage, $('serviceViewGrid'), 78); servicePage = page.current;
   renderGrid($('serviceViewGrid'), page.items);
   renderPager($('servicePager'), page.pages, page.current, (index) => {
     servicePage = index; renderHome();
@@ -394,7 +396,7 @@ function renderManage() {
   }
   if (navigation.query) pool = model.searchResources(pool, navigation.query);
   $('resourcePoolTitle').textContent = title;
-  const page = paged(pool, managePage); managePage = page.current;
+  const page = paged(pool, managePage, $('resourcePool'), 112); managePage = page.current;
   renderGrid($('resourcePool'), page.items, { management: true });
   $('resourcePoolCount').textContent = String(pool.length);
   renderPager($('managePager'), page.pages, page.current, (index) => {
@@ -470,7 +472,7 @@ function renderManage() {
 
 function renderSearch() {
   const results = model.searchResources(state.resources, navigation.query);
-  const page = paged(results, searchPage); searchPage = page.current;
+  const page = paged(results, searchPage, $('searchGrid'), 78); searchPage = page.current;
   renderGrid($('searchGrid'), page.items);
   renderPager($('searchPager'), page.pages, page.current, (index) => {
     searchPage = index; renderSearch();
@@ -577,6 +579,24 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault(); $('workspaceSearch').focus(); $('workspaceSearch').select();
   }
 });
+
+let layoutRenderFrame = null;
+let lastLayoutSignature = '';
+function scheduleLayoutRender() {
+  if (layoutRenderFrame !== null) cancelAnimationFrame(layoutRenderFrame);
+  layoutRenderFrame = requestAnimationFrame(() => {
+    layoutRenderFrame = null;
+    const signature = [innerWidth, innerHeight,
+      $('serviceViewGrid').clientWidth, $('serviceViewGrid').clientHeight,
+      $('resourcePool').clientWidth, $('resourcePool').clientHeight,
+      $('searchGrid').clientWidth, $('searchGrid').clientHeight].join(':');
+    if (!state || signature === lastLayoutSignature) return;
+    lastLayoutSignature = signature;
+    render();
+  });
+}
+new ResizeObserver(scheduleLayoutRender).observe(document.querySelector('.workspace-shell'));
+window.addEventListener('resize', scheduleLayoutRender);
 
 window.campusWorkspace?.onState((next) => { state = next; render(); });
 window.campusWorkspace?.onFocus((target) => {
