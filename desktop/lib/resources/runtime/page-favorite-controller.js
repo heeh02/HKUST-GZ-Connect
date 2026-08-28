@@ -171,13 +171,7 @@ class PageFavoriteController {
             schemaVersion: 1,
             entries: previousFavorites.entries.filter((id) => id !== command.resourceId),
           });
-          this.activityStore.replaceGroups({
-            schemaVersion: 1,
-            groups: previousGroups.groups.map((group) => ({
-              ...group,
-              resourceIds: group.resourceIds.filter((id) => id !== command.resourceId),
-            })),
-          });
+          this.activityStore.removeResourceFromGroups(command.resourceId);
           outcome = { ok: true, resourceId: command.resourceId };
         } else if (command.command === 'create-group') {
           this.activityStore.createGroup(command.name); outcome = { ok: true };
@@ -195,6 +189,15 @@ class PageFavoriteController {
             command.resourceId, command.groupId, command.index,
           );
           outcome = { ok: true, favorite: true };
+        } else if (command.command === 'add-resources-to-group') {
+          for (const resourceId of command.resourceIds) {
+            if (!resources.some(({ id }) => id === resourceId)) throw new Error('resource is unavailable');
+            if (!this.activityStore.snapshot().favorites.entries.includes(resourceId)) {
+              this.activityStore.toggleFavorite(resourceId, resources);
+            }
+          }
+          this.activityStore.addResourcesToGroup(command.resourceIds, command.groupId);
+          outcome = { ok: true, favorite: true, count: command.resourceIds.length };
         } else {
           throw new Error('workspace command is unsupported');
         }

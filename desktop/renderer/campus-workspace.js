@@ -12,8 +12,11 @@ const I18N = Object.freeze({
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
     createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
     cancel: '取消', save: '保存', edit: '重命名', remove: '删除', confirmDelete: '确认删除',
+    confirmDeleteGroup: '删除分组（网站保留）',
     moveUp: '上移', moveDown: '下移', favorite: '收藏', unfavorite: '取消收藏',
     invalidGroupName: '请输入 1–30 个字符的分组名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
+    selectPage: '选择本页', selectedCount: '已选择 {count} 项', chooseGroup: '选择分组',
+    addToGroup: '加入分组', clearSelection: '取消选择', memberships: '所在分组',
     campus: '校园', direct: '直连', automatic: '自动',
     newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
     studentFinance: '财务缴费', expenses: '报销与采购', career: '实习与就业', campusLife: '校园生活',
@@ -30,8 +33,11 @@ const I18N = Object.freeze({
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
     createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
     cancel: 'Cancel', save: 'Save', edit: 'Rename', remove: 'Delete', confirmDelete: 'Confirm delete',
+    confirmDeleteGroup: 'Delete Group (keep sites)',
     moveUp: 'Move up', moveDown: 'Move down', favorite: 'Favorite', unfavorite: 'Remove favorite',
     invalidGroupName: 'Enter a group name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
+    selectPage: 'Select Page', selectedCount: '{count} selected', chooseGroup: 'Choose Group',
+    addToGroup: 'Add to Group', clearSelection: 'Clear Selection', memberships: 'Groups',
     campus: 'Campus', direct: 'Direct', automatic: 'Auto',
     newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
     studentFinance: 'Student Finance', expenses: 'Expenses & Procurement', career: 'Career & Internships', campusLife: 'Campus Life',
@@ -66,6 +72,8 @@ let selectedServiceView = null;
 let servicePage = 0;
 let searchPage = 0;
 let managePage = 0;
+let currentManagePageIds = [];
+const selectedResourceIds = new Set();
 
 const $ = (id) => document.getElementById(id);
 const text = () => I18N[state?.locale === 'en' ? 'en' : 'zh'];
@@ -106,6 +114,17 @@ function resourceItem(resource, { management = false } = {}) {
   item.dataset.resourceId = resource.id;
   item.draggable = management;
   if (management) {
+    const selection = document.createElement('label');
+    selection.className = 'resource-selection';
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
+    checkbox.checked = selectedResourceIds.has(resource.id);
+    checkbox.setAttribute('aria-label', `${text().favorite}: ${resource.name}`);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedResourceIds.add(resource.id);
+      else selectedResourceIds.delete(resource.id);
+      renderBulkActions();
+    });
+    selection.appendChild(checkbox); item.appendChild(selection);
     item.addEventListener('dragstart', (event) => {
       draggedResourceId = resource.id;
       event.dataTransfer.effectAllowed = 'move';
@@ -139,23 +158,11 @@ function resourceItem(resource, { management = false } = {}) {
   if (management) {
     const manageRow = document.createElement('div');
     manageRow.className = 'resource-manage-row';
-    const select = document.createElement('select');
-    select.className = 'resource-group-select';
-    const ungrouped = document.createElement('option');
-    ungrouped.value = '';
-    ungrouped.textContent = text().ungrouped;
-    select.appendChild(ungrouped);
-    for (const group of state.groups) {
-      const option = document.createElement('option');
-      option.value = group.id;
-      option.textContent = group.name;
-      option.selected = group.resourceIds.includes(resource.id);
-      select.appendChild(option);
-    }
-    select.addEventListener('change', () => command('move-resource', {
-      resourceId: resource.id, groupId: select.value || null, index: 64,
-    }));
-    manageRow.appendChild(select);
+    const membership = document.createElement('span'); membership.className = 'resource-memberships';
+    const names = state.groups.filter(({ resourceIds }) => resourceIds.includes(resource.id))
+      .map(({ name: groupName }) => groupName);
+    membership.textContent = `${text().memberships}: ${names.join(' · ') || text().ungrouped}`;
+    manageRow.appendChild(membership);
     if (!resource.builtin) {
       for (const [label, className, action] of [
         [text().edit, 'resource-rename', () => openResourceDialog(resource)],
@@ -259,7 +266,7 @@ function groupSection(group, resources, { management = false } = {}) {
     remove.type = 'button'; remove.className = 'group-action'; remove.textContent = text().remove;
     remove.addEventListener('click', () => {
       if (remove.dataset.confirm !== '1') {
-        remove.dataset.confirm = '1'; remove.textContent = text().confirmDelete; return;
+        remove.dataset.confirm = '1'; remove.textContent = text().confirmDeleteGroup; return;
       }
       command('delete-group', { groupId: group.id });
     });
@@ -418,9 +425,13 @@ function renderManage() {
     pool = group.resourceIds.map((id) => byId.get(id)).filter(Boolean); title = group.name;
   }
   if (navigation.query) pool = model.searchResources(pool, navigation.query);
+  const validIds = new Set(resources.map(({ id }) => id));
+  for (const id of selectedResourceIds) if (!validIds.has(id)) selectedResourceIds.delete(id);
   $('resourcePoolTitle').textContent = title;
   const page = paged(pool, managePage, $('resourcePool')); managePage = page.current;
+  currentManagePageIds = page.items.map(({ id }) => id);
   renderGrid($('resourcePool'), page.items, { management: true });
+  renderBulkActions();
   $('resourcePoolCount').textContent = String(pool.length);
   renderPager($('managePager'), page.pages, page.current, (index) => {
     managePage = index; renderManage();
@@ -456,7 +467,7 @@ function renderManage() {
       remove.className = 'manage-folder-action'; remove.textContent = text().remove;
       remove.addEventListener('click', () => {
         if (remove.dataset.confirm !== '1') {
-          remove.dataset.confirm = '1'; remove.textContent = text().confirmDelete; return;
+          remove.dataset.confirm = '1'; remove.textContent = text().confirmDeleteGroup; return;
         }
         command('delete-group', { groupId: group.id });
       });
@@ -491,6 +502,29 @@ function renderManage() {
     folderEntry({ id: 'all', name: text().allSites, count: resources.length }),
   ];
   $('manageFolderNav').replaceChildren(...folders);
+}
+
+function renderBulkActions() {
+  if (!state) return;
+  $('selectPageLabel').textContent = text().selectPage;
+  $('bulkSelectedCount').textContent = text().selectedCount.replace('{count}', selectedResourceIds.size);
+  $('bulkAddToGroup').textContent = text().addToGroup;
+  $('bulkClearSelection').textContent = text().clearSelection;
+  const allPage = currentManagePageIds.length > 0 &&
+    currentManagePageIds.every((id) => selectedResourceIds.has(id));
+  const somePage = currentManagePageIds.some((id) => selectedResourceIds.has(id));
+  $('selectPageResources').checked = allPage;
+  $('selectPageResources').indeterminate = somePage && !allPage;
+  const selectedGroup = $('bulkGroupSelect').value;
+  const empty = document.createElement('option'); empty.value = ''; empty.textContent = text().chooseGroup;
+  $('bulkGroupSelect').replaceChildren(empty, ...state.groups.map((group) => {
+    const option = document.createElement('option'); option.value = group.id; option.textContent = group.name;
+    return option;
+  }));
+  if (state.groups.some(({ id }) => id === selectedGroup)) $('bulkGroupSelect').value = selectedGroup;
+  const canApply = selectedResourceIds.size > 0 && !!$('bulkGroupSelect').value;
+  $('bulkAddToGroup').disabled = !canApply;
+  $('bulkClearSelection').disabled = selectedResourceIds.size === 0;
 }
 
 function renderSearch() {
@@ -587,6 +621,24 @@ function clearSearch() {
 $('clearWorkspaceSearch').addEventListener('click', clearSearch);
 $('clearWorkspaceFilter').addEventListener('click', clearSearch);
 $('createGroup').addEventListener('click', () => openGroupDialog());
+$('selectPageResources').addEventListener('change', (event) => {
+  for (const id of currentManagePageIds) {
+    if (event.target.checked) selectedResourceIds.add(id);
+    else selectedResourceIds.delete(id);
+  }
+  renderManage();
+});
+$('bulkGroupSelect').addEventListener('change', renderBulkActions);
+$('bulkClearSelection').addEventListener('click', () => {
+  selectedResourceIds.clear(); renderManage();
+});
+$('bulkAddToGroup').addEventListener('click', () => {
+  const groupId = $('bulkGroupSelect').value;
+  if (!groupId || !selectedResourceIds.size) return;
+  if (command('add-resources-to-group', { resourceIds: [...selectedResourceIds], groupId })) {
+    selectedResourceIds.clear(); renderBulkActions();
+  }
+});
 $('groupDialog').addEventListener('close', () => { editingGroupId = null; editingResourceId = null; });
 $('saveGroup').addEventListener('click', (event) => {
   event.preventDefault();

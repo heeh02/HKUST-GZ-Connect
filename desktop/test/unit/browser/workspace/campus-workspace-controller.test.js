@@ -30,6 +30,13 @@ test('Workspace command contract is ID-only bounded and one-level', () => {
   }), {
     command: 'move-resource', resourceId: 'canvas', groupId: 'group_abcdefghijkl', index: 2,
   });
+  assert.deepEqual(normalizeWorkspaceCommand({
+    command: 'add-resources-to-group', resourceIds: ['canvas', 'sis'],
+    groupId: 'group_abcdefghijkl',
+  }), {
+    command: 'add-resources-to-group', resourceIds: ['canvas', 'sis'],
+    groupId: 'group_abcdefghijkl',
+  });
   assert.equal(normalizeWorkspaceCommand({
     command: 'open-resource', resourceId: 'canvas', url: 'https://evil.example/',
   }), null);
@@ -39,6 +46,10 @@ test('Workspace command contract is ID-only bounded and one-level', () => {
   }), null);
   assert.equal(normalizeWorkspaceCommand({
     command: 'move-resource', resourceId: 'canvas', groupId: 'nested/path', index: 0,
+  }), null);
+  assert.equal(normalizeWorkspaceCommand({
+    command: 'add-resources-to-group', resourceIds: ['canvas', 'canvas'],
+    groupId: 'group_abcdefghijkl',
   }), null);
 });
 
@@ -72,4 +83,20 @@ test('Workspace state exposes presentation only and executes validated actions',
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(commands, [{ command: 'open-resource', resourceId: 'portal' }]);
   assert.equal(contents.sent[0], 'campus-workspace-state');
+});
+
+test('Workspace projection permits one resource in multiple task collections', () => {
+  const controller = new CampusWorkspaceController({
+    workspaceFile: '/app/workspace.html', workspacePreload: '/app/preload.js',
+    getProfilePresentation: () => ({ schoolName: 'Example', unverified: false }),
+    getResources: () => [{ id: 'canvas', name: 'Canvas', route: 'direct',
+      category: 'courses', favorite: true, lastOpenedAt: null, builtin: true }],
+    getGroups: () => [
+      { id: 'group_abcdefghijkl', name: '上课', resourceIds: ['canvas'] },
+      { id: 'group_bcdefghijklm', name: '科研', resourceIds: ['canvas'] },
+    ],
+    getLocale: () => 'zh', onCommand: async () => {},
+  });
+  assert.deepEqual(controller.state().groups.map(({ resourceIds }) => resourceIds),
+    [['canvas'], ['canvas']]);
 });

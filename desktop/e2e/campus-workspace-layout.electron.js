@@ -168,7 +168,7 @@ async function main() {
   })()`);
   assert.deepEqual(leaveSearch, ['e-form', 'student-request-guide']);
 
-  await window.webContents.executeJavaScript(`(() => {
+  const managementView = await window.webContents.executeJavaScript(`(() => {
     document.querySelector('[data-workspace-screen="manage"]').click();
     document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
     document.querySelector('#resourcePool .resource-star').click();
@@ -177,9 +177,11 @@ async function main() {
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
     document.getElementById('saveGroup').click();
-    const select = document.querySelector('#resourcePool .resource-group-select');
-    select.value = 'group_abcdefghijkl';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelector('#resourcePool .resource-selection input').click();
+    const bulkGroup = document.getElementById('bulkGroupSelect');
+    bulkGroup.value = 'group_abcdefghijkl';
+    bulkGroup.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('bulkAddToGroup').click();
     const dragData = new DataTransfer();
     const discovered = document.querySelector('#resourcePool [data-resource-id="class-schedule"]');
     const targetGroup = document.querySelector('#manageFolderNav [data-folder-id="group_abcdefghijkl"]');
@@ -197,7 +199,17 @@ async function main() {
     custom.querySelector('.resource-delete').click();
     custom.querySelector('.resource-delete').click();
     document.getElementById('clearWorkspaceSearch').click();
+    return {
+      visible: !document.getElementById('manageScreen').hidden,
+      bulkVisible: getComputedStyle(document.getElementById('bulkActions')).display !== 'none',
+      rowCheckboxes: document.querySelectorAll('#resourcePool .resource-selection input').length,
+      perRowGroupSelects: document.querySelectorAll('#resourcePool .resource-group-select').length,
+    };
   })()`);
+  assert.equal(managementView.visible, true, 'organizer stopped being the active workspace screen');
+  assert.equal(managementView.bulkVisible, true, 'batch organizer controls are hidden');
+  assert.ok(managementView.rowCheckboxes > 0, 'organizer rows have no batch selection control');
+  assert.equal(managementView.perRowGroupSelects, 0, 'per-row group dropdowns returned');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
@@ -206,6 +218,9 @@ async function main() {
     command === 'open-resource' && resourceId === 'official-portal'), true);
   assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);
   assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
+  assert.equal(commands.some(({ command, resourceIds, groupId }) =>
+    command === 'add-resources-to-group' && resourceIds.length === 1 &&
+    groupId === 'group_abcdefghijkl'), true);
   assert.equal(commands.some(({ command, resourceId, groupId }) =>
     command === 'move-resource' && resourceId === 'class-schedule' &&
     groupId === 'group_abcdefghijkl'), true);
@@ -213,6 +228,10 @@ async function main() {
     command === 'rename-resource' && resourceId === 'hpc' && name === '科研服务器'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'delete-resource' && resourceId === 'hpc'), true);
+  await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
+    document.querySelector('[data-workspace-screen="manage"]').click();
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }))()`);
   await capture(window, 'manage');
   window.destroy();
   process.stdout.write('campus workspace layout: PASS\n');

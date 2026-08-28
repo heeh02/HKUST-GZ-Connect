@@ -21,6 +21,7 @@ const COMMANDS = new Set([
   'delete-group',
   'reorder-groups',
   'move-resource',
+  'add-resources-to-group',
 ]);
 
 function plainObject(value) {
@@ -83,6 +84,14 @@ function normalizeWorkspaceCommand(value) {
         index: source.index,
       }) : null;
   }
+  if (source.command === 'add-resources-to-group') {
+    return keys.length === 3 && GROUP_ID.test(source.groupId) &&
+      Array.isArray(source.resourceIds) && source.resourceIds.length > 0 &&
+      source.resourceIds.length <= 64 && new Set(source.resourceIds).size === source.resourceIds.length &&
+      source.resourceIds.every((id) => RESOURCE_ID.test(id))
+      ? Object.freeze({ command: source.command, groupId: source.groupId,
+        resourceIds: Object.freeze([...source.resourceIds]) }) : null;
+  }
   return null;
 }
 
@@ -124,17 +133,15 @@ function projectWorkspaceGroups(value) {
     throw new TypeError('Campus Workspace groups are invalid');
   }
   const ids = new Set();
-  const assigned = new Set();
   return Object.freeze(value.map((group) => {
     if (!group || typeof group !== 'object' || !GROUP_ID.test(group.id) || ids.has(group.id) ||
         typeof group.name !== 'string' || !group.name.trim() || group.name.length > GROUP_NAME_MAX ||
         /[\u0000-\u001f\u007f<>]/u.test(group.name) || !Array.isArray(group.resourceIds) ||
         group.resourceIds.length > 64 || new Set(group.resourceIds).size !== group.resourceIds.length ||
-        group.resourceIds.some((id) => !RESOURCE_ID.test(id) || assigned.has(id))) {
+        group.resourceIds.some((id) => !RESOURCE_ID.test(id))) {
       throw new TypeError('Campus Workspace group is invalid');
     }
     ids.add(group.id);
-    for (const id of group.resourceIds) assigned.add(id);
     return Object.freeze({
       id: group.id,
       name: group.name.trim(),

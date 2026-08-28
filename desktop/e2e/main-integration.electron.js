@@ -166,17 +166,20 @@ async function run() {
   const groupDocument = await waitFor(() => {
     try { return JSON.parse(fs.readFileSync(groupFile, 'utf8')); } catch { return null; }
   }, 'Campus Workspace group was not persisted');
-  assert.equal(groupDocument.groups[0].name, '学习');
+  assert.equal(groupDocument.schemaVersion, 2);
+  assert.equal(groupDocument.collections[0].name, '学习');
   assert.equal(await workspace.executeJavaScript(
     `window.campusWorkspace.command('move-resource', {
-      resourceId: 'canvas', groupId: '${groupDocument.groups[0].id}', index: 0,
+      resourceId: 'canvas', groupId: '${groupDocument.collections[0].id}', index: 0,
     })`,
   ), true);
   const movedGroup = await waitFor(() => {
     const document = JSON.parse(fs.readFileSync(groupFile, 'utf8'));
-    return document.groups[0].resourceIds.includes('canvas') ? document : null;
+    return document.placements.some(({ collectionId, resourceId }) => (
+      collectionId === document.collections[0].id && resourceId === 'canvas'
+    )) ? document : null;
   }, 'Campus Workspace favorite was not moved into its group');
-  assert.deepEqual(movedGroup.groups[0].resourceIds, ['canvas']);
+  assert.deepEqual(movedGroup.placements.map(({ resourceId }) => resourceId), ['canvas']);
 
   const settings = projectRuntimeSettings(persistence.reloadAuthority());
   assert.equal(settings.username, '');

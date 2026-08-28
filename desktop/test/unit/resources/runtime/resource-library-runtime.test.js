@@ -63,12 +63,18 @@ test('reviewed URL additions migrate favorite recent and group IDs without losin
   }
   class GroupStore {
     constructor() {
-      this.document = { schemaVersion: 1, groups: [{
-        id: 'group_abcdefghijkl', name: '学习', resourceIds: ['custom-old'],
-      }] };
+      this.document = {
+        schemaVersion: 2,
+        collections: [{ id: 'group_abcdefghijkl', name: '学习', createdAt: 1, updatedAt: 1 }],
+        placements: [{ collectionId: 'group_abcdefghijkl', resourceId: 'custom-old', order: 0, pinned: false }],
+      };
     }
     snapshot() { return structuredClone(this.document); }
     replace(document) { this.document = structuredClone(document); return this.document; }
+    groups() { return this.document.collections.map(({ id, name }) => ({ id, name,
+      resourceIds: this.document.placements.filter(({ collectionId }) => collectionId === id)
+        .sort((left, right) => left.order - right.order).map(({ resourceId }) => resourceId),
+    })); }
   }
   const runtime = new ResourceLibraryRuntime({
     favoritesFile: '/fixture/favorites.json', recentFile: '/fixture/recent.json',

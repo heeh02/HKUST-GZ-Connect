@@ -345,28 +345,19 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .resource-star:hover { color: var(--workspace-gold); background: #fff8e7; }
 .resource-star.active { color: var(--workspace-gold); }
+.resource-selection { flex: 0 0 24px; display: grid; place-items: center; cursor: pointer; }
+.resource-selection input { width: 15px; height: 15px; accent-color: var(--workspace-blue); }
 .resource-manage-row {
   display: none;
   flex: 1 0 100%;
   align-items: center;
   gap: 5px;
   min-width: 0;
-  padding: 0 34px 8px 60px;
+  padding: 0 34px 8px 67px;
 }
 .workspace-managing .resource-item { flex-wrap: wrap; }
 .workspace-managing .resource-manage-row { display: flex; }
-.resource-group-select {
-  display: none;
-  min-width: 0;
-  max-width: 112px;
-  height: 28px;
-  border: 1px solid var(--workspace-line);
-  border-radius: 8px;
-  color: var(--workspace-navy);
-  background: #fff;
-  font-size: 10px;
-}
-.workspace-managing .resource-group-select { display: block; }
+.resource-memberships { min-width: 0; flex: 1; overflow: hidden; color: var(--workspace-muted); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 .resource-manage-action {
   min-height: 27px;
   padding: 0 7px;
@@ -527,6 +518,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 9px;
 }
 .manage-folder-action:hover { color: var(--workspace-navy); background: #fff; }
+.bulk-actions {
+  display: grid;
+  grid-template-columns: auto minmax(72px, 1fr) minmax(112px, 150px) auto auto;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  padding: 8px 9px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 11px;
+  background: var(--workspace-field);
+}
+.bulk-select-page { display: inline-flex; align-items: center; gap: 5px; color: var(--workspace-blue); font-size: 10px; font-weight: 720; cursor: pointer; }
+.bulk-select-page input { width: 14px; height: 14px; accent-color: var(--workspace-blue); }
+.bulk-selected-count { color: var(--workspace-muted); font-size: 9.5px; }
+.bulk-actions select { min-width: 0; height: 30px; border: 1px solid var(--workspace-line); border-radius: 8px; color: var(--workspace-blue); background: #fff; font-size: 10px; }
+.bulk-actions .soft-button, .bulk-actions .text-button { min-height: 30px; padding: 0 9px; font-size: 10px; }
 .manage-content > .resource-grid {
   --resource-row-height: 96px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -569,6 +576,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .service-category-list { columns: 1; }
   .manage-layout { grid-template-columns: 180px minmax(0, 1fr); }
   .manage-content > .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bulk-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bulk-selected-count { text-align: right; }
 }
 @media (max-width: 720px) {
   .workspace-shell { padding: 8px 10px; }

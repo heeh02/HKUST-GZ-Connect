@@ -88,12 +88,13 @@ test('2.0 workspace upgrade keeps URLs favorites recents hidden sites and routin
   const created = groups.create('学习与科研');
   groups.move(
     'custom-upgrade-fixture',
-    created.groups[0].id,
+    created.collections[0].id,
     0,
     fixture.favorites.entries,
   );
   const restartedGroups = new FavoriteGroupStore({ filePath: groupsFile, platform: 'darwin' });
-  assert.deepEqual(restartedGroups.snapshot().groups.map(({ name, resourceIds }) => ({
+  assert.equal(restartedGroups.snapshot().schemaVersion, 2);
+  assert.deepEqual(restartedGroups.groups().map(({ name, resourceIds }) => ({
     name, resourceIds,
   })), [{ name: '学习与科研', resourceIds: ['custom-upgrade-fixture'] }]);
   assert.equal(fs.readFileSync(favoritesFile, 'utf8'), originalFavorites);

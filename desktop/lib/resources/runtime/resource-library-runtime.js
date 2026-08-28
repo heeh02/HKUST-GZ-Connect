@@ -78,10 +78,10 @@ class ResourceLibraryRuntime {
     try {
       favorites = new Set(this.#reconcileActivity(null).favorites.entries);
       resources = new Set(this.loadResources().map(({ id }) => id));
-      document = this.groupStore.snapshot();
+      document = this.groupStore.groups();
     }
     catch { return Object.freeze([]); }
-    const groups = document.groups.map((group) => Object.freeze({
+    const groups = document.map((group) => Object.freeze({
       ...group,
       resourceIds: Object.freeze(group.resourceIds.filter((id) => favorites.has(id) && resources.has(id))),
     }));
@@ -108,6 +108,16 @@ class ResourceLibraryRuntime {
       this.activityStore.snapshot().favorites.entries,
     );
   }
+
+  addResourcesToGroup(resourceIds, groupId) {
+    return this.groupStore.addMany(
+      resourceIds,
+      groupId,
+      this.activityStore.snapshot().favorites.entries,
+    );
+  }
+
+  removeResourceFromGroups(resourceId) { return this.groupStore.removeResource(resourceId); }
 
   recordOpenByUrl(rawUrl) {
     let canonical;
@@ -181,16 +191,22 @@ class ResourceLibraryRuntime {
       this.activityStore.replaceRecent(nextRecent);
     }
     const groupDocument = this.groupStore.snapshot();
-    const assigned = new Set();
-    const groups = groupDocument.groups.map((group) => ({
-      ...group,
-      resourceIds: group.resourceIds.map((id) => map.get(id) || id).filter((id) => {
-        if (assigned.has(id)) return false;
-        assigned.add(id);
-        return true;
-      }),
-    }));
-    const nextGroups = { schemaVersion: 1, groups };
+    const pairs = new Set();
+    const placements = groupDocument.placements.map((placement) => ({
+      ...placement,
+      resourceId: map.get(placement.resourceId) || placement.resourceId,
+    })).filter((placement) => {
+      const pair = `${placement.collectionId}\0${placement.resourceId}`;
+      if (pairs.has(pair)) return false;
+      pairs.add(pair); return true;
+    });
+    const nextGroups = {
+      ...groupDocument,
+      placements: groupDocument.collections.flatMap(({ id: collectionId }) => placements
+        .filter((placement) => placement.collectionId === collectionId)
+        .sort((left, right) => left.order - right.order)
+        .map((placement, order) => ({ ...placement, order }))),
+    };
     if (JSON.stringify(nextGroups) !== JSON.stringify(groupDocument)) {
       this.groupStore.replace(nextGroups);
     }

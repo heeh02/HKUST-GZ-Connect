@@ -35,6 +35,12 @@ function command(name, payload = {}) {
       groupId: payload.groupId,
       index: payload.index,
     };
+  } else if (name === 'add-resources-to-group' && Array.isArray(payload.resourceIds) &&
+             payload.resourceIds.length > 0 && payload.resourceIds.length <= 64 &&
+             new Set(payload.resourceIds).size === payload.resourceIds.length &&
+             payload.resourceIds.every((id) => RESOURCE_ID.test(id)) &&
+             GROUP_ID.test(payload.groupId)) {
+    message = { command: name, resourceIds: [...payload.resourceIds], groupId: payload.groupId };
   }
   if (!message) return false;
   ipcRenderer.send('campus-workspace-command', message);

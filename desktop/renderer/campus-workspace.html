@@ -78,6 +78,13 @@
           </aside>
           <section class="manage-panel manage-content">
             <div class="group-heading"><h3 id="resourcePoolTitle">收藏</h3><span id="resourcePoolCount" class="group-count"></span></div>
+            <div id="bulkActions" class="bulk-actions">
+              <label class="bulk-select-page"><input id="selectPageResources" type="checkbox" /><span id="selectPageLabel">选择本页</span></label>
+              <span id="bulkSelectedCount" class="bulk-selected-count">已选择 0 项</span>
+              <select id="bulkGroupSelect" aria-label="目标分组"></select>
+              <button id="bulkAddToGroup" class="soft-button" type="button" disabled>加入分组</button>
+              <button id="bulkClearSelection" class="text-button" type="button" disabled>取消选择</button>
+            </div>
             <div id="resourcePool" class="resource-grid"></div>
             <div id="managePager" class="workspace-pager" aria-label="管理页码"></div>
           </section>

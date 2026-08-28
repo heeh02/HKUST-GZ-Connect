@@ -145,6 +145,38 @@ test('Workspace mutations keep group order and favorite ownership inside one tra
   assert.equal(groups.groups[0].name, '课程');
 });
 
+test('batch grouping favorites missing resources and commits one multi-placement command', async () => {
+  let favorites = { schemaVersion: 1, entries: ['canvas'] };
+  let added = null;
+  let transactions = 0;
+  const resources = [{ id: 'canvas' }, { id: 'sis' }];
+  const controller = new PageFavoriteController({
+    loadSettings: () => ({ customResources: [], hiddenBuiltinResourceIds: [] }),
+    saveSettings: () => {}, allResources: () => resources, visibleResources: () => resources,
+    activityStore: {
+      snapshot: () => ({ favorites: structuredClone(favorites) }),
+      groupsSnapshot: () => ({ schemaVersion: 2, collections: [], placements: [] }),
+      replaceFavorites: (next) => { favorites = structuredClone(next); }, replaceGroups: () => {},
+      toggleFavorite(resourceId) {
+        favorites = { schemaVersion: 1, entries: [...new Set([...favorites.entries, resourceId])] };
+        return favorites;
+      },
+      addResourcesToGroup(resourceIds, groupId) { added = { resourceIds, groupId }; },
+    },
+    runTransaction: async (builder) => { transactions += 1; return builder().commit(); },
+  });
+  const result = await controller.handleWorkspaceCommand({
+    command: 'add-resources-to-group', resourceIds: ['canvas', 'sis'],
+    groupId: 'group_abcdefghijkl',
+  });
+  assert.deepEqual(added, {
+    resourceIds: ['canvas', 'sis'], groupId: 'group_abcdefghijkl',
+  });
+  assert.deepEqual(favorites.entries, ['canvas', 'sis']);
+  assert.equal(result.count, 2);
+  assert.equal(transactions, 1);
+});
+
 test('Workspace can rename and delete only local websites while cleaning activity', async () => {
   let settings = {
     customResources: [{
@@ -167,6 +199,11 @@ test('Workspace can rename and delete only local websites while cleaning activit
       groupsSnapshot: () => structuredClone(groups),
       replaceFavorites: (next) => { favorites = structuredClone(next); },
       replaceGroups: (next) => { groups = structuredClone(next); },
+      removeResourceFromGroups: (resourceId) => {
+        groups.groups = groups.groups.map((group) => ({
+          ...group, resourceIds: group.resourceIds.filter((id) => id !== resourceId),
+        }));
+      },
       toggleFavorite: () => favorites,
     },
     runTransaction: async (builder) => builder().commit(),
