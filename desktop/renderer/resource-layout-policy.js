@@ -2,9 +2,9 @@
 
 (function initializeResourceLayoutPolicy(globalScope) {
   const LAYOUTS = Object.freeze({
-    compact: Object.freeze({ mode: 'compact', columns: 2, sectionLimit: 4 }),
-    standard: Object.freeze({ mode: 'standard', columns: 3, sectionLimit: 6 }),
-    wide: Object.freeze({ mode: 'wide', columns: 4, sectionLimit: 8 }),
+    compact: Object.freeze({ mode: 'compact', columns: 2 }),
+    standard: Object.freeze({ mode: 'standard', columns: 3 }),
+    wide: Object.freeze({ mode: 'wide', columns: 4 }),
   });
 
   function layoutForWidth(value) {

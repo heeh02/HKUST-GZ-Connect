@@ -64,17 +64,15 @@
       const iconKind = resourceIconKind(resource.category);
       const direct = resource.route === 'direct';
       const fullRoute = routeLabel(resource, translate);
-      const shortRoute = translate(direct
-        ? 'resources.routeDirectShort' : 'resources.routeCampusShort');
       const tooltip = [resource.name, resource.description, resource.url, fullRoute]
         .filter((value) => typeof value === 'string' && value.trim()).join('\n');
       return `<div class="resource-card" data-campus-id="${esc(resource.id)}">`
       + `<button class="resource-link" type="button" data-resource-action="open" title="${esc(tooltip)}"`
       + ` aria-label="${esc(`${resource.name}, ${fullRoute}`)}">`
-      + `<span class="resource-icon resource-icon-${iconKind}" aria-hidden="true">${resourceIcon(iconKind)}`
-      + `<span class="resource-route-short ${direct ? 'direct' : 'campus'}">${esc(shortRoute)}</span></span>`
+      + `<span class="resource-icon resource-icon-${iconKind}" aria-hidden="true">${resourceIcon(iconKind)}</span>`
       + '<span class="resource-copy">'
       + `<span class="resource-name">${esc(resource.name)}</span>`
+      + `<span class="resource-route-label ${direct ? 'direct' : 'campus'}">${esc(fullRoute)}</span>`
       + '</span></button>'
       + `<button class="resource-favorite${resource.favorite ? ' active' : ''}" type="button" data-resource-action="favorite"`
       + ` aria-label="${esc(resource.favorite ? translate('resources.unfavorite') : translate('resources.favorite'))}"`

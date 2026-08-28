@@ -88,6 +88,8 @@ function renderConnect(s) {
   connectedAt = s.connected ? (s.connectedAt || connectedAt) : null;
   $('power').classList.toggle('on', s.connected);
   $('power').classList.toggle('busy', s.connecting);
+  const powerText = t(s.connecting ? 'connect.actionConnecting' : s.connected ? 'connect.actionDisconnect' : 'connect.actionConnect');
+  $('power').disabled = s.connecting; $('powerLabel').textContent = powerText; $('power').setAttribute('aria-label', powerText);
   const wrap = document.querySelector('.conn-status');
   wrap.classList.toggle('on', s.connected); wrap.classList.toggle('busy', s.connecting);
   $('connStatus').textContent = s.connecting

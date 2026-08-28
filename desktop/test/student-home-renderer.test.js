@@ -19,7 +19,7 @@ test('ordinary Student Home renders only direct favorites and user folders', () 
       ? { ...resource, favorite: true } : resource),
     groups: [{ id: 'group_abcdefghijkl', name: '学习', resourceIds: ['home'] }],
     query: '', view: 'all', expanded: false,
-    layout: { mode: 'compact', columns: 2, sectionLimit: 4 }, translate, escapeHtml,
+    layout: { mode: 'compact', columns: 2 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.favoritesSection/u);
   assert.match(view.html, />学习</u);
@@ -33,7 +33,8 @@ test('ordinary Student Home renders only direct favorites and user folders', () 
   assert.match(view.html, /class="resource-icon resource-icon-services"/u);
   assert.match(view.html, /class="resource-copy"/u);
   assert.match(view.html, /resource-section-favorites/u);
-  assert.match(view.html, /resource-route-short/u);
+  assert.match(view.html, /resource-route-label campus[^>]*>resources\.routeCampus/u);
+  assert.match(view.html, /resource-route-label direct[^>]*>resources\.routeDirect/u);
   assert.doesNotMatch(view.html, /<img/u);
   assert.equal(view.hasMore, false);
 });
@@ -58,7 +59,7 @@ test('ordinary Student Home never hides saved bookmarks because of window width'
 test('expanded Student Home replaces curated sections with one complete service grid', () => {
   const view = renderStudentHome({
     resources, query: '', view: 'all', expanded: true,
-    layout: { mode: 'wide', columns: 4, sectionLimit: 8 }, translate, escapeHtml,
+    layout: { mode: 'wide', columns: 4 }, translate, escapeHtml,
   });
   assert.match(view.html, /resources\.allSection/u);
   assert.match(view.html, /resource-section-all/u);

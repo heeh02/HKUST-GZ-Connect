@@ -277,6 +277,9 @@ async function assertStudentHome(window) {
         controlsDisplay: getComputedStyle(controls).display,
         sectionColumns,
         heroHeight: hero.height,
+        connectionActionText: document.getElementById('power').textContent.trim(),
+        connectionActionHeight: document.getElementById('power').getBoundingClientRect().height,
+        legacySwitchKnobs: document.querySelectorAll('#power .knob').length,
         resourceSections: document.querySelectorAll('.resource-section').length,
         towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
         diagnosticsClosed: !document.querySelector('.diagnostic-details').open,
@@ -297,13 +300,11 @@ async function assertStudentHome(window) {
     if (width >= 900) {
       assert.equal(view.sectionColumns, 2, `${width}px: wide resource modules`);
     }
-    if (width < 900) {
-      assert.ok(view.heroHeight >= 195 && view.heroHeight <= 235,
-        `${width}px: classic connection card proportions changed unexpectedly`);
-    } else {
-      assert.ok(view.heroHeight >= 100 && view.heroHeight <= 155,
-        `${width}px: wide connection module wastes vertical space`);
-    }
+    assert.ok(view.heroHeight >= 75 && view.heroHeight <= 105,
+      `${width}px: connection status strip wastes vertical space`);
+    assert.equal(view.connectionActionText, '连接', `${width}px: connection action is unclear`);
+    assert.ok(view.connectionActionHeight >= 34, `${width}px: connection action is too small`);
+    assert.equal(view.legacySwitchKnobs, 0, `${width}px: ambiguous connection switch returned`);
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
     assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);

@@ -787,40 +787,35 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .page[data-page="connect"] { gap: 13px; padding-top: 14px; }
 .hero-card {
-  min-height: 0; padding: 16px 18px 15px; display: flex; flex-direction: column;
-  align-items: center; gap: 0; border: 1px solid var(--line); border-radius: 20px;
-  background: var(--card); box-shadow: var(--shadow); text-align: center;
+  min-height: 82px; padding: 13px 15px; display: grid;
+  grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto;
+  align-items: center; gap: 5px 13px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); box-shadow: var(--shadow-sm); text-align: left;
 }
-.hero-card.connected { border-color: var(--gold-soft); box-shadow: var(--shadow), 0 0 0 3px rgba(168,132,44,.10); }
-#connectSchoolName, #profileTrustBadge, #power, .hero-card .conn-status { grid-column: auto; grid-row: auto; }
-.conn-brand { display: flex; flex-direction: column; align-items: center; }
-.conn-loc { font-size: 18px; line-height: 1.3; letter-spacing: .2px; }
-.connection-compat {
-  display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; color: var(--muted);
-  font-size: 9.5px; line-height: 1.2;
+.hero-card.connected { border-color: #d9e8df; box-shadow: var(--shadow-sm); }
+.conn-brand { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 7px; min-width: 0; }
+.conn-loc { min-width: 0; overflow: hidden; font-size: 15px; line-height: 1.3; letter-spacing: .1px; text-overflow: ellipsis; white-space: nowrap; }
+.connection-meta {
+  grid-column: 1; grid-row: 2; display: flex; align-items: center; gap: 9px; min-width: 0;
 }
-.connection-compat span:first-child { color: var(--navy-2); font-weight: 750; }
 .conn-ip {
-  display: inline-flex; min-height: 0; margin-top: 6px; padding: 3px 11px;
-  border-radius: 999px; background: var(--panel); color: var(--navy);
-  font-size: 12px; font-weight: 600;
+  display: none; align-items: center;
+  min-height: 0; margin: 0 0 0 15px; padding: 0; color: var(--muted);
+  font-size: 10px; font-weight: 650; font-variant-numeric: tabular-nums;
 }
-#profileTrustBadge { margin: 7px auto 0; }
-.switch {
-  width: 96px; height: 50px; margin: 15px 0 0; border: 0;
-  background: #d2d9e6; box-shadow: inset 0 1px 3px rgba(13,30,66,.18);
+#profileTrustBadge { margin: 0; }
+.hero-card .conn-status { margin: 0; font-size: 11px; gap: 6px; }
+.hero-card .dot { width: 7px; height: 7px; }
+#power.connection-action {
+  grid-column: 2; grid-row: 1 / span 2; min-width: 74px; min-height: 36px; padding: 0 15px;
+  border: 1px solid #d4deeb; border-radius: 10px; color: #fff; background: var(--navy-2);
+  font-size: 11px; font-weight: 760; cursor: pointer; transition: background var(--motion-fast), border-color var(--motion-fast);
 }
-.switch .knob { top: 4px; left: 4px; width: 42px; height: 42px; }
-.switch.on { background: linear-gradient(135deg, var(--gold-2), var(--gold)); box-shadow: inset 0 1px 3px rgba(120,86,0,.3); }
-.switch.on .knob { transform: translateX(46px); }
-.switch.busy .knob { animation: knobpulse-classic 1.1s ease-in-out infinite; }
-@keyframes knobpulse-classic {
-  0%, 100% { transform: translateX(23px); }
-  50% { transform: translateX(23px) scale(1.12); }
-}
-.conn-status { margin-top: 12px; font-size: 17px; gap: 7px; }
-.dot { width: 8px; height: 8px; }
-.conn-err { grid-row: auto; margin-top: 6px; font-size: 12.5px; }
+#power.connection-action:hover { background: var(--navy); border-color: var(--navy); }
+#power.connection-action.on { color: var(--navy); background: #fff; }
+#power.connection-action.on:hover { color: #9d342f; border-color: #e8c5c3; background: #fff7f6; }
+#power.connection-action.busy, #power.connection-action:disabled { color: var(--muted); background: #edf1f6; cursor: wait; }
+.conn-err { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; font-size: 10.5px; }
 
 .quick-card {
   padding: 16px; gap: 10px; border: 1px solid var(--gold-soft); border-radius: 17px;
@@ -882,13 +877,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   min-width: 0; overflow: hidden; color: var(--navy); font-size: 11.8px; font-weight: 750;
   line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
-.resource-route-short {
-  position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center;
-  min-width: 17px; height: 17px; padding: 0 3px; border: 2px solid #fff; border-radius: 6px;
-  font-size: 7.5px; line-height: 1; font-weight: 800;
-}
-.resource-route-short.campus { color: var(--navy-2); background: #e8effa; }
-.resource-route-short.direct { color: #755600; background: #f8edcf; }
+.resource-route-label { display: block; margin-top: 3px; color: var(--muted); font-size: 8.8px; line-height: 1.2; font-weight: 650; }
+.resource-route-label::before { content: "•"; margin-right: 4px; color: var(--navy-2); }
+.resource-route-label.direct::before { color: var(--gold); }
 .resource-favorite {
   top: 50%; right: 2px; width: 22px; height: 26px; transform: translateY(-50%);
   border-radius: 0; background: transparent; color: #a5afbe; font-size: 14px;
@@ -1005,14 +996,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (min-width: 900px) {
   .page[data-page="connect"] { max-width: 1120px; padding-left: 22px; padding-right: 22px; }
   .hero-card {
-    min-height: 122px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-rows: auto auto; align-items: center; gap: 7px 30px; padding: 20px 30px;
-    text-align: left;
+    min-height: 82px; grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto; gap: 4px 18px; padding: 13px 18px;
   }
-  .conn-brand { grid-column: 1; grid-row: 1 / span 2; align-items: flex-start; }
-  #profileTrustBadge { margin-left: 0; }
-  .conn-ip { grid-column: 2; grid-row: 1; margin: 0; justify-self: start; }
-  .hero-card .conn-status { grid-column: 2; grid-row: 2; margin: 0; font-size: 16px; }
-  #power { grid-column: 3; grid-row: 1 / span 2; margin: 0; }
+  .conn-brand { grid-column: 1; grid-row: 1 / span 2; }
+  .connection-meta { grid-column: 2; grid-row: 1 / span 2; align-items: flex-start; flex-direction: column; gap: 3px; }
+  .conn-ip { display: inline-flex; margin: 0; }
+  #power.connection-action { grid-column: 3; grid-row: 1 / span 2; min-width: 82px; }
   .conn-err { grid-column: 1 / -1; grid-row: 3; margin-top: 0; }
 }

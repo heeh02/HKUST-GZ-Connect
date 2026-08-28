@@ -39,12 +39,12 @@ test('2.0.1 quick shelf stays compact and delegates the full catalogue to Worksp
   assert.match(controlCss, /\.resource-link\s*\{[^}]*grid-template-columns:\s*38px minmax\(0, 1fr\)[^}]*border:\s*0/u);
   assert.match(controlCss, /\.resource-card\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/u);
   assert.match(controlCss, /\.resource-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
-  assert.match(controlCss, /\.resource-route-short\s*\{[^}]*position:\s*absolute/u);
+  assert.match(controlCss, /\.resource-route-label\s*\{[^}]*font-size:\s*8\.8px/u);
   assert.match(controlHtml, /id="resourceViewChips"/u);
   assert.match(controlHtml, /class="resource-library-controls" hidden aria-hidden="true"/u);
   assert.match(controlHtml, /id="resourceViewChips"[^>]*hidden/u);
   assert.match(controlHtml, /id="resourceView"[^>]*hidden[^>]*tabindex="-1"/u);
-  assert.match(controlHtml, /EasyConnect[\s\S]{0,100}connect\.easyConnectCompatible/u);
+  assert.doesNotMatch(controlHtml, /class="connection-compat"/u);
 });
 
 test('2.0.1 restores the compact classic shell while avoiding nested website cards', () => {
@@ -52,7 +52,8 @@ test('2.0.1 restores the compact classic shell while avoiding nested website car
   assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 70px/u);
   assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 4px 14px/u);
   assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--gold-soft\)[^}]*box-shadow:\s*var\(--shadow\)/u);
-  assert.match(controlCss, /\.hero-card\s*\{[^}]*flex-direction:\s*column[^}]*border-radius:\s*20px/u);
+  assert.match(controlCss, /\.hero-card\s*\{[^}]*min-height:\s*82px[^}]*border-radius:\s*16px/u);
+  assert.match(controlHtml, /id="power"[^>]*class="connection-action"|class="connection-action"[^>]*id="power"/u);
   assert.match(controlCss, /\.resource-favorite:hover,\s*\.resource-favorite\.active\s*\{[^}]*background:\s*transparent/u);
   assert.match(controlCss, /\.logs\s*\{[^}]*min-height:\s*320px[^}]*max-height:\s*420px/u);
   assert.doesNotMatch(controlHtml, /class="help-section"/u);
