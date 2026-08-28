@@ -753,8 +753,11 @@ test('Command-K opens one local Workspace Home tab and focuses its search', asyn
   await browser.open('https://portal.example.edu/', 1080, ROUTE_CAMPUS);
   const page = browser.activeTab().view.webContents;
   let prevented = false;
+  const commandModifier = process.platform === 'darwin'
+    ? { meta: true, control: false }
+    : { meta: false, control: true };
   page.emit('before-input-event', { preventDefault: () => { prevented = true; } }, {
-    key: 'k', type: 'keyDown', meta: true, control: false,
+    key: 'k', type: 'keyDown', ...commandModifier,
   });
   await nextImmediate();
   const workspace = browser.activeTab();
