@@ -44,9 +44,8 @@ async function inspect(window) {
       width: innerWidth,
       noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
       noVerticalPageScroll: document.documentElement.scrollHeight <= innerHeight,
-      navigation: [...document.querySelectorAll('[data-workspace-screen]')]
-        .map((button) => button.textContent.trim()),
-      gateways: document.querySelectorAll('.gateway-button').length,
+      persistentNavigation: document.querySelectorAll('[data-workspace-screen]').length,
+      headerGatewayButtons: document.querySelectorAll('.gateway-button').length,
       gridColumns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
       visibleResources: grid.querySelectorAll('.resource-item').length,
       everyResourceFits: itemRects.every((rect) =>
@@ -108,8 +107,8 @@ async function main() {
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
     assert.equal(home.noVerticalPageScroll, true, `${label} requires whole-page scrolling`);
-    assert.deepEqual(home.navigation, ['校园服务', '整理收藏']);
-    assert.equal(home.gateways, 3);
+    assert.equal(home.persistentNavigation, 0, `${label} repeats a permanent page switcher`);
+    assert.equal(home.headerGatewayButtons, 0, `${label} repeats fixed gateway shortcuts`);
     assert.equal(home.hasSearch, true);
     assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
     assert.ok(home.visibleResources >= minimumItems && home.visibleResources <= resources.length,
@@ -153,6 +152,19 @@ async function main() {
     query: document.getElementById('workspaceSearch').value,
   })`);
   assert.deepEqual(groupSearch, { title: '学习', homeVisible: true, query: '' });
+  const recentView = await window.webContents.executeJavaScript(`(() => {
+    [...document.querySelectorAll('.service-view-tab')]
+      .find((button) => button.textContent.includes('最近使用')).click();
+    return {
+      count: document.querySelectorAll('#serviceViewGrid .resource-item').length,
+      timestamps: [...document.querySelectorAll('#serviceViewGrid .resource-last-opened')]
+        .map((item) => item.textContent),
+    };
+  })()`);
+  assert.ok(recentView.count > 0);
+  assert.equal(recentView.timestamps.length, recentView.count,
+    'recent resources do not show their opened time');
+  assert.equal(recentView.timestamps.every((value) => value.includes('打开于')), true);
 
   const courses = await window.webContents.executeJavaScript(`(() => {
     const select = document.getElementById('serviceCategorySelect');
@@ -187,10 +199,9 @@ async function main() {
   assert.deepEqual(leaveSearch, ['e-form', 'student-request-guide']);
 
   const managementView = await window.webContents.executeJavaScript(`(() => {
-    document.querySelector('[data-workspace-screen="manage"]').click();
+    document.getElementById('openManage').click();
     document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
     document.querySelector('#resourcePool .resource-star').click();
-    document.querySelector('.gateway-button').click();
     document.getElementById('manageRules').click();
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
@@ -232,8 +243,6 @@ async function main() {
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'open-resource' && resourceId === 'sis'), true);
-  assert.equal(commands.some(({ command, resourceId }) =>
-    command === 'open-resource' && resourceId === 'official-portal'), true);
   assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);
   assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
   assert.equal(commands.some(({ command, resourceIds, groupId }) =>
@@ -247,10 +256,15 @@ async function main() {
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'delete-resource' && resourceId === 'hpc'), true);
   await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
-    document.querySelector('[data-workspace-screen="manage"]').click();
+    document.getElementById('openManage').click();
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }))()`);
   await capture(window, 'manage');
+  const returnedHome = await window.webContents.executeJavaScript(`(() => {
+    document.getElementById('backToServices').click();
+    return !document.getElementById('homeScreen').hidden && document.getElementById('manageScreen').hidden;
+  })()`);
+  assert.equal(returnedHome, true, 'organizer cannot return to Campus Services');
   window.destroy();
   process.stdout.write('campus workspace layout: PASS\n');
   app.quit();

@@ -54,7 +54,7 @@ test('2.0.1 restores the compact classic shell while avoiding nested website car
   assert.match(controlCss, /\.titlebar\s*\{[^}]*justify-content:\s*center[^}]*1\.5px solid var\(--gold\)/u);
   assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 70px/u);
   assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 4px 14px/u);
-  assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--gold-soft\)[^}]*box-shadow:\s*var\(--shadow\)/u);
+  assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--line\)[^}]*box-shadow:\s*var\(--shadow-sm\)/u);
   assert.match(connectionCss, /\.hero-card\s*\{[^}]*min-height:\s*82px[^}]*border-radius:\s*16px/u);
   assert.doesNotMatch(controlCss, /\.hero-card|\.connection-action/u,
     'connection ownership must not drift back into the shared stylesheet');

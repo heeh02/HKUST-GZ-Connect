@@ -4,6 +4,7 @@ const I18N = Object.freeze({
   zh: Object.freeze({
     title: '校园工作台', auto: '自动选择网络', rules: '网站规则', unverified: '未审核',
     home: '校园服务', manage: '整理收藏', search: '搜索校园服务', clear: '清除',
+    backToServices: '返回校园服务',
     favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '全部服务',
     manageTitle: '整理收藏', resourcePool: '收藏', groups: '书签文件夹', createGroup: '＋ 新建分组',
     allSites: '网站库', allFavorites: '全部收藏',
@@ -17,6 +18,7 @@ const I18N = Object.freeze({
     invalidGroupName: '请输入 1–30 个字符的分组名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
     selectPage: '选择本页', selectedCount: '已选择 {count} 项', chooseGroup: '选择分组',
     addToGroup: '加入分组', clearSelection: '取消选择', memberships: '所在分组',
+    openedAt: '打开于 {time}',
     campus: '校园', direct: '直连', automatic: '自动',
     newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
     studentFinance: '财务缴费', expenses: '报销与采购', career: '实习与就业', campusLife: '校园生活',
@@ -25,6 +27,7 @@ const I18N = Object.freeze({
   en: Object.freeze({
     title: 'Campus Workspace', auto: 'Automatic network', rules: 'Site Rules', unverified: 'Unreviewed',
     home: 'Campus Services', manage: 'Organize Favorites', search: 'Search campus services', clear: 'Clear',
+    backToServices: 'Back to Services',
     favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'All Services',
     manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'Bookmark Folders', createGroup: '+ New Group',
     allSites: 'Site Library', allFavorites: 'All Favorites',
@@ -38,6 +41,7 @@ const I18N = Object.freeze({
     invalidGroupName: 'Enter a group name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
     selectPage: 'Select Page', selectedCount: '{count} selected', chooseGroup: 'Choose Group',
     addToGroup: 'Add to Group', clearSelection: 'Clear Selection', memberships: 'Groups',
+    openedAt: 'Opened {time}',
     campus: 'Campus', direct: 'Direct', automatic: 'Auto',
     newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
     studentFinance: 'Student Finance', expenses: 'Expenses & Procurement', career: 'Career & Internships', campusLife: 'Campus Life',
@@ -108,7 +112,7 @@ function openResourceDialog(resource) {
   $('groupName').select();
 }
 
-function resourceItem(resource, { management = false } = {}) {
+function resourceItem(resource, { management = false, showLastOpened = false } = {}) {
   const item = document.createElement('div');
   item.className = 'resource-item';
   item.dataset.resourceId = resource.id;
@@ -151,6 +155,14 @@ function resourceItem(resource, { management = false } = {}) {
   route.className = `resource-route${resource.route === 'direct' ? ' direct' : ''}`;
   route.textContent = routeText(resource);
   copy.append(name, route);
+  if (showLastOpened && Number.isSafeInteger(resource.lastOpenedAt)) {
+    const opened = document.createElement('span'); opened.className = 'resource-last-opened';
+    const formatted = new Intl.DateTimeFormat(state.locale === 'en' ? 'en' : 'zh-CN', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(resource.lastOpenedAt);
+    opened.textContent = text().openedAt.replace('{time}', formatted);
+    copy.appendChild(opened);
+  }
   open.appendChild(copy);
   open.addEventListener('click', () => command('open-resource', { resourceId: resource.id }));
   item.appendChild(open);
@@ -330,17 +342,6 @@ function groupedFavorites(resources, { management = false } = {}) {
   return { favorites, sections };
 }
 
-function renderGateways(resources) {
-  const gateways = resources.filter(({ category }) => category === 'gateway');
-  $('gatewayLinks').replaceChildren(...gateways.map((resource) => {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'soft-button gateway-button';
-    button.textContent = resource.name;
-    button.addEventListener('click', () => command('open-resource', { resourceId: resource.id }));
-    return button;
-  }));
-}
-
 function renderHome() {
   const resources = state.resources.filter(({ category }) => category !== 'gateway');
   const favorites = resources.filter(({ favorite }) => favorite);
@@ -398,7 +399,7 @@ function renderHome() {
   categorySelect.value = selected.id.startsWith('category:') ? selected.id : '';
   $('serviceViewTitle').textContent = selected.name;
   const page = paged(selected.items, servicePage, $('serviceViewGrid')); servicePage = page.current;
-  renderGrid($('serviceViewGrid'), page.items);
+  renderGrid($('serviceViewGrid'), page.items, { showLastOpened: selected.id === 'recent' });
   renderPager($('servicePager'), page.pages, page.current, (index) => {
     servicePage = index; renderHome();
   });
@@ -550,6 +551,7 @@ function syncText() {
   $('workspaceSearch').placeholder = strings.search;
   $('clearWorkspaceSearch').textContent = strings.clear;
   $('manageTitle').textContent = strings.manageTitle;
+  $('backToServices').textContent = strings.backToServices;
   $('resourcePoolTitle').textContent = strings.resourcePool;
   $('manageGroupsTitle').textContent = strings.groups;
   $('createGroup').textContent = strings.createGroup;
@@ -559,26 +561,17 @@ function syncText() {
   $('groupNameLabel').textContent = strings.groupName;
   $('cancelGroup').textContent = strings.cancel;
   $('saveGroup').textContent = strings.save;
-  for (const button of document.querySelectorAll('[data-workspace-screen]')) {
-    button.textContent = strings[button.dataset.workspaceScreen];
-  }
 }
 
 function render() {
   if (!state) return;
   syncText();
-  renderGateways(state.resources);
   const searchMode = navigation.query && navigation.screen !== 'manage';
   $('searchScreen').hidden = !searchMode;
   $('homeScreen').hidden = searchMode || navigation.screen !== 'home';
   $('manageScreen').hidden = searchMode || navigation.screen !== 'manage';
   $('workspaceEmpty').hidden = true;
   $('clearWorkspaceSearch').hidden = !navigation.query;
-  for (const button of document.querySelectorAll('[data-workspace-screen]')) {
-    const active = button.dataset.workspaceScreen === navigation.screen;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-current', active ? 'page' : 'false');
-  }
   if (searchMode) renderSearch();
   else if (navigation.screen === 'home') renderHome();
   else renderManage();
@@ -599,15 +592,12 @@ $('serviceCategorySelect').addEventListener('change', (event) => {
   if (!event.target.value) return;
   selectedServiceView = event.target.value; servicePage = 0; renderHome();
 });
-$('workspaceNavigation').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-workspace-screen]');
-  if (!button) return;
-  navigation = model.normalizeNavigation({ screen: button.dataset.workspaceScreen });
-  $('workspaceSearch').value = '';
-  render();
-});
 $('openManage').addEventListener('click', () => {
   navigation = model.normalizeNavigation({ screen: 'manage' }); render();
+});
+$('backToServices').addEventListener('click', () => {
+  navigation = model.normalizeNavigation({ screen: 'home' });
+  $('workspaceSearch').value = ''; render();
 });
 $('workspaceSearch').addEventListener('input', (event) => {
   searchPage = 0; managePage = 0;

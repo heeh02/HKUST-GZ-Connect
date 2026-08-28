@@ -39,12 +39,23 @@ async function waitForMain(condition, description) {
 }
 
 async function waitForPage(contents, expression, description) {
-  const deadline = Date.now() + 5000;
+  // A cold Electron renderer on the shared macOS CI runner can take more than
+  // five seconds to start even though the local file and projected state load
+  // correctly. Keep the assertion strict, but give the app-owned page a
+  // bounded startup allowance instead of turning runner load into a flake.
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (await contents.executeJavaScript(expression)) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error(`Timed out waiting for ${description}`);
+  const diagnostic = await contents.executeJavaScript(`(() => ({
+    url: location.href,
+    readyState: document.readyState,
+    bridge: typeof window.campusWorkspace,
+    resources: document.querySelectorAll('#serviceViewGrid .resource-item').length,
+    body: document.body?.innerText?.slice(0, 500) || '',
+  }))()`);
+  throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(diagnostic)}`);
 }
 
 function toolbarCommand(browser, command, value = '') {
@@ -177,27 +188,29 @@ async function assertFindBar(browser) {
 async function assertWorkspaceHome(browser) {
   const contents = browser.activeTab().view.webContents;
   await waitForPage(contents,
-    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 2",
+    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 1",
     'local Workspace Home resources');
   const state = await contents.executeJavaScript(`(() => ({
     title: document.getElementById('workspaceSchool')?.textContent,
     warning: document.getElementById('workspaceTrust')?.textContent,
     warningVisible: !document.getElementById('workspaceTrust')?.hidden,
-    navigation: [...document.querySelectorAll('[data-workspace-screen]')]
-      .map((value) => value.textContent),
+    persistentNavigation: document.querySelectorAll('[data-workspace-screen]').length,
     favoriteNames: [...document.querySelectorAll('#serviceViewGrid .resource-name')]
       .map((value) => value.textContent),
     serviceTabs: [...document.querySelectorAll('.service-view-tab')].map((value) => value.textContent),
-    gateways: [...document.querySelectorAll('.gateway-button')].map((value) => value.textContent),
+    headerGatewayButtons: document.querySelectorAll('.gateway-button').length,
+    organizerEntry: document.getElementById('openManage')?.textContent,
     leakedUrls: document.body.textContent.includes('example.invalid'),
   }))()`);
   assert.equal(state.title, 'Example University');
   assert.equal(state.warningVisible, true);
   assert.match(state.warning, /未审核/u);
-  assert.deepEqual(state.navigation, ['校园服务', '整理收藏']);
-  assert.deepEqual(state.favoriteNames, ['Favorite', 'Grouped Site']);
+  assert.equal(state.persistentNavigation, 0);
+  assert.deepEqual(state.favoriteNames, ['Grouped Site'],
+    'the first user task group must be the default Workspace view');
   assert.equal(state.serviceTabs.some((value) => value.includes('最近使用')), true);
-  assert.deepEqual(state.gateways, ['Service']);
+  assert.equal(state.headerGatewayButtons, 0);
+  assert.equal(state.organizerEntry, '整理收藏');
   assert.equal(state.leakedUrls, false, 'Workspace renderer received URL authority');
   assert.match(contents.getURL(), /\/renderer\/campus-workspace\.html$/u,
     'Workspace Home must remain an app-owned local page');

@@ -701,8 +701,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .nav-connection-state.error { background: var(--err); }
 
 .quick-card {
-  padding: 16px; gap: 10px; border: 1px solid var(--gold-soft); border-radius: 17px;
-  background: linear-gradient(145deg, #fffdf7 0%, #fff 68%); box-shadow: var(--shadow);
+  padding: 16px; gap: 10px; border: 1px solid var(--line); border-radius: 17px;
+  background: #fff; box-shadow: var(--shadow-sm);
 }
 .quick-title { font-size: 15px; letter-spacing: 0; }
 .quick-sub { max-width: none; font-size: 11px; }

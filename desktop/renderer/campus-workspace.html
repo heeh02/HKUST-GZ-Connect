@@ -19,15 +19,9 @@
       <div class="workspace-header-actions">
         <span id="workspaceTrust" class="trust-badge" hidden>未审核</span>
         <span class="route-ready"><span class="ready-dot"></span><span id="workspaceReady">自动选择网络</span></span>
-        <div id="gatewayLinks" class="gateway-links"></div>
         <button id="manageRules" class="soft-button" type="button">网站规则</button>
       </div>
     </header>
-
-    <nav id="workspaceNavigation" class="workspace-navigation surface" aria-label="校园工作台页面">
-      <button type="button" data-workspace-screen="home" class="active">校园服务</button>
-      <button type="button" data-workspace-screen="manage">整理收藏</button>
-    </nav>
 
     <section class="workspace-command surface" aria-label="校园服务搜索">
       <div class="search-box">
@@ -69,7 +63,10 @@
       <section class="module surface">
         <div class="module-heading">
           <div><span class="module-eyebrow">ORGANIZE</span><h2 id="manageTitle">整理收藏</h2></div>
-          <button id="createGroup" class="soft-button" type="button">＋ 新建分组</button>
+          <div class="module-actions">
+            <button id="backToServices" class="text-button" type="button">返回校园服务</button>
+            <button id="createGroup" class="soft-button" type="button">＋ 新建分组</button>
+          </div>
         </div>
         <div class="manage-layout">
           <aside class="manage-sidebar" aria-label="书签文件夹">

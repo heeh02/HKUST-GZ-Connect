@@ -142,7 +142,7 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   const workspaceModel = fs.readFileSync(path.join(rendererDir, 'campus-workspace-model.js'), 'utf8');
   const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
   for (const id of [
-    'workspaceSearch', 'workspaceNavigation', 'gatewayLinks', 'homeScreen', 'servicePanel',
+    'workspaceSearch', 'homeScreen', 'servicePanel', 'backToServices',
     'serviceViewTabs', 'serviceCategorySelect', 'serviceViewGrid', 'servicePager', 'manageScreen', 'resourcePool',
     'manageFolderNav', 'managePager', 'manageRules', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
