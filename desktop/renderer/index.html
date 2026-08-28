@@ -270,16 +270,14 @@
           <div class="card-heading">
             <span class="card-heading-icon" aria-hidden="true">↗</span>
             <div>
-              <div class="card-title" data-i18n="tower.routeDomains">默认分流网站</div>
-              <p class="card-sub" data-i18n="tower.routeDomainsSub">统一管理校园访问和普通网络的路径。</p>
+              <div class="card-title" data-i18n="routing.title">网站网络规则</div>
+              <p class="card-sub" data-i18n="routing.summary">学校基础规则与个人覆盖规则使用同一套路由策略。</p>
             </div>
           </div>
-          <textarea id="routeDomains" class="inp route-domains" rows="5" spellcheck="false" placeholder="每行一个域名，例如 hkust-gz.edu.cn" data-i18n-attr="placeholder:tower.routeDomainsPlaceholder"></textarea>
-          <p class="hint" data-i18n="tower.routeDomainsHint">用于生成 Clash / Mihomo 等外部工具的校园分流规则；校园浏览器会自动分流。</p>
-          <div class="manager-entry">
+          <div class="manager-entry routing-policy-entry">
             <div>
-              <div class="manager-entry-title" data-i18n="routing.title">网站网络规则</div>
-              <p class="hint" data-i18n="routing.entryHint">为某个域名指定校园隧道或直连，并自动用于之后打开的同域名页面。</p>
+              <div class="manager-entry-title" data-i18n="routing.baseManaged">学校基础规则自动维护</div>
+              <p class="hint" data-i18n="routing.entryHint">个人规则优先，并同时用于校园浏览器、PAC、Clash 与 Mihomo。</p>
             </div>
             <button id="manageRoutingRules" class="mini" type="button" data-i18n="routing.manage">管理规则</button>
           </div>

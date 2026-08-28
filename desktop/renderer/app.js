@@ -159,7 +159,6 @@ async function saveCampusResource(payload) {
 
 function populateTowerForm() {
   $('towerPort').value = settings.port || 1080;
-  $('routeDomains').value = (settings.routeDomains || []).join('\n');
   $('strictProxyAuth').checked = settings.strictProxyAuth === true;
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
@@ -405,7 +404,6 @@ async function saveTower() {
       maxAttempts,
       startAtLogin: $('startAtLogin').checked,
       autoConnect: $('autoConnect').checked,
-      routeDomains: $('routeDomains').value,
     });
     if (!result?.ok) {
       flashSaved(result?.error || t('tower.saveFailed'), true);
@@ -455,7 +453,7 @@ $('towerReconnect').addEventListener('click', async () => {
   flashSaved(result.warning || t('tower.savedReconnected'), !!result.warning);
 });
 for (const id of [
-  'towerPort', 'routeDomains', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
+  'towerPort', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
 ]) {
   $(id).addEventListener('input', () => { towerDirty = true; });
   $(id).addEventListener('change', () => { towerDirty = true; });

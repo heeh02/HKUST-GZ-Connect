@@ -26,9 +26,15 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
     'editing a host or scope must carry its previous stable identity');
   assert.match(routing, /pendingDeleteKey/,
     'destructive deletion must require an explicit second click');
+  assert.match(routing, /\$\('manageRoutingRules'\)\.addEventListener\('click', open\)/,
+    'Control Tower must open the same routing manager directly');
   assert.match(routing, /api\.onOpenRoutingRules\?\.\(\(\) => \{[\s\S]{0,120}openTower\(\);[\s\S]{0,120}open\(\)/,
     'the campus browser can request the same manager without sending page data');
   assert.match(app, /routingManager\.start\(\{[\s\S]{0,120}setPage\('tower'\)/);
+  assert.doesNotMatch(html, /id="routeDomains"/,
+    'the legacy bulk domain editor must not compete with the routing manager');
+  assert.doesNotMatch(app, /\$\('routeDomains'\)/,
+    'Control Tower must not mutate a second routing source');
   assert.doesNotMatch(html, /(?:routing|rule)[^>]{0,50}(?:import|export|sync)/i);
 });
 

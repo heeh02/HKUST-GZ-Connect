@@ -22,13 +22,6 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
   transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
 }
 
-.route-domains {
-  width: 100%;
-  min-height: 108px;
-  resize: vertical;
-  line-height: 1.45;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
 .inp.sm { width: 110px; padding: 7px 10px; }
 .inp.action-select { width: 190px; margin-left: auto; padding: 7px 10px; }
 .inp:focus { border-color: var(--gold-2); box-shadow: 0 0 0 3px rgba(200,148,10,.16); background: #fff; }
@@ -316,6 +309,12 @@ button:disabled { cursor: wait; opacity: .62; }
 .manager-entry > div { min-width: 0; }
 .manager-entry-title { color: var(--navy); font-size: 12px; font-weight: 750; margin-bottom: 3px; }
 .manager-entry .mini { flex: 0 0 auto; }
+.routing-policy-entry {
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #f7f9fc;
+}
 
 /* ---- loc card ---- */
 .loc-card { padding: 14px 16px; text-align: left; }
@@ -632,7 +631,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .tower-network-card > .sw:last-of-type { border-bottom: 0; }
 .proxy-auth-setting { border-radius: 14px; padding: 12px; }
-.tower-card .route-domains { border-radius: 13px; background: #f6f8fb; }
 .tower-actions {
   padding: 11px 12px; border: 1px solid #e3e8f0; border-radius: 16px;
   background: #fff; box-shadow: var(--shadow);
@@ -944,7 +942,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .card-sub { margin-top: 3px; font-size: 10px; }
 .tower-network-card > .frow, .tower-network-card > .sw { min-height: 0; padding: 0; border-bottom: 0; }
 .proxy-auth-setting { padding: 10px 11px; border-radius: 11px; }
-.tower-card .route-domains { border-radius: 10px; }
 .tower-actions { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .notification-card { grid-template-columns: 36px minmax(0, 1fr) auto; gap: 11px; padding: 15px; }
 .notification-icon { width: 36px; height: 36px; border-radius: 11px; }
