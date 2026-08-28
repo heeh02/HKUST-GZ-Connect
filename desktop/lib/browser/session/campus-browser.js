@@ -427,6 +427,12 @@ class CampusBrowser {
 
   focusWorkspaceSearch() { return this.focusWorkspace('search'); }
 
+  focusAddressBar() {
+    if (!this.window || this.window.isDestroyed()) return false;
+    this.window.webContents.send?.('campus-toolbar-focus', 'address');
+    return true;
+  }
+
   pageFavoriteState(tab = this.activeTab()) {
     const url = this.currentUrl(tab);
     if (!tab || url === BLANK_CAMPUS_HOME || !this.onTogglePageFavorite) {

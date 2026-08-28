@@ -44,15 +44,18 @@ async function inspect(window) {
       width: innerWidth,
       noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
       noVerticalPageScroll: document.documentElement.scrollHeight <= innerHeight,
-      persistentNavigation: document.querySelectorAll('[data-workspace-screen]').length,
-      headerGatewayButtons: document.querySelectorAll('.gateway-button').length,
+      duplicateHeader: document.querySelectorAll('.workspace-header').length,
+      duplicateSearch: document.querySelectorAll('#workspaceSearch').length,
       gridColumns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
       visibleResources: grid.querySelectorAll('.resource-item').length,
       everyResourceFits: itemRects.every((rect) =>
         rect.top >= gridRect.top - 1 && rect.bottom <= gridRect.bottom + 1),
-      serviceTabs: document.querySelectorAll('.service-view-tab').length,
-      categoryOptions: Math.max(0, document.querySelectorAll('#serviceCategorySelect option').length - 1),
-      hasSearch: !!document.getElementById('workspaceSearch'),
+      primaryTabs: document.querySelectorAll('[data-primary-view]').length,
+      secondaryTabs: document.querySelectorAll('.secondary-tab').length,
+      secondarySelectVisible: getComputedStyle(document.getElementById('secondarySelect')).display !== 'none',
+      secondaryTabsVisible: getComputedStyle(document.getElementById('serviceViewTabs')).display !== 'none',
+      pagerRange: document.querySelector('.pager-range')?.textContent || '',
+      pagerButtons: document.querySelectorAll('.pager-button').length,
     };
   })()`);
 }
@@ -91,35 +94,34 @@ async function main() {
   controller.sendState(window.webContents);
   const catalogueSize = resources.filter(({ category }) => category !== 'gateway').length;
 
-  for (const [label, width, height, expectedColumns, minimumItems] of [
-    ['compact', 660, 560, 2, 6],
-    ['standard', 1040, 740, 4, 16],
-    ['wide', 1400, 900, 4, 28],
+  for (const [label, width, height, expectedColumns, expectedItems, usesSelect] of [
+    ['compact', 660, 720, 1, 6, true],
+    ['standard', 1040, 740, 2, 8, false],
+    ['wide', 1400, 900, 3, 12, false],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 80));
     await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
-      [...document.querySelectorAll('.service-view-tab')]
-        .find((button) => button.textContent.includes('网站库')).click();
+      document.getElementById('primaryCatalog').click();
+      [...document.querySelectorAll('.secondary-tab')]
+        .find((button) => button.textContent.startsWith('全部 ')).click();
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }))()`);
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
     assert.equal(home.noVerticalPageScroll, true, `${label} requires whole-page scrolling`);
-    assert.equal(home.persistentNavigation, 0, `${label} repeats a permanent page switcher`);
-    assert.equal(home.headerGatewayButtons, 0, `${label} repeats fixed gateway shortcuts`);
-    assert.equal(home.hasSearch, true);
+    assert.equal(home.duplicateHeader, 0, `${label} repeats the browser Profile header`);
+    assert.equal(home.duplicateSearch, 0, `${label} repeats the browser address search`);
     assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
-    assert.ok(home.visibleResources >= minimumItems && home.visibleResources <= resources.length,
-      `${label} does not use the available page area`);
-    if (label === 'wide') {
-      assert.equal(home.visibleResources, catalogueSize,
-        'wide layout should fit the complete website library on one page');
-    }
+    assert.equal(home.visibleResources, expectedItems, `${label} page capacity is unstable`);
     assert.equal(home.everyResourceFits, true, `${label} clips a resource row`);
-    assert.ok(home.serviceTabs >= 4, `${label} primary service views are incomplete`);
-    assert.ok(home.categoryOptions >= 10, `${label} category filter is incomplete`);
+    assert.equal(home.primaryTabs, 3, `${label} primary product modes are incomplete`);
+    assert.ok(home.secondaryTabs >= 10, `${label} catalogue categories are incomplete`);
+    assert.equal(home.secondarySelectVisible, usesSelect, `${label} secondary navigation mode is wrong`);
+    assert.equal(home.secondaryTabsVisible, !usesSelect, `${label} secondary tabs visibility is wrong`);
+    assert.match(home.pagerRange, new RegExp(`1[–-]${expectedItems} / ${catalogueSize}`, 'u'));
+    assert.equal(home.pagerButtons, 2, `${label} explicit pagination controls are missing`);
     await capture(window, `${label}-home`);
     await capture(window, `${label}-services`);
   }
@@ -132,29 +134,34 @@ async function main() {
   assert.equal(zoomed.noVerticalPageScroll, true, '125% zoom requires whole-page scrolling');
   assert.equal(zoomed.everyResourceFits, true, '125% zoom clips a resource row');
   await capture(window, 'zoomed-services');
+  window.webContents.setZoomFactor(2);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const zoomed200 = await inspect(window);
+  assert.equal(zoomed200.noHorizontalOverflow, true, '200% zoom overflowed horizontally');
+  assert.equal(zoomed200.primaryTabs, 3, '200% zoom hides a primary product mode');
+  assert.equal(zoomed200.pagerButtons, 2, '200% zoom hides explicit pagination');
   window.webContents.setZoomFactor(1);
   await new Promise((resolve) => setTimeout(resolve, 80));
 
   assert.equal(controller.focus(window.webContents, 'search', '请假'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));
   const addressSearch = await window.webContents.executeJavaScript(`({
-    query: document.getElementById('workspaceSearch').value,
+    title: document.getElementById('searchTitle').textContent,
     ids: [...document.querySelectorAll('#searchGrid .resource-item')]
       .map((item) => item.dataset.resourceId).sort(),
   })`);
-  assert.equal(addressSearch.query, '请假');
+  assert.match(addressSearch.title, /请假/u);
   assert.deepEqual(addressSearch.ids, ['e-form', 'student-request-guide']);
   assert.equal(controller.focus(window.webContents, 'search', '学习'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));
   const groupSearch = await window.webContents.executeJavaScript(`({
     title: document.getElementById('serviceViewTitle').textContent,
     homeVisible: !document.getElementById('homeScreen').hidden,
-    query: document.getElementById('workspaceSearch').value,
+    activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
   })`);
-  assert.deepEqual(groupSearch, { title: '学习', homeVisible: true, query: '' });
+  assert.deepEqual(groupSearch, { title: '学习', homeVisible: true, activePrimary: 'workspace' });
   const recentView = await window.webContents.executeJavaScript(`(() => {
-    [...document.querySelectorAll('.service-view-tab')]
-      .find((button) => button.textContent.includes('最近使用')).click();
+    document.getElementById('primaryRecent').click();
     return {
       count: document.querySelectorAll('#serviceViewGrid .resource-item').length,
       timestamps: [...document.querySelectorAll('#serviceViewGrid .resource-last-opened')]
@@ -167,30 +174,27 @@ async function main() {
   assert.equal(recentView.timestamps.every((value) => value.includes('打开于')), true);
 
   const courses = await window.webContents.executeJavaScript(`(() => {
-    const select = document.getElementById('serviceCategorySelect');
-    select.value = 'category:courses';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('primaryCatalog').click();
+    [...document.querySelectorAll('.secondary-tab')]
+      .find((button) => button.textContent.includes('课程与考试')).click();
     const grid = document.getElementById('serviceViewGrid');
     grid.querySelector('[data-resource-id="sis"] .resource-open').click();
     return {
       ids: [...grid.querySelectorAll('.resource-item')]
         .map((item) => item.dataset.resourceId),
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
-      serviceTabCount: document.querySelectorAll('.service-view-tab').length,
-      selectedCategory: select.value,
+      selectedCategory: document.querySelector('.secondary-tab.active')?.textContent,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
   assert.equal(courses.ids.includes('new-student'), false);
   assert.equal(courses.serviceScreenVisible, true);
-  assert.equal(courses.selectedCategory, 'category:courses');
-  assert.ok(courses.serviceTabCount >= 4);
+  assert.match(courses.selectedCategory, /课程与考试/u);
 
+  assert.equal(controller.focus(window.webContents, 'search', '请假'), true);
+  await new Promise((resolve) => setTimeout(resolve, 80));
   const leaveSearch = await window.webContents.executeJavaScript(`(() => {
-    const search = document.getElementById('workspaceSearch');
-    search.value = '请假';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
     const ids = [...document.querySelectorAll('#searchGrid .resource-item')]
       .map((item) => item.dataset.resourceId).sort();
     document.getElementById('clearWorkspaceSearch').click();
@@ -202,7 +206,6 @@ async function main() {
     document.getElementById('openManage').click();
     document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
     document.querySelector('#resourcePool .resource-star').click();
-    document.getElementById('manageRules').click();
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
     document.getElementById('saveGroup').click();
@@ -218,16 +221,15 @@ async function main() {
     targetGroup.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     targetGroup.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     discovered.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dragData }));
-    const search = document.getElementById('workspaceSearch');
-    search.value = 'HPC';
-    search.dispatchEvent(new Event('input', { bubbles: true }));
+    while (!document.querySelector('#managePager .pager-button:last-child')?.disabled) {
+      document.querySelector('#managePager .pager-button:last-child').click();
+    }
     const custom = document.querySelector('#resourcePool [data-resource-id="hpc"]');
     custom.querySelector('.resource-rename').click();
     document.getElementById('groupName').value = '科研服务器';
     document.getElementById('saveGroup').click();
     custom.querySelector('.resource-delete').click();
     custom.querySelector('.resource-delete').click();
-    document.getElementById('clearWorkspaceSearch').click();
     return {
       visible: !document.getElementById('manageScreen').hidden,
       bulkVisible: getComputedStyle(document.getElementById('bulkActions')).display !== 'none',
@@ -243,14 +245,14 @@ async function main() {
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'open-resource' && resourceId === 'sis'), true);
-  assert.equal(commands.some(({ command }) => command === 'manage-rules'), true);
   assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
   assert.equal(commands.some(({ command, resourceIds, groupId }) =>
     command === 'add-resources-to-group' && resourceIds.length === 1 &&
     groupId === 'group_abcdefghijkl'), true);
-  assert.equal(commands.some(({ command, resourceId, groupId }) =>
-    command === 'move-resource' && resourceId === 'class-schedule' &&
-    groupId === 'group_abcdefghijkl'), true);
+  assert.equal(commands.some(({ command, resourceIds, groupId }) =>
+    command === 'add-resources-to-group' && resourceIds.includes('class-schedule') &&
+    groupId === 'group_abcdefghijkl'), true,
+  'dragging into a task workspace must preserve the resource other placements');
   assert.equal(commands.some(({ command, resourceId, name }) =>
     command === 'rename-resource' && resourceId === 'hpc' && name === '科研服务器'), true);
   assert.equal(commands.some(({ command, resourceId }) =>

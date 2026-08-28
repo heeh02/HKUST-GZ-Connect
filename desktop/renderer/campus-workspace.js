@@ -2,14 +2,13 @@
 
 const I18N = Object.freeze({
   zh: Object.freeze({
-    title: '校园工作台', auto: '自动选择网络', rules: '网站规则', unverified: '未审核',
-    home: '校园服务', manage: '整理收藏', search: '搜索校园服务', clear: '清除',
+    title: '校园工作台', manage: '整理收藏', clear: '返回工作台',
     backToServices: '返回校园服务',
-    favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '全部服务',
+    primaryWorkspace: '我的工作区', primaryRecent: '最近使用', primaryCatalog: '网站库',
+    favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '网站库',
     manageTitle: '整理收藏', resourcePool: '收藏', groups: '书签文件夹', createGroup: '＋ 新建分组',
-    allSites: '网站库', allFavorites: '全部收藏',
-    myGroups: '我的分组', systemViews: '系统视图', categories: '按类别', chooseCategory: '选择类别',
-    searchResults: '搜索结果', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
+    allSites: '全部', allFavorites: '全部收藏',
+    searchResults: '搜索结果：{query}', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
     createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
     cancel: '取消', save: '保存', edit: '重命名', remove: '删除', confirmDelete: '确认删除',
@@ -18,21 +17,20 @@ const I18N = Object.freeze({
     invalidGroupName: '请输入 1–30 个字符的分组名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
     selectPage: '选择本页', selectedCount: '已选择 {count} 项', chooseGroup: '选择分组',
     addToGroup: '加入分组', clearSelection: '取消选择', memberships: '所在分组',
-    openedAt: '打开于 {time}',
-    campus: '校园', direct: '直连', automatic: '自动',
+    openedAt: '打开于 {time}', pageRange: '{start}–{end} / {total}', previousPage: '上一页', nextPage: '下一页',
+    campus: '校园隧道', direct: '直连',
     newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
     studentFinance: '财务缴费', expenses: '报销与采购', career: '实习与就业', campusLife: '校园生活',
     documents: '证明、毕业与离校', tools: '通用工具', staff: '教职工工具', custom: '自定义',
   }),
   en: Object.freeze({
-    title: 'Campus Workspace', auto: 'Automatic network', rules: 'Site Rules', unverified: 'Unreviewed',
-    home: 'Campus Services', manage: 'Organize Favorites', search: 'Search campus services', clear: 'Clear',
+    title: 'Campus Workspace', manage: 'Organize Favorites', clear: 'Back to Workspace',
     backToServices: 'Back to Services',
-    favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'All Services',
+    primaryWorkspace: 'My Workspace', primaryRecent: 'Recently Used', primaryCatalog: 'Site Library',
+    favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'Site Library',
     manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'Bookmark Folders', createGroup: '+ New Group',
-    allSites: 'Site Library', allFavorites: 'All Favorites',
-    myGroups: 'My Groups', systemViews: 'System Views', categories: 'Category', chooseCategory: 'Choose Category',
-    searchResults: 'Search Results', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
+    allSites: 'All', allFavorites: 'All Favorites',
+    searchResults: 'Search: {query}', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
     createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
     cancel: 'Cancel', save: 'Save', edit: 'Rename', remove: 'Delete', confirmDelete: 'Confirm delete',
@@ -41,8 +39,8 @@ const I18N = Object.freeze({
     invalidGroupName: 'Enter a group name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
     selectPage: 'Select Page', selectedCount: '{count} selected', chooseGroup: 'Choose Group',
     addToGroup: 'Add to Group', clearSelection: 'Clear Selection', memberships: 'Groups',
-    openedAt: 'Opened {time}',
-    campus: 'Campus', direct: 'Direct', automatic: 'Auto',
+    openedAt: 'Opened {time}', pageRange: '{start}–{end} / {total}', previousPage: 'Previous page', nextPage: 'Next page',
+    campus: 'Campus Tunnel', direct: 'Direct',
     newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
     studentFinance: 'Student Finance', expenses: 'Expenses & Procurement', career: 'Career & Internships', campusLife: 'Campus Life',
     documents: 'Documents & Graduation', tools: 'General Tools', staff: 'Staff Tools', custom: 'Custom',
@@ -69,10 +67,11 @@ let state = null;
 let navigation = model.normalizeNavigation({ screen: 'home' });
 let editingGroupId = null;
 let editingResourceId = null;
-let draggedGroupId = null;
 let draggedResourceId = null;
 let selectedManageFolder = 'favorites';
-let selectedServiceView = null;
+let primaryView = 'workspace';
+let workspaceView = 'favorites';
+let catalogView = 'all';
 let servicePage = 0;
 let searchPage = 0;
 let managePage = 0;
@@ -85,7 +84,7 @@ const command = (name, payload = {}) => window.campusWorkspace?.command(name, pa
 const categoryLabel = (category) => text()[model.TASK_CATEGORIES.find(({ id }) => id === category)?.labelKey || 'custom'];
 
 function routeText(resource) {
-  return `${text().automatic} · ${resource.route === 'direct' ? text().direct : text().campus}`;
+  return resource.route === 'direct' ? text().direct : text().campus;
 }
 
 function resourceIcon(resource) {
@@ -131,14 +130,14 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
     selection.appendChild(checkbox); item.appendChild(selection);
     item.addEventListener('dragstart', (event) => {
       draggedResourceId = resource.id;
-      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.effectAllowed = 'copyMove';
       event.dataTransfer.setData('text/plain', resource.id);
       item.classList.add('resource-dragging');
     });
     item.addEventListener('dragend', () => {
       draggedResourceId = null;
       item.classList.remove('resource-dragging');
-      document.querySelectorAll('.favorite-group.drop-target').forEach((target) => target.classList.remove('drop-target'));
+      document.querySelectorAll('.manage-folder.drop-target').forEach((target) => target.classList.remove('drop-target'));
     });
   }
 
@@ -212,134 +211,44 @@ function renderGrid(target, resources, options = {}) {
   target.replaceChildren(...resources.map((resource) => resourceItem(resource, options)));
 }
 
-function pageCapacity(target) {
-  if (!target) return 4;
-  const style = getComputedStyle(target);
-  const columns = Math.max(1, style.gridTemplateColumns
-    .split(' ').filter(Boolean).length);
-  const rowHeight = Number.parseFloat(style.getPropertyValue('--resource-row-height')) || 60;
-  const rows = Math.max(1, Math.floor(target.clientHeight / rowHeight));
-  return Math.max(columns, Math.min(64, columns * rows));
+function pageCapacity() {
+  if (innerWidth >= 1100) return 12;
+  if (innerWidth >= 760) return 8;
+  return 6;
 }
 
-function paged(items, page, target) {
-  const size = pageCapacity(target);
+function paged(items, page) {
+  const size = pageCapacity();
   const pages = Math.max(1, Math.ceil(items.length / size));
   const current = Math.min(Math.max(0, page), pages - 1);
-  return { current, pages, items: items.slice(current * size, (current + 1) * size) };
+  const start = current * size;
+  return {
+    current, pages, size, total: items.length,
+    start, end: Math.min(items.length, start + size),
+    items: items.slice(start, start + size),
+  };
 }
 
-function renderPager(target, pages, current, selectPage) {
-  target.hidden = pages <= 1;
-  target.replaceChildren(...Array.from({ length: pages }, (_, index) => {
-    const button = document.createElement('button'); button.type = 'button';
-    button.className = `pager-dot${index === current ? ' active' : ''}`;
-    button.textContent = '•'; button.title = `${index + 1} / ${pages}`;
-    button.setAttribute('aria-label', `${index + 1} / ${pages}`);
-    button.setAttribute('aria-current', index === current ? 'page' : 'false');
-    button.addEventListener('click', () => selectPage(index));
-    return button;
-  }));
-}
-
-function groupSection(group, resources, { management = false } = {}) {
-  const section = document.createElement('section');
-  section.className = 'favorite-group';
-  section.dataset.groupId = group?.id || '';
-  section.draggable = management && !!group;
-  const heading = document.createElement('div');
-  heading.className = 'group-heading';
-  const title = document.createElement('h3');
-  title.textContent = group?.name || text().ungrouped;
-  const count = document.createElement('span');
-  count.className = 'group-count';
-  count.textContent = String(resources.length);
-  heading.append(title, count);
-  if (management && group) {
-    const actions = document.createElement('div');
-    actions.className = 'group-actions';
-    const move = (offset) => {
-      const ids = state.groups.map(({ id }) => id);
-      const from = ids.indexOf(group.id);
-      const to = from + offset;
-      if (from < 0 || to < 0 || to >= ids.length) return;
-      ids.splice(to, 0, ids.splice(from, 1)[0]);
-      command('reorder-groups', { groupIds: ids });
-    };
-    for (const [label, action] of [
-      [text().moveUp, () => move(-1)], [text().moveDown, () => move(1)],
-      [text().edit, () => openGroupDialog(group)],
-    ]) {
-      const button = document.createElement('button');
-      button.type = 'button'; button.className = 'group-action'; button.textContent = label;
-      button.addEventListener('click', action); actions.appendChild(button);
-    }
-    const remove = document.createElement('button');
-    remove.type = 'button'; remove.className = 'group-action'; remove.textContent = text().remove;
-    remove.addEventListener('click', () => {
-      if (remove.dataset.confirm !== '1') {
-        remove.dataset.confirm = '1'; remove.textContent = text().confirmDeleteGroup; return;
-      }
-      command('delete-group', { groupId: group.id });
-    });
-    actions.appendChild(remove);
-    heading.appendChild(actions);
-    section.addEventListener('dragstart', () => { draggedGroupId = group.id; section.classList.add('dragging'); });
-    section.addEventListener('dragend', () => { draggedGroupId = null; section.classList.remove('dragging'); });
-  }
-  if (management) {
-    section.addEventListener('dragover', (event) => {
-      if (!draggedResourceId && !draggedGroupId) return;
-      event.preventDefault();
-      if (draggedResourceId) section.classList.add('drop-target');
-    });
-    section.addEventListener('dragleave', (event) => {
-      if (!section.contains(event.relatedTarget)) section.classList.remove('drop-target');
-    });
-    section.addEventListener('drop', (event) => {
-      event.preventDefault(); section.classList.remove('drop-target');
-      if (draggedResourceId) {
-        command('move-resource', {
-          resourceId: draggedResourceId, groupId: group?.id || null, index: resources.length,
-        });
-        draggedResourceId = null; return;
-      }
-      if (!group || !draggedGroupId || draggedGroupId === group.id) return;
-      const ids = state.groups.map(({ id }) => id);
-      const from = ids.indexOf(draggedGroupId); const to = ids.indexOf(group.id);
-      if (from < 0 || to < 0) return;
-      ids.splice(to, 0, ids.splice(from, 1)[0]);
-      command('reorder-groups', { groupIds: ids });
-    });
-  }
-  section.appendChild(heading);
-  const grid = document.createElement('div');
-  grid.className = 'resource-grid';
-  renderGrid(grid, resources, { management });
-  if (!resources.length) {
-    const empty = document.createElement('p');
-    empty.className = 'favorite-group-empty'; empty.textContent = text().emptyFavorites;
-    grid.appendChild(empty);
-  }
-  section.appendChild(grid);
-  return section;
-}
-
-function groupedFavorites(resources, { management = false } = {}) {
-  const favorites = resources.filter(({ favorite }) => favorite);
-  const byId = new Map(favorites.map((resource) => [resource.id, resource]));
-  const assigned = new Set();
-  const sections = [];
-  for (const group of state.groups) {
-    const items = group.resourceIds.map((id) => byId.get(id)).filter(Boolean);
-    for (const item of items) assigned.add(item.id);
-    if (items.length || management) sections.push(groupSection(group, items, { management }));
-  }
-  const ungrouped = favorites.filter(({ id }) => !assigned.has(id));
-  if (ungrouped.length || management || !sections.length) {
-    sections.push(groupSection(null, ungrouped, { management }));
-  }
-  return { favorites, sections };
+function renderPager(target, page, selectPage) {
+  target.hidden = page.pages <= 1;
+  if (page.pages <= 1) { target.replaceChildren(); return; }
+  const info = document.createElement('span'); info.className = 'pager-range';
+  info.textContent = text().pageRange
+    .replace('{start}', String(page.start + 1))
+    .replace('{end}', String(page.end))
+    .replace('{total}', String(page.total));
+  const button = (direction, label, disabled, nextPage) => {
+    const control = document.createElement('button'); control.type = 'button';
+    control.className = 'pager-button'; control.textContent = direction;
+    control.title = label; control.setAttribute('aria-label', label); control.disabled = disabled;
+    control.addEventListener('click', () => selectPage(nextPage));
+    return control;
+  };
+  target.replaceChildren(
+    info,
+    button('‹', text().previousPage, page.current === 0, page.current - 1),
+    button('›', text().nextPage, page.current === page.pages - 1, page.current + 1),
+  );
 }
 
 function renderHome() {
@@ -352,55 +261,64 @@ function renderHome() {
   const groupViews = state.groups.map((group) => ({
       id: group.id, name: group.name,
       items: group.resourceIds.map((id) => byId.get(id)).filter(Boolean),
-    })).filter(({ items }) => items.length);
-  const systemViews = [
-    { id: 'favorites', name: text().allFavorites, items: favorites },
-    { id: 'recent', name: text().recent, items: recent },
-    { id: 'all', name: text().allSites, items: resources },
-  ].filter(({ id, items }) => ['favorites', 'all'].includes(id) || items.length);
+    }));
   const categoryViews = categories.map(({ id }) => ({
-    id: `category:${id}`, name: categoryLabel(id),
+    id, name: categoryLabel(id),
     items: model.catalogProjection(state.resources, id).items,
   }));
-  const views = [...groupViews, ...systemViews, ...categoryViews];
-  let selected = views.find(({ id }) => id === selectedServiceView);
-  if (!selected) {
-    selected = groupViews[0] || views.find(({ id }) => id === 'favorites' && favorites.length) ||
-      views.find(({ id }) => id === 'all');
-    selectedServiceView = selected.id; servicePage = 0;
+  const primaryLabels = {
+    workspace: text().primaryWorkspace,
+    recent: text().primaryRecent,
+    catalog: text().primaryCatalog,
+  };
+  for (const control of document.querySelectorAll('[data-primary-view]')) {
+    const active = control.dataset.primaryView === primaryView;
+    control.textContent = primaryLabels[control.dataset.primaryView];
+    control.classList.toggle('active', active);
+    control.setAttribute('aria-current', active ? 'page' : 'false');
   }
+
+  let selected;
+  let secondaryViews = [];
+  if (primaryView === 'workspace') {
+    secondaryViews = [{ id: 'favorites', name: text().allFavorites, items: favorites }, ...groupViews];
+    selected = secondaryViews.find(({ id }) => id === workspaceView) || secondaryViews[0];
+    workspaceView = selected.id;
+  } else if (primaryView === 'recent') {
+    selected = { id: 'recent', name: text().recent, items: recent };
+  } else {
+    secondaryViews = [{ id: 'all', name: text().allSites, items: resources }, ...categoryViews];
+    selected = secondaryViews.find(({ id }) => id === catalogView) || secondaryViews[0];
+    catalogView = selected.id;
+  }
+
   const tab = (view) => {
     const button = document.createElement('button'); button.type = 'button';
-    button.className = `service-view-tab${view.id === selected.id ? ' active' : ''}`;
+    button.className = `secondary-tab${view.id === selected.id ? ' active' : ''}`;
     button.setAttribute('role', 'tab');
     button.setAttribute('aria-selected', String(view.id === selected.id));
     button.textContent = `${view.name} ${view.items.length}`;
     button.addEventListener('click', () => {
-      selectedServiceView = view.id; servicePage = 0; renderHome();
+      if (primaryView === 'workspace') workspaceView = view.id;
+      else if (primaryView === 'catalog') catalogView = view.id;
+      servicePage = 0; renderHome();
     });
     return button;
   };
-  const label = (value) => {
-    const span = document.createElement('span'); span.className = 'service-view-label';
-    span.textContent = value; return span;
-  };
-  const tabs = [];
-  if (groupViews.length) tabs.push(label(text().myGroups), ...groupViews.map(tab));
-  tabs.push(label(text().systemViews), ...systemViews.map(tab));
-  $('serviceViewTabs').replaceChildren(...tabs);
-  $('serviceCategoryLabel').textContent = text().categories;
-  const categorySelect = $('serviceCategorySelect');
-  const emptyOption = document.createElement('option'); emptyOption.value = '';
-  emptyOption.textContent = text().chooseCategory;
-  categorySelect.replaceChildren(emptyOption, ...categoryViews.map((view) => {
+  $('secondaryNavigation').hidden = primaryView === 'recent';
+  $('serviceViewTabs').replaceChildren(...secondaryViews.map(tab));
+  $('secondarySelect').replaceChildren(...secondaryViews.map((view) => {
     const option = document.createElement('option'); option.value = view.id;
     option.textContent = `${view.name} ${view.items.length}`; return option;
   }));
-  categorySelect.value = selected.id.startsWith('category:') ? selected.id : '';
+  $('secondarySelect').value = selected.id;
+  $('quickCreateGroup').hidden = primaryView !== 'workspace';
+  $('quickCreateGroup').textContent = text().createGroup;
   $('serviceViewTitle').textContent = selected.name;
-  const page = paged(selected.items, servicePage, $('serviceViewGrid')); servicePage = page.current;
+  $('serviceViewCount').textContent = String(selected.items.length);
+  const page = paged(selected.items, servicePage); servicePage = page.current;
   renderGrid($('serviceViewGrid'), page.items, { showLastOpened: selected.id === 'recent' });
-  renderPager($('servicePager'), page.pages, page.current, (index) => {
+  renderPager($('servicePager'), page, (index) => {
     servicePage = index; renderHome();
   });
 }
@@ -429,12 +347,12 @@ function renderManage() {
   const validIds = new Set(resources.map(({ id }) => id));
   for (const id of selectedResourceIds) if (!validIds.has(id)) selectedResourceIds.delete(id);
   $('resourcePoolTitle').textContent = title;
-  const page = paged(pool, managePage, $('resourcePool')); managePage = page.current;
+  const page = paged(pool, managePage); managePage = page.current;
   currentManagePageIds = page.items.map(({ id }) => id);
   renderGrid($('resourcePool'), page.items, { management: true });
   renderBulkActions();
   $('resourcePoolCount').textContent = String(pool.length);
-  renderPager($('managePager'), page.pages, page.current, (index) => {
+  renderPager($('managePager'), page, (index) => {
     managePage = index; renderManage();
   });
   const folderEntry = ({ id, name, count, group = null, dropGroupId = undefined }) => {
@@ -477,16 +395,21 @@ function renderManage() {
     }
     if (dropGroupId !== undefined) {
       row.addEventListener('dragover', (event) => {
-        if (!draggedResourceId) return; event.preventDefault(); row.classList.add('drop-target');
+        if (!draggedResourceId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = dropGroupId === null ? 'move' : 'copy';
+        row.classList.add('drop-target');
       });
       row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
       row.addEventListener('drop', (event) => {
         event.preventDefault(); row.classList.remove('drop-target');
         if (!draggedResourceId) return;
         const target = state.groups.find(({ id: groupId }) => groupId === dropGroupId);
-        command('move-resource', {
-          resourceId: draggedResourceId, groupId: dropGroupId, index: target?.resourceIds.length || 0,
-        });
+        if (target) {
+          command('add-resources-to-group', { resourceIds: [draggedResourceId], groupId: target.id });
+        } else {
+          command('move-resource', { resourceId: draggedResourceId, groupId: null, index: 0 });
+        }
         draggedResourceId = null;
       });
     }
@@ -530,12 +453,12 @@ function renderBulkActions() {
 
 function renderSearch() {
   const results = model.searchResources(state.resources, navigation.query);
-  const page = paged(results, searchPage, $('searchGrid')); searchPage = page.current;
+  const page = paged(results, searchPage); searchPage = page.current;
   renderGrid($('searchGrid'), page.items);
-  renderPager($('searchPager'), page.pages, page.current, (index) => {
+  renderPager($('searchPager'), page, (index) => {
     searchPage = index; renderSearch();
   });
-  $('searchTitle').textContent = `${text().searchResults} · ${navigation.query}`;
+  $('searchTitle').textContent = text().searchResults.replace('{query}', navigation.query);
   $('workspaceEmpty').hidden = results.length > 0;
 }
 
@@ -543,12 +466,6 @@ function syncText() {
   const strings = text();
   document.documentElement.lang = state.locale === 'en' ? 'en' : 'zh-CN';
   document.title = `${strings.title} · ${state.schoolName}`;
-  $('workspaceSchool').textContent = state.schoolName;
-  $('workspaceReady').textContent = strings.auto;
-  $('workspaceTrust').hidden = !state.unverified;
-  $('workspaceTrust').textContent = strings.unverified;
-  $('manageRules').textContent = strings.rules;
-  $('workspaceSearch').placeholder = strings.search;
   $('clearWorkspaceSearch').textContent = strings.clear;
   $('manageTitle').textContent = strings.manageTitle;
   $('backToServices').textContent = strings.backToServices;
@@ -587,26 +504,28 @@ function openGroupDialog(group = null) {
   $('groupName').focus();
 }
 
-$('manageRules').addEventListener('click', () => command('manage-rules'));
-$('serviceCategorySelect').addEventListener('change', (event) => {
-  if (!event.target.value) return;
-  selectedServiceView = event.target.value; servicePage = 0; renderHome();
+$('primaryTabs').addEventListener('click', (event) => {
+  const control = event.target.closest('[data-primary-view]');
+  if (!control) return;
+  primaryView = control.dataset.primaryView;
+  servicePage = 0; renderHome();
+});
+$('secondarySelect').addEventListener('change', (event) => {
+  if (primaryView === 'workspace') workspaceView = event.target.value;
+  else if (primaryView === 'catalog') catalogView = event.target.value;
+  servicePage = 0; renderHome();
 });
 $('openManage').addEventListener('click', () => {
   navigation = model.normalizeNavigation({ screen: 'manage' }); render();
 });
+$('quickCreateGroup').addEventListener('click', () => openGroupDialog());
 $('backToServices').addEventListener('click', () => {
   navigation = model.normalizeNavigation({ screen: 'home' });
-  $('workspaceSearch').value = ''; render();
-});
-$('workspaceSearch').addEventListener('input', (event) => {
-  searchPage = 0; managePage = 0;
-  navigation = model.normalizeNavigation({ ...navigation, query: event.target.value }); render();
+  render();
 });
 function clearSearch() {
-  $('workspaceSearch').value = '';
   searchPage = 0; managePage = 0;
-  navigation = model.normalizeNavigation({ ...navigation, query: '' }); render();
+  navigation = model.normalizeNavigation({ screen: 'home' }); render();
 }
 $('clearWorkspaceSearch').addEventListener('click', clearSearch);
 $('clearWorkspaceFilter').addEventListener('click', clearSearch);
@@ -645,7 +564,15 @@ $('saveGroup').addEventListener('click', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault(); $('workspaceSearch').focus(); $('workspaceSearch').select();
+    event.preventDefault(); command('focus-address'); return;
+  }
+  if ((event.target instanceof Element && event.target.closest('input, select, button, dialog')) ||
+      navigation.screen !== 'home') return;
+  if (event.key === 'ArrowLeft' && servicePage > 0) {
+    event.preventDefault(); servicePage -= 1; renderHome();
+  } else if (event.key === 'ArrowRight') {
+    const next = document.querySelector('#servicePager .pager-button:last-child:not(:disabled)');
+    if (next) { event.preventDefault(); next.click(); }
   }
 });
 
@@ -655,10 +582,7 @@ function scheduleLayoutRender() {
   if (layoutRenderFrame !== null) cancelAnimationFrame(layoutRenderFrame);
   layoutRenderFrame = requestAnimationFrame(() => {
     layoutRenderFrame = null;
-    const signature = [innerWidth, innerHeight,
-      $('serviceViewGrid').clientWidth, $('serviceViewGrid').clientHeight,
-      $('resourcePool').clientWidth, $('resourcePool').clientHeight,
-      $('searchGrid').clientWidth, $('searchGrid').clientHeight].join(':');
+    const signature = String(pageCapacity());
     if (!state || signature === lastLayoutSignature) return;
     lastLayoutSignature = signature;
     render();
@@ -674,19 +598,17 @@ window.campusWorkspace?.onFocus(({ target, query = '' }) => {
     const group = normalized && state.groups.find(({ name }) =>
       name.toLocaleLowerCase().includes(normalized));
     if (group) {
-      selectedServiceView = group.id;
+      primaryView = 'workspace'; workspaceView = group.id; servicePage = 0;
       navigation = model.normalizeNavigation({ screen: 'home' });
-      $('workspaceSearch').value = '';
       render();
     } else if (query) {
-      $('workspaceSearch').value = query;
       navigation = model.normalizeNavigation({ screen: 'home', query });
       searchPage = 0; render();
+    } else {
+      command('focus-address');
     }
-    $('workspaceSearch').focus(); $('workspaceSearch').select();
   } else if (target === 'manage') {
     navigation = model.normalizeNavigation({ screen: 'manage' });
-    $('workspaceSearch').value = '';
     render();
   }
 });

@@ -20,6 +20,7 @@ class FakeBrowser {
   }
   async open(...args) { this.opens.push(args); }
   focusWorkspace(target) { this.workspaceFocus = target; return true; }
+  focusAddressBar() { this.addressFocused = true; return true; }
   suspendRoutingPolicy() { this.routingSuspended = true; return 'suspended'; }
   resumeRoutingPolicy(port) { this.routingSuspended = false; return port; }
   close() { return 'closed'; }
@@ -94,6 +95,8 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
   assert.equal(typeof browser.options.openExternal, 'function');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
+  assert.deepEqual(await browser.options.workspaceController.onCommand({ command: 'focus-address' }), { ok: true });
+  assert.equal(browser.addressFocused, true);
 });
 
 test('bookmark folders use a native menu above WebContentsView and retain ID-only authority', async () => {

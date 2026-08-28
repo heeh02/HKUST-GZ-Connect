@@ -142,23 +142,25 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   const workspaceModel = fs.readFileSync(path.join(rendererDir, 'campus-workspace-model.js'), 'utf8');
   const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
   for (const id of [
-    'workspaceSearch', 'homeScreen', 'servicePanel', 'backToServices',
-    'serviceViewTabs', 'serviceCategorySelect', 'serviceViewGrid', 'servicePager', 'manageScreen', 'resourcePool',
-    'manageFolderNav', 'managePager', 'manageRules', 'createGroup',
+    'homeScreen', 'servicePanel', 'backToServices', 'primaryTabs', 'primaryWorkspace',
+    'primaryRecent', 'primaryCatalog', 'secondaryNavigation', 'secondarySelect', 'serviceViewTabs', 'quickCreateGroup',
+    'serviceViewGrid', 'servicePager', 'manageScreen', 'resourcePool',
+    'manageFolderNav', 'managePager', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  assert.doesNotMatch(workspaceHtml, /workspace-header|workspace-command|id="workspaceSearch"|id="manageRules"/u);
   assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*manage/u);
   assert.doesNotMatch(workspaceModel, /SCREENS[^\n]*catalog/u);
   assert.match(workspaceModel, /TASK_CATEGORIES[\s\S]*id:\s*'courses'[\s\S]*categoryOf/u);
   assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
   assert.match(workspaceJs, /command\('toggle-favorite',\s*\{\s*resourceId:/u);
-  assert.match(workspaceJs, /command\('manage-rules'\)/u);
+  assert.match(workspaceJs, /command\('focus-address'\)/u);
   assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
   assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
-  assert.match(workspaceCss, /@media\s*\(min-width:\s*960px\)[\s\S]*repeat\(4/u);
-  assert.match(workspaceCss, /\.resource-icon\s*\{[^}]*width:\s*34px[^}]*height:\s*34px/u);
-  assert.match(workspaceCss, /@media\s*\(max-width:\s*880px\)[\s\S]*repeat\(2/u);
-  assert.match(workspaceCss, /html, body\s*\{[^}]*overflow:\s*hidden/u);
-  assert.match(workspaceCss, /\.workspace-pager/u);
+  assert.match(workspaceCss, /@media\s*\(min-width:\s*1100px\)[\s\S]*repeat\(3/u);
+  assert.match(workspaceCss, /\.resource-icon\s*\{[^}]*width:\s*36px[^}]*height:\s*36px/u);
+  assert.match(workspaceCss, /@media\s*\(max-width:\s*759px\)[\s\S]*grid-template-columns:\s*1fr/u);
+  assert.match(workspaceCss, /body\s*\{[^}]*overflow:\s*auto/u);
+  assert.match(workspaceCss, /\.pager-range[\s\S]*\.pager-button/u);
 });
 
 test('notifications keep a compact state summary and raw diagnostics collapsed', () => {

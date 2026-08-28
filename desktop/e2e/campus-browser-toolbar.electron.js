@@ -188,28 +188,24 @@ async function assertFindBar(browser) {
 async function assertWorkspaceHome(browser) {
   const contents = browser.activeTab().view.webContents;
   await waitForPage(contents,
-    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 1",
+    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 2",
     'local Workspace Home resources');
   const state = await contents.executeJavaScript(`(() => ({
-    title: document.getElementById('workspaceSchool')?.textContent,
-    warning: document.getElementById('workspaceTrust')?.textContent,
-    warningVisible: !document.getElementById('workspaceTrust')?.hidden,
-    persistentNavigation: document.querySelectorAll('[data-workspace-screen]').length,
+    duplicateHeader: document.querySelectorAll('.workspace-header').length,
+    duplicateSearch: document.querySelectorAll('#workspaceSearch').length,
+    activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
     favoriteNames: [...document.querySelectorAll('#serviceViewGrid .resource-name')]
       .map((value) => value.textContent),
-    serviceTabs: [...document.querySelectorAll('.service-view-tab')].map((value) => value.textContent),
-    headerGatewayButtons: document.querySelectorAll('.gateway-button').length,
+    primaryTabs: [...document.querySelectorAll('[data-primary-view]')].map((value) => value.textContent),
     organizerEntry: document.getElementById('openManage')?.textContent,
     leakedUrls: document.body.textContent.includes('example.invalid'),
   }))()`);
-  assert.equal(state.title, 'Example University');
-  assert.equal(state.warningVisible, true);
-  assert.match(state.warning, /未审核/u);
-  assert.equal(state.persistentNavigation, 0);
-  assert.deepEqual(state.favoriteNames, ['Grouped Site'],
-    'the first user task group must be the default Workspace view');
-  assert.equal(state.serviceTabs.some((value) => value.includes('最近使用')), true);
-  assert.equal(state.headerGatewayButtons, 0);
+  assert.equal(state.duplicateHeader, 0);
+  assert.equal(state.duplicateSearch, 0);
+  assert.equal(state.activePrimary, 'workspace');
+  assert.deepEqual(state.favoriteNames, ['Favorite', 'Grouped Site'],
+    'My Workspace must open on the complete favorites view');
+  assert.deepEqual(state.primaryTabs, ['我的工作区', '最近使用', '网站库']);
   assert.equal(state.organizerEntry, '整理收藏');
   assert.equal(state.leakedUrls, false, 'Workspace renderer received URL authority');
   assert.match(contents.getURL(), /\/renderer\/campus-workspace\.html$/u,
@@ -257,6 +253,7 @@ async function main() {
       category: 'custom', keywords: [], builtin: false,
       favorite: true, lastOpenedAt: null },
   ];
+  let browser = null;
   const workspaceController = new CampusWorkspaceController({
     workspaceFile: path.join(__dirname, '..', 'renderer', 'campus-workspace.html'),
     workspacePreload: path.join(__dirname, '..', 'lib', 'browser', 'workspace', 'campus-workspace-preload.js'),
@@ -268,9 +265,11 @@ async function main() {
       id: 'group_abcdefghijkl', name: '学习', resourceIds: ['grouped'],
     }],
     getLocale: () => 'zh',
-    onCommand: async () => ({ ok: true }),
+    onCommand: async (command) => command.command === 'focus-address'
+      ? { ok: browser?.focusAddressBar() === true }
+      : { ok: true },
   });
-  const browser = new CampusBrowser({
+  browser = new CampusBrowser({
     BrowserWindow,
     WebContentsView,
     session,
@@ -304,6 +303,13 @@ async function main() {
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
+    const workspaceContents = browser.activeTab().view.webContents;
+    await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'k', bubbles: true, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true,
+    }))`);
+    await waitFor(browser.window,
+      "document.activeElement === document.getElementById('address')",
+      'Workspace Command-K to focus the browser address');
     await assertBookmarkBar(browser, openedResources, bookmarkMenus);
     await browser.open(DEAD_URL, 11080, 'campus');
 

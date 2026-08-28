@@ -120,6 +120,7 @@ class CampusBrowserManager {
       getGroups: () => this.getWorkspaceGroups(),
       getLocale: this.getLocale,
       onCommand: async (command) => {
+        if (command.command === 'focus-address') return { ok: this.browser?.focusAddressBar() === true };
         if (command.command === 'open-resource') return this.onOpenResource(command.resourceId);
         if (command.command === 'manage-rules') return this.showRoutingRules();
         const result = await this.onWorkspaceMutation(command);

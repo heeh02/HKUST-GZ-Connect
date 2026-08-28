@@ -15,6 +15,9 @@ test('Workspace command contract is ID-only bounded and one-level', () => {
   assert.deepEqual(normalizeWorkspaceCommand({ command: 'manage-rules' }), {
     command: 'manage-rules',
   });
+  assert.deepEqual(normalizeWorkspaceCommand({ command: 'focus-address' }), {
+    command: 'focus-address',
+  });
   assert.deepEqual(normalizeWorkspaceCommand({
     command: 'rename-resource', resourceId: 'custom-site', name: '科研入口',
   }), {

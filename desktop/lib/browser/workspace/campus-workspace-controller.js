@@ -11,6 +11,7 @@ const RESOURCE_CATEGORIES = new Set([
 ]);
 const COMMANDS = new Set([
   'ready',
+  'focus-address',
   'open-resource',
   'toggle-favorite',
   'rename-resource',
@@ -33,7 +34,7 @@ function normalizeWorkspaceCommand(value) {
   const source = plainObject(value);
   if (!source || !COMMANDS.has(source.command)) return null;
   const keys = Object.keys(source).sort();
-  if (source.command === 'ready' || source.command === 'manage-rules') {
+  if (source.command === 'ready' || source.command === 'focus-address' || source.command === 'manage-rules') {
     return keys.length === 1 ? Object.freeze({ command: source.command }) : null;
   }
   if (source.command === 'open-resource' || source.command === 'toggle-favorite') {

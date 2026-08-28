@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-const NO_VALUE = new Set(['ready', 'manage-rules']);
+const NO_VALUE = new Set(['ready', 'focus-address', 'manage-rules']);
 const RESOURCE = new Set(['open-resource', 'toggle-favorite']);
 const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
