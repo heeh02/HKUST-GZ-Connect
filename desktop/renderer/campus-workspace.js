@@ -191,16 +191,18 @@ function renderGrid(target, resources, options = {}) {
   target.replaceChildren(...resources.map((resource) => resourceItem(resource, options)));
 }
 
-function pageCapacity(target, rowHeight = 78) {
+function pageCapacity(target) {
   if (!target) return 4;
-  const columns = Math.max(1, getComputedStyle(target).gridTemplateColumns
+  const style = getComputedStyle(target);
+  const columns = Math.max(1, style.gridTemplateColumns
     .split(' ').filter(Boolean).length);
+  const rowHeight = Number.parseFloat(style.getPropertyValue('--resource-row-height')) || 60;
   const rows = Math.max(1, Math.floor(target.clientHeight / rowHeight));
-  return Math.max(columns, Math.min(12, columns * rows));
+  return Math.max(columns, Math.min(64, columns * rows));
 }
 
-function paged(items, page, target, rowHeight) {
-  const size = pageCapacity(target, rowHeight);
+function paged(items, page, target) {
+  const size = pageCapacity(target);
   const pages = Math.max(1, Math.ceil(items.length / size));
   const current = Math.min(Math.max(0, page), pages - 1);
   return { current, pages, items: items.slice(current * size, (current + 1) * size) };
@@ -367,7 +369,7 @@ function renderHome() {
     return button;
   }));
   $('serviceViewTitle').textContent = selected.name;
-  const page = paged(selected.items, servicePage, $('serviceViewGrid'), 78); servicePage = page.current;
+  const page = paged(selected.items, servicePage, $('serviceViewGrid')); servicePage = page.current;
   renderGrid($('serviceViewGrid'), page.items);
   renderPager($('servicePager'), page.pages, page.current, (index) => {
     servicePage = index; renderHome();
@@ -396,7 +398,7 @@ function renderManage() {
   }
   if (navigation.query) pool = model.searchResources(pool, navigation.query);
   $('resourcePoolTitle').textContent = title;
-  const page = paged(pool, managePage, $('resourcePool'), 112); managePage = page.current;
+  const page = paged(pool, managePage, $('resourcePool')); managePage = page.current;
   renderGrid($('resourcePool'), page.items, { management: true });
   $('resourcePoolCount').textContent = String(pool.length);
   renderPager($('managePager'), page.pages, page.current, (index) => {
@@ -472,7 +474,7 @@ function renderManage() {
 
 function renderSearch() {
   const results = model.searchResources(state.resources, navigation.query);
-  const page = paged(results, searchPage, $('searchGrid'), 78); searchPage = page.current;
+  const page = paged(results, searchPage, $('searchGrid')); searchPage = page.current;
   renderGrid($('searchGrid'), page.items);
   renderPager($('searchPager'), page.pages, page.current, (index) => {
     searchPage = index; renderSearch();

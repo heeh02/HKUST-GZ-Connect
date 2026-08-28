@@ -89,11 +89,12 @@ async function main() {
   controller.attach(window.webContents);
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
+  const catalogueSize = resources.filter(({ category }) => category !== 'gateway').length;
 
-  for (const [label, width, height, expectedColumns] of [
-    ['compact', 660, 560, 2],
-    ['standard', 1040, 740, 3],
-    ['wide', 1400, 900, 4],
+  for (const [label, width, height, expectedColumns, minimumItems] of [
+    ['compact', 660, 560, 2, 6],
+    ['standard', 1040, 740, 4, 16],
+    ['wide', 1400, 900, 4, 28],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 80));
@@ -110,8 +111,12 @@ async function main() {
     assert.equal(home.gateways, 3);
     assert.equal(home.hasSearch, true);
     assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
-    assert.ok(home.visibleResources > 0 && home.visibleResources <= 12,
-      `${label} page capacity is not bounded`);
+    assert.ok(home.visibleResources >= minimumItems && home.visibleResources <= resources.length,
+      `${label} does not use the available page area`);
+    if (label === 'wide') {
+      assert.equal(home.visibleResources, catalogueSize,
+        'wide layout should fit the complete website library on one page');
+    }
     assert.equal(home.everyResourceFits, true, `${label} clips a resource row`);
     assert.ok(home.serviceTabs >= 10, `${label} service switch bar is incomplete`);
     await capture(window, `${label}-home`);

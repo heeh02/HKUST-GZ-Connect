@@ -176,8 +176,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .filter-button:hover { background: #dfe8f5; }
 .filter-button.active { color: #fff; background: var(--workspace-blue); }
 
-.module { margin-top: 10px; padding: 18px 20px; }
-.module-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 15px; }
+.module { margin-top: 10px; padding: 14px 16px; }
+.module-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .module-heading h2 { margin: 4px 0 0; color: var(--workspace-navy); font-size: 17px; line-height: 1.25; }
 .workspace-service-panel,
 #searchScreen > .module,
@@ -191,18 +191,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 10px;
+  gap: 5px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--workspace-line);
 }
 .service-view-tab {
-  min-height: 30px;
-  padding: 0 11px;
+  min-height: 27px;
+  padding: 0 9px;
   border: 0;
   border-radius: 8px;
   color: var(--workspace-blue);
   background: #e9eff8;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -268,11 +268,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .group-action { min-height: 27px; padding: 0 8px; border: 0; border-radius: 7px; color: var(--workspace-muted); background: transparent; font-size: 10.5px; }
 .group-action:hover { color: var(--workspace-navy); background: #eef2f7; }
 
-.resource-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; }
+.resource-grid {
+  --resource-row-height: 60px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 20px;
+}
 .resource-item {
   position: relative;
   min-width: 0;
-  min-height: 76px;
+  min-height: 58px;
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--workspace-line);
@@ -282,11 +287,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .resource-open {
   min-width: 0;
   flex: 1;
-  min-height: 75px;
+  min-height: 57px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 36px 10px 4px;
+  gap: 9px;
+  padding: 6px 32px 6px 2px;
   border: 0;
   border-radius: 11px;
   color: var(--workspace-navy);
@@ -295,34 +300,34 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .resource-open:hover { background: #f5f7fa; }
 .resource-icon {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--workspace-blue);
   background: #e9eef6;
 }
-.resource-icon svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.resource-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .resource-icon.custom { color: #755600; background: #f7eed9; }
-.resource-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.resource-name { overflow: hidden; color: var(--workspace-navy); font-size: 13px; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
-.resource-route { color: #64748b; font-size: 10px; font-weight: 700; }
+.resource-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.resource-name { overflow: hidden; color: var(--workspace-navy); font-size: 12px; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+.resource-route { color: #64748b; font-size: 9.5px; font-weight: 700; }
 .resource-route::before { content: "•"; margin-right: 5px; color: #1b5596; }
 .resource-route.direct::before { color: var(--workspace-gold); }
 .resource-star {
   position: absolute;
   right: 3px;
   top: 50%;
-  width: 31px;
-  height: 34px;
+  width: 28px;
+  height: 30px;
   transform: translateY(-50%);
   border: 0;
   border-radius: 9px;
   color: #aeb8c7;
   background: transparent;
-  font-size: 19px;
+  font-size: 17px;
 }
 .resource-star:hover { color: var(--workspace-gold); background: #fff8e7; }
 .resource-star.active { color: var(--workspace-gold); }
@@ -508,7 +513,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   font-size: 9px;
 }
 .manage-folder-action:hover { color: var(--workspace-navy); background: #fff; }
-.manage-content > .resource-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 18px; }
+.manage-content > .resource-grid {
+  --resource-row-height: 96px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 18px;
+}
 .manage-content { min-height: 0; display: flex; flex-direction: column; }
 .manage-content > .resource-grid { min-height: 0; flex: 1; align-content: start; overflow: hidden; }
 #manageScreen .resource-item { flex-wrap: wrap; }
@@ -529,9 +538,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .group-dialog p { min-height: 16px; margin: 0; color: #c34d47; font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
-@media (min-width: 1280px) {
+@media (min-width: 960px) {
   .workspace-shell { width: min(1380px, 100%); }
   .resource-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
   .service-category-list { columns: 3; }
 }
 @media (max-width: 880px) {
@@ -563,8 +574,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .search-box kbd { display: none; }
   .service-view-tabs { gap: 4px; padding-bottom: 7px; }
   .service-view-tab { min-height: 27px; padding: 0 8px; font-size: 9.5px; }
-  .resource-item { min-height: 66px; }
-  .resource-open { min-height: 65px; }
+  .resource-grid { --resource-row-height: 56px; }
+  .resource-item { min-height: 54px; }
+  .resource-open { min-height: 53px; }
+  .resource-icon { width: 32px; height: 32px; flex-basis: 32px; }
+  .resource-icon svg { width: 19px; height: 19px; }
 }
 @media (max-width: 430px) {
   .resource-grid { grid-template-columns: 1fr; }

@@ -153,7 +153,8 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   assert.match(workspaceJs, /command\('manage-rules'\)/u);
   assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
   assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
-  assert.match(workspaceCss, /@media\s*\(min-width:\s*1280px\)[\s\S]*repeat\(4/u);
+  assert.match(workspaceCss, /@media\s*\(min-width:\s*960px\)[\s\S]*repeat\(4/u);
+  assert.match(workspaceCss, /\.resource-icon\s*\{[^}]*width:\s*34px[^}]*height:\s*34px/u);
   assert.match(workspaceCss, /@media\s*\(max-width:\s*880px\)[\s\S]*repeat\(2/u);
   assert.match(workspaceCss, /html, body\s*\{[^}]*overflow:\s*hidden/u);
   assert.match(workspaceCss, /\.workspace-pager/u);
