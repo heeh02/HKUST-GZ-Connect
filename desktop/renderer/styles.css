@@ -123,20 +123,6 @@ button, input, select, a, code { -webkit-app-region: no-drag; }
 
 /* ---- CONNECT ---- */
 .page[data-page="connect"] { align-items: stretch; text-align: center; gap: 13px; padding-top: 14px; }
-.hero-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 7px 10px; text-align: left; box-shadow: var(--shadow-sm); transition: box-shadow .3s, border-color .3s; }
-.hero-card.connected { border-color: var(--gold-soft); box-shadow: var(--shadow), 0 0 0 3px rgba(168,132,44,.10); }
-#connectSchoolName { grid-column: 1; grid-row: 1; }
-#power { grid-column: 3; grid-row: 1 / span 2; }
-.hero-card .conn-status { grid-column: 2; grid-row: 1 / span 2; }
-.conn-loc { font-size: 14px; font-weight: 780; color: var(--navy); letter-spacing: .1px; }
-.conn-ip { display: none; }
-.switch { width: 46px; height: 26px; border-radius: 999px; border: none; cursor: pointer; position: relative; padding: 0; margin: 0; background: #d2d9e6; box-shadow: inset 0 1px 3px rgba(13,30,66,.18); transition: background .35s; }
-.switch .knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px rgba(13,30,66,.22); transition: transform .35s cubic-bezier(.3,1.5,.5,1); }
-.switch.on { background: linear-gradient(135deg, var(--gold-2), var(--gold)); box-shadow: inset 0 1px 3px rgba(120,86,0,.3); }
-.switch.on .knob { transform: translateX(20px); box-shadow: 0 2px 7px rgba(150,108,0,.4); }
-.switch.busy { background: var(--gold-2); }
-.switch.busy .knob { animation: knobpulse 1.1s ease-in-out infinite; }
-@keyframes knobpulse { 0%, 100% { transform: translateX(10px); } 50% { transform: translateX(10px) scale(1.12); } }
 .conn-status { margin: 0; font-size: 12px; font-weight: 750; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; transition: color .25s; white-space: nowrap; }
 .conn-status.on { color: var(--ok); }
 .conn-status.busy { color: var(--gold); }
@@ -510,50 +496,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .nav.active::before { left: -8px; height: 28px; }
 
-.page[data-page="connect"] { gap: 15px; padding-top: 18px; }
-.hero-card {
-  min-height: 126px; padding: 18px 20px; border-color: rgba(168,132,44,.25); border-radius: 22px;
-  grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; gap: 5px 16px;
-  background: linear-gradient(145deg, #fff 0%, #fffdf7 100%); box-shadow: var(--shadow-lg);
-}
-.hero-card.connected {
-  border-color: rgba(199,155,60,.52);
-  box-shadow: 0 12px 30px rgba(13,30,66,.08), 0 0 0 4px rgba(199,155,60,.10);
-}
-#connectSchoolName { grid-column: 1; grid-row: 1; }
-#profileTrustBadge { grid-column: 1; grid-row: 2; justify-self: start; }
-#power { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
-.hero-card .conn-status { grid-column: 1; grid-row: 3; }
-.conn-loc { font-size: 18px; line-height: 1.28; letter-spacing: -.2px; }
-.conn-ip {
-  display: inline-flex; grid-column: 1; grid-row: 2; justify-self: start; align-items: center;
-  min-height: 24px; padding: 3px 9px; border-radius: 999px; background: #edf2fa;
-  color: var(--navy-2); font-size: 10.5px; font-weight: 750; font-variant-numeric: tabular-nums;
-}
-#profileTrustBadge:not([hidden]) + .conn-ip { display: none; }
-.switch {
-  width: 82px; height: 44px; border: 1px solid rgba(75,94,124,.08);
-  background: linear-gradient(180deg, #dce2ec, #cbd4e3);
-  box-shadow: inset 0 2px 5px rgba(13,30,66,.16), 0 2px 4px rgba(13,30,66,.08);
-}
-.switch .knob {
-  top: 4px; left: 4px; width: 34px; height: 34px;
-  box-shadow: 0 3px 9px rgba(13,30,66,.25), inset 0 0 0 1px rgba(13,30,66,.04);
-}
-.switch.on {
-  background: linear-gradient(145deg, #d1a33e, #ae8322);
-  box-shadow: inset 0 2px 5px rgba(101,70,0,.25), 0 8px 18px rgba(168,132,44,.24);
-}
-.switch.on .knob { transform: translateX(38px); box-shadow: 0 3px 10px rgba(90,60,0,.35); }
-.switch.busy .knob { animation: knobpulse-refined 1.05s ease-in-out infinite; }
-@keyframes knobpulse-refined {
-  0%, 100% { transform: translateX(19px); }
-  50% { transform: translateX(19px) scale(1.08); }
-}
-.conn-status { font-size: 13px; gap: 7px; }
-.dot { width: 9px; height: 9px; }
-.conn-err { grid-row: 4; font-size: 11.5px; }
-
 .quick-card {
   padding: 18px; gap: 12px; border-radius: 21px; border-color: rgba(199,155,60,.38);
   background: linear-gradient(145deg, #fffdf8 0%, #fff 64%); box-shadow: var(--shadow-lg);
@@ -794,7 +736,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .hero-card.connected { border-color: #d9e8df; box-shadow: var(--shadow-sm); }
 .conn-brand { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 7px; min-width: 0; }
-.conn-loc { min-width: 0; overflow: hidden; font-size: 15px; line-height: 1.3; letter-spacing: .1px; text-overflow: ellipsis; white-space: nowrap; }
+.conn-loc { min-width: 0; overflow: hidden; color: var(--navy); font-size: 15px; font-weight: 780; line-height: 1.3; letter-spacing: .1px; text-overflow: ellipsis; white-space: nowrap; }
 .connection-meta {
   grid-column: 1; grid-row: 2; display: flex; align-items: center; gap: 9px; min-width: 0;
 }

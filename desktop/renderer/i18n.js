@@ -130,7 +130,6 @@
       'connect.actionConnect': '连接',
       'connect.actionDisconnect': '断开',
       'connect.actionConnecting': '连接中…',
-      'connect.easyConnectCompatible': '兼容接入',
 
       'quick.title': '打开校园网站',
       'quick.sub': '应用内多标签浏览器，无需 Clash，不影响其他软件上网',
@@ -611,7 +610,6 @@
       'connect.actionConnect': 'Connect',
       'connect.actionDisconnect': 'Disconnect',
       'connect.actionConnecting': 'Connecting…',
-      'connect.easyConnectCompatible': 'compatible access',
 
       'quick.title': 'Open Campus Sites',
       'quick.sub': 'Built-in tabbed browser — no Clash needed, other apps are unaffected',
