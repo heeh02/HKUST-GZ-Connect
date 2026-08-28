@@ -10,6 +10,7 @@ const tokens = fs.readFileSync(path.join(renderer, 'design-tokens.css'), 'utf8')
 const controlHtml = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
 const browserHtml = fs.readFileSync(path.join(renderer, 'campus-browser.html'), 'utf8');
 const controlCss = fs.readFileSync(path.join(renderer, 'styles.css'), 'utf8');
+const connectionCss = fs.readFileSync(path.join(renderer, 'styles', 'connection-strip.css'), 'utf8');
 const browserCss = fs.readFileSync(path.join(renderer, 'campus-browser.css'), 'utf8');
 
 test('control panel and Campus Browser share one bounded design-token vocabulary', () => {
@@ -26,6 +27,8 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
     const surfaceAt = html.indexOf(html === controlHtml ? 'styles.css' : 'campus-browser.css');
     assert.ok(tokensAt > 0 && tokensAt < surfaceAt, 'design tokens must load before surface CSS');
   }
+  assert.ok(controlHtml.indexOf('styles.css') < controlHtml.indexOf('styles/connection-strip.css'),
+    'connection strip module must load after the shared control shell');
   assert.doesNotMatch(controlCss, /^:root\s*\{/u, 'control CSS must not redefine shared tokens');
   assert.match(browserCss, /var\(--radius-control\)/u);
   assert.match(browserCss, /var\(--motion-fast\)/u);
@@ -52,7 +55,9 @@ test('2.0.1 restores the compact classic shell while avoiding nested website car
   assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 70px/u);
   assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 4px 14px/u);
   assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--gold-soft\)[^}]*box-shadow:\s*var\(--shadow\)/u);
-  assert.match(controlCss, /\.hero-card\s*\{[^}]*min-height:\s*82px[^}]*border-radius:\s*16px/u);
+  assert.match(connectionCss, /\.hero-card\s*\{[^}]*min-height:\s*82px[^}]*border-radius:\s*16px/u);
+  assert.doesNotMatch(controlCss, /\.hero-card|\.connection-action/u,
+    'connection ownership must not drift back into the shared stylesheet');
   assert.match(controlHtml, /id="power"[^>]*class="connection-action"|class="connection-action"[^>]*id="power"/u);
   assert.match(controlCss, /\.resource-favorite:hover,\s*\.resource-favorite\.active\s*\{[^}]*background:\s*transparent/u);
   assert.match(controlCss, /\.logs\s*\{[^}]*min-height:\s*320px[^}]*max-height:\s*420px/u);

@@ -8,6 +8,7 @@ const test = require('node:test');
 const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
+const connectionCss = fs.readFileSync(path.join(rendererDir, 'styles', 'connection-strip.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
 const layoutControllerJs = fs.readFileSync(path.join(rendererDir, 'resource-layout-controller.js'), 'utf8');
@@ -115,7 +116,7 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
   assert.match(css, /data-resource-layout="standard"/u);
   assert.match(css, /data-resource-layout="wide"/u);
-  assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
+  assert.match(connectionCss, /\.page\[data-page="connect"\][^{]*\{/);
   assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
 });
 
@@ -168,9 +169,9 @@ test('notifications keep a compact state summary and raw diagnostics collapsed',
 });
 
 test('connected status remains static instead of continuously repainting Electron', () => {
-  assert.match(css, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
-  assert.doesNotMatch(css, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
-  assert.doesNotMatch(css, /@keyframes\s+ping/);
+  assert.match(connectionCss, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
+  assert.doesNotMatch(connectionCss, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
+  assert.doesNotMatch(`${css}\n${connectionCss}`, /@keyframes\s+ping/);
 });
 
 test('update download uses one stable delegated listener', () => {
