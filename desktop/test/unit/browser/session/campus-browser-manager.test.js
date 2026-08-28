@@ -19,6 +19,7 @@ class FakeBrowser {
     this.opens = [];
   }
   async open(...args) { this.opens.push(args); }
+  focusWorkspace(target) { this.workspaceFocus = target; return true; }
   suspendRoutingPolicy() { this.routingSuspended = true; return 'suspended'; }
   resumeRoutingPolicy(port) { this.routingSuspended = false; return port; }
   close() { return 'closed'; }
@@ -93,6 +94,33 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
   assert.equal(typeof browser.options.openExternal, 'function');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
+});
+
+test('bookmark folders use a native menu above WebContentsView and retain ID-only authority', async () => {
+  const opened = [];
+  const popups = [];
+  let template = null;
+  const f = fixture({
+    Menu: {
+      buildFromTemplate(value) {
+        template = value;
+        return { popup: (options) => popups.push(options) };
+      },
+    },
+    onOpenResource: async (resourceId) => { opened.push(resourceId); return { ok: true }; },
+  });
+  const browser = f.manager.getOrCreate();
+  assert.equal(browser.options.showBookmarkMenu([{
+    type: 'folder', id: 'group_abcdefghijkl', name: '学习',
+    children: [{ id: 'canvas', name: 'Canvas' }],
+  }]), true);
+  assert.equal(popups.length, 1);
+  assert.equal(template[0].label, '学习');
+  assert.equal(template[0].submenu[0].label, 'Canvas');
+  assert.equal(JSON.stringify(template).includes('https://'), false);
+  template[0].submenu[0].click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ['canvas']);
 });
 
 test('Browser presentation keeps only bounded school and trust display fields', () => {

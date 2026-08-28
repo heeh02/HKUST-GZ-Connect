@@ -43,34 +43,19 @@
       <section class="module surface">
         <div class="module-heading"><div><span class="module-eyebrow">SEARCH</span><h2 id="searchTitle">搜索结果</h2></div></div>
         <div id="searchGrid" class="resource-grid"></div>
+        <div id="searchPager" class="workspace-pager" aria-label="搜索结果页码"></div>
       </section>
     </section>
 
     <section id="homeScreen" class="workspace-screen">
-      <section id="favoritesModule" class="module surface">
+      <section id="servicePanel" class="module surface workspace-service-panel">
         <div class="module-heading">
-          <div><span class="module-eyebrow">MY WORKSPACE</span><h2 id="favoritesTitle">我的收藏</h2></div>
+          <div><span class="module-eyebrow">CAMPUS SERVICES</span><h2 id="serviceViewTitle">我的收藏</h2></div>
           <button id="openManage" class="soft-button" type="button">整理收藏</button>
         </div>
-        <div id="favoriteGroups" class="favorite-groups"></div>
-      </section>
-
-      <section id="recentModule" class="module surface">
-        <div class="module-heading"><div><span class="module-eyebrow">RECENT</span><h2 id="recentTitle">最近使用</h2></div></div>
-        <div id="recentGrid" class="resource-grid"></div>
-      </section>
-
-      <section id="starterModule" class="module surface" hidden>
-        <div class="module-heading"><div><span class="module-eyebrow">START HERE</span><h2 id="starterTitle">常用入口</h2></div></div>
-        <div id="starterGrid" class="resource-grid"></div>
-      </section>
-
-      <section id="catalogModule" class="module surface service-directory">
-        <div class="module-heading">
-          <div><span class="module-eyebrow">ALL SERVICES</span><h2 id="catalogTitle">全部服务</h2></div>
-        </div>
-        <div id="categoryJumpBar" class="category-jump-bar" aria-label="服务分类"></div>
-        <div id="categorySections" class="service-category-list"></div>
+        <div id="serviceViewTabs" class="service-view-tabs" role="tablist" aria-label="校园服务分类"></div>
+        <div id="serviceViewGrid" class="resource-grid service-view-grid"></div>
+        <div id="servicePager" class="workspace-pager" aria-label="服务页码"></div>
       </section>
     </section>
 
@@ -81,13 +66,14 @@
           <button id="createGroup" class="soft-button" type="button">＋ 新建分组</button>
         </div>
         <div class="manage-layout">
-          <section class="manage-panel">
-            <div class="group-heading"><h3 id="resourcePoolTitle">网站库</h3><span id="resourcePoolCount" class="group-count"></span></div>
+          <aside class="manage-sidebar" aria-label="书签文件夹">
+            <div class="group-heading"><h3 id="manageGroupsTitle">书签文件夹</h3></div>
+            <nav id="manageFolderNav" class="manage-folder-nav"></nav>
+          </aside>
+          <section class="manage-panel manage-content">
+            <div class="group-heading"><h3 id="resourcePoolTitle">收藏</h3><span id="resourcePoolCount" class="group-count"></span></div>
             <div id="resourcePool" class="resource-grid"></div>
-          </section>
-          <section class="manage-panel">
-            <div class="group-heading"><h3 id="manageGroupsTitle">我的分组</h3></div>
-            <div id="manageGroups" class="favorite-groups manage-mode"></div>
+            <div id="managePager" class="workspace-pager" aria-label="管理页码"></div>
           </section>
         </div>
       </section>

@@ -27,6 +27,7 @@ class CampusBrowserManager {
   constructor({
     BrowserWindow,
     WebContentsView,
+    Menu,
     session,
     dialog,
     safeStorage,
@@ -81,7 +82,7 @@ class CampusBrowserManager {
       throw new TypeError('Campus Browser manager environment is incomplete');
     }
     Object.assign(this, {
-      BrowserWindow, WebContentsView, session, dialog, safeStorage, platform,
+      BrowserWindow, WebContentsView, Menu, session, dialog, safeStorage, platform,
       credentialFile, certificateTrust, parentWindow, toolbarFile, toolbarPreload,
       campusPreload, workspaceFile, workspacePreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
@@ -141,6 +142,7 @@ class CampusBrowserManager {
       getWorkspaceResources: () => this.getWorkspaceResources(),
       getWorkspaceGroups: () => this.getWorkspaceGroups(),
       onOpenResource: (resourceId) => this.onOpenResource(resourceId),
+      showBookmarkMenu: (entries) => this.popupBookmarkMenu(entries),
       onTogglePageFavorite: (candidate) => this.onTogglePageFavorite(candidate),
       workspaceController,
       onRecordPageOpen: (url) => this.onRecordPageOpen(url),
@@ -204,6 +206,15 @@ class CampusBrowserManager {
     const result = await this.open();
     if (result?.ok) this.browser?.focusWorkspace('manage');
     return result;
+  }
+
+  popupBookmarkMenu(entries) {
+    if (!this.Menu?.buildFromTemplate || !Array.isArray(entries) || !entries.length) return false;
+    const item = (entry) => entry.type === 'folder'
+      ? { label: entry.name, submenu: entry.children.map(item) }
+      : { label: entry.name, click: () => Promise.resolve(this.onOpenResource(entry.id)).catch(() => {}) };
+    this.Menu.buildFromTemplate(entries.map(item)).popup({ window: this.browser?.window || undefined });
+    return true;
   }
 
   suspendRoutingPolicy() {

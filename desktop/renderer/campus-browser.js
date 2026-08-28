@@ -54,7 +54,6 @@ const bookmarkBar = document.getElementById('bookmarkBar');
 const bookmarkItems = document.getElementById('bookmarkItems');
 const bookmarkMoreWrap = document.getElementById('bookmarkMoreWrap');
 const bookmarkMore = document.getElementById('bookmarkMore');
-const bookmarkMoreMenu = document.getElementById('bookmarkMoreMenu');
 const manageBookmarks = document.getElementById('manageBookmarks');
 let lastBookmarks = [];
 let bookmarkLayoutFrame = null;
@@ -158,24 +157,6 @@ tabs.addEventListener('click', (event) => {
   if (tab) command('switch-tab', tab.dataset.tabId);
 });
 
-function closeBookmarkMenus() {
-  document.querySelectorAll('.bookmark-folder.open').forEach((folder) => {
-    folder.classList.remove('open');
-    const button = folder.querySelector(':scope > .bookmark-control');
-    const menu = folder.querySelector(':scope > .bookmark-menu');
-    button?.setAttribute('aria-expanded', 'false');
-    if (menu) menu.hidden = true;
-  });
-}
-
-function positionBookmarkMenu(trigger, menu) {
-  const triggerRect = trigger.getBoundingClientRect();
-  menu.hidden = false;
-  const menuRect = menu.getBoundingClientRect();
-  menu.style.left = `${Math.max(8, Math.min(triggerRect.left, innerWidth - menuRect.width - 8))}px`;
-  menu.style.top = `${triggerRect.bottom + 4}px`;
-}
-
 function bookmarkButton(entry) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -185,7 +166,6 @@ function bookmarkButton(entry) {
   const label = document.createElement('span'); label.textContent = entry.name;
   button.appendChild(label);
   button.addEventListener('click', () => {
-    closeBookmarkMenus();
     command('open-resource', entry.id);
   });
   return button;
@@ -195,21 +175,11 @@ function bookmarkFolder(entry) {
   const folder = document.createElement('div'); folder.className = 'bookmark-folder';
   const button = document.createElement('button');
   button.type = 'button'; button.className = 'bookmark-control';
-  button.title = entry.name; button.setAttribute('aria-expanded', 'false');
+  button.title = entry.name;
   button.setAttribute('aria-label', `${t('browser.bookmarkFolder')}：${entry.name}`);
   const label = document.createElement('span'); label.textContent = entry.name; button.appendChild(label);
-  const menu = document.createElement('div'); menu.className = 'bookmark-menu'; menu.hidden = true;
-  menu.replaceChildren(...entry.children.map(bookmarkButton));
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    const opening = menu.hidden;
-    closeBookmarkMenus();
-    if (opening) {
-      folder.classList.add('open'); button.setAttribute('aria-expanded', 'true');
-      positionBookmarkMenu(button, menu);
-    }
-  });
-  folder.append(button, menu);
+  button.addEventListener('click', () => command('open-bookmark-folder', entry.id));
+  folder.appendChild(button);
   return folder;
 }
 
@@ -238,19 +208,6 @@ function normalizedBookmarks(value) {
   return result;
 }
 
-function fillMoreMenu(entries) {
-  const children = [];
-  for (const entry of entries) {
-    if (entry.type === 'bookmark') children.push(bookmarkButton(entry));
-    else {
-      const heading = document.createElement('div'); heading.className = 'bookmark-menu-heading';
-      heading.textContent = entry.name; children.push(heading);
-      children.push(...entry.children.map(bookmarkButton));
-    }
-  }
-  bookmarkMoreMenu.replaceChildren(...children);
-}
-
 function layoutBookmarkOverflow() {
   bookmarkLayoutFrame = null;
   const nodes = [...bookmarkItems.children];
@@ -258,7 +215,7 @@ function layoutBookmarkOverflow() {
   bookmarkMoreWrap.hidden = true;
   const available = bookmarkItems.clientWidth;
   const total = nodes.reduce((sum, node) => sum + node.getBoundingClientRect().width + 2, 0);
-  if (total <= available) { fillMoreMenu([]); return; }
+  if (total <= available) return;
   let used = 0;
   let split = nodes.length;
   const limit = Math.max(40, available - 36);
@@ -268,7 +225,6 @@ function layoutBookmarkOverflow() {
     used += width;
   }
   nodes.slice(split).forEach((node) => { node.hidden = true; });
-  fillMoreMenu(lastBookmarks.slice(split));
   bookmarkMoreWrap.hidden = split >= lastBookmarks.length;
 }
 
@@ -278,7 +234,6 @@ function scheduleBookmarkLayout() {
 }
 
 function renderBookmarks(value) {
-  closeBookmarkMenus();
   lastBookmarks = normalizedBookmarks(value);
   bookmarkItems.replaceChildren(...lastBookmarks.map((entry) => (
     entry.type === 'folder' ? bookmarkFolder(entry) : bookmarkButton(entry)
@@ -286,21 +241,7 @@ function renderBookmarks(value) {
   scheduleBookmarkLayout();
 }
 
-bookmarkMore.addEventListener('click', (event) => {
-  event.stopPropagation();
-  const opening = bookmarkMoreMenu.hidden;
-  closeBookmarkMenus();
-  if (opening) {
-    bookmarkMoreWrap.classList.add('open'); bookmarkMore.setAttribute('aria-expanded', 'true');
-    positionBookmarkMenu(bookmarkMore, bookmarkMoreMenu);
-  }
-});
-document.addEventListener('click', (event) => {
-  if (!event.target.closest('.bookmark-folder')) closeBookmarkMenus();
-});
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeBookmarkMenus();
-});
+bookmarkMore.addEventListener('click', () => command('open-bookmark-menu'));
 new ResizeObserver(scheduleBookmarkLayout).observe(bookmarkBar);
 
 window.campusBrowserUI = {

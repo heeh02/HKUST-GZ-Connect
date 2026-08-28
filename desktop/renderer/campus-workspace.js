@@ -5,7 +5,8 @@ const I18N = Object.freeze({
     title: '校园工作台', auto: '自动选择网络', rules: '网站规则', unverified: '未审核',
     home: '校园服务', manage: '整理收藏', search: '搜索校园服务', clear: '清除',
     favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '全部服务',
-    manageTitle: '整理收藏', resourcePool: '网站库', groups: '我的分组', createGroup: '＋ 新建分组',
+    manageTitle: '整理收藏', resourcePool: '收藏', groups: '书签文件夹', createGroup: '＋ 新建分组',
+    allSites: '网站库', allFavorites: '全部收藏',
     searchResults: '搜索结果', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
     createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
@@ -21,7 +22,8 @@ const I18N = Object.freeze({
     title: 'Campus Workspace', auto: 'Automatic network', rules: 'Site Rules', unverified: 'Unreviewed',
     home: 'Campus Services', manage: 'Organize Favorites', search: 'Search campus services', clear: 'Clear',
     favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'All Services',
-    manageTitle: 'Organize Favorites', resourcePool: 'Service Library', groups: 'My Groups', createGroup: '+ New Group',
+    manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'Bookmark Folders', createGroup: '+ New Group',
+    allSites: 'Site Library', allFavorites: 'All Favorites',
     searchResults: 'Search Results', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
     createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
@@ -57,6 +59,11 @@ let editingGroupId = null;
 let editingResourceId = null;
 let draggedGroupId = null;
 let draggedResourceId = null;
+let selectedManageFolder = 'favorites';
+let selectedServiceView = 'favorites';
+let servicePage = 0;
+let searchPage = 0;
+let managePage = 0;
 
 const $ = (id) => document.getElementById(id);
 const text = () => I18N[state?.locale === 'en' ? 'en' : 'zh'];
@@ -184,6 +191,32 @@ function renderGrid(target, resources, options = {}) {
   target.replaceChildren(...resources.map((resource) => resourceItem(resource, options)));
 }
 
+function pageCapacity() {
+  if (innerWidth >= 1280 && innerHeight >= 700) return 12;
+  if (innerWidth >= 900 && innerHeight >= 580) return 8;
+  return 4;
+}
+
+function paged(items, page) {
+  const size = pageCapacity();
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const current = Math.min(Math.max(0, page), pages - 1);
+  return { current, pages, items: items.slice(current * size, (current + 1) * size) };
+}
+
+function renderPager(target, pages, current, selectPage) {
+  target.hidden = pages <= 1;
+  target.replaceChildren(...Array.from({ length: pages }, (_, index) => {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = `pager-dot${index === current ? ' active' : ''}`;
+    button.textContent = '•'; button.title = `${index + 1} / ${pages}`;
+    button.setAttribute('aria-label', `${index + 1} / ${pages}`);
+    button.setAttribute('aria-current', index === current ? 'page' : 'false');
+    button.addEventListener('click', () => selectPage(index));
+    return button;
+  }));
+}
+
 function groupSection(group, resources, { management = false } = {}) {
   const section = document.createElement('section');
   section.className = 'favorite-group';
@@ -296,67 +329,152 @@ function renderGateways(resources) {
 }
 
 function renderHome() {
-  const projected = model.homeProjection(state.resources);
-  const grouped = groupedFavorites(state.resources);
-  $('favoriteGroups').replaceChildren(...grouped.sections);
-  $('favoritesModule').hidden = grouped.favorites.length === 0;
-  renderGrid($('recentGrid'), projected.recent);
-  $('recentModule').hidden = projected.recent.length === 0;
-  renderGrid($('starterGrid'), projected.starter);
-  $('starterModule').hidden = projected.starter.length === 0;
-  renderCatalog();
-}
-
-function renderCatalog() {
-  const projected = model.catalogProjection(state.resources);
-  $('catalogTitle').textContent = text().catalogTitle;
-  const sections = projected.categories.map((category) => {
-    const section = document.createElement('section');
-    section.className = 'service-category-section';
-    section.id = `service-category-${category.id}`;
-    const heading = document.createElement('div');
-    heading.className = 'service-category-heading';
-    const icon = document.createElement('span');
-    icon.className = 'category-icon';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24'); svg.innerHTML = ICONS[category.id] || ICONS.custom;
-    icon.appendChild(svg);
-    const label = document.createElement('h3'); label.textContent = categoryLabel(category.id);
-    const count = document.createElement('span'); count.className = 'group-count'; count.textContent = String(category.count);
-    heading.append(icon, label, count);
-    const grid = document.createElement('div'); grid.className = 'resource-grid';
-    renderGrid(grid, model.catalogProjection(state.resources, category.id).items);
-    section.append(heading, grid);
-    return section;
-  });
-  $('categorySections').replaceChildren(...sections);
-  $('categoryJumpBar').replaceChildren(...projected.categories.map((category) => {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'category-jump';
-    button.textContent = categoryLabel(category.id);
+  const resources = state.resources.filter(({ category }) => category !== 'gateway');
+  const favorites = resources.filter(({ favorite }) => favorite);
+  const recent = [...resources].filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt))
+    .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
+  const byId = new Map(resources.map((resource) => [resource.id, resource]));
+  const categories = model.catalogProjection(state.resources).categories;
+  const views = [
+    { id: 'favorites', name: text().allFavorites, items: favorites },
+    ...state.groups.map((group) => ({
+      id: group.id, name: group.name,
+      items: group.resourceIds.map((id) => byId.get(id)).filter(Boolean),
+    })),
+    { id: 'recent', name: text().recent, items: recent },
+    { id: 'all', name: text().allSites, items: resources },
+    ...categories.map(({ id }) => ({
+      id, name: categoryLabel(id), items: model.catalogProjection(state.resources, id).items,
+    })),
+  ].filter(({ id, items }) => ['favorites', 'all'].includes(id) || items.length);
+  let selected = views.find(({ id }) => id === selectedServiceView);
+  if (!selected) {
+    selected = views.find(({ id }) => id === 'favorites' && favorites.length) ||
+      views.find(({ id }) => id === 'all');
+    selectedServiceView = selected.id; servicePage = 0;
+  }
+  $('serviceViewTabs').replaceChildren(...views.map((view) => {
+    const button = document.createElement('button'); button.type = 'button';
+    button.className = `service-view-tab${view.id === selected.id ? ' active' : ''}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-selected', String(view.id === selected.id));
+    button.textContent = `${view.name} ${view.items.length}`;
     button.addEventListener('click', () => {
-      document.getElementById(`service-category-${category.id}`)?.scrollIntoView({
-        behavior: 'smooth', block: 'start', inline: 'nearest',
-      });
+      selectedServiceView = view.id; servicePage = 0; renderHome();
     });
     return button;
   }));
+  $('serviceViewTitle').textContent = selected.name;
+  const page = paged(selected.items, servicePage); servicePage = page.current;
+  renderGrid($('serviceViewGrid'), page.items);
+  renderPager($('servicePager'), page.pages, page.current, (index) => {
+    servicePage = index; renderHome();
+  });
 }
 
 function renderManage() {
-  const query = navigation.query;
-  const pool = query
-    ? model.searchResources(state.resources, query)
-    : state.resources.filter(({ category }) => category !== 'gateway');
-  renderGrid($('resourcePool'), pool, { management: true });
+  const resources = state.resources.filter(({ category }) => category !== 'gateway');
+  const favorites = resources.filter(({ favorite }) => favorite);
+  const byId = new Map(favorites.map((resource) => [resource.id, resource]));
+  const assigned = new Set(state.groups.flatMap(({ resourceIds }) => resourceIds));
+  if (!['all', 'favorites', 'ungrouped'].includes(selectedManageFolder) &&
+      !state.groups.some(({ id }) => id === selectedManageFolder)) {
+    selectedManageFolder = 'favorites';
+  }
+  let pool;
+  let title;
+  if (selectedManageFolder === 'all') { pool = resources; title = text().allSites; }
+  else if (selectedManageFolder === 'ungrouped') {
+    pool = favorites.filter(({ id }) => !assigned.has(id)); title = text().ungrouped;
+  } else if (selectedManageFolder === 'favorites') {
+    pool = favorites; title = text().allFavorites;
+  } else {
+    const group = state.groups.find(({ id }) => id === selectedManageFolder);
+    pool = group.resourceIds.map((id) => byId.get(id)).filter(Boolean); title = group.name;
+  }
+  if (navigation.query) pool = model.searchResources(pool, navigation.query);
+  $('resourcePoolTitle').textContent = title;
+  const page = paged(pool, managePage); managePage = page.current;
+  renderGrid($('resourcePool'), page.items, { management: true });
   $('resourcePoolCount').textContent = String(pool.length);
-  const grouped = groupedFavorites(state.resources, { management: true });
-  $('manageGroups').replaceChildren(...grouped.sections);
+  renderPager($('managePager'), page.pages, page.current, (index) => {
+    managePage = index; renderManage();
+  });
+  const folderEntry = ({ id, name, count, group = null, dropGroupId = undefined }) => {
+    const row = document.createElement('div');
+    row.className = `manage-folder${selectedManageFolder === id ? ' active' : ''}`;
+    row.dataset.folderId = id;
+    const select = document.createElement('button'); select.type = 'button'; select.className = 'manage-folder-select';
+    const label = document.createElement('span'); label.textContent = name;
+    const badge = document.createElement('span'); badge.className = 'group-count'; badge.textContent = String(count);
+    select.append(label, badge);
+    select.addEventListener('click', () => {
+      selectedManageFolder = id; managePage = 0; renderManage();
+    });
+    row.appendChild(select);
+    if (group) {
+      const actions = document.createElement('div'); actions.className = 'manage-folder-actions';
+      const move = (offset) => {
+        const ids = state.groups.map(({ id: groupId }) => groupId);
+        const from = ids.indexOf(group.id); const to = from + offset;
+        if (from < 0 || to < 0 || to >= ids.length) return;
+        ids.splice(to, 0, ids.splice(from, 1)[0]); command('reorder-groups', { groupIds: ids });
+      };
+      for (const [labelText, action] of [
+        ['↑', () => move(-1)], ['↓', () => move(1)], [text().edit, () => openGroupDialog(group)],
+      ]) {
+        const button = document.createElement('button'); button.type = 'button';
+        button.className = 'manage-folder-action'; button.textContent = labelText;
+        button.addEventListener('click', action); actions.appendChild(button);
+      }
+      const remove = document.createElement('button'); remove.type = 'button';
+      remove.className = 'manage-folder-action'; remove.textContent = text().remove;
+      remove.addEventListener('click', () => {
+        if (remove.dataset.confirm !== '1') {
+          remove.dataset.confirm = '1'; remove.textContent = text().confirmDelete; return;
+        }
+        command('delete-group', { groupId: group.id });
+      });
+      actions.appendChild(remove);
+      row.appendChild(actions);
+    }
+    if (dropGroupId !== undefined) {
+      row.addEventListener('dragover', (event) => {
+        if (!draggedResourceId) return; event.preventDefault(); row.classList.add('drop-target');
+      });
+      row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+      row.addEventListener('drop', (event) => {
+        event.preventDefault(); row.classList.remove('drop-target');
+        if (!draggedResourceId) return;
+        const target = state.groups.find(({ id: groupId }) => groupId === dropGroupId);
+        command('move-resource', {
+          resourceId: draggedResourceId, groupId: dropGroupId, index: target?.resourceIds.length || 0,
+        });
+        draggedResourceId = null;
+      });
+    }
+    return row;
+  };
+  const folders = [
+    folderEntry({ id: 'favorites', name: text().allFavorites, count: favorites.length }),
+    folderEntry({ id: 'ungrouped', name: text().ungrouped,
+      count: favorites.filter(({ id }) => !assigned.has(id)).length, dropGroupId: null }),
+    ...state.groups.map((group) => folderEntry({
+      id: group.id, name: group.name,
+      count: group.resourceIds.filter((id) => byId.has(id)).length, group, dropGroupId: group.id,
+    })),
+    folderEntry({ id: 'all', name: text().allSites, count: resources.length }),
+  ];
+  $('manageFolderNav').replaceChildren(...folders);
 }
 
 function renderSearch() {
   const results = model.searchResources(state.resources, navigation.query);
-  renderGrid($('searchGrid'), results);
+  const page = paged(results, searchPage); searchPage = page.current;
+  renderGrid($('searchGrid'), page.items);
+  renderPager($('searchPager'), page.pages, page.current, (index) => {
+    searchPage = index; renderSearch();
+  });
   $('searchTitle').textContent = `${text().searchResults} · ${navigation.query}`;
   $('workspaceEmpty').hidden = results.length > 0;
 }
@@ -372,9 +490,6 @@ function syncText() {
   $('manageRules').textContent = strings.rules;
   $('workspaceSearch').placeholder = strings.search;
   $('clearWorkspaceSearch').textContent = strings.clear;
-  $('favoritesTitle').textContent = strings.favorites;
-  $('recentTitle').textContent = strings.recent;
-  $('starterTitle').textContent = strings.starter;
   $('manageTitle').textContent = strings.manageTitle;
   $('resourcePoolTitle').textContent = strings.resourcePool;
   $('manageGroupsTitle').textContent = strings.groups;
@@ -432,10 +547,12 @@ $('openManage').addEventListener('click', () => {
   navigation = model.normalizeNavigation({ screen: 'manage' }); render();
 });
 $('workspaceSearch').addEventListener('input', (event) => {
+  searchPage = 0; managePage = 0;
   navigation = model.normalizeNavigation({ ...navigation, query: event.target.value }); render();
 });
 function clearSearch() {
   $('workspaceSearch').value = '';
+  searchPage = 0; managePage = 0;
   navigation = model.normalizeNavigation({ ...navigation, query: '' }); render();
 }
 $('clearWorkspaceSearch').addEventListener('click', clearSearch);

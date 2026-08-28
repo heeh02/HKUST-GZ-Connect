@@ -25,6 +25,13 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.deepEqual(normalizeToolbarCommand('manage-bookmarks', 'ignored'), {
     command: 'manage-bookmarks', value: '',
   });
+  assert.deepEqual(normalizeToolbarCommand('open-bookmark-menu', 'ignored'), {
+    command: 'open-bookmark-menu', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('open-bookmark-folder', 'group_abcdefghijkl'), {
+    command: 'open-bookmark-folder', value: 'group_abcdefghijkl',
+  });
+  assert.equal(normalizeToolbarCommand('open-bookmark-folder', '../group'), null);
   assert.deepEqual(normalizeToolbarCommand('open-resource', 'canvas'), {
     command: 'open-resource', value: 'canvas',
   });

@@ -81,6 +81,7 @@ test('toolbar favorite derives current-page authority in Main and refreshes Work
 test('toolbar bookmark bar exposes only IDs names and user folders and opens through Main', async () => {
   const opened = [];
   const focused = [];
+  const menus = [];
   const resources = [
     { id: 'portal', name: 'Official Portal', description: '', url: 'https://portal.example.edu/',
       route: ROUTE_CAMPUS, category: 'gateway', favorite: false, lastOpenedAt: null },
@@ -104,6 +105,7 @@ test('toolbar bookmark bar exposes only IDs names and user folders and opens thr
       id: 'group_abcdefghijkl', name: '学习', resourceIds: ['canvas'],
     }],
     onOpenResource: async (resourceId) => { opened.push(resourceId); return { ok: true }; },
+    showBookmarkMenu: (entries) => menus.push(entries),
     workspaceController,
   });
   assert.deepEqual(browser.bookmarkBarState(), [
@@ -116,6 +118,13 @@ test('toolbar bookmark bar exposes only IDs names and user folders and opens thr
   assert.equal(browser.handleToolbarCommand({ command: 'open-resource', value: 'canvas' }), true);
   await nextImmediate();
   assert.deepEqual(opened, ['canvas']);
+  assert.equal(browser.handleToolbarCommand({
+    command: 'open-bookmark-folder', value: 'group_abcdefghijkl',
+  }), true);
+  assert.deepEqual(menus.at(-1), [{ id: 'canvas', name: 'Canvas' }]);
+  assert.equal(browser.handleToolbarCommand({ command: 'open-bookmark-menu', value: '' }), true);
+  assert.equal(menus.at(-1).length, 3);
+  assert.equal(JSON.stringify(menus).includes('https://'), false);
   await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
   assert.equal(browser.handleToolbarCommand({ command: 'manage-bookmarks', value: '' }), true);
   await nextImmediate();

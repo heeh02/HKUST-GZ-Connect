@@ -36,20 +36,17 @@ const resources = Object.freeze([
 
 async function inspect(window) {
   return window.webContents.executeJavaScript(`(() => {
-    const groupGrid = document.querySelector('#favoriteGroups .resource-grid');
-    const groupColumns = groupGrid
-      ? getComputedStyle(groupGrid).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
-    const groupContainer = document.getElementById('favoriteGroups');
-    const groupModules = getComputedStyle(groupContainer).gridTemplateColumns
-      .split(' ').filter(Boolean).length;
+    const grid = document.getElementById('serviceViewGrid');
     return {
       width: innerWidth,
       noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
+      noVerticalPageScroll: document.documentElement.scrollHeight <= innerHeight,
       navigation: [...document.querySelectorAll('[data-workspace-screen]')]
         .map((button) => button.textContent.trim()),
       gateways: document.querySelectorAll('.gateway-button').length,
-      groupColumns,
-      groupModules,
+      gridColumns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
+      visibleResources: grid.querySelectorAll('.resource-item').length,
+      serviceTabs: document.querySelectorAll('.service-view-tab').length,
       hasSearch: !!document.getElementById('workspaceSearch'),
     };
   })()`);
@@ -88,45 +85,45 @@ async function main() {
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
 
-  for (const [label, width, height, minimumFavoriteColumns, minimumCategoryColumns] of [
-    ['compact', 660, 560, 2, 1],
-    ['standard', 1040, 740, 3, 2],
-    ['wide', 1400, 900, 4, 3],
+  for (const [label, width, height, expectedColumns, maximumItems] of [
+    ['compact', 660, 560, 2, 4],
+    ['standard', 1040, 740, 3, 8],
+    ['wide', 1400, 900, 4, 12],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 80));
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
+    assert.equal(home.noVerticalPageScroll, true, `${label} requires whole-page scrolling`);
     assert.deepEqual(home.navigation, ['校园服务', '整理收藏']);
     assert.equal(home.gateways, 3);
     assert.equal(home.hasSearch, true);
-    assert.ok(home.groupColumns * home.groupModules >= minimumFavoriteColumns,
-      `${label} favorites did not use available width`);
+    assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
+    assert.ok(home.visibleResources > 0 && home.visibleResources <= maximumItems,
+      `${label} page capacity is not bounded`);
+    assert.ok(home.serviceTabs >= 10, `${label} service switch bar is incomplete`);
     await capture(window, `${label}-home`);
-
-    const categoryColumns = await window.webContents.executeJavaScript(
-      `Number.parseInt(getComputedStyle(document.getElementById('categorySections')).columnCount, 10)`,
-    );
-    assert.ok(categoryColumns >= minimumCategoryColumns, `${label} catalogue is too sparse`);
     await capture(window, `${label}-services`);
   }
 
   const courses = await window.webContents.executeJavaScript(`(() => {
-    const section = document.getElementById('service-category-courses');
-    section.querySelector('[data-resource-id="sis"] .resource-open').click();
+    [...document.querySelectorAll('.service-view-tab')]
+      .find((button) => button.textContent.includes('课程与考试')).click();
+    const grid = document.getElementById('serviceViewGrid');
+    grid.querySelector('[data-resource-id="sis"] .resource-open').click();
     return {
-      ids: [...section.querySelectorAll('.resource-item')]
+      ids: [...grid.querySelectorAll('.resource-item')]
         .map((item) => item.dataset.resourceId),
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
-      categoryJumpCount: document.querySelectorAll('.category-jump').length,
+      serviceTabCount: document.querySelectorAll('.service-view-tab').length,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
   assert.equal(courses.ids.includes('new-student'), false);
   assert.equal(courses.serviceScreenVisible, true);
-  assert.ok(courses.categoryJumpCount >= 10);
+  assert.ok(courses.serviceTabCount >= 10);
 
   const leaveSearch = await window.webContents.executeJavaScript(`(() => {
     const search = document.getElementById('workspaceSearch');
@@ -141,6 +138,7 @@ async function main() {
 
   await window.webContents.executeJavaScript(`(() => {
     document.querySelector('[data-workspace-screen="manage"]').click();
+    document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
     document.querySelector('#resourcePool .resource-star').click();
     document.querySelector('.gateway-button').click();
     document.getElementById('manageRules').click();
@@ -152,17 +150,21 @@ async function main() {
     select.dispatchEvent(new Event('change', { bubbles: true }));
     const dragData = new DataTransfer();
     const discovered = document.querySelector('#resourcePool [data-resource-id="class-schedule"]');
-    const targetGroup = document.querySelector('#manageGroups [data-group-id="group_abcdefghijkl"]');
+    const targetGroup = document.querySelector('#manageFolderNav [data-folder-id="group_abcdefghijkl"]');
     discovered.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dragData }));
     targetGroup.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     targetGroup.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dragData }));
     discovered.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dragData }));
+    const search = document.getElementById('workspaceSearch');
+    search.value = 'HPC';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
     const custom = document.querySelector('#resourcePool [data-resource-id="hpc"]');
     custom.querySelector('.resource-rename').click();
     document.getElementById('groupName').value = '科研服务器';
     document.getElementById('saveGroup').click();
     custom.querySelector('.resource-delete').click();
     custom.querySelector('.resource-delete').click();
+    document.getElementById('clearWorkspaceSearch').click();
   })()`);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);

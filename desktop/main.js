@@ -1243,8 +1243,7 @@ async function ensureCampusReady() {
   return waitForConnected(result.intent);
 }
 campusBrowserManager = new CampusBrowserManager({
-  BrowserWindow,
-  WebContentsView,
+  BrowserWindow, WebContentsView, Menu,
   session,
   dialog,
   safeStorage,

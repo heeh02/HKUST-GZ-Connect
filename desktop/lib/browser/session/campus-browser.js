@@ -214,6 +214,7 @@ class CampusBrowser {
     getWorkspaceResources = () => [],
     getWorkspaceGroups = () => [],
     onOpenResource = null,
+    showBookmarkMenu = null,
     onTogglePageFavorite = null,
     onRecordPageOpen = null,
     workspaceController = null,
@@ -263,6 +264,7 @@ class CampusBrowser {
     this.getWorkspaceResources = getWorkspaceResources;
     this.getWorkspaceGroups = getWorkspaceGroups;
     this.onOpenResource = typeof onOpenResource === 'function' ? onOpenResource : null;
+    this.showBookmarkMenu = typeof showBookmarkMenu === 'function' ? showBookmarkMenu : null;
     this.onTogglePageFavorite = typeof onTogglePageFavorite === 'function'
       ? onTogglePageFavorite : null;
     this.onRecordPageOpen = typeof onRecordPageOpen === 'function' ? onRecordPageOpen : null;
@@ -725,6 +727,13 @@ class CampusBrowser {
     if (command === 'new-tab') this.focusWorkspaceSearch();
     else if (command === 'home') this.focusWorkspaceSearch();
     else if (command === 'manage-bookmarks') this.focusWorkspace('manage');
+    else if (command === 'open-bookmark-menu' && this.showBookmarkMenu) {
+      this.showBookmarkMenu(this.bookmarkBarState());
+    }
+    else if (command === 'open-bookmark-folder' && this.showBookmarkMenu) {
+      const folder = this.bookmarkBarState().find(({ type, id }) => type === 'folder' && id === value);
+      if (folder) this.showBookmarkMenu(folder.children);
+    }
     else if (command === 'open-resource' && this.onOpenResource) {
       Promise.resolve(this.onOpenResource(value)).then(() => this.updateToolbar()).catch((error) => {
         this.onError?.(error?.message || this.t('browser.favoriteFailed'));

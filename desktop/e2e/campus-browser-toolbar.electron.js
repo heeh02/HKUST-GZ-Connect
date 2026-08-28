@@ -75,7 +75,7 @@ async function assertDragRegions(browser) {
   }
 }
 
-async function assertBookmarkBar(browser, openedResources) {
+async function assertBookmarkBar(browser, openedResources, bookmarkMenus) {
   await waitFor(browser.window,
     "document.querySelectorAll('#bookmarkItems > .bookmark-entry').length === 2 && document.querySelectorAll('#bookmarkItems > .bookmark-folder').length === 1",
     'Chrome-style bookmark bar');
@@ -98,9 +98,9 @@ async function assertBookmarkBar(browser, openedResources) {
   await browser.window.webContents.executeJavaScript(`(() => {
     const folder = document.querySelector('#bookmarkItems > .bookmark-folder');
     folder.querySelector(':scope > .bookmark-control').click();
-    folder.querySelector('[data-bookmark-id="grouped"]').click();
   })()`);
-  await waitForMain(() => openedResources.includes('grouped'), 'folder bookmark click to reach Main');
+  await waitForMain(() => bookmarkMenus.length > 0, 'folder bookmark native menu');
+  assert.deepEqual(bookmarkMenus.at(-1), [{ id: 'grouped', name: 'Grouped Site' }]);
 }
 
 async function assertRouteSwitch(browser) {
@@ -177,7 +177,7 @@ async function assertFindBar(browser) {
 async function assertWorkspaceHome(browser) {
   const contents = browser.activeTab().view.webContents;
   await waitForPage(contents,
-    "document.querySelectorAll('#favoriteGroups .resource-item').length === 2",
+    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 2",
     'local Workspace Home resources');
   const state = await contents.executeJavaScript(`(() => ({
     title: document.getElementById('workspaceSchool')?.textContent,
@@ -185,10 +185,9 @@ async function assertWorkspaceHome(browser) {
     warningVisible: !document.getElementById('workspaceTrust')?.hidden,
     navigation: [...document.querySelectorAll('[data-workspace-screen]')]
       .map((value) => value.textContent),
-    favoriteNames: [...document.querySelectorAll('#favoriteGroups .resource-name')]
+    favoriteNames: [...document.querySelectorAll('#serviceViewGrid .resource-name')]
       .map((value) => value.textContent),
-    recentNames: [...document.querySelectorAll('#recentGrid .resource-name')]
-      .map((value) => value.textContent),
+    serviceTabs: [...document.querySelectorAll('.service-view-tab')].map((value) => value.textContent),
     gateways: [...document.querySelectorAll('.gateway-button')].map((value) => value.textContent),
     leakedUrls: document.body.textContent.includes('example.invalid'),
   }))()`);
@@ -196,8 +195,8 @@ async function assertWorkspaceHome(browser) {
   assert.equal(state.warningVisible, true);
   assert.match(state.warning, /未审核/u);
   assert.deepEqual(state.navigation, ['校园服务', '整理收藏']);
-  assert.deepEqual(state.favoriteNames, ['Grouped Site', 'Favorite']);
-  assert.deepEqual(state.recentNames, ['Recent']);
+  assert.deepEqual(state.favoriteNames, ['Favorite', 'Grouped Site']);
+  assert.equal(state.serviceTabs.some((value) => value.includes('最近使用')), true);
   assert.deepEqual(state.gateways, ['Service']);
   assert.equal(state.leakedUrls, false, 'Workspace renderer received URL authority');
   assert.match(contents.getURL(), /\/renderer\/campus-workspace\.html$/u,
@@ -226,6 +225,7 @@ async function main() {
   await app.whenReady();
   const errors = [];
   const openedResources = [];
+  const bookmarkMenus = [];
   const workspaceResources = [
     { id: 'favorite', name: 'Favorite', description: 'Pinned',
       url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
@@ -281,6 +281,7 @@ async function main() {
     }],
     workspaceController,
     onOpenResource: async (resourceId) => { openedResources.push(resourceId); return { ok: true }; },
+    showBookmarkMenu: (entries) => bookmarkMenus.push(entries),
     partition: CAMPUS_PARTITION,
     onError: (message) => errors.push(message),
   });
@@ -290,7 +291,7 @@ async function main() {
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
-    await assertBookmarkBar(browser, openedResources);
+    await assertBookmarkBar(browser, openedResources, bookmarkMenus);
     await browser.open(DEAD_URL, 11080, 'campus');
 
     await assertDragRegions(browser);
