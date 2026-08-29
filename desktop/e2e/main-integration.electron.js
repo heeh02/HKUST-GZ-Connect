@@ -154,7 +154,7 @@ async function run() {
   const portalOpen = await invoke(control, 'window.api.openCampusBrowser({})');
   assert.equal(portalOpen.ok, false,
     'the reviewed official portal must require campus credentials in this credential-free fixture');
-  assert.match(portalOpen.error, /账号|密码|credential/iu);
+  assert.match(portalOpen.error, /账号|密码|account|password|credential/iu);
   const workspaceOpen = await invoke(control, 'window.api.openBookmarkManager()');
   assert.deepEqual(workspaceOpen, { ok: true, url: 'about:blank', route: 'direct' });
   const workspace = await waitFor(() => webContents.getAllWebContents().find((contents) => (
