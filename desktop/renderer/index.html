@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="styles/connection-strip.css" />
+  <link rel="stylesheet" href="styles/product-shell.css" />
 </head>
 <body>
   <div class="titlebar"><span id="titlebarText">HKUST(GZ) Connect</span></div>
@@ -71,15 +72,15 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 11.5a4 4 0 0 1 6 0M11 13.6a1.6 1.6 0 0 1 2 0"/></svg>
           <span class="nav-label" data-i18n="nav.connect">连接</span>
         </button>
-        <button class="nav" data-page="tower" title="控制塔" data-i18n-attr="title:nav.tower">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="2.2"/><line x1="3" y1="8" x2="5.8" y2="8"/><line x1="10.2" y1="8" x2="21" y2="8"/><circle cx="16" cy="16" r="2.2"/><line x1="3" y1="16" x2="13.8" y2="16"/><line x1="18.2" y1="16" x2="21" y2="16"/></svg>
-          <span class="nav-label" data-i18n="nav.tower">控制塔</span>
+        <button class="nav" data-page="browser" title="校园浏览器" data-i18n-attr="title:nav.browser">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 8h18M7 6h.01M10 6h.01"/><path d="M9 12h6v7l-3-2-3 2z"/></svg>
+          <span class="nav-label" data-i18n="nav.browser">校园浏览器</span>
         </button>
       </div>
       <div class="side-group bottom">
-        <button class="nav" data-page="notif" title="通知 / 日志" data-i18n-attr="title:nav.notifTitle">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-          <span class="nav-label" data-i18n="nav.notif">通知</span>
+        <button class="nav" data-page="tower" title="控制塔" data-i18n-attr="title:nav.tower">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="2.2"/><line x1="3" y1="8" x2="5.8" y2="8"/><line x1="10.2" y1="8" x2="21" y2="8"/><circle cx="16" cy="16" r="2.2"/><line x1="3" y1="16" x2="13.8" y2="16"/><line x1="18.2" y1="16" x2="21" y2="16"/></svg>
+          <span class="nav-label" data-i18n="nav.tower">控制塔</span>
         </button>
         <button class="nav" data-page="settings" title="设置" data-i18n-attr="title:nav.settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.3a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 2.8 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 8 2.6h.1A1.6 1.6 0 0 0 9 1a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 16 2.7a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.6 1H23a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
@@ -91,123 +92,123 @@
     <main class="content">
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
-        <div class="hero-card" id="connTop">
-          <div class="conn-brand">
-            <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
-            <span id="profileTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
+        <div class="connection-layout">
+          <div class="connection-primary">
+            <div class="hero-card" id="connTop">
+              <div class="conn-brand">
+                <div id="connectSchoolName" class="conn-loc" data-i18n="connect.location">香港科技大学(广州)</div>
+                <span id="profileTrustBadge" class="profile-trust-badge" hidden data-i18n="school.unverified">未审核</span>
+              </div>
+              <div class="connection-meta">
+                <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
+                <div class="conn-ip">IP <span id="connIp">—</span></div>
+              </div>
+              <button class="connection-action" id="power" type="button" role="switch"
+                      aria-checked="false" aria-label="连接校园网络"
+                      data-i18n-attr="aria-label:connect.powerLabel"><span id="powerLabel">连接</span></button>
+              <p class="conn-err" id="connErr"></p>
+            </div>
+            <div class="connection-metrics" id="statGrid" hidden>
+              <article class="connection-metric">
+                <span class="metric-label" data-i18n="stats.campusIp">校园隧道 IP</span>
+                <span class="metric-value ip" id="stIp">—</span>
+                <button id="copyTunnelIp" class="metric-copy" type="button" data-i18n="connect.copyIp">复制</button>
+              </article>
+              <article class="connection-metric latency-metric">
+                <span class="metric-label" data-i18n="stats.latency">当前延迟</span>
+                <span class="metric-value" id="stPing">—</span>
+                <svg id="latencySparkline" class="latency-sparkline" viewBox="0 0 120 30" role="img" aria-label="最近延迟趋势"><path d="M2 24 L118 24"/></svg>
+              </article>
+            </div>
           </div>
-          <div class="connection-meta">
-            <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
-            <div class="conn-ip">IP <span id="connIp">—</span></div>
-          </div>
-          <button class="connection-action" id="power" type="button" role="switch"
-                  aria-checked="false" aria-label="连接校园网络"
-                  data-i18n-attr="aria-label:connect.powerLabel"><span id="powerLabel">连接</span></button>
-          <p class="conn-err" id="connErr"></p>
-        </div>
-        <div class="conn-body">
-          <div class="quick-card" id="resourceShelf" data-resource-layout="compact">
-            <div class="quick-head">
+          <section class="network-topology" aria-labelledby="networkTopologyTitle">
+            <div class="topology-heading">
               <div>
-                <div class="quick-title" data-i18n="resources.homeTitle">校园书签</div>
+                <h2 id="networkTopologyTitle" data-i18n="connect.networkPath">当前网络路径</h2>
+                <p data-i18n="connect.networkPathHint">只展示应用实际观测到的连接关系。</p>
               </div>
-              <button id="openCampusWorkspace" class="workspace-launch" type="button"
-                      data-i18n="resources.openWorkspace">打开校园门户 ↗</button>
+              <span id="topologyStatus" class="topology-overall unknown" data-i18n="connect.statusUnknown">状态未知</span>
             </div>
-            <div class="resource-toolbar">
-              <span class="resource-toolbar-title" data-i18n="resources.title">收藏与文件夹</span>
-              <span class="resource-toolbar-actions">
-                <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理</button>
-                <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
-              </span>
+            <div class="topology-flow">
+              <article class="topology-node" data-topology-node="local">
+                <span class="topology-node-icon" aria-hidden="true">⌁</span>
+                <span><strong data-i18n="connect.localNetwork">本机网络</strong><small id="localNetworkSummary" data-i18n="connect.detecting">正在检测…</small></span>
+              </article>
+              <span class="topology-arrow" aria-hidden="true">→</span>
+              <article class="topology-node" data-topology-node="browser">
+                <span class="topology-node-icon" aria-hidden="true">▣</span>
+                <span><strong data-i18n="nav.browser">校园浏览器</strong><small data-i18n="connect.automaticRouting">自动选择网络</small></span>
+              </article>
+              <span class="topology-arrow" aria-hidden="true">→</span>
+              <article class="topology-node" data-topology-node="tunnel">
+                <span class="topology-node-icon" aria-hidden="true">◇</span>
+                <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
+              </article>
             </div>
-            <div class="resource-library-controls" hidden aria-hidden="true">
-              <input id="resourceSearch" class="resource-search" type="search" maxlength="80" tabindex="-1"
-                     placeholder="搜索网站" data-i18n-attr="placeholder:resources.searchPlaceholder"
-                     aria-label="搜索校园网站" />
-              <select id="resourceView" class="resource-view-select" aria-label="网站分类" hidden
-                      aria-hidden="true" tabindex="-1"
-                      data-i18n-attr="aria-label:resources.viewLabel">
-                <option value="all" data-i18n="resources.viewAll">全部</option>
-                <option value="favorites" data-i18n="resources.viewFavorites">已收藏</option>
-                <option value="recent" data-i18n="resources.viewRecent">最近打开</option>
-                <option value="newcomer" data-i18n="resources.categoryNewcomer">新生入学</option>
-                <option value="courses" data-i18n="resources.categoryCourses">课程与考试</option>
-                <option value="research" data-i18n="resources.categoryResearch">科研与实验</option>
-                <option value="labs" data-i18n="resources.categoryLabs">实验与仪器</option>
-                <option value="student-finance" data-i18n="resources.categoryStudentFinance">财务缴费</option>
-                <option value="expenses" data-i18n="resources.categoryExpenses">报销与采购</option>
-                <option value="career" data-i18n="resources.categoryCareer">实习与发展</option>
-                <option value="campus-life" data-i18n="resources.categoryCampusLife">校园生活</option>
-                <option value="documents" data-i18n="resources.categoryDocuments">证明、毕业与离校</option>
-                <option value="tools" data-i18n="resources.categoryTools">通用工具</option>
-                <option value="staff" data-i18n="resources.categoryStaff">教职工工具</option>
-                <option value="custom" data-i18n="resources.categoryCustom">自定义</option>
-              </select>
-              <div id="resourceViewChips" class="resource-view-chips" role="group" aria-label="网站分类" hidden
-                   data-i18n-attr="aria-label:resources.viewLabel">
-                <button type="button" data-resource-view="all" data-i18n="resources.viewAll">全部</button>
-                <button type="button" data-resource-view="favorites" data-i18n="resources.viewFavorites">已收藏</button>
-                <button type="button" data-resource-view="recent" data-i18n="resources.viewRecent">最近打开</button>
-                <button type="button" data-resource-view="newcomer" data-i18n="resources.categoryNewcomer">新生入学</button>
-                <button type="button" data-resource-view="courses" data-i18n="resources.categoryCourses">课程与考试</button>
-                <button type="button" data-resource-view="research" data-i18n="resources.categoryResearch">科研与实验</button>
-                <button type="button" data-resource-view="labs" data-i18n="resources.categoryLabs">实验与仪器</button>
-                <button type="button" data-resource-view="student-finance" data-i18n="resources.categoryStudentFinance">财务缴费</button>
-                <button type="button" data-resource-view="expenses" data-i18n="resources.categoryExpenses">报销与采购</button>
-                <button type="button" data-resource-view="career" data-i18n="resources.categoryCareer">实习与发展</button>
-                <button type="button" data-resource-view="campus-life" data-i18n="resources.categoryCampusLife">校园生活</button>
-                <button type="button" data-resource-view="documents" data-i18n="resources.categoryDocuments">证明、毕业与离校</button>
-                <button type="button" data-resource-view="tools" data-i18n="resources.categoryTools">通用工具</button>
-                <button type="button" data-resource-view="staff" data-i18n="resources.categoryStaff">教职工工具</button>
-                <button type="button" data-resource-view="custom" data-i18n="resources.categoryCustom">自定义</button>
-              </div>
+            <div class="topology-branches">
+              <div><span class="branch-dot campus"></span><span data-i18n="connect.campusTraffic">校园网站：按规则进入校园隧道</span></div>
+              <div><span class="branch-dot direct"></span><span data-i18n="connect.generalTraffic">其他网站：保持原网络路径</span></div>
+              <div id="proxyObservation" class="proxy-observation"><span class="branch-dot unknown"></span><span data-i18n="connect.proxyUnknown">外部代理：未观测到使用本地隧道的程序</span></div>
             </div>
-            <div id="campusResources" class="resource-sections" aria-label="常用校园服务" data-i18n-attr="aria-label:resources.gridLabel"></div>
-            <details class="custom-url-details" hidden aria-hidden="true">
-              <summary data-i18n="resources.openOther">打开其他网址</summary>
-              <div class="custom-url-body">
-                <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false"
-                       placeholder="粘贴网址" data-i18n-attr="placeholder:quick.urlPlaceholder" />
-                <div class="quick-actions">
-                  <button id="quickCampus" class="primary quick-action">打开网址</button>
-                  <button id="quickAddCampus" class="quick-add-action" type="button" data-i18n="quick.addOpen">添加到常用并打开</button>
-                </div>
-                <p id="quickErr" class="quick-error"></p>
-                <p id="quickAddErr" class="quick-error"></p>
-                <p id="resourceSaved" class="quick-saved" aria-live="polite"></p>
-              </div>
-            </details>
+          </section>
+        </div>
+        <details class="connection-details">
+          <summary data-i18n="section.details">更多连接信息</summary>
+          <div class="connection-detail-grid">
+            <div><span data-i18n="stats.duration">连接时长</span><strong id="stDur">0:00</strong></div>
+            <div><span data-i18n="stats.connections">活动连接</span><strong id="stConn">0</strong></div>
+            <div><span data-i18n="stats.dnsMode">域名解析</span><strong id="stDns">—</strong></div>
+            <div><span data-i18n="gateway.label">校园网关</span><strong id="gwName">remote.hkust-gz.edu.cn</strong><small id="gatewaySchoolName" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</small></div>
           </div>
-          <div class="collapsible-panel" data-collapsible="stats" hidden>
-            <div class="stat-grid" id="statGrid" hidden>
-              <div class="stat"><div class="k" data-i18n="stats.duration">时长</div><div class="v" id="stDur">0:00</div></div>
-              <div class="stat"><div class="k" data-i18n="stats.latency">网关延迟</div><div class="v" id="stPing">—</div></div>
-              <div class="stat"><div class="k" data-i18n="stats.connections">活动连接</div><div class="v" id="stConn">0</div></div>
-              <div class="stat"><div class="k" data-i18n="stats.campusIp">校内 IP</div><div class="v ip" id="stIp">—</div></div>
-              <div class="stat dns"><div class="k" data-i18n="stats.dnsMode">域名解析</div><div class="v dns" id="stDns">—</div></div>
-            </div>
-            <div class="card apps-card" id="appsCard" hidden>
-              <div class="card-title" data-i18n="stats.appsTitle">正在使用隧道的程序</div>
-              <div id="appList" class="app-list"></div>
-            </div>
+          <div class="apps-card" id="appsCard" hidden>
+            <div class="card-title" data-i18n="stats.appsTitle">观测到正在使用隧道的程序</div>
+            <div id="appList" class="app-list"></div>
           </div>
-          <div class="section-toggle-row">
-            <span class="section-toggle-label" data-i18n="section.details">连接详情</span>
-            <button class="mini" type="button" data-toggle-section="stats">展开</button>
+        </details>
+      </section>
+
+      <!-- PERSONAL CAMPUS BROWSER -->
+      <section class="page" data-page="browser" hidden>
+        <div class="browser-page-head">
+          <div>
+            <h2 class="page-h" data-i18n="browser.title">校园浏览器</h2>
+            <p class="page-sub" data-i18n="browser.subtitle">按自己的用途整理网站，一次点击即可打开。</p>
           </div>
-          <div class="collapsible-panel" data-collapsible="gateway" hidden>
-            <div class="loc-card">
-              <div class="loc-card-label" data-i18n="gateway.label">校园网关</div>
-              <div class="loc-card-main">
-                <span class="loc-flag">🏫</span>
-                <div class="loc-card-text">
-                  <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
-                  <div id="gatewaySchoolName" class="loc-card-sub" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</div>
-                </div>
-              </div>
+          <div class="browser-page-actions">
+            <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开浏览器</button>
+            <button id="addCategory" class="mini browser-add-category" type="button" aria-label="新建分类" data-i18n-attr="aria-label:browser.addCategory">＋</button>
+            <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理</button>
+            <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
+          </div>
+        </div>
+        <div class="browser-search-row">
+          <span class="browser-search-icon" aria-hidden="true">⌕</span>
+          <input id="resourceSearch" class="resource-search" type="search" maxlength="80"
+                 placeholder="搜索网站或分类" aria-label="搜索网站或分类"
+                 data-i18n-attr="placeholder:browser.search; aria-label:browser.search" />
+          <kbd>⌘K</kbd>
+        </div>
+        <div class="quick-card category-workspace" id="resourceShelf" data-resource-layout="compact">
+          <div class="category-workspace-heading">
+            <div><span class="category-kicker" data-i18n="browser.myCategories">我的分类</span><h3 data-i18n="browser.categoryHint">收藏与网站文件夹</h3></div>
+            <span id="categoryLayoutSummary" class="category-layout-summary"></span>
+          </div>
+          <div class="resource-library-controls" hidden aria-hidden="true">
+            <select id="resourceView" class="resource-view-select" aria-label="网站分类" hidden aria-hidden="true" tabindex="-1">
+              <option value="all">全部</option><option value="favorites">已收藏</option><option value="recent">最近打开</option>
+            </select>
+            <div id="resourceViewChips" class="resource-view-chips" hidden aria-hidden="true"></div>
+          </div>
+          <div id="campusResources" class="category-stack-grid" aria-label="我的网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
+          <details class="custom-url-details" hidden aria-hidden="true">
+            <summary data-i18n="resources.openOther">打开其他网址</summary>
+            <div class="custom-url-body">
+              <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false" />
+              <button id="quickCampus" class="primary quick-action">打开网址</button>
+              <button id="quickAddCampus" class="quick-add-action" type="button">添加并打开</button>
+              <p id="quickErr" class="quick-error"></p><p id="quickAddErr" class="quick-error"></p><p id="resourceSaved" class="quick-saved"></p>
             </div>
-          </div>
+          </details>
         </div>
       </section>
 
@@ -221,8 +222,17 @@
           <span class="page-heading-chip" data-i18n="tower.advancedBadge">高级</span>
         </div>
 
+        <nav class="tower-section-nav" aria-label="控制塔模块" data-i18n-attr="aria-label:tower.sections">
+          <button type="button" data-tower-target="towerPortSection" data-i18n="tower.connectionPort">连接与端口</button>
+          <button type="button" data-tower-target="towerPolicySection" data-i18n="tower.connectionPolicy">连接策略</button>
+          <button type="button" data-tower-target="towerCapabilitySection" data-i18n="capability.title">接入能力</button>
+          <button type="button" data-tower-target="towerRoutingSection" data-i18n="routing.title">网站规则</button>
+          <button type="button" data-tower-target="towerToolsSection" data-i18n="integration.title">外部工具</button>
+          <button type="button" data-tower-target="towerQuickSection" data-i18n="integration.quickTools">快速工具</button>
+        </nav>
+
         <div class="tower-grid">
-        <div class="card tower-card tower-network-card">
+        <div id="towerPortSection" class="card tower-card tower-network-card">
           <div class="card-heading">
             <span class="card-heading-icon" aria-hidden="true">⌁</span>
             <div>
@@ -255,14 +265,10 @@
               </div>
             </div>
           </div>
-          <div id="capabilitySummary" class="capability-summary" hidden>
-            <div class="capability-heading">
-              <strong data-i18n="capability.title">当前接入能力</strong>
-              <span data-i18n="capability.source">由当前学校与引擎共同确认</span>
-            </div>
-            <div id="capabilityList" class="capability-list"></div>
-            <p class="hint" data-i18n="capability.hint">只显示当前会话实际确认的能力；未启用不代表应用会尝试降级或绕过认证。</p>
-          </div>
+        </div>
+
+        <div id="towerPolicySection" class="card tower-card tower-policy-card">
+          <div class="card-heading"><span class="card-heading-icon" aria-hidden="true">↻</span><div><div class="card-title" data-i18n="tower.connectionPolicy">连接策略</div><p class="card-sub" data-i18n="tower.connectionPolicySub">控制启动和断线后的恢复行为。</p></div></div>
           <label class="sw"><span data-i18n="tower.autoReconnect">自动重连</span><input type="checkbox" id="autoReconnect" /></label>
           <div class="frow"><span class="fk" data-i18n="tower.maxAttempts">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
           <label class="sw"><span data-i18n="tower.startAtLogin">开机自启</span><input type="checkbox" id="startAtLogin" /></label>
@@ -270,7 +276,15 @@
           <p class="hint" data-i18n="tower.portHint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
         </div>
 
-        <div class="card tower-card tower-routing-card">
+        <div id="towerCapabilitySection" class="card tower-card tower-capability-card">
+          <div class="card-heading"><span class="card-heading-icon" aria-hidden="true">◇</span><div><div class="card-title" data-i18n="capability.title">当前接入能力</div><p class="card-sub" data-i18n="capability.source">由当前学校与引擎共同确认</p></div></div>
+          <div id="capabilitySummary" class="capability-summary" hidden>
+            <div id="capabilityList" class="capability-list"></div>
+            <p class="hint" data-i18n="capability.hint">只显示当前会话实际确认的能力；未启用不代表应用会尝试降级或绕过认证。</p>
+          </div>
+        </div>
+
+        <div id="towerRoutingSection" class="card tower-card tower-routing-card">
           <div class="card-heading">
             <span class="card-heading-icon" aria-hidden="true">↗</span>
             <div>
@@ -287,7 +301,7 @@
           </div>
         </div>
 
-        <div class="card tower-card tower-tools-card">
+        <div id="towerToolsSection" class="card tower-card tower-tools-card">
           <div class="card-heading">
             <span class="card-heading-icon" aria-hidden="true">⌘</span>
             <div>
@@ -311,8 +325,12 @@
           <div id="integrationList" class="integration-list" aria-live="polite"></div>
           <p id="integrationStatus" class="integration-status" data-i18n="integration.loading">正在读取集成状态…</p>
           <p id="integrationError" class="dialog-error" role="alert"></p>
-          <div class="integration-divider"></div>
+        </div>
+
+        <div id="towerQuickSection" class="card tower-card tower-quick-card">
+          <div class="card-heading"><span class="card-heading-icon" aria-hidden="true">⌘</span><div>
           <div class="card-title" data-i18n="integration.quickTools">快速工具</div>
+          <p class="card-sub" data-i18n="tower.quickToolsSub">复制本地入口，或打开浏览器与诊断日志。</p></div></div>
           <div class="frow"><span class="fk" data-i18n="tower.socksProxy">SOCKS5 代理</span><code class="code" id="socksEndpoint">—</code><button class="mini" data-copy="socks" data-i18n="tower.copy">复制</button></div>
           <div class="tools">
             <button class="mini" id="openBrowser" data-i18n="tower.openBrowser">打开应用内校园浏览器</button>
@@ -324,34 +342,9 @@
         <div class="row tower-actions">
           <button id="towerSave" class="primary sm" data-i18n="tower.save">保存</button>
           <button id="towerReconnect" class="ghost sm" data-i18n="tower.saveReconnect">保存并重连</button>
+          <span class="tower-apply-hint" data-i18n="tower.applyHint">端口或代理认证更改会在应用时重启连接。</span>
           <span id="towerSaved" class="saved-tip"></span>
         </div>
-      </section>
-
-      <!-- NOTIFICATIONS / LOGS -->
-      <section class="page" data-page="notif" hidden>
-        <div class="page-heading">
-          <div>
-            <h2 class="page-h"><span data-i18n="notif.title">通知与帮助</span></h2>
-            <p class="page-sub" data-i18n="notif.subtitle">查看当前连接状态；需要排错时再展开诊断日志。</p>
-          </div>
-        </div>
-        <div id="settingsNotice" class="local-notice" hidden></div>
-        <div id="notificationCard" class="notification-card">
-          <span class="notification-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-          </span>
-          <div class="notification-content">
-            <div id="notificationTitle" class="card-title" data-i18n="notif.currentStatus">当前状态</div>
-            <p id="notificationSummary" class="notification-summary"></p>
-          </div>
-          <button id="notificationAction" class="primary sm" type="button" data-i18n="notif.reconnect">重新连接</button>
-        </div>
-        <details class="diagnostic-details">
-          <summary data-i18n="notif.diagnostics">高级诊断日志</summary>
-          <div class="diagnostic-actions"><button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></div>
-          <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
-        </details>
       </section>
 
       <!-- SETTINGS -->
@@ -361,6 +354,10 @@
             <h2 class="page-h" data-i18n="settings.title">设置</h2>
             <p class="page-sub" data-i18n="settings.subtitle">账号、界面、隐私与更新选项。</p>
           </div>
+          <button id="openNotificationDrawer" class="notification-drawer-trigger" type="button" aria-label="通知与帮助" data-i18n-attr="aria-label:notif.title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            <span id="notificationAttention" class="notification-attention" hidden></span>
+          </button>
         </div>
         <div class="settings-grid">
         <div class="card settings-card settings-identity-card">
@@ -448,6 +445,26 @@
         <p id="updateHint" class="foot update-hint" hidden></p>
       </section>
     </main>
+    <div id="notificationBackdrop" class="notification-backdrop" hidden></div>
+    <aside id="notificationDrawer" class="notification-drawer" role="dialog" aria-modal="true" aria-labelledby="notificationDrawerTitle" hidden>
+      <header class="notification-drawer-head">
+        <div><h2 id="notificationDrawerTitle" data-i18n="notif.title">通知与帮助</h2><p data-i18n="notif.subtitle">查看当前状态，需要排错时再展开诊断日志。</p></div>
+        <button id="closeNotificationDrawer" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
+      </header>
+      <div class="notification-drawer-body">
+        <div id="settingsNotice" class="local-notice" hidden></div>
+        <div id="notificationCard" class="notification-card">
+          <span class="notification-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+          <div class="notification-content"><div id="notificationTitle" class="card-title" data-i18n="notif.currentStatus">当前状态</div><p id="notificationSummary" class="notification-summary"></p></div>
+          <button id="notificationAction" class="primary sm" type="button" data-i18n="notif.reconnect">重新连接</button>
+        </div>
+        <details class="diagnostic-details">
+          <summary data-i18n="notif.diagnostics">高级诊断日志</summary>
+          <div class="diagnostic-actions"><button id="logRefresh" class="mini" data-i18n="notif.refresh">刷新</button></div>
+          <pre id="logs" class="logs">(暂无日志,连接后这里显示运行/错误信息)</pre>
+        </details>
+      </div>
+    </aside>
     <div id="globalToast" class="global-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
   </div>
 
@@ -606,6 +623,10 @@
   <script src="usability-controller.js"></script>
   <script src="student-home.js"></script>
   <script src="notification-view.js"></script>
+  <script src="notification-drawer.js"></script>
+  <script src="connection-overview.js"></script>
+  <script src="campus-category-stacks.js"></script>
+  <script src="tower-section-navigation.js"></script>
   <script src="browser-data-settings.js"></script>
   <script src="browser-new-tab-settings.js"></script>
   <script src="manager-view.js"></script>

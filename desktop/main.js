@@ -1011,9 +1011,9 @@ async function connectOnce(isRetry, intent) {
         state.lastError = classifyEngineCode(structuredFatalCode, s.port, t); emit();
         engineSupervisor.stop({ graceMs: 1000, forceWaitMs: STOP_FORCE_WAIT_MS }).catch(() => {});
       },
-      onClientIpAssigned: () => {
+      onClientIpAssigned: (_family, address) => {
         connectionState.markEnginePhase(engineGeneration, 'preparing_tunnel');
-        state.clientIp = t('status.ipAssigned');
+        state.clientIp = address;
         emit();
       },
       onDnsMode: (mode) => {

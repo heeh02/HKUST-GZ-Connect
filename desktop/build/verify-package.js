@@ -433,6 +433,11 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-workspace.js',
     '/renderer/campus-workspace-model.js',
     '/renderer/campus-workspace.css',
+    '/renderer/campus-category-stacks.js',
+    '/renderer/connection-overview.js',
+    '/renderer/notification-drawer.js',
+    '/renderer/tower-section-navigation.js',
+    '/renderer/styles/product-shell.css',
     '/lib/browser/workspace/campus-workspace-controller.js',
     '/lib/browser/workspace/campus-workspace-preload.js',
     '/assets/profiles/manifest.json',
@@ -474,6 +479,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     .toString('utf8');
   const packagedStudentHome = extractArchiveFile(archive, 'renderer/student-home.js')
     .toString('utf8');
+  const packagedCategoryStacks = extractArchiveFile(archive, 'renderer/campus-category-stacks.js')
+    .toString('utf8');
   if (!packagedMain.includes("'--profile-binding-v1-stdin'") ||
       packagedMain.includes("'--config-sha256'")) {
     throw new Error('packaged Desktop does not enforce private Engine profile binding');
@@ -500,7 +507,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   }
   for (const feature of [
     'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
-    'proxy-auth-migration', 'student-home', 'notification-view', 'browser-data-settings',
+    'proxy-auth-migration', 'student-home', 'notification-view', 'notification-drawer',
+    'connection-overview', 'campus-category-stacks', 'tower-section-navigation',
+    'browser-data-settings',
   ]) {
     const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);
     const appScript = packagedIndex.indexOf('src="app.js"');
@@ -514,8 +523,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
   if (!packagedRenderer.includes('window.loginFlow') ||
-      !packagedRenderer.includes('window.studentHome') ||
-      !packagedStudentHome.includes('root.resourceView')) {
+      !packagedRenderer.includes('window.campusCategoryStacks') ||
+      !packagedStudentHome.includes('root.resourceView') ||
+      !packagedCategoryStacks.includes('balancedPartitions')) {
     throw new Error('renderer does not consume the packaged shared helper APIs');
   }
   assertCustomResourceManager({

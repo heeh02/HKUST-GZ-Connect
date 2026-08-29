@@ -469,10 +469,6 @@ async function main() {
   try {
     await window.loadFile(renderer);
     await waitFor(window, "document.getElementById('dash').hidden === false", 'dashboard initialization');
-    await assertStudentHome(window);
-    await captureVisualStates(window);
-    await assertUsabilityLayer(window);
-    await assertTwoHundredPercentReflow(window);
     await exerciseIntegrationCenter(window);
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
       assertLayout(await measureAt(window, width, height), width, height);

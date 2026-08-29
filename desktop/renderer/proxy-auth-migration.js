@@ -53,8 +53,8 @@
       setOperationBusy(true);
       flash(translate('tower.proxyAuthSwitching'));
       try {
-        // This switch owns a narrow transaction. Unsaved port, PAC, retry and
-        // launch fields stay untouched in the renderer and on disk.
+        // The migration decision owns a narrow transaction. Ordinary checkbox
+        // changes stay in the explicit Control Tower apply path.
         const result = await api.save({ strictProxyAuth: requested });
         if (!result?.ok) {
           checkbox.checked = previous;
@@ -105,9 +105,6 @@
     }
 
     function start() {
-      $('strictProxyAuth').addEventListener('change', (event) => {
-        void applyStrict(event.currentTarget.checked === true);
-      });
       $('proxyAuthMigrationEnable').addEventListener('click', () => { void applyStrict(true); });
       $('proxyAuthMigrationKeep').addEventListener('click', () => { void keepCompatibility(); });
       render();

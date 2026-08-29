@@ -1,12 +1,12 @@
 'use strict';
 
 const CONTROL_WINDOW = Object.freeze({
-  width: 620,
-  height: 720,
-  minWidth: 420,
-  minHeight: 560,
-  maxWidth: 960,
-  maxHeight: 960,
+  width: 840,
+  height: 900,
+  minWidth: 760,
+  minHeight: 680,
+  maxWidth: 1480,
+  maxHeight: 1180,
 });
 
 function clampWindowSize(width, height) {
@@ -17,7 +17,7 @@ function clampWindowSize(width, height) {
 }
 
 function layoutMode(width) {
-  return Number(width) >= 620 ? 'wide' : 'compact';
+  return Number(width) >= 1080 ? 'wide' : 'compact';
 }
 
 module.exports = { CONTROL_WINDOW, clampWindowSize, layoutMode };

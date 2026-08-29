@@ -1320,6 +1320,7 @@ async fn serve_prepared_netstack<W: Write>(
     let metadata_result = (|| -> Result<()> {
         lifecycle.emit(EngineEvent::ClientIpAssigned {
             family: AddressFamily::Ipv4,
+            address: netstack.assigned_address(),
         })?;
         lifecycle.emit(EngineEvent::DnsMode { mode: dns_mode })?;
         lifecycle.emit(EngineEvent::ListenerReady {

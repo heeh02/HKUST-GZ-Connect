@@ -9,8 +9,10 @@ const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
 const connectionCss = fs.readFileSync(path.join(rendererDir, 'styles', 'connection-strip.css'), 'utf8');
+const productCss = fs.readFileSync(path.join(rendererDir, 'styles', 'product-shell.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
+const categoryStacksJs = fs.readFileSync(path.join(rendererDir, 'campus-category-stacks.js'), 'utf8');
 const layoutControllerJs = fs.readFileSync(path.join(rendererDir, 'resource-layout-controller.js'), 'utf8');
 const usabilityControllerJs = fs.readFileSync(path.join(rendererDir, 'usability-controller.js'), 'utf8');
 
@@ -30,7 +32,7 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /<script src="student-home\.js"><\/script>/);
   assert.match(appJs, /updateLoginProgress\(s\)/);
   assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
-  assert.match(appJs, /window\.studentHome\.renderStudentHome/u);
+  assert.match(appJs, /window\.campusCategoryStacks\.render/u);
   assert.doesNotMatch(appJs, /function evaluateLoginProgress\(/);
   assert.doesNotMatch(appJs, /function visibleResources\(|function routeLabel\(/);
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
@@ -61,12 +63,15 @@ test('Control Tower owns a modular Integration Center instead of scattered secre
   assert.doesNotMatch(appJs, /prepareIntegration|confirmIntegration|listIntegrations/u);
 });
 
-test('dashboard exposes collapsible secondary sections', () => {
-  assert.match(html, /data-collapsible="stats"/);
-  assert.match(html, /data-collapsible="gateway"/);
+test('dashboard separates connection, personal Campus Browser, advanced tower, and settings', () => {
+  assert.match(html, /data-page="connect"/);
+  assert.match(html, /data-page="browser"/);
+  assert.doesNotMatch(html, /data-page="notif"/);
   assert.match(html, /id="openCampusWorkspace"/u);
   assert.match(appJs, /openCampusWorkspace[\s\S]*openCampusBrowser/u);
   assert.match(appJs, /manageResources[\s\S]*openBookmarkManager/u);
+  assert.match(html, /id="notificationDrawer"[^>]*role="dialog"/u);
+  assert.match(html, /id="openNotificationDrawer"/u);
   assert.match(html, /class="custom-url-details" hidden/u);
 });
 
@@ -83,25 +88,20 @@ test('dashboard usability layer keeps status shortcuts feedback and recovery out
     'global shortcuts belong to the usability module');
 });
 
-test('WebResource shelf supports responsive ID-only search categories favorites and recent views', () => {
+test('personal categories support responsive stacks and ID-only resource actions', () => {
   for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
-  }
-  for (const view of [
-    'favorites', 'recent', 'newcomer', 'courses', 'research', 'labs',
-    'student-finance', 'expenses', 'career', 'campus-life', 'documents', 'tools',
-    'staff', 'custom',
-  ]) {
-    assert.match(html, new RegExp(`value="${view}"`, 'u'));
   }
   assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
   assert.match(appJs, /window\.api\.toggleResourceFavorite\(resource\.id\)/u);
   assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
-  assert.match(css, /\.resource-library-controls/u);
-  assert.match(css, /\.resource-favorite\.active/u);
+  assert.match(productCss, /\.category-stack-grid/u);
+  assert.match(productCss, /\.stacked-category-tab/u);
+  assert.match(categoryStacksJs, /balancedPartitions/u);
+  assert.match(categoryStacksJs, /data-stack-activate/u);
+  assert.match(categoryStacksJs, /data-campus-id/u);
   assert.match(layoutControllerJs, /new window\.ResizeObserver/u);
   assert.match(layoutControllerJs, /window\.requestAnimationFrame/u);
-  assert.match(appJs, /layout:\s*presentation\.layout/u);
   assert.doesNotMatch(studentHomeJs, /class="resource-desc"|class="resource-origin"/u);
   const policyScript = html.indexOf('<script src="resource-layout-policy.js"></script>');
   const controllerScript = html.indexOf('<script src="resource-layout-controller.js"></script>');
@@ -117,7 +117,7 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /data-resource-layout="standard"/u);
   assert.match(css, /data-resource-layout="wide"/u);
   assert.match(connectionCss, /\.page\[data-page="connect"\][^{]*\{/);
-  assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
+  assert.match(appJs, /const content = document\.querySelector\('\.content'\)[\s\S]{0,220}content\.scrollTop\s*=\s*0/u);
 });
 
 test('Campus Browser chrome keeps the minimum task set and exposes app settings', () => {

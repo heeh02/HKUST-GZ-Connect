@@ -46,8 +46,8 @@ function setPage(page) {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n.dataset.page === page));
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
   const content = document.querySelector('.content');
-  if (content) content.scrollTop = 0;
-  if (page === 'notif') loadLogs();
+  if (content) { content.classList.toggle('tower-scroll', page === 'tower'); content.classList.remove('user-scrolling'); content.scrollTop = 0; }
+  if (page === 'browser') renderResources();
   if (page === 'settings') runUpdateCheck(false);
 }
 window.api.onOpenSettings?.(() => { show('dash'); setPage('settings'); refreshState(); });
@@ -98,12 +98,13 @@ function renderConnect(s) {
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('settingsNotice').hidden = !s.notice;
   $('settingsNotice').textContent = s.notice || ''; window.notificationView.render({ card: $('notificationCard'), title: $('notificationTitle'), summary: $('notificationSummary'), action: $('notificationAction'), state: s, translate: t });
+  window.connectionOverview.renderStatus(s, t);
   $('quickCampus').disabled = campusActionBusy;
   $('quickAddCampus').disabled = campusActionBusy;
   $('quickCampus').textContent = campusActionBusy
     ? (s.connected ? t('quick.opening') : t('quick.connectThenOpen'))
     : (s.connected ? t('quick.open') : t('quick.connectOpen'));
-  $('statGrid').hidden = !s.connected;
+  $('statGrid').hidden = false;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
   $('stDns').textContent = dnsModeLabel(s.dnsMode);
@@ -113,6 +114,7 @@ function renderConnect(s) {
 }
 
 function renderTelemetry(tele) {
+  window.connectionOverview.renderTelemetry(tele, t);
   if (tele.connectedAt) connectedAt = tele.connectedAt;
   $('stPing').textContent = (tele.latencyMs != null) ? Math.round(tele.latencyMs) + ' ms' : '—';
   $('stConn').textContent = tele.connCount || 0;
@@ -123,24 +125,9 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
-  const presentation = resourceLayoutFeature?.snapshot() || {
-    view: 'all', layout: window.resourceLayoutPolicy.layoutForWidth(0),
-  };
-  const rendered = window.studentHome.renderStudentHome({
-    resources: campusResources,
-    groups: resourceGroups,
-    query: resourceQuery,
-    view: presentation.view,
-    expanded: false,
-    layout: presentation.layout,
-    translate: t,
-    escapeHtml: esc,
-  });
-  const shelf = $('resourceShelf');
-  const sections = $('campusResources');
-  shelf.dataset.resourceLayout = presentation.layout.mode;
-  sections.classList.toggle('focused', resourceQuery.length > 0 || presentation.view !== 'all');
-  sections.innerHTML = rendered.html;
+  const presentation = resourceLayoutFeature?.snapshot() || { layout: window.resourceLayoutPolicy.layoutForWidth(0) };
+  $('resourceShelf').dataset.resourceLayout = presentation.layout.mode;
+  window.campusCategoryStacks.render({ container: $('campusResources'), resources: campusResources, groups: resourceGroups, query: resourceQuery, translate: t, escapeHtml: esc });
   resourceLayoutFeature?.syncControls();
 }
 
@@ -401,6 +388,7 @@ async function saveTower() {
   try {
     const result = await window.api.save({
       port,
+      strictProxyAuth: $('strictProxyAuth').checked,
       autoReconnect: $('autoReconnect').checked,
       maxAttempts,
       startAtLogin: $('startAtLogin').checked,
@@ -454,7 +442,7 @@ $('towerReconnect').addEventListener('click', async () => {
   flashSaved(result.warning || t('tower.savedReconnected'), !!result.warning);
 });
 for (const id of [
-  'towerPort', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
+  'towerPort', 'strictProxyAuth', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
 ]) {
   $(id).addEventListener('input', () => { towerDirty = true; });
   $(id).addEventListener('change', () => { towerDirty = true; });
@@ -492,9 +480,7 @@ $('openBrowser').addEventListener('click', openCampus);
 $('openLog2').addEventListener('click', () => window.api.openLog());
 $('openAdvancedSettings').addEventListener('click', () => setPage('tower'));
 
-// notifications / settings
-$('logRefresh').addEventListener('click', loadLogs);
-$('notificationAction').addEventListener('click', () => window.notificationView.runAction($('notificationAction').dataset.action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }));
+// settings
 $('logoutBtn').addEventListener('click', async () => {
   loginPending = false;
   const result = await window.api.logout();
@@ -557,7 +543,9 @@ $('manageResources').addEventListener('click', () => {
     usabilityFeature?.toast(t('quick.browserOpenFailed'), 'error');
   });
 });
+$('addCategory').addEventListener('click', () => $('manageResources').click());
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();
+window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value) }); window.towerSectionNavigation.start({ document }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
 usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

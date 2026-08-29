@@ -68,6 +68,10 @@ const state = {
   resourceGroups: [
     { id: 'group_abcdefghijkl', name: '学习', resourceIds: ['fixture-0', 'fixture-1'] },
     { id: 'group_mnopqrstuvwx', name: '常用工具', resourceIds: ['fixture-2', 'fixture-3'] },
+    { id: 'group_research12345', name: '科研协作', resourceIds: ['fixture-4', 'fixture-5'] },
+    { id: 'group_expenses1234', name: '报销采购', resourceIds: ['fixture-6', 'fixture-7'] },
+    { id: 'group_campuslife12', name: '校园生活', resourceIds: ['fixture-8'] },
+    { id: 'group_adminservice', name: '行政办事', resourceIds: ['fixture-9'] },
   ],
   connected: false,
   connecting: false,

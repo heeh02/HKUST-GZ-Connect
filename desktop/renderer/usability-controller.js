@@ -1,7 +1,7 @@
 'use strict';
 
 (function initializeUsabilityController(globalScope) {
-  const PAGE_SHORTCUTS = Object.freeze({ 1: 'connect', 2: 'tower', 3: 'notif', 4: 'settings' });
+  const PAGE_SHORTCUTS = Object.freeze({ 1: 'connect', 2: 'browser', 3: 'tower', 4: 'settings' });
 
   function create({ window, document, translate, openPage, clearResourceFilter, openResourceManager,
     openCampusWorkspace }) {
@@ -39,10 +39,8 @@
 
     function focusResourceSearch() {
       if (document.getElementById('dash').hidden) return;
-      openPage('connect');
-      Promise.resolve(openCampusWorkspace()).then((result) => {
-        if (!result?.ok) toast(result?.error || translate('quick.browserOpenFailed'), 'error');
-      }).catch(() => toast(translate('quick.browserOpenFailed'), 'error'));
+      openPage('browser');
+      document.getElementById('resourceSearch').focus();
     }
 
     function start() {

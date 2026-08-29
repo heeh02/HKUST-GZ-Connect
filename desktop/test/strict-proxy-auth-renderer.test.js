@@ -32,25 +32,25 @@ test('strict proxy authentication is settings-driven rather than hardcoded in ma
   assert.match(html, /id="proxyAuthMigrationKeep"/);
 });
 
-test('strict authentication switch saves immediately without committing other dirty fields', () => {
+test('strict authentication changes only through an explicit Control Tower apply', () => {
   assert.match(app, /\$\('strictProxyAuth'\)\.checked\s*=\s*settings\.strictProxyAuth\s*===\s*true/,
     'the normalized settings object owns the safe default');
   assert.match(proxyFeature, /async function applyStrict\(requested\)/);
   assert.match(proxyFeature, /api\.save\(\{ strictProxyAuth: requested \}\)/,
-    'the switch owns a narrow, immediate settings transaction');
-  assert.match(proxyFeature, /\$\('strictProxyAuth'\)\.addEventListener\('change'/);
+    'the explicit migration decision retains its narrow transaction');
+  assert.doesNotMatch(proxyFeature, /\$\('strictProxyAuth'\)\.addEventListener\('change'/);
   assert.match(proxyFeature, /settings\.proxyAuthMigrationPending\s*!==\s*true/);
   assert.match(proxyFeature, /api\.save\(\{ proxyAuthMigrationAcknowledged: true \}\)/);
   assert.match(app, /window\.proxyAuthMigration\.createProxyAuthMigration\(\{/,
     'the application entry only composes the isolated feature');
-  assert.doesNotMatch(app, /'towerPort', 'routeDomains', 'strictProxyAuth', 'autoReconnect'/,
-    'the switch must not enter the general dirty-form path');
+  assert.match(app, /'towerPort', 'strictProxyAuth', 'autoReconnect'/,
+    'ordinary checkbox changes must wait in the explicit dirty-form path');
 
   const saveTowerStart = app.indexOf('async function saveTower()');
   const flashStart = app.indexOf('let flashTimer', saveTowerStart);
   assert.ok(saveTowerStart >= 0 && flashStart > saveTowerStart);
-  assert.doesNotMatch(app.slice(saveTowerStart, flashStart), /strictProxyAuth\s*:/,
-    'saving unrelated tower fields must not implicitly toggle authentication');
+  assert.match(app.slice(saveTowerStart, flashStart), /strictProxyAuth:\s*\$\('strictProxyAuth'\)\.checked/,
+    'applying the Control Tower form owns the requested authentication value');
   assert.match(proxyFeature, /checkbox\.checked\s*=\s*previous/,
     'a failed immediate save must restore the persisted switch value');
 });
@@ -68,13 +68,13 @@ test('bilingual help states the secure default, explicit compatibility downgrade
   assert.match(zh, /旧 SOCKS5 客户端.*显式关闭/);
   assert.match(zh, /应用内浏览器(?:会)?自动处理/);
   assert.match(zh, /Clash.*Mihomo.*VS Code/);
-  assert.match(zh, /立即保存/);
+  assert.match(zh, /点击应用/);
   assert.match(zh, /外部工具集成/);
   assert.match(zh, /127\.0\.0\.1/);
   assert.match(en, /Campus Browser handles it automatically/i);
   assert.match(en, /local authorization boundary/i);
   assert.match(en, /legacy SOCKS5 client/i);
-  assert.match(en, /switch saves immediately/i);
+  assert.match(en, /Click Apply/i);
   assert.match(en, /External Tool Integrations/i);
   assert.match(en, /127\.0\.0\.1/);
 });

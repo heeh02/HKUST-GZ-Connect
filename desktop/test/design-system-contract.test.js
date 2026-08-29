@@ -11,6 +11,7 @@ const controlHtml = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
 const browserHtml = fs.readFileSync(path.join(renderer, 'campus-browser.html'), 'utf8');
 const controlCss = fs.readFileSync(path.join(renderer, 'styles.css'), 'utf8');
 const connectionCss = fs.readFileSync(path.join(renderer, 'styles', 'connection-strip.css'), 'utf8');
+const productCss = fs.readFileSync(path.join(renderer, 'styles', 'product-shell.css'), 'utf8');
 const browserCss = fs.readFileSync(path.join(renderer, 'campus-browser.css'), 'utf8');
 
 test('control panel and Campus Browser share one bounded design-token vocabulary', () => {
@@ -29,40 +30,38 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
   }
   assert.ok(controlHtml.indexOf('styles.css') < controlHtml.indexOf('styles/connection-strip.css'),
     'connection strip module must load after the shared control shell');
+  assert.ok(controlHtml.indexOf('styles/connection-strip.css') < controlHtml.indexOf('styles/product-shell.css'),
+    'the product information architecture must be the final control surface authority');
   assert.doesNotMatch(controlCss, /^:root\s*\{/u, 'control CSS must not redefine shared tokens');
   assert.match(browserCss, /var\(--radius-control\)/u);
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('2.0.1 quick shelf stays compact and delegates the full catalogue to Workspace', () => {
-  assert.match(controlCss, /\.resource-grid\s*\{[^}]*repeat\(2,/u);
-  assert.match(controlCss, /data-resource-layout="standard"[^}]*[\s\S]{0,80}repeat\(3,/u);
-  assert.match(controlCss, /data-resource-layout="wide"[\s\S]{0,900}repeat\(4,/u);
-  assert.match(controlCss, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*1fr/u);
-  assert.match(controlCss, /\.resource-link\s*\{[^}]*grid-template-columns:\s*38px minmax\(0, 1fr\)[^}]*border:\s*0/u);
-  assert.match(controlCss, /\.resource-card\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/u);
-  assert.match(controlCss, /\.resource-icon\s*\{[^}]*position:\s*relative[^}]*width:\s*38px[^}]*background:\s*#e9edf3/u);
-  assert.match(controlCss, /\.resource-route-label\s*\{[^}]*font-size:\s*8\.8px/u);
-  assert.match(controlHtml, /id="resourceViewChips"/u);
-  assert.match(controlHtml, /class="resource-library-controls" hidden aria-hidden="true"/u);
-  assert.match(controlHtml, /id="resourceViewChips"[^>]*hidden/u);
-  assert.match(controlHtml, /id="resourceView"[^>]*hidden[^>]*tabindex="-1"/u);
-  assert.doesNotMatch(controlHtml, /class="connection-compat"/u);
+test('personal Campus Browser uses responsive category stacks without website-card nesting', () => {
+  assert.match(productCss, /\.category-stack-grid\s*\{[^}]*repeat\(var\(--stack-columns/u);
+  assert.match(productCss, /\.stacked-category-tab\s*\{[^}]*height:\s*38px/u);
+  assert.match(productCss, /\.category-card\s*\{[^}]*border-radius:\s*16px/u);
+  assert.match(productCss, /\.category-site\s*\{[^}]*border-bottom:\s*1px solid/u);
+  assert.match(productCss, /\.category-site-icon\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/u);
+  assert.match(controlHtml, /data-page="browser"/u);
+  assert.match(controlHtml, /id="resourceSearch"/u);
+  assert.match(controlHtml, /id="campusResources"[^>]*class="category-stack-grid"/u);
+  assert.doesNotMatch(controlHtml, /data-page="connect"[\s\S]*id="resourceShelf"[\s\S]*data-page="browser"/u);
 });
 
-test('2.0.1 restores the compact classic shell while avoiding nested website cards', () => {
+test('connection-first shell preserves restrained brand controls and progressive disclosure', () => {
   assert.match(controlCss, /\.titlebar\s*\{[^}]*justify-content:\s*center[^}]*1\.5px solid var\(--gold\)/u);
   assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 70px/u);
   assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 4px 14px/u);
-  assert.match(controlCss, /\.quick-card\s*\{[^}]*border:\s*1px solid var\(--line\)[^}]*box-shadow:\s*var\(--shadow-sm\)/u);
-  assert.match(connectionCss, /\.hero-card\s*\{[^}]*min-height:\s*82px[^}]*border-radius:\s*16px/u);
+  assert.match(productCss, /\.connection-layout\s*\{[^}]*grid-template-columns:/u);
+  assert.match(productCss, /\.network-topology\s*\{[^}]*border-radius:\s*18px/u);
   assert.doesNotMatch(controlCss, /\.hero-card|\.connection-action/u,
     'connection ownership must not drift back into the shared stylesheet');
   assert.match(controlHtml, /id="power"[^>]*class="connection-action"|class="connection-action"[^>]*id="power"/u);
   assert.match(controlHtml, /id="power"[^>]*role="switch"|role="switch"[^>]*id="power"/u);
-  assert.match(connectionCss, /#power\.connection-action\s*\{[^}]*width:\s*44px[^}]*height:\s*24px/u);
-  assert.match(connectionCss, /grid-template-columns:\s*44px minmax\(0, 1fr\) 44px/u,
-    'connection identity must remain centered independently of the switch');
+  assert.match(productCss, /#power\.connection-action\s*\{[^}]*width:\s*52px[^}]*height:\s*29px/u);
+  assert.match(controlHtml, /id="notificationDrawer"[^>]*role="dialog"/u);
+  assert.doesNotMatch(controlHtml, /class="nav" data-page="notif"/u);
   assert.match(controlCss, /\.resource-favorite:hover,\s*\.resource-favorite\.active\s*\{[^}]*background:\s*transparent/u);
   assert.match(controlCss, /\.logs\s*\{[^}]*min-height:\s*320px[^}]*max-height:\s*420px/u);
   assert.doesNotMatch(controlHtml, /class="help-section"/u);
