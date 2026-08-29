@@ -125,6 +125,23 @@ async function assertBookmarkOrganizer(browser) {
     'bookmark organizer screen');
 }
 
+async function assertBlankNewTab(browser) {
+  const previous = browser.activeTab();
+  await browser.window.webContents.executeJavaScript(
+    `document.getElementById('newTab').click()`,
+  );
+  await waitForMain(() => browser.activeTab()?.kind === 'blank',
+    'plus button to create a blank tab');
+  await waitForMain(() => browser.activeTab()?.view.webContents.getURL() === BLANK_CAMPUS_HOME,
+    'blank tab navigation');
+  assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+  assert.notEqual(browser.activeTab().id, previous.id);
+  browser.closeTab(browser.activeTab().id);
+  await waitForMain(() => browser.activeTab()?.id === previous.id,
+    'closing the blank tab to restore the previous tab');
+}
+
 async function assertRouteSwitch(browser) {
   await waitForMain(
     () => browser.activeTab()?.failedUrl === DEAD_URL,
@@ -314,6 +331,7 @@ async function main() {
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
+    await assertBlankNewTab(browser);
     const workspaceContents = browser.activeTab().view.webContents;
     await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'k', bubbles: true, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true,

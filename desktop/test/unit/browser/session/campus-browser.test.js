@@ -737,17 +737,18 @@ function loadingState(scripts) {
   return { loading: state.loading, slow: state.slow };
 }
 
-test('a custom local blank home keeps every new tab on the non-network direct route', async () => {
+test('the plus button opens a genuine blank tab on the non-network direct route', async () => {
   const { browser } = createFakeBrowser({ homeUrl: 'about:blank' });
   await browser.open('about:blank', 1080, ROUTE_DIRECT);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
   browser.handleToolbarCommand({ command: 'new-tab', value: '' });
-  assert.equal(browser.tabs.length, 1);
-  assert.equal(browser.activeTab().kind, 'workspace');
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.activeTab().kind, 'blank');
+  assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
-test('a reviewed portal home is reused by new-tab and home commands', async () => {
+test('a reviewed portal remains Home while the plus button opens a blank tab', async () => {
   const portal = 'https://portal.example.edu/';
   const { browser } = createFakeBrowser({ homeUrl: portal });
   await browser.open(portal, 1080, ROUTE_CAMPUS);
@@ -755,7 +756,8 @@ test('a reviewed portal home is reused by new-tab and home commands', async () =
   browser.handleToolbarCommand({ command: 'new-tab', value: '' });
   await nextImmediate();
   assert.equal(browser.tabs.length, 2);
-  assert.equal(browser.currentUrl(browser.activeTab()), portal);
+  assert.equal(browser.activeTab().kind, 'blank');
+  assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
   browser.handleToolbarCommand({ command: 'home', value: '' });
   await nextImmediate();
   assert.equal(browser.currentUrl(browser.activeTab()), portal);

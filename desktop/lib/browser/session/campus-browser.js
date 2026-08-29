@@ -39,7 +39,7 @@ const MAX_TABS = DEFAULT_MAX_TABS;
 
 function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('zh')) {
   let value = String(input || '').trim() || fallback;
-  if (value === BLANK_CAMPUS_HOME && fallback === BLANK_CAMPUS_HOME) return BLANK_CAMPUS_HOME;
+  if (value === BLANK_CAMPUS_HOME) return BLANK_CAMPUS_HOME;
   if (value.length > MAX_URL_LENGTH) throw new Error(t('url.tooLong'));
   if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value}`;
 
@@ -433,7 +433,7 @@ class CampusBrowser {
     return true;
   }
 
-  async openHome({ newTab = false } = {}) {
+  async openHome() {
     if (this.homeUrl === BLANK_CAMPUS_HOME) {
       return this.focusWorkspaceSearch();
     }
@@ -443,10 +443,14 @@ class CampusBrowser {
     if (this.routingSuspended) await this.resumeRoutingPolicy(port);
     else if (!this.configuredPort) await this.configure(port);
     const active = this.activeTab();
-    if (!newTab && active && active.kind !== 'workspace') {
+    if (active && active.kind !== 'workspace') {
       return this.navigate(this.homeUrl, active, resolution.route);
     }
     return !!this.createTab(this.homeUrl, resolution.route);
+  }
+
+  openBlankTab() {
+    return !!this.createTab(BLANK_CAMPUS_HOME, ROUTE_DIRECT, { blankPage: true });
   }
 
   pageFavoriteState(tab = this.activeTab()) {
@@ -755,7 +759,7 @@ class CampusBrowser {
     const navigation = navigationForContents(active?.view.webContents);
 
     if (command === 'new-tab') {
-      Promise.resolve(this.openHome({ newTab: true })).catch(() => this.onError?.(this.t('tab.createFailed')));
+      this.openBlankTab();
     }
     else if (command === 'home') {
       Promise.resolve(this.openHome()).catch(() => this.onError?.(this.t('tab.createFailed')));
@@ -916,6 +920,7 @@ class CampusBrowser {
       this.scheduleToolbarUpdate();
     });
     contents.on('did-navigate', (_event, url, httpResponseCode = 0) => {
+      if (tab.kind === 'blank' && url !== BLANK_CAMPUS_HOME) delete tab.kind;
       this.markCredentialNavigation(tab, url, httpResponseCode);
       this.updateTabRoute(tab, url);
       if (this.onRecordPageOpen) {
@@ -960,8 +965,7 @@ class CampusBrowser {
       const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
-        Promise.resolve(this.openHome({ newTab: true }))
-          .catch(() => this.onError?.(this.t('tab.createFailed')));
+        this.openBlankTab();
       } else if (commandKey && key === 'w') {
         event.preventDefault();
         this.closeTab(tab.id);
@@ -1100,12 +1104,14 @@ class CampusBrowser {
     }
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
+      url = options.blankPage === true
+        ? BLANK_CAMPUS_HOME
+        : normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return null;
     }
-    if (url === BLANK_CAMPUS_HOME) return this.createWorkspaceTab();
+    if (url === BLANK_CAMPUS_HOME && options.blankPage !== true) return this.createWorkspaceTab();
     const routeSession = this.browserSessionManager.sessionForRoute(ROUTE_CAMPUS);
     if (!routeSession) return null;
     const resolution = this.resolveRoute(url, null, route);
@@ -1128,6 +1134,7 @@ class CampusBrowser {
         },
       });
       tab = {
+        ...(options.blankPage === true ? { kind: 'blank' } : {}),
         view,
         failedUrl: '',
         loading: false,
@@ -1296,8 +1303,7 @@ class CampusBrowser {
 
     if (empty) {
       this.view = null;
-      Promise.resolve(this.openHome({ newTab: true }))
-        .catch(() => this.onError?.(this.t('tab.createFailed')));
+      this.openBlankTab();
     } else if (replacement) {
       this.switchTab(replacement.id);
     } else {
@@ -1375,10 +1381,7 @@ class CampusBrowser {
     tab.renderingError = false;
     tab.crashed = false;
     const loading = tab.view.webContents.loadURL(url);
-    loading.then(() => {
-      if (url !== BLANK_CAMPUS_HOME || tab.view.webContents.isDestroyed()) return;
-      this.renderWorkspaceHome(tab);
-    }).catch(() => {
+    loading.catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
     });
