@@ -738,7 +738,10 @@ function loadingState(scripts) {
 }
 
 test('the plus button opens a genuine blank tab on the non-network direct route', async () => {
-  const { browser } = createFakeBrowser({ homeUrl: 'about:blank' });
+  const { browser } = createFakeBrowser({
+    homeUrl: 'about:blank',
+    getNewTabUrl: () => BLANK_CAMPUS_HOME,
+  });
   await browser.open('about:blank', 1080, ROUTE_DIRECT);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
   browser.handleToolbarCommand({ command: 'new-tab', value: '' });
@@ -748,33 +751,37 @@ test('the plus button opens a genuine blank tab on the non-network direct route'
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
-test('a reviewed portal remains Home while the plus button opens a blank tab', async () => {
+test('a reviewed portal remains Home while the plus button opens the configured page', async () => {
   const portal = 'https://portal.example.edu/';
-  const { browser } = createFakeBrowser({ homeUrl: portal });
+  let newTabUrl = 'www.bing.com';
+  const { browser } = createFakeBrowser({
+    homeUrl: portal,
+    getNewTabUrl: () => newTabUrl,
+  });
   await browser.open(portal, 1080, ROUTE_CAMPUS);
   assert.equal(browser.tabs.length, 1);
   browser.handleToolbarCommand({ command: 'new-tab', value: '' });
   await nextImmediate();
   assert.equal(browser.tabs.length, 2);
-  assert.equal(browser.activeTab().kind, 'blank');
-  assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
+  assert.equal(browser.activeTab().kind, undefined);
+  assert.equal(browser.currentUrl(browser.activeTab()), 'https://www.bing.com/');
+  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
   browser.handleToolbarCommand({ command: 'home', value: '' });
   await nextImmediate();
   assert.equal(browser.currentUrl(browser.activeTab()), portal);
+  newTabUrl = BLANK_CAMPUS_HOME;
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  await nextImmediate();
+  assert.equal(browser.activeTab().kind, 'blank', 'a saved preference applies without restart');
   assert.equal(await browser.openWorkspace(1080), BLANK_CAMPUS_HOME);
   assert.equal(browser.activeTab().kind, 'workspace');
 });
 
-test('opening externally derives the active safe URL in Main without renderer URL authority', async () => {
-  const opened = [];
-  const { browser } = createFakeBrowser({ openExternal: (url) => opened.push(url) });
-  await browser.open('https://portal.example.edu/path?state=opaque', 1080, ROUTE_CAMPUS);
-  assert.equal(browser.handleToolbarCommand({ command: 'open-external', value: '' }), true);
-  assert.deepEqual(opened, ['https://portal.example.edu/path?state=opaque']);
-
-  await browser.navigate('about:blank', browser.activeTab());
-  browser.handleToolbarCommand({ command: 'open-external', value: '' });
-  assert.equal(opened.length, 1, 'the local Workspace Home must not leave the app');
+test('the toolbar settings button delegates one value-free action to Main', () => {
+  let opens = 0;
+  const { browser } = createFakeBrowser({ onOpenSettings: () => { opens++; } });
+  assert.equal(browser.handleToolbarCommand({ command: 'open-settings', value: '' }), true);
+  assert.equal(opens, 1);
 });
 
 test('Command-K opens one local Workspace Home tab and focuses its search', async () => {

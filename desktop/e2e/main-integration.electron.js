@@ -64,6 +64,15 @@ async function waitFor(condition, message, timeoutMs = 10_000) {
   throw new Error(message);
 }
 
+async function waitForRenderer(window, expression, message) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (await window.webContents.executeJavaScript(expression)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+}
+
 async function run() {
   await app.whenReady();
   const control = await waitForControlWindow();
@@ -151,6 +160,15 @@ async function run() {
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), true);
+  const campusWindow = BrowserWindow.getAllWindows().find((candidate) => (
+    candidate.webContents.getURL().includes('/renderer/campus-browser.html')
+  ));
+  await campusWindow.webContents.executeJavaScript(
+    `document.getElementById('browserSettings').click()`,
+  );
+  await waitForRenderer(control,
+    `document.querySelector('.page[data-page="settings"]')?.hidden === false`,
+    'Campus Browser settings button did not open Settings');
   const portalOpen = await invoke(control, 'window.api.openCampusBrowser({})');
   assert.equal(portalOpen.ok, false,
     'the reviewed official portal must require campus credentials in this credential-free fixture');

@@ -227,7 +227,8 @@ class CampusBrowser {
     onRecordPageOpen = null,
     workspaceController = null,
     showItemInFolder = null,
-    openExternal = null,
+    getNewTabUrl = () => BLANK_CAMPUS_HOME,
+    onOpenSettings = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
@@ -283,7 +284,9 @@ class CampusBrowser {
     }
     this.workspaceController = workspaceController || null;
     this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
-    this.openExternal = typeof openExternal === 'function' ? openExternal : () => false;
+    this.getNewTabUrl = typeof getNewTabUrl === 'function'
+      ? getNewTabUrl : () => BLANK_CAMPUS_HOME;
+    this.onOpenSettings = typeof onOpenSettings === 'function' ? onOpenSettings : () => {};
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
       : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
@@ -451,6 +454,22 @@ class CampusBrowser {
 
   openBlankTab() {
     return !!this.createTab(BLANK_CAMPUS_HOME, ROUTE_DIRECT, { blankPage: true });
+  }
+
+  async openNewTab() {
+    let url;
+    try { url = normalizeCampusUrl(this.getNewTabUrl(), BLANK_CAMPUS_HOME, this.t); }
+    catch (error) {
+      this.onError?.(error.message);
+      return false;
+    }
+    if (url === BLANK_CAMPUS_HOME) return this.openBlankTab();
+    const port = this.configuredPort || 1080;
+    const resolution = this.resolveRoute(url, null, ROUTE_DIRECT);
+    if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+    if (this.routingSuspended) await this.resumeRoutingPolicy(port);
+    else if (!this.configuredPort) await this.configure(port);
+    return !!this.createTab(url, resolution.route);
   }
 
   pageFavoriteState(tab = this.activeTab()) {
@@ -759,7 +778,7 @@ class CampusBrowser {
     const navigation = navigationForContents(active?.view.webContents);
 
     if (command === 'new-tab') {
-      this.openBlankTab();
+      Promise.resolve(this.openNewTab()).catch(() => this.onError?.(this.t('tab.createFailed')));
     }
     else if (command === 'home') {
       Promise.resolve(this.openHome()).catch(() => this.onError?.(this.t('tab.createFailed')));
@@ -790,6 +809,7 @@ class CampusBrowser {
     else if (command === 'manage-routing-rules') {
       if (typeof this.onManageRoutingRules === 'function') this.onManageRoutingRules();
     }
+    else if (command === 'open-settings') this.onOpenSettings();
     else if (command === 'toggle-favorite' && active) {
       this.toggleActivePageFavorite(active).catch((error) => {
         this.onError?.(error.message || this.t('browser.favoriteFailed'));
@@ -797,18 +817,6 @@ class CampusBrowser {
     }
     else if (command === 'focus-workspace') {
       this.focusWorkspaceSearch();
-    }
-    else if (command === 'open-external' && active) {
-      const url = this.currentUrl(active);
-      if (url !== BLANK_CAMPUS_HOME && safePopupUrl(url)) {
-        try {
-          Promise.resolve(this.openExternal(url)).catch(() => {
-            this.onError?.(this.t('browser.openExternalFailed'));
-          });
-        } catch {
-          this.onError?.(this.t('browser.openExternalFailed'));
-        }
-      }
     }
     else if (command === 'back' && navigation.canGoBack()) {
       navigation.goBack();
@@ -965,7 +973,8 @@ class CampusBrowser {
       const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
-        this.openBlankTab();
+        Promise.resolve(this.openNewTab())
+          .catch(() => this.onError?.(this.t('tab.createFailed')));
       } else if (commandKey && key === 'w') {
         event.preventDefault();
         this.closeTab(tab.id);
@@ -1303,7 +1312,8 @@ class CampusBrowser {
 
     if (empty) {
       this.view = null;
-      this.openBlankTab();
+      Promise.resolve(this.openNewTab())
+        .catch(() => this.onError?.(this.t('tab.createFailed')));
     } else if (replacement) {
       this.switchTab(replacement.id);
     } else {

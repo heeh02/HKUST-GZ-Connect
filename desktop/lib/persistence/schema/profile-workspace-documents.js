@@ -9,8 +9,10 @@ const {
   validateProtocolFamily,
 } = require('../../profiles/schema/school-profile-schema');
 const {
+  DEFAULT_BROWSER_NEW_TAB_URL,
   PROXY_SECURITY_VERSION,
   isValidPort,
+  normalizeBrowserNewTabUrl,
   normalizeHiddenBuiltinResourceIds,
 } = require('../settings/settings-store');
 
@@ -54,14 +56,20 @@ function documentVersion(value, name) {
 }
 
 function validateGlobalSettingsDocument(value) {
-  const source = exactKeys(value, [
+  const input = plainObject(value, 'global settings');
+  const legacyKeys = [
     'schemaVersion', 'activeProfileKey', 'activeAccountKey', 'port', 'strictProxyAuth',
     'proxySecurityVersion', 'proxyAuthMigrationPending', 'closeAction', 'language',
     'startAtLogin',
-  ], 'global settings');
+  ];
+  const legacy = Object.keys(input).sort().join(',') === [...legacyKeys].sort().join(',');
+  const source = legacy
+    ? { ...input, browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL }
+    : exactKeys(input, [...legacyKeys, 'browserNewTabUrl'], 'global settings');
   if (!isValidPort(source.port) || source.proxySecurityVersion !== PROXY_SECURITY_VERSION ||
       !['ask', 'minimize', 'quit'].includes(source.closeAction) ||
-      !['auto', 'zh', 'en'].includes(source.language)) {
+      !['auto', 'zh', 'en'].includes(source.language) ||
+      source.browserNewTabUrl !== normalizeBrowserNewTabUrl(source.browserNewTabUrl)) {
     throw new TypeError('global settings contain an unsupported value');
   }
   const strictProxyAuth = boolean(source.strictProxyAuth, 'strictProxyAuth');
@@ -82,6 +90,7 @@ function validateGlobalSettingsDocument(value) {
     proxyAuthMigrationPending,
     closeAction: source.closeAction,
     language: source.language,
+    browserNewTabUrl: source.browserNewTabUrl,
     startAtLogin: boolean(source.startAtLogin, 'startAtLogin'),
   });
 }

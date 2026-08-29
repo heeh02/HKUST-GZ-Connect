@@ -15,7 +15,7 @@ function settingsPatchFromIpc(value) {
   const source = allowedKeys(value, [
     'username', 'password', 'port', 'autoReconnect', 'maxAttempts', 'startAtLogin',
     'autoConnect', 'strictProxyAuth', 'proxyAuthMigrationAcknowledged',
-    'closeAction', 'language', 'routeDomains', 'expectedProfileId',
+    'closeAction', 'language', 'browserNewTabUrl', 'routeDomains', 'expectedProfileId',
   ]);
   const result = { ...source };
   if (source.username != null) {
@@ -23,6 +23,9 @@ function settingsPatchFromIpc(value) {
   }
   if (source.password != null) {
     result.password = boundedString(source.password, { maxLength: 4096 });
+  }
+  if (source.browserNewTabUrl != null) {
+    result.browserNewTabUrl = boundedString(source.browserNewTabUrl, { maxLength: 2048 });
   }
   if (source.expectedProfileId != null) {
     result.expectedProfileId = profileId(boundedString(source.expectedProfileId, {

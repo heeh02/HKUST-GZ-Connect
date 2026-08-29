@@ -231,6 +231,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
       proxyAuthMigrationPending: settings.proxyAuthMigrationPending,
       closeAction: settings.closeAction,
       language: settings.language,
+      browserNewTabUrl: settings.browserNewTabUrl,
       startAtLogin: settings.startAtLogin,
     })),
     globalProxyCredential: copyOrNull(payloads.proxyCredential),

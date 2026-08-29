@@ -46,7 +46,7 @@ const routeBadge = document.getElementById('routeBadge');
 const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
 const downloadStatus = document.getElementById('downloadStatus');
-const openExternal = document.getElementById('openExternal');
+const browserSettings = document.getElementById('browserSettings');
 const favoritePage = document.getElementById('favoritePage');
 const credential = document.getElementById('credential');
 const routeRules = document.getElementById('routeRules');
@@ -82,9 +82,9 @@ document.getElementById('routeRules').addEventListener(
   'click',
   () => command('manage-routing-rules'),
 );
-openExternal.addEventListener(
+browserSettings.addEventListener(
   'click',
-  () => command('open-external'),
+  () => command('open-settings'),
 );
 favoritePage.addEventListener('click', () => command('toggle-favorite'));
 manageBookmarks.addEventListener('click', () => command('manage-bookmarks'));
@@ -262,8 +262,6 @@ window.campusBrowserUI = {
     routeRules.hidden = next.workspace === true;
     credential.hidden = next.workspace === true;
     favoritePage.hidden = next.workspace === true;
-    openExternal.hidden = next.workspace === true;
-    openExternal.disabled = next.workspace === true || !/^https?:\/\//iu.test(String(next.url || ''));
     favoritePage.disabled = next.workspace === true || next.canFavorite !== true;
     favoritePage.classList.toggle('active', next.favorite === true);
     favoritePage.title = t(next.favorite ? 'browser.unfavoritePage' : 'browser.favoritePage');

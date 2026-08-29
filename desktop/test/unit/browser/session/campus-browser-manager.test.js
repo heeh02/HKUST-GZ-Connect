@@ -55,6 +55,7 @@ function fixture(overrides = {}) {
     resolveRoute: () => ({ route: 'campus' }),
     ensureConnected: async () => ({ ok: true }),
     getSocksPort: () => 6180,
+    getNewTabUrl: () => 'https://www.bing.com/',
     getLocale: () => 'zh',
     getTranslator: () => (key, vars) => vars?.message ? `${key}:${vars.message}` : key,
     getProfilePresentation: () => ({
@@ -70,8 +71,8 @@ function fixture(overrides = {}) {
     onOpenResource: async () => ({ ok: true }),
     onWorkspaceMutation: async () => ({ ok: true }),
     showItemInFolder: () => {},
-    openExternal: () => {},
     showRoutingRules: () => {},
+    showSettings: () => {},
     reportError: (message) => errors.push(message),
     CampusBrowserClass: FakeBrowser,
     CredentialVaultClass: FakeVault,
@@ -95,7 +96,8 @@ test('manager creates one browser with Engine-neutral injected policies', async 
     officialPortalResourceId: 'official-portal',
   });
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
-  assert.equal(typeof browser.options.openExternal, 'function');
+  assert.equal(browser.options.getNewTabUrl(), 'https://www.bing.com/');
+  assert.equal(typeof browser.options.onOpenSettings, 'function');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
   assert.deepEqual(await browser.options.workspaceController.onCommand({ command: 'focus-address' }), { ok: true });
   assert.equal(browser.addressFocused, true);

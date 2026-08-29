@@ -79,6 +79,7 @@ async function assertDragRegions(browser) {
       findClose: pick('#findClose'),
       bookmarkBar: pick('#bookmarkBar'),
       manageBookmarks: pick('#manageBookmarks'),
+      browserSettings: pick('#browserSettings'),
     };
   })()`);
   for (const [control, region] of Object.entries(regions)) {
@@ -140,6 +141,13 @@ async function assertBlankNewTab(browser) {
   browser.closeTab(browser.activeTab().id);
   await waitForMain(() => browser.activeTab()?.id === previous.id,
     'closing the blank tab to restore the previous tab');
+}
+
+async function assertSettingsButton(browser, settingsOpens) {
+  await browser.window.webContents.executeJavaScript(
+    `document.getElementById('browserSettings').click()`,
+  );
+  await waitForMain(() => settingsOpens.count === 1, 'settings toolbar action');
 }
 
 async function assertRouteSwitch(browser) {
@@ -263,6 +271,7 @@ async function main() {
   const errors = [];
   const openedResources = [];
   const bookmarkMenus = [];
+  const settingsOpens = { count: 0 };
   const workspaceResources = [
     { id: 'favorite', name: 'Favorite', description: 'Pinned',
       url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
@@ -324,6 +333,7 @@ async function main() {
     showBookmarkMenu: (entries) => bookmarkMenus.push(entries),
     partition: CAMPUS_PARTITION,
     onError: (message) => errors.push(message),
+    onOpenSettings: () => { settingsOpens.count += 1; },
   });
 
   try {
@@ -332,6 +342,7 @@ async function main() {
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
     await assertBlankNewTab(browser);
+    await assertSettingsButton(browser, settingsOpens);
     const workspaceContents = browser.activeTab().view.webContents;
     await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'k', bubbles: true, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true,

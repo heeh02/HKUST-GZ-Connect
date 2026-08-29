@@ -66,5 +66,5 @@ test('2.0.1 restores the compact classic shell while avoiding nested website car
   assert.match(browserCss, /\.state\.loading\s*\{[^}]*display:\s*block/u);
   assert.ok(browserHtml.indexOf('id="address"') < browserHtml.indexOf('id="routeBadge"'),
     'the route state belongs at the trailing edge of the address field');
-  assert.match(browserHtml, /id="openExternal"/u);
+  assert.match(browserHtml, /id="browserSettings"/u);
 });

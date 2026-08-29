@@ -36,6 +36,20 @@ test('the language override is validated like the close action', () => {
   assert.throws(() => applySettingsPatch({}, { language: 'fr' }), /语言/);
 });
 
+test('new-tab updates canonicalize web addresses and reject executable or credential URLs', () => {
+  assert.equal(applySettingsPatch({}, { browserNewTabUrl: '' }).settings.browserNewTabUrl,
+    'https://www.bing.com/');
+  assert.equal(applySettingsPatch({}, { browserNewTabUrl: 'example.com' }).settings.browserNewTabUrl,
+    'https://example.com/');
+  assert.equal(applySettingsPatch({}, { browserNewTabUrl: 'about:blank' }).settings.browserNewTabUrl,
+    'about:blank');
+  assert.throws(() => applySettingsPatch({}, { browserNewTabUrl: 'javascript:alert(1)' }),
+    /HTTP\(S\)/u);
+  assert.throws(() => applySettingsPatch({}, {
+    browserNewTabUrl: 'https://user:password@example.com/',
+  }), /HTTP\(S\)/u);
+});
+
 test('strict local proxy authentication is boolean and requests an engine restart', () => {
   const previous = normalizeSettings({
     strictProxyAuth: false,

@@ -43,6 +43,7 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       proxyAuthMigrationPending: false,
       closeAction: 'minimize',
       language: 'en',
+      browserNewTabUrl: 'https://www.bing.com/',
       updateCheckedAt: 0,
       routeDomains: [],
       customResources: [],
@@ -56,6 +57,16 @@ test('the language override is whitelisted to auto/zh/en', () => {
   assert.equal(normalizeSettings({ language: 'zh' }).language, 'zh');
   assert.equal(normalizeSettings({ language: 'en' }).language, 'en');
   assert.equal(normalizeSettings({ language: 'fr' }).language, 'auto');
+});
+
+test('new tabs default to Bing while safe custom and blank pages remain canonical', () => {
+  assert.equal(normalizeSettings({}).browserNewTabUrl, 'https://www.bing.com/');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'example.com/start' }).browserNewTabUrl,
+    'https://example.com/start');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'about:blank' }).browserNewTabUrl,
+    'about:blank');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'file:///etc/passwd' }).browserNewTabUrl,
+    'https://www.bing.com/');
 });
 
 test('profile route defaults apply only when settings do not contain a valid user value', () => {

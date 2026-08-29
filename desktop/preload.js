@@ -51,6 +51,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('open-routing-rules', listener);
     return () => ipcRenderer.removeListener('open-routing-rules', listener);
   },
+  onOpenSettings: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = () => cb();
+    ipcRenderer.on('open-settings', listener);
+    return () => ipcRenderer.removeListener('open-settings', listener);
+  },
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onTelemetry: (cb) => ipcRenderer.on('telemetry', (_e, t) => cb(t)),
   onAuthChallenge: (cb) => {

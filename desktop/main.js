@@ -1271,12 +1271,12 @@ campusBrowserManager = new CampusBrowserManager({
     }
     return { ok: true };
   },
-  getSocksPort: socksPort,
+  getSocksPort: socksPort, getNewTabUrl: () => loadSettingsOrReport().browserNewTabUrl,
   getLocale: () => locale,
   getTranslator: () => t,
   getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(), getWorkspaceGroups: () => resourceLibraryRuntime.listGroups(),
   onTogglePageFavorite: (candidate) => pageFavoriteController.toggle(candidate).catch((error) => ({ ok: false, error: error.message })), onRecordPageOpen: (url) => (resourceLibraryRuntime.recordOpenByUrl(url) && (emit(), true)), onOpenResource: (resourceId) => openCampusResourceById({ resourceId }), onWorkspaceMutation: (command) => pageFavoriteController.handleWorkspaceCommand(command),
-  showItemInFolder: (file) => shell.showItemInFolder(file), openExternal: (url) => shell.openExternal(url),
+  showItemInFolder: (file) => shell.showItemInFolder(file), showSettings: () => { desktopShell?.showWindow(); desktopShell?.send('open-settings'); },
   showRoutingRules: () => {
     desktopShell?.showWindow();
     desktopShell?.send('open-routing-rules');

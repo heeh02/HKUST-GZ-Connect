@@ -19,9 +19,9 @@ test('browser toolbar exposes the active tab network route', () => {
   assert.match(js, /command\('set-route'/);
   assert.match(html, /id="routeRules"/);
   assert.match(js, /command\('manage-routing-rules'/);
-  assert.match(html, /id="openExternal"[^>]*disabled/u);
-  assert.match(js, /openExternal\.disabled\s*=\s*next\.workspace\s*===\s*true\s*\|\|\s*!\/\^https\?/u);
-  assert.match(js, /command\('open-external'/u);
+  assert.match(html, /id="browserSettings"/u);
+  assert.match(js, /command\('open-settings'/u);
+  assert.doesNotMatch(html, /id="openExternal"/u);
   assert.match(html, /id="favoritePage"[^>]*disabled/u);
   assert.match(js, /command\('toggle-favorite'/u);
   assert.match(js, /favoritePage\.classList\.toggle\('active'/u);

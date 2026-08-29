@@ -1,6 +1,6 @@
 'use strict';
 
-const { isValidPort, normalizeSettings } = require('./settings-store');
+const { isValidPort, normalizeSettings, parseBrowserNewTabUrl } = require('./settings-store');
 const { normalizeRouteDomains } = require('../../routing/pac/pac');
 
 // The engine reads the account on one stdin line and the password on the next.
@@ -56,6 +56,9 @@ function applySettingsPatch(previous, payload) {
       throw new Error('语言设置无效');
     }
     next.language = source.language;
+  }
+  if (source.browserNewTabUrl != null) {
+    next.browserNewTabUrl = parseBrowserNewTabUrl(source.browserNewTabUrl);
   }
   for (const key of ['autoReconnect', 'startAtLogin', 'autoConnect', 'strictProxyAuth']) {
     if (source[key] != null) {

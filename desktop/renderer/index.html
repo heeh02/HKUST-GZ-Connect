@@ -381,6 +381,18 @@
             </select>
           </div>
         </div>
+        <div class="card settings-card settings-browser-home-card">
+          <div class="card-title" data-i18n="settings.newTabTitle">校园浏览器新标签页</div>
+          <p class="hint" data-i18n="settings.newTabHint">点击“＋”或按 ⌘T 时打开；留空恢复 Bing，输入 about:blank 使用空白页。</p>
+          <label class="fk" for="browserNewTabUrl" data-i18n="settings.newTabUrl">新标签页地址</label>
+          <div class="settings-url-row">
+            <input id="browserNewTabUrl" class="inp" type="text" inputmode="url" spellcheck="false"
+                   maxlength="2048" placeholder="https://www.bing.com/"
+                   data-i18n-attr="placeholder:settings.newTabPlaceholder" />
+            <button id="saveBrowserNewTabUrl" class="mini" type="button" data-i18n="settings.saveNewTab">保存</button>
+          </div>
+          <p id="browserNewTabStatus" class="settings-action-status" aria-live="polite"></p>
+        </div>
         <div class="card settings-card settings-window-card">
           <div class="card-title" data-i18n="settings.windowBehavior">窗口行为</div>
           <div class="frow">
@@ -594,6 +606,7 @@
   <script src="student-home.js"></script>
   <script src="notification-view.js"></script>
   <script src="browser-data-settings.js"></script>
+  <script src="browser-new-tab-settings.js"></script>
   <script src="manager-view.js"></script>
   <script src="routing-manager.js"></script>
   <script src="certificate-manager.js"></script>

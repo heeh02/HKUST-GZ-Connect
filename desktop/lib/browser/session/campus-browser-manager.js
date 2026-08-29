@@ -61,6 +61,7 @@ class CampusBrowserManager {
     getLocale,
     getTranslator,
     getProfilePresentation,
+    getNewTabUrl = () => BLANK_CAMPUS_HOME,
     getWorkspaceResources,
     getWorkspaceGroups = () => [],
     onTogglePageFavorite,
@@ -68,7 +69,7 @@ class CampusBrowserManager {
     onWorkspaceMutation,
     onRecordPageOpen,
     showItemInFolder,
-    openExternal,
+    showSettings,
     showRoutingRules,
     reportError,
     CampusBrowserClass = CampusBrowser,
@@ -77,9 +78,9 @@ class CampusBrowserManager {
     for (const dependency of [
       BrowserWindow, WebContentsView, parentWindow, ensureCampusReady, resolveRoute,
       ensureConnected, getSocksPort, getLocale, getTranslator, getProfilePresentation,
-      getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      getNewTabUrl, getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
       showItemInFolder,
-      showRoutingRules,
+      showRoutingRules, showSettings,
       reportError, CampusBrowserClass, CredentialVaultClass,
     ]) {
       if (typeof dependency !== 'function') {
@@ -99,12 +100,12 @@ class CampusBrowserManager {
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       browserPartition,
       getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
-      getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      getNewTabUrl, getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
       onTogglePageFavorite: typeof onTogglePageFavorite === 'function'
         ? onTogglePageFavorite : async () => ({ ok: false }),
       onRecordPageOpen: typeof onRecordPageOpen === 'function' ? onRecordPageOpen : () => false,
       showRoutingRules, reportError,
-      openExternal,
+      showSettings,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
@@ -159,7 +160,8 @@ class CampusBrowserManager {
       workspaceController,
       onRecordPageOpen: (url) => this.onRecordPageOpen(url),
       showItemInFolder: this.showItemInFolder,
-      openExternal: this.openExternal,
+      getNewTabUrl: this.getNewTabUrl,
+      onOpenSettings: this.showSettings,
       homeUrl: this.homeUrl,
       partition: this.browserPartition,
       routingPolicy: this.routingPolicy,

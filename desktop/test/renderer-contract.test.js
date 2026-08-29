@@ -120,20 +120,19 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
 });
 
-test('Campus Browser chrome keeps the minimum task set and derives external open in Main', () => {
+test('Campus Browser chrome keeps the minimum task set and exposes app settings', () => {
   const browserHtml = fs.readFileSync(path.join(rendererDir, 'campus-browser.html'), 'utf8');
   const browserJs = fs.readFileSync(path.join(rendererDir, 'campus-browser.js'), 'utf8');
   for (const id of [
-    'tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'openExternal',
+    'tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'browserSettings',
     'bookmarkBar', 'bookmarkItems', 'bookmarkMore', 'manageBookmarks',
   ]) {
     assert.match(browserHtml, new RegExp(`id="${id}"`, 'u'));
   }
-  assert.match(browserJs, /command\('open-external'\)/u);
+  assert.match(browserJs, /command\('open-settings'\)/u);
   assert.match(browserJs, /command\('open-resource',\s*entry\.id\)/u);
   assert.match(browserJs, /command\('manage-bookmarks'\)/u);
-  assert.doesNotMatch(browserJs, /openExternal\(address\.value/u,
-    'toolbar renderer must not provide URL authority for external open');
+  assert.doesNotMatch(browserHtml, /id="openExternal"/u);
 });
 
 test('Campus Workspace is a real local renderer with ID-only actions and modular portal surfaces', () => {

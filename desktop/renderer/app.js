@@ -15,15 +15,12 @@ let settings = {};
 let connectedAt = null;
 let durTimer = null;
 let campusActionBusy = false;
-let campusResources = [];
-let resourceGroups = [];
-let resourceQuery = '';
-let resourceLayoutFeature = null;
+let campusResources = [], resourceGroups = [], resourceQuery = '', resourceLayoutFeature = null;
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
 let resourceEditorManager = null, usabilityFeature = null;
-let proxyAuthFeature = null;
+let proxyAuthFeature = null, browserNewTabSettings = null;
 
 function activeLoginProfileId() {
   return window.schoolProfileSelectorFeature?.credentialProfileId?.() || null;
@@ -53,6 +50,7 @@ function setPage(page) {
   if (page === 'notif') loadLogs();
   if (page === 'settings') runUpdateCheck(false);
 }
+window.api.onOpenSettings?.(() => { show('dash'); setPage('settings'); refreshState(); });
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
@@ -185,6 +183,7 @@ async function refreshState({ preserveTower = false } = {}) {
   if (s.update) renderUpdateResult(s.update);
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   $('language').value = ['auto', 'zh', 'en'].includes(settings.language) ? settings.language : 'auto';
+  browserNewTabSettings?.render(settings);
   return s;
 }
 
@@ -545,7 +544,7 @@ proxyAuthFeature.start();
 window.routingManager.start({
   openTower: () => { show('dash'); setPage('tower'); },
 });
-window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) });
+window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) }); browserNewTabSettings = window.browserNewTabSettings.start({ api: window.api, document, translate: (key) => t(key), getSettings: () => settings, setSettings: (next) => { settings = next; } });
 resourceEditorManager = window.resourceManager.start({
   getResources: () => campusResources,
   setResources: (resources) => { campusResources = resources; renderResources(); },

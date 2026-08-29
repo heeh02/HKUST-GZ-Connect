@@ -28,13 +28,16 @@ function profileRouteDomains(authority) {
 
 function exactLegacySettings(value, defaultRouteDomains) {
   const source = plainObject(value, 'runtime settings projection');
-  const keys = Object.keys(source).sort();
+  const compatibilitySource = source.browserNewTabUrl == null
+    ? { ...source, browserNewTabUrl: DEFAULTS.browserNewTabUrl }
+    : source;
+  const keys = Object.keys(compatibilitySource).sort();
   if (keys.length !== LEGACY_SETTINGS_KEYS.length ||
       keys.some((key, index) => key !== LEGACY_SETTINGS_KEYS[index])) {
     throw new TypeError('runtime settings projection has an invalid schema');
   }
-  const normalized = normalizeSettings(source, { defaultRouteDomains });
-  if (!isDeepStrictEqual(source, normalized)) {
+  const normalized = normalizeSettings(compatibilitySource, { defaultRouteDomains });
+  if (!isDeepStrictEqual(compatibilitySource, normalized)) {
     throw new TypeError('runtime settings projection is not canonical');
   }
   if (source.username.length > 256) {
@@ -74,6 +77,7 @@ function projectRuntimeSettings(authorityValue, { accountLabel = '' } = {}) {
     proxyAuthMigrationPending: global.proxyAuthMigrationPending,
     closeAction: global.closeAction,
     language: global.language,
+    browserNewTabUrl: global.browserNewTabUrl,
     updateCheckedAt: update.checkedAt,
     routeDomains: workspace.routeDomains,
     customResources: local.resources,
@@ -93,6 +97,7 @@ function splitRuntimeSettings(authorityValue, settingsValue) {
       proxyAuthMigrationPending: settings.proxyAuthMigrationPending,
       closeAction: settings.closeAction,
       language: settings.language,
+      browserNewTabUrl: settings.browserNewTabUrl,
       startAtLogin: settings.startAtLogin,
     }),
     globalUpdateState: validateGlobalUpdateStateDocument({

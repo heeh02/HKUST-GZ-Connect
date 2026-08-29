@@ -7,7 +7,7 @@ const NO_VALUE_COMMANDS = new Set([
   'home',
   'manage-credential',
   'manage-routing-rules',
-  'open-external',
+  'open-settings',
   'toggle-favorite',
   'focus-workspace',
   'manage-bookmarks',

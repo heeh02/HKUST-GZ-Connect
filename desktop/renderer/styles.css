@@ -584,6 +584,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .page[data-page="settings"] .settings-card .manager-entry .mini { width: 100%; }
 .settings-action-status { min-height: 0; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
 .settings-card .action-select { max-width: 230px; }
+.settings-url-row { display: flex; gap: 8px; align-items: center; }
+.settings-url-row .inp { flex: 1; min-width: 0; }
+.settings-url-row .mini { flex: 0 0 auto; }
 .danger-zone {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px;
   padding: 16px 18px; border-color: #f1d6d4; background: linear-gradient(145deg, #fff, #fffafa);
@@ -829,7 +832,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .page[data-page="settings"] .settings-card .frow { align-items: center; flex-direction: row; gap: 10px; }
 .page[data-page="settings"] .settings-card .frow .inp { width: 190px; max-width: 190px; margin-left: auto; }
 .page[data-page="settings"] .settings-card .manager-entry { align-items: center; flex-direction: row; }
-.page[data-page="settings"] .settings-card .manager-entry .mini { width: auto; }
+  .page[data-page="settings"] .settings-card .manager-entry .mini { width: auto; }
+  .settings-url-row { align-items: center; }
 .danger-zone { display: flex; padding: 0; border: 0; background: transparent; }
 .danger-zone .danger { width: 100%; min-width: 0; }
 .foot { margin-top: 10px; padding: 0; }
