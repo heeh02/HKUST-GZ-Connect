@@ -100,7 +100,8 @@
             <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
             <div class="conn-ip">IP <span id="connIp">—</span></div>
           </div>
-          <button class="connection-action" id="power" type="button" aria-label="连接校园网络"
+          <button class="connection-action" id="power" type="button" role="switch"
+                  aria-checked="false" aria-label="连接校园网络"
                   data-i18n-attr="aria-label:connect.powerLabel"><span id="powerLabel">连接</span></button>
           <p class="conn-err" id="connErr"></p>
         </div>

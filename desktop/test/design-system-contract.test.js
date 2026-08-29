@@ -59,6 +59,10 @@ test('2.0.1 restores the compact classic shell while avoiding nested website car
   assert.doesNotMatch(controlCss, /\.hero-card|\.connection-action/u,
     'connection ownership must not drift back into the shared stylesheet');
   assert.match(controlHtml, /id="power"[^>]*class="connection-action"|class="connection-action"[^>]*id="power"/u);
+  assert.match(controlHtml, /id="power"[^>]*role="switch"|role="switch"[^>]*id="power"/u);
+  assert.match(connectionCss, /#power\.connection-action\s*\{[^}]*width:\s*44px[^}]*height:\s*24px/u);
+  assert.match(connectionCss, /grid-template-columns:\s*44px minmax\(0, 1fr\) 44px/u,
+    'connection identity must remain centered independently of the switch');
   assert.match(controlCss, /\.resource-favorite:hover,\s*\.resource-favorite\.active\s*\{[^}]*background:\s*transparent/u);
   assert.match(controlCss, /\.logs\s*\{[^}]*min-height:\s*320px[^}]*max-height:\s*420px/u);
   assert.doesNotMatch(controlHtml, /class="help-section"/u);

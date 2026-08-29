@@ -154,6 +154,13 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   route.className = `resource-route${resource.route === 'direct' ? ' direct' : ''}`;
   route.textContent = routeText(resource);
   copy.append(name, route);
+  if (management) {
+    const membership = document.createElement('span'); membership.className = 'resource-memberships';
+    const names = state.groups.filter(({ resourceIds }) => resourceIds.includes(resource.id))
+      .map(({ name: groupName }) => groupName);
+    membership.textContent = `${text().memberships}: ${names.join(' · ') || text().ungrouped}`;
+    copy.appendChild(membership);
+  }
   if (showLastOpened && Number.isSafeInteger(resource.lastOpenedAt)) {
     const opened = document.createElement('span'); opened.className = 'resource-last-opened';
     const formatted = new Intl.DateTimeFormat(state.locale === 'en' ? 'en' : 'zh-CN', {
@@ -166,16 +173,10 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   open.addEventListener('click', () => command('open-resource', { resourceId: resource.id }));
   item.appendChild(open);
 
-  if (management) {
+  if (management && !resource.builtin) {
     const manageRow = document.createElement('div');
     manageRow.className = 'resource-manage-row';
-    const membership = document.createElement('span'); membership.className = 'resource-memberships';
-    const names = state.groups.filter(({ resourceIds }) => resourceIds.includes(resource.id))
-      .map(({ name: groupName }) => groupName);
-    membership.textContent = `${text().memberships}: ${names.join(' · ') || text().ungrouped}`;
-    manageRow.appendChild(membership);
-    if (!resource.builtin) {
-      for (const [label, className, action] of [
+    for (const [label, className, action] of [
         [text().edit, 'resource-rename', () => openResourceDialog(resource)],
         [text().remove, 'resource-delete danger', (button) => {
           if (button.dataset.confirm !== '1') {
@@ -185,14 +186,13 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
           }
           command('delete-resource', { resourceId: resource.id });
         }],
-      ]) {
+    ]) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `resource-manage-action ${className}`;
         button.textContent = label;
         button.addEventListener('click', () => action(button));
         manageRow.appendChild(button);
-      }
     }
     item.appendChild(manageRow);
   }

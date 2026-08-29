@@ -205,6 +205,14 @@ async function main() {
   const managementView = await window.webContents.executeJavaScript(`(() => {
     document.getElementById('openManage').click();
     document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
+    const initialManageGrid = document.getElementById('resourcePool');
+    const initialManageItem = initialManageGrid.querySelector('.resource-item');
+    const initialManageIcon = initialManageGrid.querySelector('.resource-icon');
+    const compactGeometry = {
+      columns: getComputedStyle(initialManageGrid).gridTemplateColumns.split(' ').filter(Boolean).length,
+      itemHeight: initialManageItem.getBoundingClientRect().height,
+      iconWidth: initialManageIcon.getBoundingClientRect().width,
+    };
     document.querySelector('#resourcePool .resource-star').click();
     document.getElementById('createGroup').click();
     document.getElementById('groupName').value = '科研';
@@ -235,12 +243,19 @@ async function main() {
       bulkVisible: getComputedStyle(document.getElementById('bulkActions')).display !== 'none',
       rowCheckboxes: document.querySelectorAll('#resourcePool .resource-selection input').length,
       perRowGroupSelects: document.querySelectorAll('#resourcePool .resource-group-select').length,
+      compactGeometry,
     };
   })()`);
   assert.equal(managementView.visible, true, 'organizer stopped being the active workspace screen');
   assert.equal(managementView.bulkVisible, true, 'batch organizer controls are hidden');
   assert.ok(managementView.rowCheckboxes > 0, 'organizer rows have no batch selection control');
   assert.equal(managementView.perRowGroupSelects, 0, 'per-row group dropdowns returned');
+  assert.equal(managementView.compactGeometry.columns, 3,
+    'organizer does not use the available width at 125% zoom');
+  assert.ok(managementView.compactGeometry.iconWidth <= 28,
+    'organizer icons are oversized for a desktop productivity surface');
+  assert.ok(managementView.compactGeometry.itemHeight <= 64,
+    'organizer rows waste vertical space');
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>

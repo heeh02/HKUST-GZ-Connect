@@ -279,6 +279,9 @@ async function assertStudentHome(window) {
         heroHeight: hero.height,
         connectionActionText: document.getElementById('power').textContent.trim(),
         connectionActionHeight: document.getElementById('power').getBoundingClientRect().height,
+        connectionActionWidth: document.getElementById('power').getBoundingClientRect().width,
+        connectionActionRole: document.getElementById('power').getAttribute('role'),
+        connectionActionChecked: document.getElementById('power').getAttribute('aria-checked'),
         legacySwitchKnobs: document.querySelectorAll('#power .knob').length,
         resourceSections: document.querySelectorAll('.resource-section').length,
         towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
@@ -303,7 +306,12 @@ async function assertStudentHome(window) {
     assert.ok(view.heroHeight >= 75 && view.heroHeight <= 105,
       `${width}px: connection status strip wastes vertical space`);
     assert.equal(view.connectionActionText, '连接', `${width}px: connection action is unclear`);
-    assert.ok(view.connectionActionHeight >= 34, `${width}px: connection action is too small`);
+    assert.ok(view.connectionActionHeight >= 22 && view.connectionActionHeight <= 28,
+      `${width}px: connection switch is not compact`);
+    assert.ok(view.connectionActionWidth >= 40 && view.connectionActionWidth <= 48,
+      `${width}px: connection switch is too wide`);
+    assert.equal(view.connectionActionRole, 'switch', `${width}px: connection control lost switch semantics`);
+    assert.equal(view.connectionActionChecked, 'false', `${width}px: disconnected switch state drifted`);
     assert.equal(view.legacySwitchKnobs, 0, `${width}px: ambiguous connection switch returned`);
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);

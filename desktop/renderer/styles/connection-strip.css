@@ -9,25 +9,26 @@
 .hero-card {
   min-height: 82px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   grid-template-rows: auto auto;
   align-items: center;
-  gap: 5px 13px;
-  padding: 13px 15px;
+  gap: 4px 12px;
+  padding: 12px 15px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--card);
   box-shadow: var(--shadow-sm);
-  text-align: left;
+  text-align: center;
 }
 .hero-card.connected { border-color: #d9e8df; }
 .conn-brand {
   min-width: 0;
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 1;
   display: flex;
   align-items: center;
   gap: 7px;
+  justify-content: center;
 }
 .conn-loc {
   min-width: 0;
@@ -42,11 +43,12 @@
 }
 .connection-meta {
   min-width: 0;
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 2;
   display: flex;
   align-items: center;
   gap: 9px;
+  justify-content: center;
 }
 .conn-status {
   display: inline-flex;
@@ -75,25 +77,48 @@
 }
 #profileTrustBadge { margin: 0; }
 #power.connection-action {
-  min-width: 74px;
-  min-height: 36px;
-  grid-column: 2;
+  position: relative;
+  width: 44px;
+  height: 24px;
+  min-width: 44px;
+  min-height: 24px;
+  grid-column: 3;
   grid-row: 1 / span 2;
-  padding: 0 15px;
-  border: 1px solid #d4deeb;
-  border-radius: 10px;
-  color: #fff;
-  background: var(--navy-2);
-  font-size: 11px;
-  font-weight: 760;
+  justify-self: end;
+  padding: 2px;
+  border: 1px solid #c8d2df;
+  border-radius: 999px;
+  color: transparent;
+  background: #dce3ec;
   cursor: pointer;
-  transition: background var(--motion-fast), border-color var(--motion-fast);
+  transition: background var(--motion-fast), border-color var(--motion-fast), opacity var(--motion-fast);
 }
-#power.connection-action:hover { border-color: var(--navy); background: var(--navy); }
-#power.connection-action.on { color: var(--navy); background: #fff; }
-#power.connection-action.on:hover { color: #9d342f; border-color: #e8c5c3; background: #fff7f6; }
+#power.connection-action::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(11, 42, 91, .22);
+  transition: transform var(--motion-fast);
+}
+#power.connection-action:hover { border-color: #9eacbd; background: #d2dbe6; }
+#power.connection-action.on { border-color: #ad8120; background: linear-gradient(135deg, #d5aa42, #b6851d); }
+#power.connection-action.on::after { transform: translateX(20px); }
+#power.connection-action.on:hover { border-color: #936b14; background: linear-gradient(135deg, #c99b32, #a97613); }
+#power.connection-action #powerLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 #power.connection-action.busy,
-#power.connection-action:disabled { color: var(--muted); background: #edf1f6; cursor: wait; }
+#power.connection-action:disabled { opacity: .58; cursor: wait; }
 .conn-err {
   min-height: 0;
   grid-column: 1 / -1;
@@ -111,19 +136,13 @@
 @media (min-width: 900px) {
   .page[data-page="connect"] { max-width: 1120px; padding-left: 22px; padding-right: 22px; }
   .hero-card {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
     gap: 4px 18px;
-    padding: 13px 18px;
+    padding: 12px 18px;
   }
-  .conn-brand { grid-row: 1 / span 2; }
-  .connection-meta {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .conn-ip { display: inline-flex; margin: 0; }
-  #power.connection-action { min-width: 82px; grid-column: 3; }
+  .conn-brand { grid-column: 2; grid-row: 1; }
+  .connection-meta { grid-column: 2; grid-row: 2; }
+  .conn-ip { display: none; }
+  #power.connection-action { grid-column: 3; }
   .conn-err { margin-top: 0; }
 }
