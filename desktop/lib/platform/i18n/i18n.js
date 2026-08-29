@@ -16,7 +16,7 @@ const dictionaries = {
     'tray.status': '状态：{status}',
     'tray.connect': '连接',
     'tray.disconnect': '断开连接',
-    'tray.openCampusBrowser': '打开校园浏览器',
+    'tray.openCampusBrowser': '打开校园门户',
     'tray.quit': '退出程序',
 
     'close.title': '关闭 HKUST(GZ) Connect',
@@ -210,7 +210,7 @@ const dictionaries = {
     'tray.status': 'Status: {status}',
     'tray.connect': 'Connect',
     'tray.disconnect': 'Disconnect',
-    'tray.openCampusBrowser': 'Open Campus Browser',
+    'tray.openCampusBrowser': 'Open Campus Portal',
     'tray.quit': 'Quit',
 
     'close.title': 'Close HKUST(GZ) Connect',

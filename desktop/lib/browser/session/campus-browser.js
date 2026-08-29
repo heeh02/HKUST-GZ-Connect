@@ -433,6 +433,22 @@ class CampusBrowser {
     return true;
   }
 
+  async openHome({ newTab = false } = {}) {
+    if (this.homeUrl === BLANK_CAMPUS_HOME) {
+      return this.focusWorkspaceSearch();
+    }
+    const port = this.configuredPort || 1080;
+    const resolution = this.resolveRoute(this.homeUrl);
+    if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+    if (this.routingSuspended) await this.resumeRoutingPolicy(port);
+    else if (!this.configuredPort) await this.configure(port);
+    const active = this.activeTab();
+    if (!newTab && active && active.kind !== 'workspace') {
+      return this.navigate(this.homeUrl, active, resolution.route);
+    }
+    return !!this.createTab(this.homeUrl, resolution.route);
+  }
+
   pageFavoriteState(tab = this.activeTab()) {
     const url = this.currentUrl(tab);
     if (!tab || url === BLANK_CAMPUS_HOME || !this.onTogglePageFavorite) {
@@ -738,8 +754,12 @@ class CampusBrowser {
     const active = this.activeTab();
     const navigation = navigationForContents(active?.view.webContents);
 
-    if (command === 'new-tab') this.focusWorkspaceSearch();
-    else if (command === 'home') this.focusWorkspaceSearch();
+    if (command === 'new-tab') {
+      Promise.resolve(this.openHome({ newTab: true })).catch(() => this.onError?.(this.t('tab.createFailed')));
+    }
+    else if (command === 'home') {
+      Promise.resolve(this.openHome()).catch(() => this.onError?.(this.t('tab.createFailed')));
+    }
     else if (command === 'manage-bookmarks') this.focusWorkspace('manage');
     else if (command === 'open-bookmark-menu' && this.showBookmarkMenu) {
       this.showBookmarkMenu(this.bookmarkBarState());
@@ -940,7 +960,8 @@ class CampusBrowser {
       const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
-        this.createTab(this.homeUrl);
+        Promise.resolve(this.openHome({ newTab: true }))
+          .catch(() => this.onError?.(this.t('tab.createFailed')));
       } else if (commandKey && key === 'w') {
         event.preventDefault();
         this.closeTab(tab.id);
@@ -1275,7 +1296,8 @@ class CampusBrowser {
 
     if (empty) {
       this.view = null;
-      this.createTab(this.homeUrl, ROUTE_CAMPUS);
+      Promise.resolve(this.openHome({ newTab: true }))
+        .catch(() => this.onError?.(this.t('tab.createFailed')));
     } else if (replacement) {
       this.switchTab(replacement.id);
     } else {
@@ -1392,6 +1414,25 @@ class CampusBrowser {
       this.createTab(url, resolution.route);
     }
     return url;
+  }
+
+  async openWorkspace(port) {
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+      throw new TypeError('Campus Workspace port is invalid');
+    }
+    if (!this.configuredPort && !this.routingSuspended) await this.configure(port);
+    if (!this.window || this.window.isDestroyed()) await this.createWindow();
+    if (this.window.isMinimized()) this.window.restore();
+    this.window.show();
+    this.window.focus();
+    const existing = this.tabs.find((tab) => tab.kind === 'workspace');
+    if (existing) {
+      this.switchTab(existing.id);
+      this.workspaceController.sendState(existing.view.webContents);
+    } else {
+      this.createWorkspaceTab();
+    }
+    return BLANK_CAMPUS_HOME;
   }
 
   close() {

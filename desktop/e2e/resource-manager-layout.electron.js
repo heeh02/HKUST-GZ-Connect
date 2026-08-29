@@ -313,7 +313,7 @@ async function assertStudentHome(window) {
     const workspaceEntry = await window.webContents.executeJavaScript(
       `document.getElementById('openCampusWorkspace').textContent.trim()`,
     );
-    assert.match(workspaceEntry, /校园浏览器/u, `${width}px: Browser entry disappeared`);
+    assert.match(workspaceEntry, /校园门户/u, `${width}px: Campus portal entry disappeared`);
 
   }
 }

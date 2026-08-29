@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   CampusBrowserManager,
   browserProfilePresentation,
+  officialPortalHomeUrl,
 } = require('../../../../lib/browser/session/campus-browser-manager');
 
 class FakeVault {
@@ -19,6 +20,7 @@ class FakeBrowser {
     this.opens = [];
   }
   async open(...args) { this.opens.push(args); }
+  async openWorkspace(port) { this.opens.push(['workspace', port]); return 'about:blank'; }
   focusWorkspace(target) { this.workspaceFocus = target; return true; }
   focusAddressBar() { this.addressFocused = true; return true; }
   suspendRoutingPolicy() { this.routingSuspended = true; return 'suspended'; }
@@ -139,6 +141,17 @@ test('Browser presentation keeps only bounded school and trust display fields', 
   }), /presentation/u);
 });
 
+test('official portal home resolves only through the active Profile resource ID', () => {
+  const profile = { schoolName: 'Example University', unverified: false,
+    officialPortalResourceId: 'official-portal' };
+  assert.equal(officialPortalHomeUrl(profile, [
+    { id: 'other', url: 'https://other.example.edu/' },
+    { id: 'official-portal', url: 'https://portal.example.edu/' },
+  ]), 'https://portal.example.edu/');
+  assert.equal(officialPortalHomeUrl({ ...profile, officialPortalResourceId: null }, []), null);
+  assert.equal(officialPortalHomeUrl(profile, [{ id: 'other', url: 'https://other.example.edu/' }]), null);
+});
+
 test('every Profile uses its isolated partition and local Workspace Home without network fallback', async () => {
   const partition = `persist:campus-workspace-${'1'.repeat(32)}`;
   let connectionCalls = 0;
@@ -155,13 +168,33 @@ test('every Profile uses its isolated partition and local Workspace Home without
   assert.equal(connectionCalls, 0);
 });
 
-test('reviewed Profile home cannot silently fall back to a packaged school URL', async () => {
-  const f = fixture();
+test('a reviewed Profile opens its Main-resolved official portal as the browser home', async () => {
+  let connectionCalls = 0;
+  const f = fixture({
+    homeUrl: 'https://portal.example.edu/',
+    ensureConnected: async () => { connectionCalls += 1; return { ok: true }; },
+  });
   const result = await f.manager.open();
-  assert.equal(result.url, 'about:blank');
-  assert.equal(f.manager.browser.options.homeUrl, 'about:blank');
+  assert.equal(result.url, 'https://portal.example.edu/');
+  assert.equal(f.manager.browser.options.homeUrl, 'https://portal.example.edu/');
+  assert.equal(connectionCalls, 1);
+  assert.deepEqual(f.manager.browser.opens, [['https://portal.example.edu/', 6180, 'campus']]);
   assert.equal(f.manager.browser.options.getWorkspaceResources()[0].url,
     'https://library.example.edu/');
+});
+
+test('bookmark organization opens the local Workspace without loading the portal first', async () => {
+  let connectionCalls = 0;
+  const f = fixture({
+    homeUrl: 'https://portal.example.edu/',
+    ensureConnected: async () => { connectionCalls += 1; return { ok: true }; },
+  });
+  assert.deepEqual(await f.manager.openBookmarkManager(), {
+    ok: true, url: 'about:blank', route: 'direct',
+  });
+  assert.deepEqual(f.manager.browser.opens, [['workspace', 6180]]);
+  assert.equal(f.manager.browser.workspaceFocus, 'manage');
+  assert.equal(connectionCalls, 0);
 });
 
 test('a Direct WebResource opens without starting or requiring the campus Engine', async () => {

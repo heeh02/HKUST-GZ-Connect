@@ -18,7 +18,7 @@
     "engineConfigRef": "hkustgz-engine-config"
   },
   "browser": {
-    "homeUrl": "https://www.hkust-gz.edu.cn/",
+    "homeUrl": "https://myportal.hkust-gz.edu.cn/",
     "officialPortalResourceId": "official-portal",
     "campusDomains": [
       "hkust-gz.edu.cn",

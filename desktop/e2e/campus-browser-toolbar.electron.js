@@ -114,6 +114,17 @@ async function assertBookmarkBar(browser, openedResources, bookmarkMenus) {
   assert.deepEqual(bookmarkMenus.at(-1), [{ id: 'grouped', name: 'Grouped Site' }]);
 }
 
+async function assertBookmarkOrganizer(browser) {
+  await browser.window.webContents.executeJavaScript(
+    `document.getElementById('manageBookmarks').click()`,
+  );
+  await waitForMain(() => browser.activeTab()?.kind === 'workspace',
+    'bookmark organizer Workspace tab');
+  await waitForPage(browser.activeTab().view.webContents,
+    "document.getElementById('manageScreen').hidden === false",
+    'bookmark organizer screen');
+}
+
 async function assertRouteSwitch(browser) {
   await waitForMain(
     () => browser.activeTab()?.failedUrl === DEAD_URL,
@@ -311,6 +322,7 @@ async function main() {
       "document.activeElement === document.getElementById('address')",
       'Workspace Command-K to focus the browser address');
     await assertBookmarkBar(browser, openedResources, bookmarkMenus);
+    await assertBookmarkOrganizer(browser);
     await browser.open(DEAD_URL, 11080, 'campus');
 
     await assertDragRegions(browser);

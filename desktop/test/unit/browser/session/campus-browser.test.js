@@ -747,6 +747,22 @@ test('a custom local blank home keeps every new tab on the non-network direct ro
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
+test('a reviewed portal home is reused by new-tab and home commands', async () => {
+  const portal = 'https://portal.example.edu/';
+  const { browser } = createFakeBrowser({ homeUrl: portal });
+  await browser.open(portal, 1080, ROUTE_CAMPUS);
+  assert.equal(browser.tabs.length, 1);
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  await nextImmediate();
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.currentUrl(browser.activeTab()), portal);
+  browser.handleToolbarCommand({ command: 'home', value: '' });
+  await nextImmediate();
+  assert.equal(browser.currentUrl(browser.activeTab()), portal);
+  assert.equal(await browser.openWorkspace(1080), BLANK_CAMPUS_HOME);
+  assert.equal(browser.activeTab().kind, 'workspace');
+});
+
 test('opening externally derives the active safe URL in Main without renderer URL authority', async () => {
   const opened = [];
   const { browser } = createFakeBrowser({ openExternal: (url) => opened.push(url) });

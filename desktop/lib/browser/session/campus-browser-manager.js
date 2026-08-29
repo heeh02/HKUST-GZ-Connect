@@ -1,7 +1,7 @@
 'use strict';
 
 const { BLANK_CAMPUS_HOME, CampusBrowser } = require('./campus-browser');
-const { ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
+const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../routing/policy/campus-route');
 const { CampusCredentialVault } = require('../credentials/campus-credential-vault');
 const { normalizeOpenRequest } = require('../resources/campus-open-policy');
 const { CampusWorkspaceController } = require('../workspace/campus-workspace-controller');
@@ -21,6 +21,17 @@ function browserProfilePresentation(value) {
     unverified: value.unverified,
     officialPortalResourceId: value.officialPortalResourceId || null,
   });
+}
+
+function officialPortalHomeUrl(profile, resources) {
+  const presentation = browserProfilePresentation(profile);
+  if (!presentation.officialPortalResourceId) return null;
+  if (!Array.isArray(resources) || resources.length > 64) {
+    throw new TypeError('Campus Browser resource library is invalid');
+  }
+  const portal = resources.find(({ id }) => id === presentation.officialPortalResourceId);
+  if (!portal || typeof portal.url !== 'string' || !portal.url) return null;
+  return portal.url;
 }
 
 class CampusBrowserManager {
@@ -204,9 +215,15 @@ class CampusBrowserManager {
   }
 
   async openBookmarkManager() {
-    const result = await this.open();
-    if (result?.ok) this.browser?.focusWorkspace('manage');
-    return result;
+    try {
+      await this.getOrCreate().openWorkspace(this.getSocksPort());
+      this.browser?.focusWorkspace('manage');
+      return { ok: true, url: BLANK_CAMPUS_HOME, route: ROUTE_DIRECT };
+    } catch (error) {
+      const message = this.getTranslator()('error.browserStart', { message: error.message });
+      this.reportError(message);
+      return { ok: false, error: message };
+    }
   }
 
   popupBookmarkMenu(entries) {
@@ -265,4 +282,4 @@ class CampusBrowserManager {
   }
 }
 
-module.exports = { CampusBrowserManager, browserProfilePresentation };
+module.exports = { CampusBrowserManager, browserProfilePresentation, officialPortalHomeUrl };

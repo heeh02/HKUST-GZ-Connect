@@ -151,8 +151,12 @@ async function run() {
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), true);
-  const workspaceOpen = await invoke(control, 'window.api.openCampusBrowser({})');
-  assert.equal(workspaceOpen.ok, true);
+  const portalOpen = await invoke(control, 'window.api.openCampusBrowser({})');
+  assert.equal(portalOpen.ok, false,
+    'the reviewed official portal must require campus credentials in this credential-free fixture');
+  assert.match(portalOpen.error, /账号|密码|credential/iu);
+  const workspaceOpen = await invoke(control, 'window.api.openBookmarkManager()');
+  assert.deepEqual(workspaceOpen, { ok: true, url: 'about:blank', route: 'direct' });
   const workspace = await waitFor(() => webContents.getAllWebContents().find((contents) => (
     contents.getURL().endsWith('/renderer/campus-workspace.html') && !contents.isLoading()
   )), 'Campus Workspace renderer did not start');

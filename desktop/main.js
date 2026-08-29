@@ -43,7 +43,7 @@ const { buildPac } = require('./lib/routing/pac/pac');
 const { DomainRoutePolicyStore } = require('./lib/routing/policy/domain-route-policy');
 const { savePacFile } = require('./lib/routing/pac/pac-file');
 const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
-const { CampusBrowserManager } = require('./lib/browser/session/campus-browser-manager');
+const { CampusBrowserManager, officialPortalHomeUrl } = require('./lib/browser/session/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
   createControlStateSnapshot, createCustomProfileDeletionRuntime,
@@ -1257,6 +1257,7 @@ campusBrowserManager = new CampusBrowserManager({
   toolbarFile: path.join(__dirname, 'renderer', 'campus-browser.html'), workspaceFile: path.join(__dirname, 'renderer', 'campus-workspace.html'),
   toolbarPreload: path.join(__dirname, 'lib', 'browser', 'toolbar', 'campus-toolbar-contract.js'), workspacePreload: path.join(__dirname, 'lib', 'browser', 'workspace', 'campus-workspace-preload.js'),
   campusPreload: path.join(__dirname, 'campus-preload.js'),
+  homeUrl: officialPortalHomeUrl(activeSchoolProfile.createPresentation({ locale }).schoolProfile, safeCampusResourceLibrary()),
   browserPartition: preReadyStorage.authority?.layout?.browserPartition || activeSchoolProfile.browserPartition,
   routingPolicy: browserRoutingPolicy,
   ensureCampusReady,

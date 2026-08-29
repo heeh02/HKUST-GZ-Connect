@@ -182,6 +182,7 @@ test('loads the reviewed HKUST packaged registry and bounded views', () => {
     { host: 'library.hkust-gz.edu.cn', port: 443 },
   ]);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
+  assert.equal(profile.browser.homeUrl, 'https://myportal.hkust-gz.edu.cn/');
   assert.equal(profile.browser.officialPortalResourceId, 'official-portal');
   assert.equal(registry.getBuiltinResources('hkustgz').length, 30);
   assert.equal(registry.getBuiltinResources('hkustgz').find(
