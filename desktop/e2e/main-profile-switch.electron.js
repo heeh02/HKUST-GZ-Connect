@@ -104,8 +104,12 @@ async function waitForMarker(userData, expectedProfileId, child, output) {
   const deadline = Date.now() + WAIT_MS;
   while (Date.now() < deadline) {
     if (fs.existsSync(file)) {
-      const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (marker.profileId === expectedProfileId) return marker;
+      try {
+        const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (marker.profileId === expectedProfileId) return marker;
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
     }
     if (child.exitCode !== null && !fs.existsSync(file)) {
       output.value = `${output.value}\nlauncher-exit=${child.exitCode}`.slice(-4_000);
