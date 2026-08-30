@@ -35,22 +35,22 @@
 @keyframes product-page-in { from { opacity: 0; transform: translateY(4px); } }
 
 /* Connection */
-.page[data-page="connect"] { max-width: 1180px; padding-top: 24px; text-align: left; }
-.connection-layout { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(420px, 1.42fr); gap: 18px; align-items: stretch; }
-.connection-primary { display: flex; flex-direction: column; gap: 14px; }
+.page[data-page="connect"] { max-width: 1180px; padding-top: 18px; text-align: left; }
+.connection-layout { display: grid; grid-template-columns: minmax(280px, .78fr) minmax(420px, 1.42fr); gap: 14px; align-items: stretch; }
+.connection-primary { display: flex; flex-direction: column; gap: 12px; }
 .page[data-page="connect"] .hero-card {
-  min-height: 150px;
+  min-height: 124px;
   grid-template-columns: minmax(0, 1fr) 54px;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto;
   gap: 8px 18px;
-  padding: 24px;
+  padding: 18px 20px;
   border-radius: 18px;
   text-align: left;
   background: linear-gradient(145deg, #fff 0%, #fbfdfc 100%);
   box-shadow: var(--shadow-card, var(--shadow));
 }
 .page[data-page="connect"] .conn-brand { grid-column: 1; grid-row: 1; justify-content: flex-start; }
-.page[data-page="connect"] .conn-loc { font-size: 20px; font-weight: 700; }
+.page[data-page="connect"] .conn-loc { font-size: 18px; font-weight: 700; }
 .page[data-page="connect"] .connection-meta { grid-column: 1; grid-row: 2; justify-content: flex-start; }
 .page[data-page="connect"] .conn-status { font-size: 13px; font-weight: 650; }
 .page[data-page="connect"] .conn-err { grid-column: 1 / -1; grid-row: 3; align-self: end; font-size: 12px; }
@@ -68,25 +68,25 @@
 .connection-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .connection-metric {
   position: relative;
-  min-height: 112px;
-  padding: 17px 18px;
+  min-height: 96px;
+  padding: 13px 15px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: #fff;
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
 }
 .metric-label { color: var(--muted); font-size: 12px; }
 .metric-value { color: var(--navy); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .metric-value.ip { max-width: 100%; font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
 .metric-copy { align-self: flex-start; padding: 2px 0; border: 0; color: var(--navy-2); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
-.latency-sparkline { width: 100%; height: 31px; overflow: visible; }
+.latency-sparkline { width: 100%; height: 25px; overflow: visible; }
 .latency-sparkline path { fill: none; stroke: var(--ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .network-topology {
-  min-height: 276px;
-  padding: 24px;
+  min-height: 0;
+  padding: 18px;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: linear-gradient(145deg, #fff 0%, #fbfcff 100%);
@@ -95,7 +95,7 @@
 .topology-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .topology-heading h2 { margin: 0; color: var(--navy); font-size: 17px; font-weight: 700; }
 .topology-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.network-tree { --tree-line: #cbd6e4; --tree-active: #20a66a; margin-top: 14px; }
+.network-tree { --tree-line: #cbd6e4; --tree-active: #20a66a; margin-top: 10px; }
 .network-tree-compact { display: grid; grid-template-columns: minmax(170px, .72fr) minmax(270px, 1.28fr); align-items: start; }
 .network-tree-root-wrap { position: relative; display: flex; justify-content: stretch; padding-right: 20px; }
 .network-tree-root-wrap::after { content: ""; position: absolute; top: 31px; right: 0; width: 20px; border-top: 2px solid var(--tree-line); }
@@ -279,13 +279,25 @@
   .nav { width: 48px; min-height: 54px; border-radius: 15px; }
   .nav svg { width: 19px; height: 19px; }
   .nav-label { font-size: 8.5px; }
-  .page { padding: 12px 9px 22px; }
-  .network-topology { padding: 17px 14px; }
+  .page { padding: 12px 9px 18px; }
+  .page[data-page="connect"] { padding-top: 12px; gap: 12px; }
+  .page[data-page="connect"] .hero-card { min-height: 108px; padding: 15px 16px; }
+  .connection-primary { gap: 10px; }
+  .connection-metric { min-height: 86px; padding: 11px 12px; }
+  .metric-value { font-size: 19px; }
+  .metric-value.ip { font-size: 15px; }
+  .network-topology { padding: 14px 12px; }
+  .topology-heading h2 { font-size: 15px; }
+  .topology-heading p { font-size: 10.5px; }
+  .network-tree-node { min-height: 54px; padding: 8px 9px; }
+  .network-tree-root-wrap { padding-bottom: 12px; }
+  .network-tree-root-wrap::after { height: 12px; }
+  .network-tree-compact > .network-underlay-branch::before { top: -12px; height: 12px; }
   .network-underlay-branch { padding: 9px; }
-  .network-underlay-options { padding-left: 17px; }
+  .network-underlay-options { max-height: 158px; gap: 5px; margin-top: 7px; padding-left: 17px; }
   .network-underlay-options::before { left: 6px; }
   .network-underlay-line { left: -18px; width: 18px; }
-  .network-underlay-option { grid-template-columns: 27px minmax(0, 1fr) auto; gap: 6px; padding: 7px; }
+  .network-underlay-option { min-height: 46px; grid-template-columns: 27px minmax(0, 1fr) auto; gap: 6px; padding: 6px 7px; }
   .network-underlay-option .network-tree-icon { width: 27px; height: 27px; }
   .browser-page-head { gap: 8px; }
   .browser-page-head .page-h { font-size: 15px; }

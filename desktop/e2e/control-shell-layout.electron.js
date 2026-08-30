@@ -29,6 +29,8 @@ async function shellSnapshot(window, page) {
       bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       contentOverflow: root.scrollWidth - root.clientWidth,
       contentScroll: root.scrollTop,
+      contentScrollHeight: root.scrollHeight,
+      contentClientHeight: root.clientHeight,
       navOrder: [...document.querySelectorAll('.nav')].map((node) => node.dataset.page),
       resourceInsideConnect: !!document.querySelector('.page[data-page="connect"] #resourceShelf'),
       stacks: document.querySelectorAll('#campusResources .category-stack').length,
@@ -79,6 +81,10 @@ async function main() {
       assert.equal(connect.underlayOptions, 2);
       assert.equal(connect.legacyUnderlaySelect, false);
       assert.ok(connect.bodyOverflow <= 0 && connect.contentOverflow <= 0, `${label}: connection shell overflows horizontally`);
+      if (label === 'default' || label === 'wide' || label === 'wide-tall' || label === 'ultrawide') {
+        assert.ok(connect.contentScrollHeight <= connect.contentClientHeight + 1,
+          `${label}: connection page unexpectedly requires scrolling`);
+      }
       await capture(window, output, `${label}-connect`);
 
       const browser = await shellSnapshot(window, 'browser');
