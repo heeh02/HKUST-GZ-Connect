@@ -1,11 +1,12 @@
-(function (root, factory) {
+(function initializeRoutingManager(root, factory) {
   const shared = typeof module !== 'undefined' && module.exports
-    ? require('./manager-view')
-    : root.managerView;
-  const api = factory(root, shared);
+    ? require('./manager-view') : root.managerView;
+  const stackLayout = typeof module !== 'undefined' && module.exports
+    ? require('./stacked-card-layout') : root.stackedCardLayout;
+  const api = factory(root, shared, stackLayout);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.routingManager = api;
-})(typeof self !== 'undefined' ? self : globalThis, function (root, shared) {
+})(typeof self !== 'undefined' ? self : globalThis, function routingManagerFactory(root, shared, stackLayout) {
   'use strict';
 
   function normalizeRoutingHostInput(value, translate) {
@@ -16,17 +17,12 @@
     }
     const withoutRootDot = source.endsWith('.') ? source.slice(0, -1) : source;
     let host;
-    try {
-      host = new URL(`https://${withoutRootDot}`).hostname.toLowerCase().replace(/\.$/, '');
-    } catch {
-      throw new Error(translate('routing.invalidHost'));
-    }
+    try { host = new URL(`https://${withoutRootDot}`).hostname.toLowerCase().replace(/\.$/, ''); }
+    catch { throw new Error(translate('routing.invalidHost')); }
     if (!host || host.length > 253 || host.includes('..') || host.split('.').some((label) => (
       !label || label.length > 63 || !/^[a-z0-9-]+$/u.test(label)
       || label.startsWith('-') || label.endsWith('-')
-    ))) {
-      throw new Error(translate('routing.invalidHost'));
-    }
+    ))) throw new Error(translate('routing.invalidHost'));
     return host;
   }
 
@@ -36,22 +32,27 @@
       && typeof rule.includeSubdomains === 'boolean'
       && (rule.route === 'campus' || rule.route === 'direct')
     )).slice(0, 128).map((rule) => ({
-      host: rule.host,
-      includeSubdomains: rule.includeSubdomains,
-      route: rule.route,
-      updatedAt: rule.updatedAt,
+      host: rule.host, includeSubdomains: rule.includeSubdomains,
+      route: rule.route, updatedAt: rule.updatedAt,
     }));
   }
 
+  function routingGroups(rules, translate) {
+    return ['campus', 'direct'].map((route) => ({
+      id: route,
+      name: translate(route === 'campus' ? 'routing.routeCampus' : 'routing.routeDirect'),
+      items: rules.filter((rule) => rule.route === route),
+    }));
+  }
+
+  function routeStackSlots(width) { return Number(width) >= 440 ? 2 : 1; }
+
   function createRoutingManager({
-    api,
-    document: doc,
-    i18n,
-    openTower = () => {},
-    setTimeoutFn = setTimeout,
-    clearTimeoutFn = clearTimeout,
+    api, document: doc, i18n, openTower = () => {},
+    setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout,
   } = {}) {
-    if (!api || !doc || !i18n || typeof openTower !== 'function' || !shared) {
+    if (!api || !doc || !i18n || typeof openTower !== 'function' ||
+        !shared || !stackLayout?.balancedPartitions) {
       throw new TypeError('routing manager dependencies are required');
     }
     const $ = (id) => doc.getElementById(id);
@@ -61,47 +62,72 @@
     )(key, vars);
     let rules = [];
     let busy = false;
+    let preferredRoute = 'campus';
+    let routePreferenceChosen = false;
     let pendingDeleteKey = '';
     let pendingDeleteTimer = null;
+    let observer = null;
     let started = false;
 
     const ruleKey = (rule) => `${rule.host}|${rule.includeSubdomains === true ? '1' : '0'}`;
+    const currentRule = () => rules.find((rule) => (
+      rule.host === $('routingOriginalHost').value &&
+      rule.includeSubdomains === ($('routingOriginalScope').value === 'subdomains')
+    )) || null;
     const disarmDelete = () => {
       pendingDeleteKey = '';
       clearTimeoutFn(pendingDeleteTimer);
       pendingDeleteTimer = null;
+      $('deleteRoutingRule').textContent = translate('routing.delete');
     };
 
-    function renderList() {
+    function ruleRows(items) {
       const esc = shared.escapeHtml;
-      $('routingRuleList').innerHTML = rules.map((rule, index) => {
-        const pending = pendingDeleteKey === ruleKey(rule);
-        const disabled = busy ? ' disabled' : '';
-        const actions = pending
-          ? `<button class="mini confirm-action" type="button" data-routing-action="delete" data-routing-index="${index}"${disabled}>${esc(translate('routing.confirmDelete'))}</button>`
-            + `<button class="mini" type="button" data-routing-action="cancel-delete" data-routing-index="${index}"${disabled}>${esc(translate('routing.cancelDelete'))}</button>`
-          : `<button class="mini" type="button" data-routing-action="edit" data-routing-index="${index}"${disabled}>${esc(translate('routing.edit'))}</button>`
-            + `<button class="mini danger-action" type="button" data-routing-action="delete" data-routing-index="${index}"${disabled}>${esc(translate('routing.delete'))}</button>`;
-        return `<div class="manager-item routing-rule-item" role="listitem">`
-          + `<div class="manager-item-main"><div class="manager-item-title">${esc(rule.host)}</div>`
-          + `<div class="manager-item-details"><span class="manager-chip">${esc(rule.includeSubdomains ? translate('routing.scopeSubdomains') : translate('routing.scopeExact'))}</span>`
-          + `<span class="manager-chip ${rule.route}">${esc(rule.route === 'direct' ? translate('routing.routeDirect') : translate('routing.routeCampus'))}</span>`
-          + `<span class="manager-time">${esc(translate('routing.updated', { time: shared.formatManagerTime(rule.updatedAt, translate, doc) }))}</span></div></div>`
-          + `<div class="manager-item-actions">${actions}</div></div>`;
+      if (!items.length) return `<p class="category-empty">${esc(translate('routing.emptyGroup'))}</p>`;
+      return items.map((rule) => {
+        const index = rules.indexOf(rule);
+        const scope = rule.includeSubdomains
+          ? translate('routing.scopeSubdomains') : translate('routing.scopeExact');
+        return `<button class="routing-rule-row" type="button" data-routing-index="${index}"${busy ? ' disabled' : ''}>`
+          + `<span class="category-site-icon" aria-hidden="true">${rule.route === 'direct' ? '⇄' : '◇'}</span>`
+          + `<span class="category-site-copy"><strong>${esc(rule.host)}</strong><small>${esc(scope)}</small></span>`
+          + `<span class="routing-rule-edit">${esc(translate('routing.edit'))}</span></button>`;
       }).join('');
-      $('routingRuleListStatus').textContent = rules.length ? '' : translate('routing.empty');
+    }
+
+    function renderStack(stack, index) {
+      const esc = shared.escapeHtml;
+      const active = stack.find(({ id }) => id === preferredRoute) || stack[0];
+      const tabs = stack.filter(({ id }) => id !== active.id).map((group) => (
+        `<button class="stacked-category-tab" type="button" data-routing-stack-activate="${group.id}" aria-pressed="false">`
+        + `<span>${esc(group.name)}</span><small>${group.items.length}</small></button>`
+      )).join('');
+      return `<section class="category-stack${stack.length > 1 ? ' layered' : ''}" data-routing-stack-index="${index}">`
+        + `<div class="category-stack-tabs">${tabs}</div>`
+        + `<article class="category-card routing-rule-card" data-routing-group="${active.id}">`
+        + `<header><h3>${esc(active.name)}</h3><span>${active.items.length}</span></header>`
+        + `<div class="routing-rule-stack-list">${ruleRows(active.items)}</div></article></section>`;
+    }
+
+    function renderStacks() {
+      const container = $('routingRuleStacks');
+      const groups = routingGroups(rules, translate);
+      const slots = routeStackSlots(container.getBoundingClientRect().width);
+      container.style.setProperty('--stack-columns', String(slots));
+      container.dataset.stackColumns = String(slots);
+      container.setAttribute('aria-busy', String(busy));
+      container.innerHTML = stackLayout.balancedPartitions(groups, slots)
+        .map(renderStack).join('');
     }
 
     function updateFormMode() {
       const host = $('routingOriginalHost').value;
       const editing = !!host;
       $('saveRoutingRule').textContent = editing ? translate('routing.save') : translate('routing.add');
-      $('cancelRoutingRule').textContent = editing
-        ? translate('routing.cancelEdit')
-        : translate('routing.clear');
-      $('routingRuleEditHint').textContent = editing
-        ? translate('routing.editing', { host })
-        : '';
+      $('cancelRoutingRule').textContent = editing ? translate('routing.cancelEdit') : translate('routing.clear');
+      $('routingRuleEditHint').textContent = editing ? translate('routing.editing', { host }) : '';
+      $('deleteRoutingRule').hidden = !editing;
+      if (!editing) disarmDelete();
     }
 
     function clearForm({ keepMessages = false } = {}) {
@@ -109,16 +135,15 @@
       $('routingOriginalScope').value = '';
       $('routingRuleHost').value = '';
       $('routingRuleScope').value = 'exact';
-      $('routingRuleRoute').value = 'campus';
+      $('routingRuleRoute').value = preferredRoute;
       if (!keepMessages) {
         $('routingRuleError').textContent = '';
         $('routingRuleSaved').textContent = '';
       }
       updateFormMode();
-      doc.querySelectorAll('.routing-rule-item').forEach((row) => row.classList.remove('active'));
     }
 
-    function editRule(rule, index) {
+    function editRule(rule) {
       disarmDelete();
       $('routingOriginalHost').value = rule.host;
       $('routingOriginalScope').value = rule.includeSubdomains ? 'subdomains' : 'exact';
@@ -128,195 +153,173 @@
       $('routingRuleError').textContent = '';
       $('routingRuleSaved').textContent = '';
       updateFormMode();
-      doc.querySelectorAll('.routing-rule-item').forEach((row, rowIndex) => {
-        row.classList.toggle('active', rowIndex === index);
-      });
+      if (!dialog.open) dialog.showModal();
       $('routingRuleHost').focus();
     }
 
     function setBusy(nextBusy) {
-      busy = nextBusy;
-      $('routingRuleForm').setAttribute('aria-busy', String(nextBusy));
+      busy = nextBusy === true;
+      $('routingRuleForm').setAttribute('aria-busy', String(busy));
       $('routingRuleForm').querySelectorAll('input, select, button').forEach((control) => {
-        control.disabled = nextBusy;
+        control.disabled = busy;
       });
-      renderList();
+      $('manageRoutingRules').disabled = busy;
+      renderStacks();
     }
 
     async function load() {
-      $('routingRuleList').innerHTML = '';
-      $('routingRuleListStatus').textContent = translate('routing.loading');
-      $('routingRuleError').textContent = '';
+      $('routingRuleStackStatus').textContent = translate('routing.loading');
       try {
         const result = await api.listRoutingRules();
-        if (result?.ok === false) {
-          throw new Error(shared.operationError(result, translate('routing.loadFailed')));
-        }
+        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.loadFailed')));
         const next = shared.collectionFromResult(result, 'rules');
         if (!next) throw new Error(translate('routing.loadFailed'));
         rules = routingRulesForView(next);
-        renderList();
+        if (!routePreferenceChosen && !rules.some((rule) => rule.route === preferredRoute)) {
+          preferredRoute = rules.some((rule) => rule.route === 'direct') ? 'direct' : 'campus';
+        }
+        $('routingRuleStackStatus').textContent = '';
+        renderStacks();
         return true;
       } catch (error) {
         rules = [];
-        $('routingRuleList').innerHTML = '';
-        $('routingRuleListStatus').textContent = '';
-        $('routingRuleError').textContent = error?.message || translate('routing.loadFailed');
+        renderStacks();
+        $('routingRuleStackStatus').textContent = error?.message || translate('routing.loadFailed');
         return false;
       }
     }
 
-    async function open() {
-      if (dialog.open && busy) return;
-      disarmDelete();
+    function openNew(route = preferredRoute) {
+      if (busy) return;
+      preferredRoute = route === 'direct' ? 'direct' : 'campus';
+      routePreferenceChosen = true;
       clearForm();
       if (!dialog.open) dialog.showModal();
+      $('routingRuleHost').focus();
+    }
+
+    async function deleteCurrentRule() {
+      const rule = currentRule();
+      if (!rule || busy) return;
+      if (pendingDeleteKey !== ruleKey(rule)) {
+        pendingDeleteKey = ruleKey(rule);
+        $('deleteRoutingRule').textContent = translate('routing.confirmDelete');
+        clearTimeoutFn(pendingDeleteTimer);
+        pendingDeleteTimer = setTimeoutFn(disarmDelete, 4000);
+        return;
+      }
+      disarmDelete();
       setBusy(true);
-      let loaded = false;
-      try { loaded = await load(); }
-      finally { setBusy(false); }
-      if (loaded) $('routingRuleHost').focus();
+      $('routingRuleError').textContent = '';
+      $('routingRuleSaved').textContent = '';
+      try {
+        const result = await api.deleteRoutingRule({
+          host: rule.host, includeSubdomains: rule.includeSubdomains,
+        });
+        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.deleteFailed')));
+        const next = shared.collectionFromResult(result, 'rules');
+        if (next) rules = routingRulesForView(next); else await load();
+        clearForm({ keepMessages: true });
+        $('routingRuleSaved').textContent = translate('routing.deleted');
+        renderStacks();
+      } catch (error) {
+        $('routingRuleError').textContent = error?.message || translate('routing.deleteFailed');
+      } finally { setBusy(false); }
+    }
+
+    async function saveRule(event) {
+      event.preventDefault();
+      if (busy) return;
+      $('routingRuleError').textContent = '';
+      $('routingRuleSaved').textContent = '';
+      let host;
+      try { host = normalizeRoutingHostInput($('routingRuleHost').value, translate); }
+      catch (error) {
+        $('routingRuleError').textContent = error?.message || translate('routing.invalidHost');
+        $('routingRuleHost').focus();
+        return;
+      }
+      const scope = $('routingRuleScope').value;
+      const route = $('routingRuleRoute').value;
+      if (!['exact', 'subdomains'].includes(scope) || !['campus', 'direct'].includes(route)) {
+        $('routingRuleError').textContent = translate('routing.saveFailed');
+        return;
+      }
+      const payload = { host, includeSubdomains: scope === 'subdomains', route };
+      if ($('routingOriginalHost').value && ['exact', 'subdomains'].includes($('routingOriginalScope').value)) {
+        payload.previous = { host: $('routingOriginalHost').value,
+          includeSubdomains: $('routingOriginalScope').value === 'subdomains' };
+      }
+      setBusy(true);
+      try {
+        const result = await api.saveRoutingRule(payload);
+        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.saveFailed')));
+        const next = shared.collectionFromResult(result, 'rules');
+        if (next) rules = routingRulesForView(next); else await load();
+        preferredRoute = route;
+        routePreferenceChosen = true;
+        clearForm({ keepMessages: true });
+        $('routingRuleSaved').textContent = translate('routing.saved');
+        renderStacks();
+      } catch (error) {
+        $('routingRuleError').textContent = error?.message || translate('routing.saveFailed');
+      } finally { setBusy(false); }
     }
 
     function start() {
       if (started) return false;
       started = true;
-      $('manageRoutingRules').addEventListener('click', open);
+      $('manageRoutingRules').addEventListener('click', () => openNew());
       $('closeRoutingRulesDialog').addEventListener('click', () => dialog.close());
       $('cancelRoutingRule').addEventListener('click', () => clearForm());
-      dialog.addEventListener('close', disarmDelete);
+      $('deleteRoutingRule').addEventListener('click', deleteCurrentRule);
+      $('routingRuleForm').addEventListener('submit', saveRule);
+      dialog.addEventListener('close', () => { disarmDelete(); clearForm(); });
+      $('routingRuleStacks').addEventListener('click', (event) => {
+        const tab = event.target.closest('[data-routing-stack-activate]');
+        if (tab) {
+          preferredRoute = tab.dataset.routingStackActivate;
+          routePreferenceChosen = true;
+          $('routingRuleStacks').classList.add('reordering');
+          renderStacks();
+          root.setTimeout(() => $('routingRuleStacks').classList.remove('reordering'), 280);
+          return;
+        }
+        const row = event.target.closest('[data-routing-index]');
+        const rule = row ? rules[Number(row.dataset.routingIndex)] : null;
+        if (rule && !busy) editRule(rule);
+      });
       api.onOpenRoutingRules?.(() => {
         openTower();
-        open();
-      });
-      $('routingRuleList').addEventListener('click', async (event) => {
-        const button = event.target.closest('[data-routing-action]');
-        const index = Number(button?.dataset.routingIndex);
-        const rule = Number.isInteger(index) ? rules[index] : null;
-        if (!button || !rule || busy) return;
-        if (button.dataset.routingAction === 'cancel-delete') {
-          disarmDelete();
-          renderList();
-          return;
-        }
-        if (button.dataset.routingAction === 'edit') {
-          editRule(rule, index);
-          return;
-        }
-        if (button.dataset.routingAction !== 'delete') return;
-        if (pendingDeleteKey !== ruleKey(rule)) {
-          pendingDeleteKey = ruleKey(rule);
-          clearTimeoutFn(pendingDeleteTimer);
-          pendingDeleteTimer = setTimeoutFn(() => {
-            disarmDelete();
-            renderList();
-          }, 4000);
-          renderList();
-          return;
-        }
-        disarmDelete();
-        setBusy(true);
-        $('routingRuleError').textContent = '';
-        $('routingRuleSaved').textContent = '';
-        try {
-          const result = await api.deleteRoutingRule({
-            host: rule.host,
-            includeSubdomains: rule.includeSubdomains,
-          });
-          if (result?.ok === false) {
-            throw new Error(shared.operationError(result, translate('routing.deleteFailed')));
-          }
-          const next = shared.collectionFromResult(result, 'rules');
-          if (next) {
-            rules = routingRulesForView(next);
-            renderList();
-          } else {
-            await load();
-          }
-          if ($('routingOriginalHost').value === rule.host
-              && ($('routingOriginalScope').value === 'subdomains') === rule.includeSubdomains) {
-            clearForm({ keepMessages: true });
-          }
-          $('routingRuleSaved').textContent = translate('routing.deleted');
-        } catch (error) {
-          $('routingRuleError').textContent = error?.message || translate('routing.deleteFailed');
-        } finally {
-          setBusy(false);
-        }
-      });
-      $('routingRuleForm').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (busy) return;
-        $('routingRuleError').textContent = '';
-        $('routingRuleSaved').textContent = '';
-        let host;
-        try {
-          host = normalizeRoutingHostInput($('routingRuleHost').value, translate);
-        } catch (error) {
-          $('routingRuleError').textContent = error?.message || translate('routing.invalidHost');
-          $('routingRuleHost').focus();
-          return;
-        }
-        const scope = $('routingRuleScope').value;
-        const route = $('routingRuleRoute').value;
-        if (!['exact', 'subdomains'].includes(scope) || !['campus', 'direct'].includes(route)) {
-          $('routingRuleError').textContent = translate('routing.saveFailed');
-          return;
-        }
-        const originalHost = $('routingOriginalHost').value;
-        const originalScope = $('routingOriginalScope').value;
-        const payload = { host, includeSubdomains: scope === 'subdomains', route };
-        if (originalHost && ['exact', 'subdomains'].includes(originalScope)) {
-          payload.previous = {
-            host: originalHost,
-            includeSubdomains: originalScope === 'subdomains',
-          };
-        }
-        setBusy(true);
-        try {
-          const result = await api.saveRoutingRule(payload);
-          if (result?.ok === false) {
-            throw new Error(shared.operationError(result, translate('routing.saveFailed')));
-          }
-          const next = shared.collectionFromResult(result, 'rules');
-          if (next) {
-            rules = routingRulesForView(next);
-            renderList();
-          } else {
-            await load();
-          }
-          clearForm({ keepMessages: true });
-          $('routingRuleSaved').textContent = translate('routing.saved');
-        } catch (error) {
-          $('routingRuleError').textContent = error?.message || translate('routing.saveFailed');
-        } finally {
-          setBusy(false);
-        }
+        load().finally(() => root.requestAnimationFrame?.(() => (
+          $('towerRoutingSection').scrollIntoView({ behavior: 'smooth', block: 'start' })
+        )));
       });
       doc.addEventListener('app-locale-changed', () => {
-        if (dialog.open) {
-          renderList();
-          updateFormMode();
-        }
+        renderStacks();
+        if (dialog.open) updateFormMode();
       });
+      if (typeof root.ResizeObserver === 'function') {
+        observer = new root.ResizeObserver(renderStacks);
+        observer.observe($('routingRuleStacks'));
+      }
+      renderStacks();
+      load();
       return true;
     }
 
-    return { open, renderList, start };
+    return { load, open: openNew, renderStacks, start };
   }
 
   let singleton = null;
   function start(options = {}) {
     if (singleton) return singleton;
-    singleton = createRoutingManager({
-      api: root.api,
-      document: root.document,
-      i18n: root.I18N,
-      ...options,
-    });
+    singleton = createRoutingManager({ api: root.api, document: root.document,
+      i18n: root.I18N, ...options });
     singleton.start();
     return singleton;
   }
 
-  return { createRoutingManager, normalizeRoutingHostInput, routingRulesForView, start };
+  return { createRoutingManager, normalizeRoutingHostInput, routeStackSlots,
+    routingGroups, routingRulesForView, start };
 });

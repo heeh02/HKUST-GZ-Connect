@@ -433,10 +433,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-workspace.js',
     '/renderer/campus-workspace-model.js',
     '/renderer/campus-workspace.css',
+    '/renderer/stacked-card-layout.js',
     '/renderer/campus-category-stacks.js',
     '/renderer/connection-overview.js',
     '/renderer/notification-drawer.js',
-    '/renderer/tower-section-navigation.js',
     '/renderer/styles/product-shell.css',
     '/lib/browser/workspace/campus-workspace-controller.js',
     '/lib/browser/workspace/campus-workspace-preload.js',
@@ -508,7 +508,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   for (const feature of [
     'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
     'proxy-auth-migration', 'student-home', 'notification-view', 'notification-drawer',
-    'connection-overview', 'campus-category-stacks', 'tower-section-navigation',
+    'connection-overview', 'stacked-card-layout', 'campus-category-stacks',
     'browser-data-settings',
   ]) {
     const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);

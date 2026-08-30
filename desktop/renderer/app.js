@@ -152,12 +152,19 @@ function populateTowerForm() {
   $('startAtLogin').checked = !!settings.startAtLogin;
   $('autoConnect').checked = settings.autoConnect !== false;
   proxyAuthFeature?.render();
+  if (!towerDirty && !$('towerSaved').textContent) $('towerActions').hidden = true;
+}
+
+function setTowerDirty(value) {
+  towerDirty = value === true;
+  if (towerDirty) $('towerActions').hidden = false;
+  else if (!$('towerSaved').textContent) $('towerActions').hidden = true;
 }
 
 async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
   applyLocale(s.locale);
-  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn, capabilitySnapshot: s.capabilitySnapshot } }));
+  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn } }));
   settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   resourceGroups = Array.isArray(s.resourceGroups) ? s.resourceGroups : [];
@@ -383,7 +390,6 @@ async function saveTower() {
 
   towerSaving = true;
   $('towerSave').disabled = true;
-  $('towerReconnect').disabled = true;
   $('strictProxyAuth').disabled = true;
   try {
     const result = await window.api.save({
@@ -399,7 +405,7 @@ async function saveTower() {
       return result || { ok: false };
     }
     settings = result.settings || settings;
-    towerDirty = false;
+    setTowerDirty(false);
     await refreshState();
     return result;
   } catch (error) {
@@ -408,7 +414,6 @@ async function saveTower() {
   } finally {
     towerSaving = false;
     $('towerSave').disabled = false;
-    $('towerReconnect').disabled = false;
     $('strictProxyAuth').disabled = false;
     proxyAuthFeature?.render();
   }
@@ -416,11 +421,13 @@ async function saveTower() {
 let flashTimer = null;
 function flashSaved(msg, isError = false) {
   clearTimeout(flashTimer);
+  $('towerActions').hidden = false;
   $('towerSaved').textContent = msg || t('tower.saved');
   $('towerSaved').classList.toggle('error', isError);
   flashTimer = setTimeout(() => {
     $('towerSaved').textContent = '';
     $('towerSaved').classList.remove('error');
+    if (!towerDirty && !towerSaving) $('towerActions').hidden = true;
   }, isError ? 3500 : 1800);
 }
 $('towerSave').addEventListener('click', async () => {
@@ -432,20 +439,11 @@ $('towerSave').addEventListener('click', async () => {
     );
   }
 });
-$('towerReconnect').addEventListener('click', async () => {
-  const result = await saveTower();
-  if (!result?.ok) return;
-  if (!result.reconnected) {
-    flashSaved(t('tower.reconnecting'));
-    await window.api.reconnect();
-  }
-  flashSaved(result.warning || t('tower.savedReconnected'), !!result.warning);
-});
 for (const id of [
   'towerPort', 'strictProxyAuth', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
 ]) {
-  $(id).addEventListener('input', () => { towerDirty = true; });
-  $(id).addEventListener('change', () => { towerDirty = true; });
+  $(id).addEventListener('input', () => setTowerDirty(true));
+  $(id).addEventListener('change', () => setTowerDirty(true));
 }
 $('closeAction').addEventListener('change', async () => {
   await window.api.save({ closeAction: $('closeAction').value });
@@ -513,7 +511,7 @@ $('checkUpdateBtn').addEventListener('click', async () => {
 });
 
 window.api.onStatus((s) => {
-  renderConnect(s); document.dispatchEvent(new CustomEvent('app-status-updated', { detail: { capabilitySnapshot: s.capabilitySnapshot } }));
+  renderConnect(s);
   if (s.update) renderUpdateResult(s.update);
 });
 window.api.onTelemetry(renderTelemetry);
@@ -546,6 +544,6 @@ $('manageResources').addEventListener('click', () => {
 $('addCategory').addEventListener('click', () => $('manageResources').click());
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();
-window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }) }); window.towerSectionNavigation.start({ document }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
+window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
 usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

@@ -152,22 +152,42 @@ async function exerciseIntegrationCenter(window) {
   await waitFor(window,
     `document.querySelectorAll('[data-integration-adapter]').length === 2`,
     'Integration Center rows');
-  const capabilities = await window.webContents.executeJavaScript(`(async () => {
+  const capabilityBoundary = await window.webContents.executeJavaScript(`(async () => {
     const state = await window.api.getState();
     return {
-      hidden: document.getElementById('capabilitySummary').hidden,
-      rows: document.querySelectorAll('.capability-item').length,
-      text: document.getElementById('capabilitySummary').textContent,
+      card: !!document.getElementById('capabilitySummary'),
       feature: !!window.capabilityPresentationFeature,
-      view: window.capabilityPresentation?.capabilityView(state.capabilitySnapshot) || null,
+      projected: Object.hasOwn(state, 'capabilitySnapshot'),
     };
   })()`);
-  assert.equal(capabilities.hidden, false,
-    `confirmed capabilities stayed hidden: ${JSON.stringify(capabilities)}`);
-  assert.equal(capabilities.rows, 5, 'CapabilitySnapshot did not render the bounded summary');
-  assert.match(capabilities.text, /密码登录|Password sign-in/u);
-  assert.doesNotMatch(capabilities.text, /auth\.password|accountHandle/u,
-    'Control Tower exposed raw capability or Account fields');
+  assert.deepEqual(capabilityBoundary, { card: false, feature: false, projected: false },
+    'Engine capability details must stay outside the Control Renderer');
+  const routingStacks = await window.webContents.executeJavaScript(`(async () => {
+    const accessibleGroups = () => [
+      ...document.querySelectorAll('[data-routing-group]'),
+      ...document.querySelectorAll('[data-routing-stack-activate]'),
+    ].map((node) => node.dataset.routingGroup || node.dataset.routingStackActivate).sort();
+    const initialGroup = document.querySelector('[data-routing-group]')?.dataset.routingGroup || '';
+    const initialHost = document.querySelector('.routing-rule-row strong')?.textContent || '';
+    document.querySelector('[data-routing-stack-activate]')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      groups: accessibleGroups(),
+      initialGroup,
+      initialHost,
+      afterGroup: document.querySelector('[data-routing-group]')?.dataset.routingGroup || '',
+      afterHost: document.querySelector('.routing-rule-row strong')?.textContent || '',
+      legacyList: !!document.getElementById('routingRuleList'),
+    };
+  })()`);
+  assert.deepEqual(routingStacks, {
+    groups: ['campus', 'direct'],
+    initialGroup: 'direct',
+    initialHost: 'login.example.com',
+    afterGroup: 'campus',
+    afterHost: '',
+    legacyList: false,
+  }, 'routing stacks must lead with the populated route and keep the empty route accessible');
   const explanation = await window.webContents.executeJavaScript(`(() => {
     const details = document.querySelector('.integration-explainer');
     details.querySelector('summary').click();

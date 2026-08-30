@@ -1,6 +1,6 @@
 'use strict';
 
-(function initializeCampusCategoryStacks(globalScope) {
+(function initializeCampusCategoryStacks(globalScope, stackLayout) {
   let current = null;
   let observer = null;
   let preferredCategoryId = null;
@@ -14,18 +14,8 @@
     return Object.freeze({ columns, rows, slotCount: columns * rows });
   }
 
-  function balancedPartitions(items, count) {
-    const safe = Array.isArray(items) ? items : [];
-    const partitions = [];
-    const slots = Math.max(1, Math.min(safe.length || 1, Number(count) || 1));
-    let cursor = 0;
-    for (let index = 0; index < slots; index += 1) {
-      const size = Math.ceil((safe.length - cursor) / (slots - index));
-      partitions.push(safe.slice(cursor, cursor + size));
-      cursor += size;
-    }
-    return partitions;
-  }
+  if (!stackLayout?.balancedPartitions) throw new TypeError('stacked card layout is required');
+  const { balancedPartitions } = stackLayout;
 
   function categoryProjection(resources, groups, translate) {
     const favorites = (Array.isArray(resources) ? resources : []).filter(({ favorite }) => favorite === true);
@@ -138,4 +128,7 @@
   const api = Object.freeze({ balancedPartitions, getLayoutCapacity, render, start });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (globalScope) globalScope.campusCategoryStacks = api;
-})(typeof window !== 'undefined' ? window : null);
+})(typeof window !== 'undefined' ? window : null,
+  typeof module !== 'undefined' && module.exports
+    ? require('./stacked-card-layout')
+    : globalThis.stackedCardLayout);

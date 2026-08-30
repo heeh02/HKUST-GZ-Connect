@@ -51,7 +51,6 @@ function createControlStateSnapshot({
   getFallbackResources,
   getProfilePresentation,
   getAuthChallenge,
-  getCapabilitySnapshot,
   getNetworkEnvironment,
 } = {}) {
   const dependencies = {
@@ -68,7 +67,6 @@ function createControlStateSnapshot({
     getFallbackResources: requiredFunction(getFallbackResources, 'getFallbackResources'),
     getProfilePresentation: requiredFunction(getProfilePresentation, 'getProfilePresentation'),
     getAuthChallenge: requiredFunction(getAuthChallenge, 'getAuthChallenge'),
-    getCapabilitySnapshot: requiredFunction(getCapabilitySnapshot, 'getCapabilitySnapshot'),
     getNetworkEnvironment: requiredFunction(getNetworkEnvironment, 'getNetworkEnvironment'),
   };
   if (typeof platform !== 'string' || !platform) throw new TypeError('platform is required');
@@ -81,7 +79,6 @@ function createControlStateSnapshot({
     version: dependencies.getVersion(),
     update: dependencies.getUpdate(),
     authChallenge: dependencies.getAuthChallenge(),
-    capabilitySnapshot: dependencies.getCapabilitySnapshot(),
     networkEnvironment: dependencies.getNetworkEnvironment(),
   });
 

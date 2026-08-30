@@ -124,59 +124,23 @@
           <section class="network-topology" aria-labelledby="networkTopologyTitle">
             <div class="topology-heading">
               <div>
-                <h2 id="networkTopologyTitle" data-i18n="connect.networkPath">当前网络路径</h2>
-                <p data-i18n="connect.networkPathHint">只展示应用实际观测到的连接关系。</p>
+                <h2 id="networkTopologyTitle" data-i18n="connect.adapterTitle">连接网卡</h2>
+                <p data-i18n="connect.adapterHint">选择校园隧道使用的网卡和源 IP。</p>
               </div>
-              <span id="topologyStatus" class="topology-overall unknown" data-i18n="connect.statusUnknown">状态未知</span>
             </div>
-            <div id="networkTree" class="network-tree" role="tree" aria-label="当前网络路径" data-i18n-attr="aria-label:connect.networkPath">
+            <div id="networkTree" class="network-tree network-tree-compact" role="tree" aria-label="连接网卡" data-i18n-attr="aria-label:connect.adapterTitle">
               <div class="network-tree-root-wrap">
-                <article class="network-tree-node network-tree-root" role="treeitem">
-                  <span class="network-tree-icon" aria-hidden="true">⌁</span>
-                  <span><strong data-i18n="connect.treeRoot">本机流量</strong><small data-i18n="connect.treeRootHint">校园浏览器与系统应用</small></span>
+                <article class="network-tree-node network-tree-root network-tree-service" data-topology-node="tunnel" role="treeitem">
+                  <span class="network-tree-icon" aria-hidden="true">◇</span>
+                  <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
                 </article>
               </div>
-              <div class="network-tree-branches" role="group">
-                <section class="network-tree-branch campus-tree-branch" aria-labelledby="campusTreeTitle">
-                  <header class="network-tree-branch-title" id="campusTreeTitle">
-                    <span class="branch-dot campus"></span>
-                    <span><strong data-i18n="connect.treeCampus">校园网站</strong><small data-i18n="connect.treeCampusHint">自动进入校园隧道</small></span>
-                  </header>
-                  <div class="network-tree-chain">
-                    <article class="network-tree-node" data-topology-node="browser" role="treeitem">
-                      <span class="network-tree-icon" aria-hidden="true">▣</span>
-                      <span><strong data-i18n="nav.browser">校园浏览器</strong><small data-i18n="connect.automaticRouting">自动选择网络</small></span>
-                    </article>
-                    <article class="network-tree-node network-tree-service" data-topology-node="tunnel" role="treeitem">
-                      <span class="network-tree-icon" aria-hidden="true">◇</span>
-                      <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
-                    </article>
-                    <div class="network-underlay-branch" role="group" aria-labelledby="underlayTreeTitle">
-                      <div class="network-underlay-heading">
-                        <span><strong id="underlayTreeTitle" data-i18n="connect.treeUnderlay">连接出口</strong><small data-i18n="connect.treeUnderlayHint">点击网卡或连接线即可切换</small></span>
-                      </div>
-                      <div id="underlayTreeOptions" class="network-underlay-options"></div>
-                      <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
-                    </div>
-                  </div>
-                </section>
-                <section class="network-tree-branch general-tree-branch" aria-labelledby="generalTreeTitle">
-                  <header class="network-tree-branch-title" id="generalTreeTitle">
-                    <span class="branch-dot direct"></span>
-                    <span><strong data-i18n="connect.treeGeneral">其他流量</strong><small data-i18n="connect.treeGeneralHint">保持系统网络路径</small></span>
-                  </header>
-                  <div class="network-tree-chain">
-                    <article id="systemProxyNode" class="network-tree-node" role="treeitem">
-                      <span class="network-tree-icon" aria-hidden="true">↯</span>
-                      <span><strong id="systemProxyName">—</strong><small id="systemProxyMode">—</small></span>
-                    </article>
-                    <article id="systemRouteNode" class="network-tree-node" role="treeitem">
-                      <span class="network-tree-icon" aria-hidden="true">↗</span>
-                      <span><strong id="systemRouteName">—</strong><small id="systemRouteAddress">—</small></span>
-                    </article>
-                    <div id="proxyObservation" class="network-tree-observation"><span class="branch-dot unknown"></span><span data-i18n="connect.proxyUnknown">外部代理：未观测到使用本地隧道的程序</span></div>
-                  </div>
-                </section>
+              <div class="network-underlay-branch" role="group" aria-labelledby="underlayTreeTitle">
+                <div class="network-underlay-heading">
+                  <span><strong id="underlayTreeTitle" data-i18n="connect.treeUnderlay">可用网卡</strong><small data-i18n="connect.treeUnderlayHint">点击网卡或连接线即可切换</small></span>
+                </div>
+                <div id="underlayTreeOptions" class="network-underlay-options"></div>
+                <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
               </div>
             </div>
           </section>
@@ -251,15 +215,6 @@
           <span class="page-heading-chip" data-i18n="tower.advancedBadge">高级</span>
         </div>
 
-        <nav class="tower-section-nav" aria-label="控制塔模块" data-i18n-attr="aria-label:tower.sections">
-          <button type="button" data-tower-target="towerPortSection" data-i18n="tower.connectionPort">连接与端口</button>
-          <button type="button" data-tower-target="towerPolicySection" data-i18n="tower.connectionPolicy">连接策略</button>
-          <button type="button" data-tower-target="towerCapabilitySection" data-i18n="capability.title">接入能力</button>
-          <button type="button" data-tower-target="towerRoutingSection" data-i18n="routing.title">网站规则</button>
-          <button type="button" data-tower-target="towerToolsSection" data-i18n="integration.title">外部工具</button>
-          <button type="button" data-tower-target="towerQuickSection" data-i18n="integration.quickTools">快速工具</button>
-        </nav>
-
         <div class="tower-grid">
         <div id="towerPortSection" class="card tower-card tower-network-card">
           <div class="card-heading">
@@ -305,29 +260,17 @@
           <p class="hint" data-i18n="tower.portHint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
         </div>
 
-        <div id="towerCapabilitySection" class="card tower-card tower-capability-card">
-          <div class="card-heading"><span class="card-heading-icon" aria-hidden="true">◇</span><div><div class="card-title" data-i18n="capability.title">当前接入能力</div><p class="card-sub" data-i18n="capability.source">由当前学校与引擎共同确认</p></div></div>
-          <div id="capabilitySummary" class="capability-summary" hidden>
-            <div id="capabilityList" class="capability-list"></div>
-            <p class="hint" data-i18n="capability.hint">只显示当前会话实际确认的能力；未启用不代表应用会尝试降级或绕过认证。</p>
-          </div>
-        </div>
-
         <div id="towerRoutingSection" class="card tower-card tower-routing-card">
-          <div class="card-heading">
+          <div class="card-heading routing-card-heading">
             <span class="card-heading-icon" aria-hidden="true">↗</span>
             <div>
               <div class="card-title" data-i18n="routing.title">网站网络规则</div>
-              <p class="card-sub" data-i18n="routing.summary">学校基础规则与个人覆盖规则使用同一套路由策略。</p>
+              <p class="card-sub" data-i18n="routing.stackSummary">按校园隧道与直连分组；点击域名即可编辑。</p>
             </div>
+            <button id="manageRoutingRules" class="mini" type="button" data-i18n="routing.add">添加规则</button>
           </div>
-          <div class="manager-entry routing-policy-entry">
-            <div>
-              <div class="manager-entry-title" data-i18n="routing.baseManaged">学校基础规则自动维护</div>
-              <p class="hint" data-i18n="routing.entryHint">个人规则优先，并同时用于校园浏览器、PAC、Clash 与 Mihomo。</p>
-            </div>
-            <button id="manageRoutingRules" class="mini" type="button" data-i18n="routing.manage">管理规则</button>
-          </div>
+          <div id="routingRuleStacks" class="category-stack-grid routing-stack-grid" aria-live="polite"></div>
+          <p id="routingRuleStackStatus" class="manager-empty" aria-live="polite"></p>
         </div>
 
         <div id="towerToolsSection" class="card tower-card tower-tools-card">
@@ -368,9 +311,8 @@
         </div>
         </div>
 
-        <div class="row tower-actions">
-          <button id="towerSave" class="primary sm" data-i18n="tower.save">保存</button>
-          <button id="towerReconnect" class="ghost sm" data-i18n="tower.saveReconnect">保存并重连</button>
+        <div id="towerActions" class="row tower-actions" hidden>
+          <button id="towerSave" class="primary sm" data-i18n="tower.applyChanges">应用更改</button>
           <span class="tower-apply-hint" data-i18n="tower.applyHint">端口或代理认证更改会在应用时重启连接。</span>
           <span id="towerSaved" class="saved-tip"></span>
         </div>
@@ -562,9 +504,7 @@
         </div>
         <button id="closeRoutingRulesDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:routing.close">×</button>
       </div>
-      <div class="manager-body">
-        <div id="routingRuleList" class="manager-list" role="list" aria-label="已保存的网站网络规则" data-i18n-attr="aria-label:routing.listLabel"></div>
-        <p id="routingRuleListStatus" class="manager-empty" aria-live="polite"></p>
+      <div class="manager-body routing-rule-editor-body">
         <form id="routingRuleForm" class="manager-form" novalidate>
           <input id="routingOriginalHost" type="hidden" />
           <input id="routingOriginalScope" type="hidden" />
@@ -591,6 +531,7 @@
           <p id="routingRuleSaved" class="dialog-saved manager-field-wide" aria-live="polite"></p>
           <div class="manager-form-actions manager-field-wide">
             <span id="routingRuleEditHint" class="dialog-edit-hint"></span>
+            <button id="deleteRoutingRule" class="ghost sm danger-action" type="button" data-i18n="routing.delete" hidden>删除</button>
             <button id="cancelRoutingRule" class="ghost sm" type="button" data-i18n="routing.clear">清空</button>
             <button id="saveRoutingRule" class="primary sm" type="submit" data-i18n="routing.add">添加规则</button>
           </div>
@@ -654,8 +595,8 @@
   <script src="notification-view.js"></script>
   <script src="notification-drawer.js"></script>
   <script src="connection-overview.js"></script>
+  <script src="stacked-card-layout.js"></script>
   <script src="campus-category-stacks.js"></script>
-  <script src="tower-section-navigation.js"></script>
   <script src="browser-data-settings.js"></script>
   <script src="browser-new-tab-settings.js"></script>
   <script src="manager-view.js"></script>
@@ -665,7 +606,6 @@
   <script src="proxy-auth-migration.js"></script>
   <script src="school-profile-selector.js"></script>
   <script src="integration-center.js"></script>
-  <script src="capability-presentation.js"></script>
   <script src="app.js"></script>
   <script src="auth-challenge.js"></script>
 </body>

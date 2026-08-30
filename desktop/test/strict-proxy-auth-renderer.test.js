@@ -45,6 +45,10 @@ test('strict authentication changes only through an explicit Control Tower apply
     'the application entry only composes the isolated feature');
   assert.match(app, /'towerPort', 'strictProxyAuth', 'autoReconnect'/,
     'ordinary checkbox changes must wait in the explicit dirty-form path');
+  assert.match(html, /id="towerActions"[^>]*hidden/u);
+  assert.doesNotMatch(html, /id="towerReconnect"/u);
+  assert.match(app, /function setTowerDirty\(value\)[\s\S]{0,180}towerActions/u,
+    'the apply action appears only while the form is dirty');
 
   const saveTowerStart = app.indexOf('async function saveTower()');
   const flashStart = app.indexOf('let flashTimer', saveTowerStart);

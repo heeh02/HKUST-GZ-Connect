@@ -38,7 +38,6 @@ function fixture(overrides = {}) {
       };
     },
     getAuthChallenge: () => null,
-    getCapabilitySnapshot: () => null,
     getNetworkEnvironment: () => ({ schemaVersion: 1, status: 'ready' }),
     ...overrides,
   });
@@ -52,7 +51,6 @@ test('projects settings, resources and key-free profile compatibility views', ()
   assert.equal(value.loggedIn, true);
   assert.equal(value.hasPassword, true);
   assert.equal(value.settings.username, 'stu****');
-  assert.equal(value.capabilitySnapshot, null);
   assert.equal(value.networkEnvironment.status, 'ready');
   assert.deepEqual(value.campusResources.map(({ id }) => id), ['home', 'hpc']);
   assert.deepEqual(value.resourceGroups, [{
@@ -90,22 +88,6 @@ test('settings failure returns the bounded fallback without probing credentials'
   assert.deepEqual(value.resourceGroups, []);
   assert.equal(credentialReads, 0);
   assert.deepEqual(calls, [{ locale: 'zh-CN' }]);
-});
-
-test('get-state carries only the already-sanitized additive capability snapshot', () => {
-  const capabilitySnapshot = Object.freeze({
-    schemaVersion: 1,
-    profileId: 'hkustgz',
-    profileRevision: 1,
-    accountHandle: 'ephemeral-account-handle',
-    activeContextEpoch: 1,
-    engineGeneration: 7,
-    layers: {},
-    effective: { 'auth.password': 'supported', 'transport.l3': 'supported' },
-  });
-  const { snapshot } = fixture({ getCapabilitySnapshot: () => capabilitySnapshot });
-  assert.equal(snapshot().capabilitySnapshot, capabilitySnapshot);
-  assert.equal(JSON.stringify(snapshot()).includes('accountKey'), false);
 });
 
 test('persistent Account identity can stay logged in without a plaintext settings username', () => {

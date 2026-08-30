@@ -34,7 +34,6 @@
       busy = value === true;
       $('strictProxyAuth').disabled = busy;
       $('towerSave').disabled = busy;
-      $('towerReconnect').disabled = busy;
       render();
     }
 

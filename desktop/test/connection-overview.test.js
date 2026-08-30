@@ -39,17 +39,21 @@ test('network tree keeps one default line and selectable physical or virtual alt
   assert.equal(buildUnderlayOptions(environment, t).some(({ selected }) => selected), false);
 });
 
-test('connection overview exposes one interactive network tree instead of duplicate cards and select', () => {
+test('connection overview exposes one compact adapter tree instead of duplicate network diagnostics', () => {
   const renderer = path.join(__dirname, '..', 'renderer');
   const html = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(renderer, 'app.js'), 'utf8');
-  for (const id of ['networkTree', 'underlayTreeOptions', 'systemRouteName', 'systemProxyName']) {
+  for (const id of ['networkTree', 'underlayTreeOptions', 'tunnelSummary']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
-  for (const removed of ['defaultAdapterName', 'virtualAdapterSummary', 'underlaySourceAddress']) {
+  for (const removed of [
+    'defaultAdapterName', 'virtualAdapterSummary', 'underlaySourceAddress',
+    'systemRouteName', 'systemProxyName',
+  ]) {
     assert.doesNotMatch(html, new RegExp(`id="${removed}"`, 'u'));
   }
-  assert.match(html, /network-tree-branches/u);
+  assert.match(html, /network-tree-compact/u);
+  assert.doesNotMatch(html, /network-tree-branches/u);
   assert.match(html, /data-topology-node="tunnel"/u);
   assert.match(app, /connectionOverview\.start\(\{[^\n]*save:\s*\(patch\)\s*=>\s*window\.api\.save/u);
   assert.match(app, /refresh:\s*\(\)\s*=>\s*refreshState/u);

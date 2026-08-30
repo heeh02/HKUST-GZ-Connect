@@ -31,10 +31,10 @@ async function shellSnapshot(window, page) {
       contentScroll: root.scrollTop,
       navOrder: [...document.querySelectorAll('.nav')].map((node) => node.dataset.page),
       resourceInsideConnect: !!document.querySelector('.page[data-page="connect"] #resourceShelf'),
-      stacks: document.querySelectorAll('.category-stack').length,
-      layeredStacks: document.querySelectorAll('.category-stack.layered').length,
-      categoryNames: [...document.querySelectorAll('.stacked-category-tab span, .category-card > header h3')].map((node) => node.textContent),
-      cards: document.querySelectorAll('.category-card').length,
+      stacks: document.querySelectorAll('#campusResources .category-stack').length,
+      layeredStacks: document.querySelectorAll('#campusResources .category-stack.layered').length,
+      categoryNames: [...document.querySelectorAll('#campusResources .stacked-category-tab span, #campusResources .category-card > header h3')].map((node) => node.textContent),
+      cards: document.querySelectorAll('#campusResources .category-card').length,
       stackRect: (() => { const r = document.getElementById('campusResources').getBoundingClientRect(); return { top: r.top, width: r.width, height: r.height, available: window.innerHeight - r.top - 28 }; })(),
       notificationNav: !!document.querySelector('.nav[data-page="notif"]'),
       networkTree: !!document.getElementById('networkTree'),
@@ -75,7 +75,7 @@ async function main() {
       assert.equal(connect.notificationNav, false);
       assert.equal(connect.resourceInsideConnect, false);
       assert.equal(connect.networkTree, true);
-      assert.equal(connect.networkTreeBranches, 2);
+      assert.equal(connect.networkTreeBranches, 0);
       assert.equal(connect.underlayOptions, 2);
       assert.equal(connect.legacyUnderlaySelect, false);
       assert.ok(connect.bodyOverflow <= 0 && connect.contentOverflow <= 0, `${label}: connection shell overflows horizontally`);
@@ -115,6 +115,24 @@ async function main() {
     assert.equal(underlaySwitch.selected, true);
     assert.equal(underlaySwitch.active, true);
     assert.ok(underlaySwitch.status, 'switching a connection line must publish a status');
+    const contextualApply = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('.nav[data-page="tower"]').click();
+      const actions = document.getElementById('towerActions');
+      const initialHidden = actions.hidden;
+      const input = document.getElementById('maxAttempts');
+      input.value = String(Number(input.value) === 3 ? 4 : 3);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const visibleWhenDirty = !actions.hidden;
+      document.getElementById('towerSave').click();
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline && (!actions.hidden || document.getElementById('towerSaved').textContent)) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { initialHidden, visibleWhenDirty, hiddenAfterSave: actions.hidden };
+    })()`);
+    assert.deepEqual(contextualApply, {
+      initialHidden: true, visibleWhenDirty: true, hiddenAfterSave: true,
+    }, 'Control Tower apply action must exist only while settings are dirty or confirming a save');
     const shortcut = await window.webContents.executeJavaScript(`(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
       return { page: document.querySelector('.page.active').dataset.page, focused: document.activeElement.id };

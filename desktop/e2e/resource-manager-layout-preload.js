@@ -33,6 +33,9 @@ let workspaceOpenCount = 0;
 let bookmarkManagerOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
+let routingRules = [
+  { host: 'login.example.com', includeSubdomains: false, route: 'direct', updatedAt: 2 },
+];
 
 const integrationAdapters = [
   'clash_mihomo_yaml', 'vscode_remote_ssh',
@@ -97,32 +100,13 @@ const state = {
   lastError: null,
   version: 'test',
   pacUrl: '',
-  capabilitySnapshot: {
-    schemaVersion: 1,
-    profileId: 'hkustgz',
-    effective: {
-      'auth.password': 'supported',
-      'auth.captcha': 'unsupported',
-      'auth.sms': 'unsupported',
-      'auth.token': 'unsupported',
-      'auth.certificate': 'unsupported',
-      'auth.hid': 'unsupported',
-      'auth.sso': 'unsupported',
-      'auth.device': 'unsupported',
-      'auth.unknown_secondary': 'unsupported',
-      'resource.catalogue': 'unsupported',
-      'resource.authorization_decision': 'unsupported',
-      'transport.l3': 'supported',
-      'transport.web_vpn': 'unsupported',
-    },
-  },
 };
 
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
   save: async (patch) => {
+    state.settings = { ...state.settings, ...(patch || {}) };
     if (Object.hasOwn(patch || {}, 'underlaySourceAddress')) {
-      state.settings.underlaySourceAddress = patch.underlaySourceAddress;
       const selected = state.networkEnvironment.interfaces.find((item) => item.addresses.some(({ address }) => (
         address === patch.underlaySourceAddress
       )));
@@ -188,6 +172,24 @@ contextBridge.exposeInMainWorld('api', {
     ));
     return { ok: true, resources };
   },
+  listRoutingRules: async () => ({ ok: true, rules: routingRules }),
+  saveRoutingRule: async (rule) => {
+    if (rule.previous) routingRules = routingRules.filter((item) => !(
+      item.host === rule.previous.host && item.includeSubdomains === rule.previous.includeSubdomains
+    ));
+    routingRules = [...routingRules.filter((item) => !(
+      item.host === rule.host && item.includeSubdomains === rule.includeSubdomains
+    )), { host: rule.host, includeSubdomains: rule.includeSubdomains,
+      route: rule.route, updatedAt: Date.now() }];
+    return { ok: true, rules: routingRules };
+  },
+  deleteRoutingRule: async (identity) => {
+    routingRules = routingRules.filter((item) => !(
+      item.host === identity.host && item.includeSubdomains === identity.includeSubdomains
+    ));
+    return { ok: true, rules: routingRules };
+  },
+  onOpenRoutingRules: () => {},
   listIntegrations: async () => ({ ok: true, integrations: integrationViews() }),
   prepareIntegration: async ({ adapterId, action }) => {
     if (!integrationAdapters.includes(adapterId)) {

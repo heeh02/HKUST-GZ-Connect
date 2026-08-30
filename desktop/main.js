@@ -475,7 +475,7 @@ function emit() {
   // separate channel; update rides along so an automatic check that finds a
   // new release surfaces without waiting for a full refresh. get-state stays
   // the source of truth on full refreshes.
-  desktopShell?.send('status', { ...statusSnapshot(), locale, update: updateInfo, capabilitySnapshot: activeSchoolProfile.capabilitySnapshot() });
+  desktopShell?.send('status', { ...statusSnapshot(), locale, update: updateInfo });
   desktopShell?.updateTray();
 }
 
@@ -1378,7 +1378,6 @@ const controlStateSnapshot = createControlStateSnapshot({
   getResources: safeCampusResourceLibrary, getResourceGroups: () => resourceLibraryRuntime.listGroups(), getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
-  getCapabilitySnapshot: () => activeSchoolProfile.capabilitySnapshot(),
   getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress),
 });
 

@@ -59,42 +59,14 @@
   function renderStatus(state = {}, t = translate) {
     const connected = state.connected === true;
     const busy = state.connecting === true;
-    const overall = byId('topologyStatus');
     const tunnelNode = document.querySelector('[data-topology-node="tunnel"]');
-    const browserNode = document.querySelector('[data-topology-node="browser"]');
-    overall.className = `topology-overall ${connected ? 'healthy' : busy ? 'warning' : state.lastError ? 'error' : 'inactive'}`;
-    overall.textContent = t(connected ? 'connect.pathReady' : busy ? 'connect.connecting' : state.lastError ? 'connect.needsAttention' : 'connect.disconnected');
     tunnelNode.dataset.status = connected ? 'healthy' : busy ? 'warning' : state.lastError ? 'error' : 'inactive';
-    browserNode.dataset.status = connected ? 'healthy' : 'unknown';
     byId('tunnelSummary').textContent = t(connected ? 'connect.tunnelReady' : busy ? 'connect.tunnelConnecting' : 'connect.tunnelInactive');
     byId('notificationAttention').hidden = !state.lastError && !state.notice;
     if (state.networkEnvironment) renderEnvironment(state.networkEnvironment, t);
   }
 
   function renderEnvironment(environment, t = translate) {
-    const interfaces = Array.isArray(environment?.interfaces) ? environment.interfaces : [];
-    const defaultAdapter = interfaces.find(({ default: activeDefault }) => activeDefault) || null;
-    const systemAdapter = interfaces.find(({ systemDefault }) => systemDefault) || defaultAdapter;
-    byId('systemRouteName').textContent = systemAdapter
-      ? t('connect.treeSystemRoute', { name: systemAdapter.name }) : t('connect.systemRoute');
-    byId('systemRouteAddress').textContent = environment?.systemRoute?.sourceAddress || '—';
-    byId('systemRouteNode').dataset.status = systemAdapter ? 'healthy' : 'unknown';
-    const proxy = environment?.systemProxy || {};
-    const owner = proxy.owner || {};
-    byId('systemProxyName').textContent = proxy.state === 'detected'
-      ? (owner.name || (owner.provider && owner.provider !== 'unknown' ? owner.provider : t('connect.localProxy'))) :
-      t(proxy.state === 'disabled' ? 'connect.treeNoProxy' : 'connect.treeProxyUnknown');
-    const endpoint = proxy.endpoint ? `${proxy.endpoint.host}:${proxy.endpoint.port}` : '';
-    const mode = owner.mode && owner.mode !== 'unknown' ? t(`connect.proxyMode.${owner.mode}`) : t('connect.modeUnknown');
-    byId('systemProxyMode').textContent = proxy.state === 'detected'
-      ? [mode, owner.tunEnabled === true ? t('connect.tunEnabled') : owner.tunEnabled === false ? t('connect.tunDisabled') : '', endpoint].filter(Boolean).join(' · ')
-      : t(proxy.state === 'disabled' ? 'connect.treeProxyBypassed' : 'connect.statusUnknown');
-    byId('systemProxyNode').dataset.status = proxy.state === 'detected' ? 'healthy' :
-      proxy.state === 'disabled' ? 'inactive' : 'unknown';
-    for (const id of ['systemRouteName', 'systemRouteAddress', 'systemProxyName', 'systemProxyMode']) {
-      byId(id).title = byId(id).textContent;
-    }
-
     const optionContainer = byId('underlayTreeOptions');
     const options = buildUnderlayOptions(environment, t);
     optionContainer.replaceChildren(...options.map((option) => {
@@ -130,15 +102,6 @@
     }
     const svg = byId('latencySparkline');
     if (svg) svg.innerHTML = `<path d="${sparkline(latencyHistory)}"/>`;
-    const names = Array.isArray(telemetry.apps) ? telemetry.apps.map(({ name }) => name).filter(Boolean) : [];
-    const proxy = byId('proxyObservation');
-    const proxyNames = names.filter((name) => /clash|mihomo/i.test(name));
-    if (proxy) {
-      proxy.querySelector('span:last-child').textContent = proxyNames.length
-        ? t('connect.proxyObserved', { names: proxyNames.join(', ') })
-        : t('connect.proxyUnknown');
-      proxy.querySelector('.branch-dot').className = `branch-dot ${proxyNames.length ? 'campus' : 'unknown'}`;
-    }
   }
 
   function start(options = {}) {
