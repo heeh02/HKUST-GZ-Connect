@@ -166,7 +166,6 @@ class CampusBrowserManager {
       partition: this.browserPartition,
       routingPolicy: this.routingPolicy,
       ensureCampusReady: this.ensureCampusReady,
-      onManageRoutingRules: this.showRoutingRules,
       locale: this.getLocale(),
       t: this.getTranslator(),
       onError: this.reportError,

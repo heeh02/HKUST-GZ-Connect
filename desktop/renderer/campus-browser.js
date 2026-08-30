@@ -14,7 +14,8 @@ const profileUnverified = launchQuery.get('unverified') === '1';
 function browserTitle(pageTitle = '') {
   const context = profileName || t('browser.workspace');
   const trust = profileUnverified ? ` · ${t('school.unverified')}` : '';
-  return pageTitle ? `${pageTitle} · ${context}${trust}` : `${context}${trust} · ${t('browser.title')}`;
+  if (!pageTitle) return `${context}${trust} · ${t('browser.title')}`;
+  return pageTitle.includes(context) ? `${pageTitle}${trust}` : `${pageTitle} · ${context}${trust}`;
 }
 
 function applyLang(lang) {
@@ -49,7 +50,6 @@ const downloadStatus = document.getElementById('downloadStatus');
 const browserSettings = document.getElementById('browserSettings');
 const favoritePage = document.getElementById('favoritePage');
 const credential = document.getElementById('credential');
-const routeRules = document.getElementById('routeRules');
 const bookmarkBar = document.getElementById('bookmarkBar');
 const bookmarkItems = document.getElementById('bookmarkItems');
 const bookmarkMoreWrap = document.getElementById('bookmarkMoreWrap');
@@ -78,10 +78,6 @@ document.getElementById('addressForm').addEventListener('submit', (event) => {
   command('navigate', address.value);
 });
 routeSelector.addEventListener('change', () => command('set-route', routeSelector.value));
-document.getElementById('routeRules').addEventListener(
-  'click',
-  () => command('manage-routing-rules'),
-);
 browserSettings.addEventListener(
   'click',
   () => command('open-settings'),
@@ -259,7 +255,7 @@ window.campusBrowserUI = {
     routeSelector.disabled = next.workspace === true;
     credential.disabled = next.workspace === true;
     routeSelector.hidden = next.workspace === true;
-    routeRules.hidden = next.workspace === true;
+    routeBadge.hidden = next.workspace !== true;
     credential.hidden = next.workspace === true;
     favoritePage.hidden = next.workspace === true;
     favoritePage.disabled = next.workspace === true || next.canFavorite !== true;
@@ -268,7 +264,6 @@ window.campusBrowserUI = {
     favoritePage.setAttribute('aria-label', favoritePage.title);
     routeBadge.textContent = next.workspace ? t('browser.badgeAutomatic')
       : next.route === 'direct' ? t('browser.badgeDirect') : t('browser.badgeCampus');
-    routeBadge.classList.toggle('direct', !next.workspace && next.route === 'direct');
     routeBadge.title = next.workspace ? t('browser.workspace')
       : next.route === 'direct' ? t('browser.viaDirect') : t('browser.viaCampus');
     state.textContent = next.loading

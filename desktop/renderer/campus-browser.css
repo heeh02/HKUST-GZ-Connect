@@ -202,26 +202,27 @@ input {
   place-items: center;
   white-space: nowrap;
 }
-.route-badge.direct { background: #f5ecd4; color: #715300; }
+.route-badge[hidden], .route-selector[hidden] { display: none; }
 .route-selector {
-  height: 31px;
-  max-width: 112px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
+  flex: 0 0 auto;
+  height: 24px;
+  max-width: 108px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #e9f0fb;
   color: var(--navy);
-  padding: 0 5px;
-  font-size: 11px;
+  padding: 0 5px 0 7px;
+  font-size: 10px;
   font-weight: 650;
   cursor: pointer;
 }
-.route-selector:hover { border-color: #aebdd1; background: #f7f9fc; }
+.route-selector:hover { background: #dde8f7; }
 .route-selector:focus {
   outline: 0;
   border-color: #91a5c1;
   box-shadow: 0 0 0 3px rgba(22,58,114,.1);
 }
-.route-rules { flex-basis: 31px; }
 .state {
   display: none;
   flex: 0 1 auto;
@@ -342,13 +343,12 @@ input {
 }
 @media (max-width: 720px) {
   .credential { display: none; }
-  .route-selector { max-width: 92px; }
+  .route-selector { max-width: 86px; }
   .toolbar { gap: 2px; padding-left: 5px; padding-right: 5px; }
   .bookmark-bar { padding-left: 5px; padding-right: 5px; }
   .bookmark-manage { max-width: 74px; }
 }
 @media (max-width: 660px) {
-  .route-rules { display: none; }
   .route-badge { max-width: 78px; overflow: hidden; text-overflow: ellipsis; }
 }
 @media (prefers-reduced-motion: reduce) {

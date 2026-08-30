@@ -232,7 +232,6 @@ class CampusBrowser {
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
-    onManageRoutingRules,
     locale,
     t,
     onError,
@@ -251,7 +250,6 @@ class CampusBrowser {
     this.ensureCampusReady = typeof ensureCampusReady === 'function'
       ? ensureCampusReady
       : async () => true;
-    this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
     this.profilePresentation = profilePresentation &&
@@ -805,9 +803,6 @@ class CampusBrowser {
     }
     else if (command === 'manage-credential' && active) {
       this.manageCredential(active);
-    }
-    else if (command === 'manage-routing-rules') {
-      if (typeof this.onManageRoutingRules === 'function') this.onManageRoutingRules();
     }
     else if (command === 'open-settings') this.onOpenSettings();
     else if (command === 'toggle-favorite' && active) {

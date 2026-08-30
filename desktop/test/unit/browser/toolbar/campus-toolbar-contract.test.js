@@ -43,8 +43,6 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.equal(normalizeToolbarCommand('find', 'bad\u0000query'), null);
 });
 
-test('routing-rule management is an explicit value-free toolbar command', () => {
-  assert.deepEqual(normalizeToolbarCommand('manage-routing-rules', { unexpected: true }), {
-    command: 'manage-routing-rules', value: '',
-  });
+test('low-frequency routing-rule management is not exposed by the browser toolbar', () => {
+  assert.equal(normalizeToolbarCommand('manage-routing-rules', { unexpected: true }), null);
 });

@@ -6,7 +6,6 @@ const NO_VALUE_COMMANDS = new Set([
   'reload',
   'home',
   'manage-credential',
-  'manage-routing-rules',
   'open-settings',
   'toggle-favorite',
   'focus-workspace',

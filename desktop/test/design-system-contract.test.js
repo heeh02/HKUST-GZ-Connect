@@ -39,14 +39,17 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
 
 test('personal Campus Browser uses responsive category stacks without website-card nesting', () => {
   assert.match(productCss, /\.category-stack-grid\s*\{[^}]*repeat\(var\(--stack-columns/u);
+  assert.match(productCss, /\.category-stack-grid\s*\{[^}]*min-height:\s*0/u);
   assert.match(productCss, /\.stacked-category-tab\s*\{[^}]*height:\s*38px/u);
   assert.match(productCss, /\.category-card\s*\{[^}]*border-radius:\s*16px/u);
+  assert.match(productCss, /\.category-card\s*\{[^}]*min-height:\s*110px/u);
   assert.match(productCss, /\.category-site\s*\{[^}]*border-bottom:\s*1px solid/u);
   assert.match(productCss, /data-stack-columns="1"[^}]*\.category-site-list\s*\{[^}]*repeat\(2,/u);
   assert.match(productCss, /\.category-site-icon\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/u);
   assert.match(controlHtml, /data-page="browser"/u);
   assert.match(controlHtml, /id="resourceSearch"/u);
   assert.match(controlHtml, /id="campusResources"[^>]*class="category-stack-grid"/u);
+  assert.doesNotMatch(controlHtml, /category-kicker/u);
   assert.doesNotMatch(controlHtml, /data-page="connect"[\s\S]*id="resourceShelf"[\s\S]*data-page="browser"/u);
 });
 
