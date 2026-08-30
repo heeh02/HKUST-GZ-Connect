@@ -42,7 +42,7 @@
         <div id="secondaryNavigation" class="secondary-navigation">
           <select id="secondarySelect" class="secondary-select" aria-label="当前视图选项"></select>
           <div id="serviceViewTabs" class="secondary-tabs" role="tablist" aria-label="当前视图选项"></div>
-          <button id="quickCreateGroup" class="secondary-create" type="button">＋ 新建分组</button>
+          <button id="quickCreateGroup" class="secondary-create" type="button">＋ 新建分类</button>
         </div>
         <div class="view-heading">
           <h1><span id="serviceViewTitle">我的收藏</span><span id="serviceViewCount" class="view-count"></span></h1>
@@ -58,12 +58,12 @@
           <h1 id="manageTitle">整理收藏</h1>
           <div class="module-actions">
             <button id="backToServices" class="text-button" type="button">返回校园服务</button>
-            <button id="createGroup" class="soft-button" type="button">＋ 新建分组</button>
+            <button id="createGroup" class="soft-button" type="button">＋ 新建分类</button>
           </div>
         </div>
         <div class="manage-layout">
-          <aside class="manage-sidebar" aria-label="书签文件夹">
-            <div class="group-heading"><h3 id="manageGroupsTitle">书签文件夹</h3></div>
+          <aside id="manageSidebar" class="manage-sidebar" aria-label="我的分类">
+            <div class="group-heading"><h3 id="manageGroupsTitle">我的分类</h3></div>
             <nav id="manageFolderNav" class="manage-folder-nav"></nav>
           </aside>
           <section class="manage-panel manage-content">
@@ -74,9 +74,9 @@
             <div id="bulkActions" class="bulk-actions">
               <label class="bulk-select-page"><input id="selectPageResources" type="checkbox" /><span id="selectPageLabel">选择本页</span></label>
               <span id="bulkSelectedCount" class="bulk-selected-count">已选择 0 项</span>
-              <select id="bulkGroupSelect" aria-label="目标分组"></select>
-              <button id="bulkAddToGroup" class="soft-button" type="button" disabled>加入分组</button>
-              <button id="bulkClearSelection" class="text-button" type="button" disabled>取消选择</button>
+              <select id="bulkGroupSelect" aria-label="目标分类" hidden></select>
+              <button id="bulkAddToGroup" class="soft-button" type="button" disabled hidden>加入分类</button>
+              <button id="bulkClearSelection" class="text-button" type="button" disabled hidden>取消选择</button>
             </div>
             <div id="resourcePool" class="resource-grid"></div>
           </section>
@@ -88,8 +88,8 @@
 
   <dialog id="groupDialog" class="group-dialog">
     <form method="dialog">
-      <h2 id="groupDialogTitle">新建分组</h2>
-      <label id="groupNameLabel" for="groupName">分组名称</label>
+      <h2 id="groupDialogTitle">新建分类</h2>
+      <label id="groupNameLabel" for="groupName">分类名称</label>
       <input id="groupName" maxlength="40" autocomplete="off" />
       <p id="groupError" role="alert"></p>
       <div class="dialog-actions">

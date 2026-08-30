@@ -234,6 +234,12 @@ async function main() {
     const initialManageGrid = document.getElementById('resourcePool');
     const initialManageItem = initialManageGrid.querySelector('.resource-item');
     const initialManageIcon = initialManageGrid.querySelector('.resource-icon');
+    const initialBulk = {
+      hint: document.getElementById('bulkSelectedCount').textContent,
+      groupHidden: document.getElementById('bulkGroupSelect').hidden,
+      addHidden: document.getElementById('bulkAddToGroup').hidden,
+      clearHidden: document.getElementById('bulkClearSelection').hidden,
+    };
     const compactGeometry = {
       columns: getComputedStyle(initialManageGrid).gridTemplateColumns.split(' ').filter(Boolean).length,
       itemHeight: initialManageItem.getBoundingClientRect().height,
@@ -244,6 +250,11 @@ async function main() {
     document.getElementById('groupName').value = '科研';
     document.getElementById('saveGroup').click();
     document.querySelector('#resourcePool .resource-selection input').click();
+    const selectedBulk = {
+      groupVisible: !document.getElementById('bulkGroupSelect').hidden,
+      addVisible: !document.getElementById('bulkAddToGroup').hidden,
+      clearVisible: !document.getElementById('bulkClearSelection').hidden,
+    };
     const bulkGroup = document.getElementById('bulkGroupSelect');
     bulkGroup.value = 'group_abcdefghijkl';
     bulkGroup.dispatchEvent(new Event('change', { bubbles: true }));
@@ -269,20 +280,26 @@ async function main() {
       bulkVisible: getComputedStyle(document.getElementById('bulkActions')).display !== 'none',
       rowCheckboxes: document.querySelectorAll('#resourcePool .resource-selection input').length,
       perRowGroupSelects: document.querySelectorAll('#resourcePool .resource-group-select').length,
-      compactGeometry,
+      compactGeometry, initialBulk, selectedBulk,
     };
   })()`);
   assert.equal(managementView.visible, true, 'organizer stopped being the active workspace screen');
   assert.equal(managementView.bulkVisible, true, 'batch organizer controls are hidden');
   assert.ok(managementView.rowCheckboxes > 0, 'organizer rows have no batch selection control');
   assert.equal(managementView.perRowGroupSelects, 0, 'per-row group dropdowns returned');
+  assert.deepEqual(managementView.initialBulk, {
+    hint: '选择网站后可加入分类', groupHidden: true, addHidden: true, clearHidden: true,
+  }, 'idle organizer exposes low-value batch controls');
+  assert.deepEqual(managementView.selectedBulk, {
+    groupVisible: true, addVisible: true, clearVisible: true,
+  }, 'selecting a site does not reveal batch category controls');
   assert.equal(managementView.compactGeometry.columns, 3,
     'organizer does not use the available width at 125% zoom');
   assert.ok(managementView.compactGeometry.iconWidth <= 28,
     'organizer icons are oversized for a desktop productivity surface');
   assert.ok(managementView.compactGeometry.itemHeight <= 64,
     'organizer rows waste vertical space');
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setTimeout(resolve, 180));
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'open-resource' && resourceId === 'sis'), true);

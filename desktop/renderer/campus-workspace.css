@@ -157,9 +157,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .pager-button:disabled { color: #bec7d4; background: #f8fafc; cursor: default; }
 
 .resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.resource-grid-enter .resource-item { animation: resource-enter 180ms cubic-bezier(.2, .8, .2, 1) both; }
+.resource-grid-enter .resource-item { animation: resource-enter 160ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes resource-enter {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: .78; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .resource-item {
@@ -288,7 +288,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .manage-folder-action:hover { color: var(--workspace-navy); background: #fff; }
 .bulk-actions {
   display: grid;
-  grid-template-columns: auto minmax(72px, 1fr) minmax(112px, 150px) auto auto;
+  grid-template-columns: auto minmax(120px, 1fr);
   align-items: center;
   gap: 7px;
   margin-bottom: 10px;
@@ -297,6 +297,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-radius: 10px;
   background: var(--workspace-field);
 }
+.bulk-actions.has-selection { grid-template-columns: auto minmax(72px, 1fr) minmax(112px, 150px) auto auto; }
 .bulk-select-page { display: inline-flex; align-items: center; gap: 5px; color: var(--workspace-blue); font-size: 10.5px; font-weight: 700; cursor: pointer; }
 .bulk-select-page input { width: 14px; height: 14px; accent-color: var(--workspace-blue); }
 .bulk-selected-count { color: var(--workspace-muted); font-size: 10.5px; }
@@ -338,7 +339,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .view-heading { align-items: flex-start; }
   .manage-layout { grid-template-columns: 1fr; }
   .manage-folder-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .bulk-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bulk-actions, .bulk-actions.has-selection { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bulk-selected-count { text-align: right; }
 }
 @media (max-width: 430px) {

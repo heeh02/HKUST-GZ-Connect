@@ -6,17 +6,17 @@ const I18N = Object.freeze({
     backToServices: '返回校园服务',
     primaryWorkspace: '我的工作区', primaryRecent: '最近使用', primaryCatalog: '网站库',
     favorites: '我的收藏', recent: '最近使用', starter: '常用入口', catalogTitle: '网站库',
-    manageTitle: '整理收藏', resourcePool: '收藏', groups: '书签文件夹', createGroup: '＋ 新建分组',
+    manageTitle: '整理收藏', resourcePool: '收藏', groups: '我的分类', createGroup: '＋ 新建分类',
     allSites: '全部', allFavorites: '全部收藏',
-    searchResults: '搜索结果：{query}', ungrouped: '未分组', emptyFavorites: '还没有收藏的网站',
+    searchResults: '搜索结果：{query}', ungrouped: '未分类', emptyFavorites: '还没有收藏的网站',
     noMatch: '没有符合条件的校园服务', noMatchHint: '尝试其他关键词。', clearSearch: '清除搜索',
-    createTitle: '新建分组', renameTitle: '重命名分组', renameSite: '重命名网页', groupName: '名称',
+    createTitle: '新建分类', renameTitle: '重命名分类', renameSite: '重命名网页', groupName: '名称',
     cancel: '取消', save: '保存', edit: '重命名', remove: '删除', confirmDelete: '确认删除',
-    confirmDeleteGroup: '删除分组（网站保留）',
+    confirmDeleteGroup: '删除分类（网站保留）',
     moveUp: '上移', moveDown: '下移', favorite: '收藏', unfavorite: '取消收藏',
-    invalidGroupName: '请输入 1–30 个字符的分组名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
-    selectPage: '选择本页', selectedCount: '已选择 {count} 项', chooseGroup: '选择分组',
-    addToGroup: '加入分组', clearSelection: '取消选择', memberships: '所在分组',
+    invalidGroupName: '请输入 1–30 个字符的分类名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
+    selectPage: '选择本页', selectedCount: '已选择 {count} 项', selectionHint: '选择网站后可加入分类', chooseGroup: '选择分类',
+    addToGroup: '加入分类', clearSelection: '取消选择', memberships: '所在分类',
     openedAt: '打开于 {time}', pageRange: '{start}–{end} / {total}', previousPage: '上一页', nextPage: '下一页',
     campus: '校园隧道', direct: '直连',
     newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
@@ -28,17 +28,17 @@ const I18N = Object.freeze({
     backToServices: 'Back to Services',
     primaryWorkspace: 'My Workspace', primaryRecent: 'Recently Used', primaryCatalog: 'Site Library',
     favorites: 'Favorites', recent: 'Recently Used', starter: 'Common Services', catalogTitle: 'Site Library',
-    manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'Bookmark Folders', createGroup: '+ New Group',
+    manageTitle: 'Organize Favorites', resourcePool: 'Favorites', groups: 'My Categories', createGroup: '+ New Category',
     allSites: 'All', allFavorites: 'All Favorites',
-    searchResults: 'Search: {query}', ungrouped: 'Ungrouped', emptyFavorites: 'No favorite sites yet',
+    searchResults: 'Search: {query}', ungrouped: 'Uncategorized', emptyFavorites: 'No favorite sites yet',
     noMatch: 'No matching campus services', noMatchHint: 'Try another search term.', clearSearch: 'Clear Search',
-    createTitle: 'New Group', renameTitle: 'Rename Group', renameSite: 'Rename Site', groupName: 'Name',
+    createTitle: 'New Category', renameTitle: 'Rename Category', renameSite: 'Rename Site', groupName: 'Name',
     cancel: 'Cancel', save: 'Save', edit: 'Rename', remove: 'Delete', confirmDelete: 'Confirm delete',
-    confirmDeleteGroup: 'Delete Group (keep sites)',
+    confirmDeleteGroup: 'Delete Category (keep sites)',
     moveUp: 'Move up', moveDown: 'Move down', favorite: 'Favorite', unfavorite: 'Remove favorite',
-    invalidGroupName: 'Enter a group name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
-    selectPage: 'Select Page', selectedCount: '{count} selected', chooseGroup: 'Choose Group',
-    addToGroup: 'Add to Group', clearSelection: 'Clear Selection', memberships: 'Groups',
+    invalidGroupName: 'Enter a category name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
+    selectPage: 'Select Page', selectedCount: '{count} selected', selectionHint: 'Select sites to add them to a category', chooseGroup: 'Choose Category',
+    addToGroup: 'Add to Category', clearSelection: 'Clear Selection', memberships: 'Categories',
     openedAt: 'Opened {time}', pageRange: '{start}–{end} / {total}', previousPage: 'Previous page', nextPage: 'Next page',
     campus: 'Campus Tunnel', direct: 'Direct',
     newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
@@ -432,8 +432,10 @@ function renderManage() {
 
 function renderBulkActions() {
   if (!state) return;
+  const hasSelection = selectedResourceIds.size > 0;
   $('selectPageLabel').textContent = text().selectPage;
-  $('bulkSelectedCount').textContent = text().selectedCount.replace('{count}', selectedResourceIds.size);
+  $('bulkSelectedCount').textContent = hasSelection
+    ? text().selectedCount.replace('{count}', selectedResourceIds.size) : text().selectionHint;
   $('bulkAddToGroup').textContent = text().addToGroup;
   $('bulkClearSelection').textContent = text().clearSelection;
   const allPage = currentManagePageIds.length > 0 &&
@@ -448,7 +450,11 @@ function renderBulkActions() {
     return option;
   }));
   if (state.groups.some(({ id }) => id === selectedGroup)) $('bulkGroupSelect').value = selectedGroup;
-  const canApply = selectedResourceIds.size > 0 && !!$('bulkGroupSelect').value;
+  $('bulkActions').classList.toggle('has-selection', hasSelection);
+  $('bulkGroupSelect').hidden = !hasSelection;
+  $('bulkAddToGroup').hidden = !hasSelection;
+  $('bulkClearSelection').hidden = !hasSelection;
+  const canApply = hasSelection && !!$('bulkGroupSelect').value;
   $('bulkAddToGroup').disabled = !canApply;
   $('bulkClearSelection').disabled = selectedResourceIds.size === 0;
 }
@@ -473,6 +479,7 @@ function syncText() {
   $('backToServices').textContent = strings.backToServices;
   $('resourcePoolTitle').textContent = strings.resourcePool;
   $('manageGroupsTitle').textContent = strings.groups;
+  $('manageSidebar').setAttribute('aria-label', strings.groups);
   $('createGroup').textContent = strings.createGroup;
   $('emptyTitle').textContent = strings.noMatch;
   $('emptyHint').textContent = strings.noMatchHint;
