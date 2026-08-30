@@ -32,6 +32,13 @@ const resources = Object.freeze([
     url: 'https://hpc.example.edu/', category: 'custom', route: 'campus',
     favorite: true, lastOpenedAt: 700, builtin: false, keywords: ['HPC'],
   }),
+  Object.freeze({
+    id: 'long-name',
+    name: 'Application Form for Purchase and Reimbursement of Research Expenses',
+    description: 'Long bilingual-name layout fixture',
+    url: 'https://long-name.example.edu/', category: 'custom', route: 'direct',
+    favorite: true, lastOpenedAt: 650, builtin: false, keywords: ['Reimbursement'],
+  }),
 ]);
 
 async function inspect(window) {
@@ -100,13 +107,14 @@ async function main() {
     ['wide', 1400, 900, 3, 12, false],
   ]) {
     window.setContentSize(width, height);
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 220));
     await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
       document.getElementById('primaryCatalog').click();
       [...document.querySelectorAll('.secondary-tab')]
         .find((button) => button.textContent.startsWith('全部 ')).click();
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }))()`);
+    await new Promise((resolve) => setTimeout(resolve, 220));
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
@@ -152,6 +160,24 @@ async function main() {
   })`);
   assert.match(addressSearch.title, /请假/u);
   assert.deepEqual(addressSearch.ids, ['e-form', 'student-request-guide']);
+  assert.equal(controller.focus(window.webContents, 'search', 'Reimbursement'), true);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const longNameLayout = await window.webContents.executeJavaScript(`(() => {
+    const name = document.querySelector('#searchGrid .resource-name');
+    const open = document.querySelector('#searchGrid .resource-open');
+    const style = getComputedStyle(name);
+    return {
+      title: open.title,
+      clamp: style.webkitLineClamp,
+      height: name.getBoundingClientRect().height,
+      lineHeight: parseFloat(style.lineHeight),
+    };
+  })()`);
+  assert.equal(longNameLayout.title,
+    'Application Form for Purchase and Reimbursement of Research Expenses');
+  assert.equal(longNameLayout.clamp, '2');
+  assert.ok(longNameLayout.height <= longNameLayout.lineHeight * 2 + 1,
+    'a long website name exceeds its two-line resource block');
   assert.equal(controller.focus(window.webContents, 'search', '学习'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));
   const groupSearch = await window.webContents.executeJavaScript(`({

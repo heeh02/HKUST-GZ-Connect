@@ -144,6 +144,7 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   const open = document.createElement('button');
   open.type = 'button';
   open.className = 'resource-open';
+  open.title = resource.name;
   open.appendChild(resourceIcon(resource));
   const copy = document.createElement('span');
   copy.className = 'resource-copy';
@@ -208,6 +209,7 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
 }
 
 function renderGrid(target, resources, options = {}) {
+  target.classList.add('resource-grid-enter');
   target.replaceChildren(...resources.map((resource) => resourceItem(resource, options)));
 }
 

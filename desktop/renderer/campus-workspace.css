@@ -98,12 +98,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: flex;
   flex: 1;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
 }
-.secondary-tabs::-webkit-scrollbar { display: none; }
 .secondary-select {
   display: none;
   min-width: 0;
@@ -160,6 +157,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .pager-button:disabled { color: #bec7d4; background: #f8fafc; cursor: default; }
 
 .resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.resource-grid-enter .resource-item { animation: resource-enter 180ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes resource-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .resource-item {
   position: relative;
   min-width: 0;
@@ -352,5 +354,5 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .bulk-selected-count { text-align: left; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
