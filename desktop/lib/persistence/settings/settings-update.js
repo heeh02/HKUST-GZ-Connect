@@ -1,5 +1,6 @@
 'use strict';
 
+const net = require('node:net');
 const { isValidPort, normalizeSettings, parseBrowserNewTabUrl } = require('./settings-store');
 const { normalizeRouteDomains } = require('../../routing/pac/pac');
 
@@ -60,6 +61,12 @@ function applySettingsPatch(previous, payload) {
   if (source.browserNewTabUrl != null) {
     next.browserNewTabUrl = parseBrowserNewTabUrl(source.browserNewTabUrl);
   }
+  if (source.underlaySourceAddress != null) {
+    if (source.underlaySourceAddress !== '' && !net.isIP(source.underlaySourceAddress)) {
+      throw new Error('出站源 IP 无效');
+    }
+    next.underlaySourceAddress = source.underlaySourceAddress;
+  }
   for (const key of ['autoReconnect', 'startAtLogin', 'autoConnect', 'strictProxyAuth']) {
     if (source[key] != null) {
       if (typeof source[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
@@ -80,6 +87,7 @@ function applySettingsPatch(previous, payload) {
     settings: normalizeSettings(next),
     portChanged: next.port !== normalizeSettings(previous).port,
     proxyAuthChanged: next.strictProxyAuth !== normalizeSettings(previous).strictProxyAuth,
+    underlayChanged: next.underlaySourceAddress !== normalizeSettings(previous).underlaySourceAddress,
   };
 }
 

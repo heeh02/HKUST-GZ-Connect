@@ -52,6 +52,7 @@ function createControlStateSnapshot({
   getProfilePresentation,
   getAuthChallenge,
   getCapabilitySnapshot,
+  getNetworkEnvironment,
 } = {}) {
   const dependencies = {
     getStatus: requiredFunction(getStatus, 'getStatus'),
@@ -68,6 +69,7 @@ function createControlStateSnapshot({
     getProfilePresentation: requiredFunction(getProfilePresentation, 'getProfilePresentation'),
     getAuthChallenge: requiredFunction(getAuthChallenge, 'getAuthChallenge'),
     getCapabilitySnapshot: requiredFunction(getCapabilitySnapshot, 'getCapabilitySnapshot'),
+    getNetworkEnvironment: requiredFunction(getNetworkEnvironment, 'getNetworkEnvironment'),
   };
   if (typeof platform !== 'string' || !platform) throw new TypeError('platform is required');
 
@@ -80,6 +82,7 @@ function createControlStateSnapshot({
     update: dependencies.getUpdate(),
     authChallenge: dependencies.getAuthChallenge(),
     capabilitySnapshot: dependencies.getCapabilitySnapshot(),
+    networkEnvironment: dependencies.getNetworkEnvironment(),
   });
 
   return function controlStateSnapshot() {

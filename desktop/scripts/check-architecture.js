@@ -8,7 +8,9 @@ const path = require('node:path');
 // is extracted incrementally behind tests.
 const BASELINE = Object.freeze({
   mainDirectDependencies: 35,
-  mainTransitiveDependencies: 153,
+  // Eight leaf modules form the reviewed macOS/Windows/Linux network-environment
+  // domain; Main still owns no additional direct dependency and is smaller.
+  mainTransitiveDependencies: 161,
   mainLines: 1659,
   rendererLines: 564,
   libMaxFanIn: 45,
@@ -20,7 +22,8 @@ const SKIPPED_DIRECTORIES = new Set(['node_modules', 'release']);
 const DOMAIN_DEPENDENCIES = Object.freeze({
   app: Object.freeze(['app', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
     'resources', 'resource-core', 'routing', 'integrations', 'ipc', 'platform', 'diagnostics', 'legacy']),
-  connection: Object.freeze(['connection', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  connection: Object.freeze(['connection', 'network-environment', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
+  'network-environment': Object.freeze(['network-environment', 'platform', 'diagnostics', 'legacy']),
   'profile-core': Object.freeze(['profile-core', 'resource-core', 'platform', 'diagnostics', 'legacy']),
   profiles: Object.freeze(['profiles', 'profile-core', 'persistence', 'resources', 'resource-core',
     'routing', 'platform', 'diagnostics', 'legacy']),

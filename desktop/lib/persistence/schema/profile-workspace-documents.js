@@ -1,5 +1,6 @@
 'use strict';
 
+const net = require('node:net');
 const { validateCustomResourceDocument } = require('../../resources/schema/campus-resource-contract');
 const { normalizeRouteDomains } = require('../../routing/pac/pac');
 const {
@@ -62,15 +63,17 @@ function validateGlobalSettingsDocument(value) {
     'proxySecurityVersion', 'proxyAuthMigrationPending', 'closeAction', 'language',
     'startAtLogin',
   ];
-  const legacy = Object.keys(input).sort().join(',') === [...legacyKeys].sort().join(',');
-  const source = legacy
-    ? { ...input, browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL }
-    : exactKeys(input, [...legacyKeys, 'browserNewTabUrl'], 'global settings');
+  const source = exactKeys({ browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL,
+    underlaySourceAddress: '', ...input },
+    [...legacyKeys, 'browserNewTabUrl', 'underlaySourceAddress'], 'global settings');
   if (!isValidPort(source.port) || source.proxySecurityVersion !== PROXY_SECURITY_VERSION ||
       !['ask', 'minimize', 'quit'].includes(source.closeAction) ||
       !['auto', 'zh', 'en'].includes(source.language) ||
       source.browserNewTabUrl !== normalizeBrowserNewTabUrl(source.browserNewTabUrl)) {
     throw new TypeError('global settings contain an unsupported value');
+  }
+  if (source.underlaySourceAddress !== '' && !net.isIP(source.underlaySourceAddress)) {
+    throw new TypeError('global underlay source address is invalid');
   }
   const strictProxyAuth = boolean(source.strictProxyAuth, 'strictProxyAuth');
   const proxyAuthMigrationPending = boolean(
@@ -91,6 +94,7 @@ function validateGlobalSettingsDocument(value) {
     closeAction: source.closeAction,
     language: source.language,
     browserNewTabUrl: source.browserNewTabUrl,
+    underlaySourceAddress: source.underlaySourceAddress,
     startAtLogin: boolean(source.startAtLogin, 'startAtLogin'),
   });
 }

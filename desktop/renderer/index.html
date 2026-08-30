@@ -129,10 +129,33 @@
               </div>
               <span id="topologyStatus" class="topology-overall unknown" data-i18n="connect.statusUnknown">状态未知</span>
             </div>
+            <div class="network-environment-grid">
+              <article class="environment-card">
+                <span class="environment-icon" aria-hidden="true">⇄</span>
+                <span><small data-i18n="connect.defaultAdapter">默认真实网卡</small><strong id="defaultAdapterName">—</strong><em id="defaultAdapterAddress">—</em></span>
+              </article>
+              <article class="environment-card">
+                <span class="environment-icon" aria-hidden="true">↗</span>
+                <span><small data-i18n="connect.systemRoute">系统默认路径</small><strong id="systemRouteName">—</strong><em id="systemRouteAddress">—</em></span>
+              </article>
+              <article class="environment-card">
+                <span class="environment-icon" aria-hidden="true">⌁</span>
+                <span><small data-i18n="connect.systemProxy">系统代理</small><strong id="systemProxyName">—</strong><em id="systemProxyMode">—</em></span>
+              </article>
+              <article class="environment-card environment-virtual-card">
+                <span class="environment-icon" aria-hidden="true">◇</span>
+                <span><small data-i18n="connect.virtualAdapters">虚拟网卡 / TUN</small><strong id="virtualAdapterSummary">—</strong><em id="virtualAdapterDetail">—</em></span>
+              </article>
+            </div>
+            <div class="underlay-selector-row">
+              <label for="underlaySourceAddress"><strong data-i18n="connect.outboundPath">学校连接出站</strong><small data-i18n="connect.outboundHint">默认直连使用系统当前默认真实网卡。</small></label>
+              <select id="underlaySourceAddress" class="inp" aria-label="学校连接出站网卡" data-i18n-attr="aria-label:connect.outboundPath"></select>
+              <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
+            </div>
             <div class="topology-flow">
               <article class="topology-node" data-topology-node="local">
                 <span class="topology-node-icon" aria-hidden="true">⌁</span>
-                <span><strong data-i18n="connect.localNetwork">本机网络</strong><small id="localNetworkSummary" data-i18n="connect.detecting">正在检测…</small></span>
+                <span><strong data-i18n="connect.localNetwork">出站网卡</strong><small id="localNetworkSummary">正在检测…</small></span>
               </article>
               <span class="topology-arrow" aria-hidden="true">→</span>
               <article class="topology-node" data-topology-node="browser">

@@ -8,6 +8,7 @@
 
 use crate::{Error, ErrorKind, Result};
 use reqwest::blocking::ClientBuilder;
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use url::{Host, Url};
@@ -127,6 +128,8 @@ pub struct GatewayConnectorGeneration {
     port: u16,
     addresses: Vec<SocketAddr>,
     reviewed_private_gateway_allowed: bool,
+    source_interface: Option<String>,
+    source_address: Option<IpAddr>,
 }
 
 impl GatewayConnectorGeneration {
@@ -256,7 +259,26 @@ impl GatewayConnectorGeneration {
             port,
             addresses,
             reviewed_private_gateway_allowed,
+            source_interface: None,
+            source_address: None,
         })
+    }
+
+    pub fn with_underlay(mut self, interface: &str, source_address: IpAddr) -> Result<Self> {
+        if interface.is_empty()
+            || interface.len() > 64
+            || !interface.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b':')
+            })
+            || source_address.is_unspecified()
+            || source_address.is_loopback()
+            || source_address.is_multicast()
+        {
+            return Err(configuration_error("Gateway underlay selection is invalid"));
+        }
+        self.source_interface = Some(interface.to_owned());
+        self.source_address = Some(source_address);
+        Ok(self)
     }
 
     pub fn profile_id(&self) -> &str {
@@ -296,9 +318,33 @@ impl GatewayConnectorGeneration {
     }
 
     pub fn apply_to_reqwest_builder(&self, builder: ClientBuilder) -> ClientBuilder {
-        builder
+        let mut builder = builder
             .no_proxy()
-            .resolve_to_addrs(&self.host, &self.addresses)
+            .resolve_to_addrs(&self.host, &self.addresses);
+        if let Some(address) = self.source_address {
+            builder = builder.local_address(address);
+        }
+        #[cfg(not(target_os = "windows"))]
+        if let Some(interface) = self.source_interface.as_deref() {
+            builder = builder.interface(interface);
+        }
+        builder
+    }
+
+    fn connect_address(&self, peer: SocketAddr, timeout: Duration) -> std::io::Result<TcpStream> {
+        let Some(source) = self.source_address else {
+            return TcpStream::connect_timeout(&peer, timeout);
+        };
+        if source.is_ipv4() != peer.is_ipv4() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AddrNotAvailable,
+                "selected source address family does not match Gateway peer",
+            ));
+        }
+        let socket = Socket::new(Domain::for_address(peer), Type::STREAM, Some(Protocol::TCP))?;
+        socket.bind(&SocketAddr::new(source, 0).into())?;
+        socket.connect_timeout(&peer.into(), timeout)?;
+        Ok(socket.into())
     }
 
     pub fn connect_tcp(&self, timeout: Duration) -> Result<TcpStream> {
@@ -316,7 +362,7 @@ impl GatewayConnectorGeneration {
             if remaining.is_zero() {
                 break;
             }
-            match TcpStream::connect_timeout(address, remaining) {
+            match self.connect_address(*address, remaining) {
                 Ok(stream) => {
                     self.verify_connected_peer(&stream)?;
                     return Ok(stream);
@@ -344,7 +390,7 @@ impl GatewayConnectorGeneration {
                 "requested Gateway peer is outside the connector generation",
             ));
         }
-        let stream = TcpStream::connect_timeout(&peer, timeout).map_err(|error| {
+        let stream = self.connect_address(peer, timeout).map_err(|error| {
             connector_error(format!(
                 "cannot connect to the selected Gateway peer: {error}"
             ))
@@ -408,6 +454,51 @@ mod tests {
             .connect_tcp_to(public("9.9.9.9"), Duration::from_millis(1))
             .unwrap_err();
         assert_eq!(rejected.kind(), ErrorKind::GatewayProtocolInvalid);
+    }
+
+    #[test]
+    fn underlay_selection_is_bounded_and_applies_to_http_and_raw_transports() {
+        let connector = GatewayConnectorGeneration::from_resolved(
+            "school-a",
+            7,
+            11,
+            "https://vpn.example.edu",
+            false,
+            vec![public("8.8.8.8")],
+        )
+        .unwrap()
+        .with_underlay("en0", "192.0.2.10".parse().unwrap())
+        .unwrap();
+        assert_eq!(connector.source_interface.as_deref(), Some("en0"));
+        assert_eq!(
+            connector.source_address,
+            Some("192.0.2.10".parse().unwrap())
+        );
+        connector
+            .apply_to_reqwest_builder(Client::builder())
+            .build()
+            .unwrap();
+        for (interface, address) in [
+            ("", "192.0.2.10"),
+            ("adapter with spaces", "192.0.2.10"),
+            ("en0", "127.0.0.1"),
+            ("en0", "224.0.0.1"),
+        ] {
+            let candidate = GatewayConnectorGeneration::from_resolved(
+                "school-a",
+                7,
+                11,
+                "https://vpn.example.edu",
+                false,
+                vec![public("8.8.8.8")],
+            )
+            .unwrap();
+            assert!(
+                candidate
+                    .with_underlay(interface, address.parse().unwrap())
+                    .is_err()
+            );
+        }
     }
 
     #[test]

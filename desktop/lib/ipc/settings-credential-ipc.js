@@ -16,6 +16,7 @@ function settingsPatchFromIpc(value) {
     'username', 'password', 'port', 'autoReconnect', 'maxAttempts', 'startAtLogin',
     'autoConnect', 'strictProxyAuth', 'proxyAuthMigrationAcknowledged',
     'closeAction', 'language', 'browserNewTabUrl', 'routeDomains', 'expectedProfileId',
+    'underlaySourceAddress',
   ]);
   const result = { ...source };
   if (source.username != null) {
@@ -26,6 +27,9 @@ function settingsPatchFromIpc(value) {
   }
   if (source.browserNewTabUrl != null) {
     result.browserNewTabUrl = boundedString(source.browserNewTabUrl, { maxLength: 2048 });
+  }
+  if (source.underlaySourceAddress != null) {
+    result.underlaySourceAddress = boundedString(source.underlaySourceAddress, { maxLength: 64 });
   }
   if (source.expectedProfileId != null) {
     result.expectedProfileId = profileId(boundedString(source.expectedProfileId, {
@@ -101,6 +105,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
     let next;
     let portChanged;
     let proxyAuthChanged;
+    let underlayChanged;
     try {
       try {
         previous = loadSettings();
@@ -112,7 +117,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
           const message = translate('error.profileCredentialContextChanged');
           throw Object.assign(new Error(message), { userMessage: message });
         }
-        ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(previous, patch));
+        ({ settings: next, portChanged, proxyAuthChanged, underlayChanged } = applySettingsPatch(previous, patch));
       } catch (error) {
         return {
           ok: false,
@@ -122,7 +127,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
       }
       const replacingPassword = typeof patch.password === 'string' && patch.password.length > 0;
       const policyTransactionRequired = patch.routeDomains != null || patch.port != null ||
-        patch.strictProxyAuth != null;
+        patch.strictProxyAuth != null || patch.underlaySourceAddress != null;
       if (replacingPassword && policyTransactionRequired) {
         return {
           ok: false,
@@ -183,14 +188,14 @@ function registerSettingsCredentialIpc(dependencies = {}) {
         if (policyTransactionRequired) {
           await runPolicyTransaction(() => {
             previous = loadSettings();
-            ({ settings: next, portChanged, proxyAuthChanged } = applySettingsPatch(
+            ({ settings: next, portChanged, proxyAuthChanged, underlayChanged } = applySettingsPatch(
               previous,
               patch,
             ));
             return {
               commit: commitCandidateSettings,
               rollback: () => saveSettings(previous),
-              resumeBrowser: !(portChanged || proxyAuthChanged),
+              resumeBrowser: !(portChanged || proxyAuthChanged || underlayChanged),
             };
           });
         } else {
@@ -221,7 +226,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
       if (next.language !== previous.language) onLanguageChanged(next.language);
       if (typeof patch.startAtLogin === 'boolean') setStartAtLogin(patch.startAtLogin);
       let reconnected = false;
-      if (hasActiveEngine() && (portChanged || proxyAuthChanged)) {
+      if (hasActiveEngine() && (portChanged || proxyAuthChanged || underlayChanged)) {
         const reconnectResult = await reconnect();
         reconnected = reconnectResult?.ok === true;
       }
@@ -231,6 +236,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
         settings: next,
         portChanged,
         proxyAuthChanged,
+        underlayChanged,
         reconnected,
       };
     } finally {

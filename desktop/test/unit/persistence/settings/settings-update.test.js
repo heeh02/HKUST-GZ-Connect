@@ -50,6 +50,16 @@ test('new-tab updates canonicalize web addresses and reject executable or creden
   }), /HTTP\(S\)/u);
 });
 
+test('underlay source updates accept IP addresses, clear to automatic, and request reconnect', () => {
+  const changed = applySettingsPatch({}, { underlaySourceAddress: '192.0.2.44' });
+  assert.equal(changed.settings.underlaySourceAddress, '192.0.2.44');
+  assert.equal(changed.underlayChanged, true);
+  const cleared = applySettingsPatch(changed.settings, { underlaySourceAddress: '' });
+  assert.equal(cleared.settings.underlaySourceAddress, '');
+  assert.equal(cleared.underlayChanged, true);
+  assert.throws(() => applySettingsPatch({}, { underlaySourceAddress: 'Wi-Fi' }), /IP/u);
+});
+
 test('strict local proxy authentication is boolean and requests an engine restart', () => {
   const previous = normalizeSettings({
     strictProxyAuth: false,

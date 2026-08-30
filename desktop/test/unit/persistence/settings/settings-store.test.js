@@ -44,12 +44,20 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       closeAction: 'minimize',
       language: 'en',
       browserNewTabUrl: 'https://www.bing.com/',
+      underlaySourceAddress: '',
       updateCheckedAt: 0,
       routeDomains: [],
       customResources: [],
       hiddenBuiltinResourceIds: [],
     },
   );
+});
+
+test('underlay source selection is a bounded IP address or automatic', () => {
+  assert.equal(normalizeSettings({}).underlaySourceAddress, '');
+  assert.equal(normalizeSettings({ underlaySourceAddress: '192.0.2.15' }).underlaySourceAddress,
+    '192.0.2.15');
+  assert.equal(normalizeSettings({ underlaySourceAddress: 'adapter-name' }).underlaySourceAddress, '');
 });
 
 test('the language override is whitelisted to auto/zh/en', () => {

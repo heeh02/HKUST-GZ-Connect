@@ -63,6 +63,24 @@ const state = {
     autoReconnect: true,
     maxAttempts: 3,
     closeAction: 'ask',
+    underlaySourceAddress: '',
+  },
+  networkEnvironment: {
+    schemaVersion: 1,
+    platform: 'linux',
+    status: 'ready',
+    interfaces: [
+      { id: 'eth0', name: 'Ethernet', kind: 'physical', active: true, default: true,
+        systemDefault: false, addresses: [{ address: '192.0.2.20', family: 4, internal: false, selectable: true }] },
+      { id: 'tun0', name: 'Mihomo TUN', kind: 'virtual', active: true, default: false,
+        systemDefault: true, addresses: [{ address: '198.18.0.1', family: 4, internal: false, selectable: true }] },
+    ],
+    defaultRoute: { interfaceId: 'eth0', sourceAddress: '192.0.2.20' },
+    systemRoute: { interfaceId: 'tun0', sourceAddress: '198.18.0.1' },
+    systemProxy: { state: 'detected', type: 'http', endpoint: { host: '127.0.0.1', port: 7890 },
+      owner: { provider: 'mihomo', name: 'Mihomo / Clash', mode: 'rule', tunEnabled: true,
+        confidence: 'confirmed' } },
+    selection: { mode: 'default', interfaceId: 'eth0', sourceAddress: '', available: true },
   },
   campusResources: resources,
   resourceGroups: [
@@ -102,7 +120,18 @@ const state = {
 
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
-  save: async () => ({ ok: true }),
+  save: async (patch) => {
+    if (Object.hasOwn(patch || {}, 'underlaySourceAddress')) {
+      state.settings.underlaySourceAddress = patch.underlaySourceAddress;
+      const selected = state.networkEnvironment.interfaces.find((item) => item.addresses.some(({ address }) => (
+        address === patch.underlaySourceAddress
+      )));
+      state.networkEnvironment.selection = selected ? { mode: 'selected', interfaceId: selected.id,
+        sourceAddress: patch.underlaySourceAddress, available: true } :
+        { mode: 'default', interfaceId: 'eth0', sourceAddress: '', available: true };
+    }
+    return { ok: true, settings: state.settings };
+  },
   connect: async () => ({ ok: true }),
   disconnect: async () => ({ ok: true }),
   reconnect: async () => ({ ok: true }),

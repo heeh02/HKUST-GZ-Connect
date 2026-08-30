@@ -39,6 +39,7 @@ function fixture(overrides = {}) {
     },
     getAuthChallenge: () => null,
     getCapabilitySnapshot: () => null,
+    getNetworkEnvironment: () => ({ schemaVersion: 1, status: 'ready' }),
     ...overrides,
   });
   return { calls, snapshot };
@@ -52,6 +53,7 @@ test('projects settings, resources and key-free profile compatibility views', ()
   assert.equal(value.hasPassword, true);
   assert.equal(value.settings.username, 'stu****');
   assert.equal(value.capabilitySnapshot, null);
+  assert.equal(value.networkEnvironment.status, 'ready');
   assert.deepEqual(value.campusResources.map(({ id }) => id), ['home', 'hpc']);
   assert.deepEqual(value.resourceGroups, [{
     id: 'group_abcdefghijkl', name: '学习', resourceIds: ['home'],

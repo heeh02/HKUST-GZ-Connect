@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const net = require('node:net');
 const path = require('path');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('../../platform/storage/private-file');
 const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('../../routing/pac/pac');
@@ -36,6 +37,7 @@ const DEFAULTS = Object.freeze({
   closeAction: 'ask',
   language: 'auto',
   browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL,
+  underlaySourceAddress: '',
   updateCheckedAt: 0,
   routeDomains: DEFAULT_ROUTE_DOMAINS,
   customResources: [],
@@ -132,6 +134,8 @@ function normalizeSettings(saved = {}, { defaultRouteDomains = DEFAULT_ROUTE_DOM
       ? saved.language
       : DEFAULTS.language,
     browserNewTabUrl: normalizeBrowserNewTabUrl(saved.browserNewTabUrl),
+    underlaySourceAddress: typeof saved.underlaySourceAddress === 'string' &&
+      net.isIP(saved.underlaySourceAddress) ? saved.underlaySourceAddress : '',
     updateCheckedAt: Number.isFinite(Number(saved.updateCheckedAt)) && Number(saved.updateCheckedAt) > 0
       ? Number(saved.updateCheckedAt)
       : DEFAULTS.updateCheckedAt,

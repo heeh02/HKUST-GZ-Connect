@@ -20,6 +20,7 @@ function authority() {
       closeAction: 'minimize',
       language: 'zh',
       startAtLogin: false,
+      underlaySourceAddress: '',
     },
     globalUpdateState: { schemaVersion: 1, checkedAt: 1_700_000_000_000 },
     workspaceSettings: {
@@ -46,13 +47,16 @@ test('runtime settings projection round-trips without persisting the account lab
   assert.equal(current.username, 'synthetic-user');
   assert.equal(current.port, 6180);
   assert.equal(current.autoConnect, false);
+  assert.equal(current.underlaySourceAddress, '');
   const split = splitRuntimeSettings(authority(), {
     ...current,
     port: 6280,
     autoConnect: true,
+    underlaySourceAddress: '192.0.2.60',
   });
   assert.equal(split.globalSettings.port, 6280);
   assert.equal(split.workspaceSettings.autoConnect, true);
+  assert.equal(split.globalSettings.underlaySourceAddress, '192.0.2.60');
   assert.equal(JSON.stringify(split).includes('synthetic-user'), false);
   assert.equal(Object.isFrozen(split.localResources.resources), true);
   assert.deepEqual(

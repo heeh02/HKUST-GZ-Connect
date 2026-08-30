@@ -572,7 +572,7 @@ const connectivityRecovery = new ConnectivityRecovery({
   },
   reconnect: recoverConnectivity, onRecoveryDeclined: (intent, reason) => { if (reason !== 'initial-network-online' && connectionState.failIntent(intent)) emit(); },
 });
-const { monitor: networkStatusMonitor, startup: networkStartupCoordinator } = createNetworkStartupSystem({
+const { monitor: networkStatusMonitor, startup: networkStartupCoordinator, environment: networkEnvironmentService } = createNetworkStartupSystem({
   appIsPackaged: app.isPackaged, environment: process.env, dataDirectory: DATA, fileSystem: fs,
   isOnline: () => electronNet.isOnline(), onOffline: () => connectivityRecovery.networkOffline(),
   onOnline: () => connectivityRecovery.networkOnline(), shouldAutoConnect: () => { const s = loadSettingsOrReport(); return s.autoConnect !== false && Boolean(s.username) && hasStoredCredential(); },
@@ -716,6 +716,9 @@ function handleEngineExitBoundary({ generation }, isCurrentContext = () => true)
   removeExternalProxySidecar();
   emit();
 }
+function failConnectionStart(intent, errorKey, result = { ok: false }) {
+  connectionState.failIntent(intent); state.lastError = t(errorKey); emit(); return result;
+}
 async function connectOnce(isRetry, intent) {
   if (engineSupervisor.hasActive || !connectionState.canContinue(intent)) {
     return { ok: false, stale: true };
@@ -774,10 +777,7 @@ async function connectOnce(isRetry, intent) {
     // cause a password to be decrypted for an unverified target.
     engineConfigBinding = activeSchoolProfile.verifyEngineLaunchBinding();
   } catch {
-    connectionState.failIntent(intent);
-    state.lastError = t('error.engineConfigMissing');
-    emit();
-    return { ok: false, profileConfigInvalid: true };
+    return failConnectionStart(intent, 'error.engineConfigMissing', { ok: false, profileConfigInvalid: true });
   }
   const engineConfig = engineConfigBinding.path;
   try {
@@ -804,10 +804,7 @@ async function connectOnce(isRetry, intent) {
   }
   if (!username || !pw) {
     pw = '';
-    connectionState.failIntent(intent);
-    state.lastError = t('error.needCredentials');
-    emit();
-    return { ok: false };
+    return failConnectionStart(intent, 'error.needCredentials');
   }
   try {
     if (username.length > 256 || pw.length > 4096) throw new Error('credential too long');
@@ -815,20 +812,16 @@ async function connectOnce(isRetry, intent) {
     parseCredentialField(pw, '密码');
   } catch {
     pw = '';
-    connectionState.failIntent(intent);
-    state.lastError = t('error.invalidStoredCredentials');
-    emit();
-    return { ok: false, invalidCredentials: true };
+    return failConnectionStart(intent, 'error.invalidStoredCredentials', { ok: false, invalidCredentials: true });
   }
   const launch = resolveEngineLaunch({ appIsPackaged: app.isPackaged, baseDirectory: __dirname,
     nativeEngine: enginePath(), execPath: process.execPath });
   const bin = launch.command;
-  if (!fs.existsSync(bin)) {
-    connectionState.failIntent(intent);
-    state.lastError = t('error.engineMissing');
-    emit();
-    return { ok: false };
+  const underlayArgs = networkEnvironmentService.engineArguments(s.underlaySourceAddress);
+  if (!underlayArgs) {
+    pw = ''; return failConnectionStart(intent, 'error.underlayUnavailable', { ok: false, underlayUnavailable: true });
   }
+  if (!fs.existsSync(bin)) return failConnectionStart(intent, 'error.engineMissing');
   clearActiveProxyCredential();
   let proxyCredential = null;
   let proxyCredentialMode = 'none';
@@ -837,10 +830,7 @@ async function connectOnce(isRetry, intent) {
       proxyCredential = generationProxyCredential(Number(s.port));
       proxyCredentialMode = 'required';
     } catch {
-      connectionState.failIntent(intent);
-      state.lastError = t('error.proxyCredentialUnavailable');
-      emit();
-      return { ok: false };
+      return failConnectionStart(intent, 'error.proxyCredentialUnavailable');
     }
   } else if (stableProxyCredential || fs.existsSync(PROXY_CREDENTIAL)) {
     // The packaged SSH helper reads its endpoint from the sidecar and offers
@@ -876,6 +866,7 @@ async function connectOnce(isRetry, intent) {
   ];
   if (proxyCredentialMode === 'required') engineArgs.push('--socks-auth-stdin');
   if (proxyCredentialMode === 'optional') engineArgs.push('--socks-auth-optional-stdin');
+  engineArgs.push(...underlayArgs);
   const started = engineSupervisor.start({
     command: bin,
     args: [...launch.argsPrefix, ...engineArgs],
@@ -1388,6 +1379,7 @@ const controlStateSnapshot = createControlStateSnapshot({
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
   getCapabilitySnapshot: () => activeSchoolProfile.capabilitySnapshot(),
+  getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress),
 });
 
 for (const [channel, handler] of Object.entries(authChallengeCoordinator.ipcHandlers())) {

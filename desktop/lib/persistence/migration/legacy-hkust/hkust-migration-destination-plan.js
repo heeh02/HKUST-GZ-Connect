@@ -232,6 +232,7 @@ function createHkustMigrationDestinationPlan(options = {}) {
       closeAction: settings.closeAction,
       language: settings.language,
       browserNewTabUrl: settings.browserNewTabUrl,
+      underlaySourceAddress: settings.underlaySourceAddress,
       startAtLogin: settings.startAtLogin,
     })),
     globalProxyCredential: copyOrNull(payloads.proxyCredential),

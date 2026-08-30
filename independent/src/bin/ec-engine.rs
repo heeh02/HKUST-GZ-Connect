@@ -27,7 +27,7 @@ use ec_compat::engine::socks_auth::{
 use ec_compat::gateway_connector::GatewayConnectorGeneration;
 use ec_compat::{Error, ErrorKind, Result};
 use std::io::Write;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,6 +58,8 @@ struct EngineArguments {
     generation: u64,
     proxy_authentication_mode: ProxyAuthenticationMode,
     control_api_v2_stdin: bool,
+    source_interface: Option<String>,
+    source_address: Option<IpAddr>,
     #[cfg(feature = "engine-lifecycle-fixture")]
     lifecycle_fixture: bool,
 }
@@ -226,6 +228,8 @@ fn validate_arguments(args: &[String]) -> Result<()> {
     let mut generation_seen = false;
     let mut socks_auth_seen = false;
     let mut control_api_seen = false;
+    let mut source_interface_seen = false;
+    let mut source_address_seen = false;
     #[cfg(feature = "engine-lifecycle-fixture")]
     let mut lifecycle_fixture_seen = false;
     let mut index = 0;
@@ -261,6 +265,16 @@ fn validate_arguments(args: &[String]) -> Result<()> {
             "--control-api-v2-stdin" if !control_api_seen => {
                 control_api_seen = true;
                 index += 1;
+            }
+            "--source-interface" if !source_interface_seen => {
+                source_interface_seen = true;
+                require_argument_value(args, index, "--source-interface")?;
+                index += 2;
+            }
+            "--source-address" if !source_address_seen => {
+                source_address_seen = true;
+                require_argument_value(args, index, "--source-address")?;
+                index += 2;
             }
             #[cfg(feature = "engine-lifecycle-fixture")]
             "--test-lifecycle-transport" if !lifecycle_fixture_seen => {
@@ -329,6 +343,24 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
     let control_api_v2_stdin = args
         .iter()
         .any(|argument| argument == "--control-api-v2-stdin");
+    let source_interface = args
+        .iter()
+        .position(|value| value == "--source-interface")
+        .map(|index| args[index + 1].clone());
+    let source_address = args
+        .iter()
+        .position(|value| value == "--source-address")
+        .map(|index| {
+            args[index + 1]
+                .parse::<IpAddr>()
+                .map_err(|_| Error("--source-address must be an IP address".into()))
+        })
+        .transpose()?;
+    if source_interface.is_some() != source_address.is_some() {
+        return Err(Error(
+            "source interface and address must be selected together".into(),
+        ));
+    }
     #[cfg(feature = "engine-lifecycle-fixture")]
     let lifecycle_fixture = args
         .iter()
@@ -346,6 +378,8 @@ fn parse_arguments(args: &[String]) -> Result<EngineArguments> {
         generation,
         proxy_authentication_mode,
         control_api_v2_stdin,
+        source_interface,
+        source_address,
         #[cfg(feature = "engine-lifecycle-fixture")]
         lifecycle_fixture,
     })
@@ -1028,6 +1062,16 @@ async fn run_engine<W: Write>(
                 base_url,
                 private_allowed,
             )
+            .and_then(|connector| {
+                match (
+                    arguments.source_interface.as_deref(),
+                    arguments.source_address,
+                ) {
+                    (Some(interface), Some(address)) => connector.with_underlay(interface, address),
+                    (None, None) => Ok(connector),
+                    _ => unreachable!(),
+                }
+            })
             .map_err(|error| {
                 let code = if error.kind() == ErrorKind::Configuration {
                     EngineErrorCode::ConfigurationInvalid
@@ -1677,6 +1721,35 @@ mod tests {
         let mut extra_listener = valid_arguments();
         extra_listener.extend(["--http-bind".into(), "127.0.0.1:1081".into()]);
         assert!(parse_arguments(&extra_listener).is_err());
+    }
+
+    #[test]
+    fn engine_accepts_only_paired_bounded_underlay_arguments() {
+        let mut arguments = valid_arguments();
+        arguments.extend([
+            "--source-interface".into(),
+            "if:12".into(),
+            "--source-address".into(),
+            "192.0.2.20".into(),
+        ]);
+        let parsed = parse_arguments(&arguments).unwrap();
+        assert_eq!(parsed.source_interface.as_deref(), Some("if:12"));
+        assert_eq!(parsed.source_address, Some("192.0.2.20".parse().unwrap()));
+
+        for suffix in [
+            vec!["--source-interface".into(), "en0".into()],
+            vec!["--source-address".into(), "192.0.2.20".into()],
+            vec![
+                "--source-interface".into(),
+                "en0".into(),
+                "--source-address".into(),
+                "not-an-ip".into(),
+            ],
+        ] {
+            let mut invalid = valid_arguments();
+            invalid.extend(suffix);
+            assert!(parse_arguments(&invalid).is_err());
+        }
     }
 
     #[test]

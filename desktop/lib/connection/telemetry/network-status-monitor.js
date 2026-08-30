@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { NetworkEnvironmentService } = require('../../network-environment/runtime/network-environment-service');
 
 const DEFAULT_NETWORK_POLL_MS = 4000;
 const MIN_NETWORK_POLL_MS = 1000;
@@ -197,7 +198,9 @@ function createNetworkStartupSystem({
     monitor, shouldAutoConnect, pauseOffline, resumeOffline: resumeInitialOffline,
     connect, isQuitting,
   });
-  return Object.freeze({ monitor, startup, syntheticStateFile: synthetic ? stateFile : null });
+  return Object.freeze({ monitor, startup, environment: new NetworkEnvironmentService({
+    platform: process.platform, environment,
+  }), syntheticStateFile: synthetic ? stateFile : null });
 }
 
 class NetworkStatusMonitor {

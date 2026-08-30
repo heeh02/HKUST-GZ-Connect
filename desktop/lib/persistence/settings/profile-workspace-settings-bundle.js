@@ -78,6 +78,7 @@ function projectRuntimeSettings(authorityValue, { accountLabel = '' } = {}) {
     closeAction: global.closeAction,
     language: global.language,
     browserNewTabUrl: global.browserNewTabUrl,
+    underlaySourceAddress: global.underlaySourceAddress,
     updateCheckedAt: update.checkedAt,
     routeDomains: workspace.routeDomains,
     customResources: local.resources,
@@ -98,6 +99,7 @@ function splitRuntimeSettings(authorityValue, settingsValue) {
       closeAction: settings.closeAction,
       language: settings.language,
       browserNewTabUrl: settings.browserNewTabUrl,
+      underlaySourceAddress: settings.underlaySourceAddress,
       startAtLogin: settings.startAtLogin,
     }),
     globalUpdateState: validateGlobalUpdateStateDocument({

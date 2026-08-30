@@ -15,6 +15,7 @@ function fixture(overrides = {}) {
     username: 'alice',
     port: 1080,
     strictProxyAuth: true,
+    underlaySourceAddress: '',
     language: 'zh',
     customResources: [],
   };
@@ -81,10 +82,23 @@ test('IPC patch schema is exact and bounds credentials, Profile identity, and ro
   assert.deepEqual(settingsPatchFromIpc({ proxyAuthMigrationAcknowledged: true }), {
     proxyAuthMigrationAcknowledged: true,
   });
+  assert.deepEqual(settingsPatchFromIpc({ underlaySourceAddress: '192.0.2.4' }), {
+    underlaySourceAddress: '192.0.2.4',
+  });
   assert.throws(
     () => settingsPatchFromIpc({ proxyAuthMigrationAcknowledged: false }),
     /must be true/,
   );
+});
+
+test('underlay selection is a policy change and reconnects an active Engine', async () => {
+  const f = fixture({ hasActiveEngine: () => true });
+  const result = await f.handlers.get('save')({}, { underlaySourceAddress: '192.0.2.90' });
+  assert.equal(result.ok, true);
+  assert.equal(result.underlayChanged, true);
+  assert.equal(result.reconnected, true);
+  assert.ok(f.calls.some(([name, value]) => name === 'operations' && value === false));
+  assert.ok(f.calls.some(([name]) => name === 'reconnect'));
 });
 
 test('an inherited compatibility choice can be acknowledged without restarting the Engine', async () => {
