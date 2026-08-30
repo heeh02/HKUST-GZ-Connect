@@ -245,6 +245,37 @@
   .notification-drawer { width: calc(100vw - 64px); }
 }
 
+@media (max-width: 519px) {
+  .sidebar { flex-basis: 56px; padding-top: 10px; }
+  .nav { width: 48px; min-height: 54px; border-radius: 15px; }
+  .nav svg { width: 19px; height: 19px; }
+  .nav-label { font-size: 8.5px; }
+  .page { padding: 12px 9px 22px; }
+  .browser-page-head { gap: 8px; }
+  .browser-page-head .page-h { font-size: 15px; }
+  .browser-page-head .page-sub { max-width: 190px; font-size: 9.5px; }
+  .browser-page-actions { gap: 5px; }
+  .browser-page-actions .workspace-launch { min-height: 32px; padding: 6px 9px; font-size: 10px; }
+  .browser-page-actions .mini { min-height: 32px; padding: 5px 8px; }
+  .browser-page-actions .browser-add-category { width: 32px; }
+  .browser-search-row .resource-search { min-height: 40px; padding-left: 38px; font-size: 11.5px; }
+  .category-workspace { padding: 12px; }
+  .category-workspace-heading h3 { font-size: 15px; }
+  .category-stack-tabs { padding: 0 4px; }
+  .category-card > header { min-height: 40px; padding: 9px 11px; }
+  .category-site-list { padding: 4px 7px 8px; }
+  .category-stack-grid[data-stack-columns="1"] .category-site-list { column-gap: 7px; }
+  .category-site { min-height: 51px; grid-template-columns: minmax(0, 1fr) 20px; gap: 2px; }
+  .category-site-open { padding: 7px 0; gap: 6px; }
+  .category-site-icon { width: 26px; height: 26px; border-radius: 8px; }
+  .category-site-icon svg { width: 15px; height: 15px; }
+  .category-site-copy strong { font-size: 10.8px; }
+  .category-site-copy small { font-size: 8.8px; }
+  .category-site .resource-favorite { width: 20px; height: 24px; font-size: 13px; }
+  .notification-backdrop { left: 56px; }
+  .notification-drawer { width: calc(100vw - 56px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page.active, .category-stack-grid.reordering .category-card, .category-stack-grid.reordering .stacked-category-tab { animation: none; }
   .notification-drawer, .notification-backdrop, .stacked-category-tab { transition: none; }
