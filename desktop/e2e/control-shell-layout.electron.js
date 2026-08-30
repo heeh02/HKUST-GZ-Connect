@@ -51,7 +51,7 @@ async function capture(window, output, label) {
 async function main() {
   await app.whenReady();
   const output = process.env.HKUSTGZ_CONTROL_SCREENSHOT_DIR || '';
-  const window = new BrowserWindow({ show: false, width: 840, height: 900,
+  const window = new BrowserWindow({ show: false, width: 620, height: 820,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload } });
   try {
     await window.loadFile(renderer);
@@ -62,7 +62,7 @@ async function main() {
       return;
     }
     for (const [label, width, height] of [
-      ['minimum', 760, 680], ['default', 840, 900], ['wide', 1180, 900],
+      ['minimum', 520, 640], ['default', 620, 820], ['wide', 1180, 900],
       ['wide-tall', 1180, 1100], ['ultrawide', 1440, 1000],
     ]) {
       await settle(window, width, height);

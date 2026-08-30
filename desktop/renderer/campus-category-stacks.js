@@ -92,6 +92,7 @@
     const summary = document.getElementById('categoryLayoutSummary');
     if (summary) summary.textContent = categories.length ? translate('browser.categoryCount', { count: categories.length }) : '';
     container.style.setProperty('--stack-columns', String(capacity.columns));
+    container.dataset.stackColumns = String(capacity.columns);
     if (String(query || '').trim()) {
       container.classList.add('searching');
       container.innerHTML = renderSearch(categories, String(query).trim(), translate, escapeHtml);

@@ -42,6 +42,7 @@ test('personal Campus Browser uses responsive category stacks without website-ca
   assert.match(productCss, /\.stacked-category-tab\s*\{[^}]*height:\s*38px/u);
   assert.match(productCss, /\.category-card\s*\{[^}]*border-radius:\s*16px/u);
   assert.match(productCss, /\.category-site\s*\{[^}]*border-bottom:\s*1px solid/u);
+  assert.match(productCss, /data-stack-columns="1"[^}]*\.category-site-list\s*\{[^}]*repeat\(2,/u);
   assert.match(productCss, /\.category-site-icon\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/u);
   assert.match(controlHtml, /data-page="browser"/u);
   assert.match(controlHtml, /id="resourceSearch"/u);

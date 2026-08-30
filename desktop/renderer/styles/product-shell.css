@@ -168,6 +168,8 @@
 .category-card > header h3 { margin: 0; color: var(--navy); font-size: 14px; font-weight: 700; }
 .category-card > header span { color: var(--muted); font-size: 10.5px; }
 .category-site-list { max-height: 284px; overflow-y: auto; padding: 5px 13px 9px; }
+.category-stack-grid[data-stack-columns="1"] .category-site-list { grid-template-columns: repeat(2, minmax(0, 1fr)); display: grid; gap: 0 14px; }
+.category-stack-grid[data-stack-columns="1"] .category-card { min-height: 0; }
 .category-site { min-width: 0; min-height: 58px; border-bottom: 1px solid #edf1f6; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: center; gap: 6px; }
 .category-site:last-child { border-bottom: 0; }
 .category-site-open { min-width: 0; padding: 8px 0; border: 0; color: inherit; background: transparent; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
@@ -238,6 +240,7 @@
   .topology-arrow { transform: rotate(90deg); }
   .topology-branches, .connection-metrics, .connection-detail-grid, .category-search-results { grid-template-columns: 1fr; }
   .category-workspace { padding: 15px; }
+  .category-stack-grid[data-stack-columns="1"] .category-site-list { column-gap: 10px; }
   .notification-backdrop { left: 64px; }
   .notification-drawer { width: calc(100vw - 64px); }
 }
