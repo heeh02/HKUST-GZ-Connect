@@ -9,6 +9,42 @@
   let refreshState = null;
   let savingUnderlay = false;
 
+  function buildUnderlayOptions(environment = {}, t = (key) => key) {
+    const interfaces = Array.isArray(environment.interfaces) ? environment.interfaces : [];
+    const defaultAdapter = interfaces.find(({ default: activeDefault }) => activeDefault) || null;
+    const defaultAddress = environment.defaultRoute?.sourceAddress || '';
+    const selectionAvailable = environment.selection?.available !== false;
+    const rawSelected = environment.selection?.mode === 'selected'
+      ? environment.selection.sourceAddress : '';
+    const selectedValue = selectionAvailable ? (rawSelected === defaultAddress ? '' : rawSelected) : null;
+    const options = [{
+      value: '',
+      interfaceId: defaultAdapter?.id || '',
+      title: defaultAdapter ? `${defaultAdapter.name} · ${defaultAdapter.id}` : t('connect.defaultDirect'),
+      detail: defaultAddress || t('connect.notDetected'),
+      kind: defaultAdapter?.kind || 'unknown',
+      badge: t('connect.treeDefault'),
+      selected: selectedValue === '',
+    }];
+    const seen = new Set([defaultAddress].filter(Boolean));
+    for (const item of interfaces.filter(({ active, kind }) => active && kind !== 'loopback')) {
+      for (const candidate of item.addresses || []) {
+        if (!candidate.selectable || seen.has(candidate.address)) continue;
+        seen.add(candidate.address);
+        options.push({
+          value: candidate.address,
+          interfaceId: item.id,
+          title: `${item.name} · ${item.id}`,
+          detail: candidate.address,
+          kind: item.kind,
+          badge: t(item.kind === 'virtual' ? 'connect.treeVirtual' : 'connect.treePhysical'),
+          selected: selectedValue === candidate.address,
+        });
+      }
+    }
+    return options;
+  }
+
   function sparkline(values) {
     if (!values.length) return 'M2 24 L118 24';
     const safe = values.map((value) => Math.max(0, Math.min(1200, Number(value) || 0)));
@@ -38,59 +74,53 @@
   function renderEnvironment(environment, t = translate) {
     const interfaces = Array.isArray(environment?.interfaces) ? environment.interfaces : [];
     const defaultAdapter = interfaces.find(({ default: activeDefault }) => activeDefault) || null;
-    byId('defaultAdapterName').textContent = defaultAdapter
-      ? `${defaultAdapter.name} · ${defaultAdapter.id}` : t('connect.notDetected');
-    byId('defaultAdapterAddress').textContent = environment?.defaultRoute?.sourceAddress || '—';
     const systemAdapter = interfaces.find(({ systemDefault }) => systemDefault) || defaultAdapter;
     byId('systemRouteName').textContent = systemAdapter
-      ? `${systemAdapter.name} · ${systemAdapter.id}` : t('connect.notDetected');
+      ? t('connect.treeSystemRoute', { name: systemAdapter.name }) : t('connect.systemRoute');
     byId('systemRouteAddress').textContent = environment?.systemRoute?.sourceAddress || '—';
+    byId('systemRouteNode').dataset.status = systemAdapter ? 'healthy' : 'unknown';
     const proxy = environment?.systemProxy || {};
     const owner = proxy.owner || {};
     byId('systemProxyName').textContent = proxy.state === 'detected'
       ? (owner.name || (owner.provider && owner.provider !== 'unknown' ? owner.provider : t('connect.localProxy'))) :
-      t(proxy.state === 'disabled' ? 'connect.proxyDisabled' : 'connect.notDetected');
+      t(proxy.state === 'disabled' ? 'connect.treeNoProxy' : 'connect.treeProxyUnknown');
     const endpoint = proxy.endpoint ? `${proxy.endpoint.host}:${proxy.endpoint.port}` : '';
     const mode = owner.mode && owner.mode !== 'unknown' ? t(`connect.proxyMode.${owner.mode}`) : t('connect.modeUnknown');
     byId('systemProxyMode').textContent = proxy.state === 'detected'
       ? [mode, owner.tunEnabled === true ? t('connect.tunEnabled') : owner.tunEnabled === false ? t('connect.tunDisabled') : '', endpoint].filter(Boolean).join(' · ')
-      : '—';
-    const virtual = interfaces.filter(({ kind, active, systemDefault, addresses }) => (
-      kind === 'virtual' && active && (systemDefault || addresses.some(({ selectable }) => selectable))
-    ));
-    byId('virtualAdapterSummary').textContent = virtual.length
-      ? t('connect.virtualCount', { count: virtual.length }) : t('connect.noneDetected');
-    byId('virtualAdapterDetail').textContent = virtual.map(({ name, id }) => name === id ? id : `${name} (${id})`).join(' · ') || '—';
-    for (const id of ['defaultAdapterName', 'defaultAdapterAddress', 'systemRouteName',
-      'systemRouteAddress', 'systemProxyName', 'systemProxyMode', 'virtualAdapterSummary',
-      'virtualAdapterDetail']) byId(id).title = byId(id).textContent;
-
-    const select = byId('underlaySourceAddress');
-    const previous = select.value;
-    const options = [];
-    const defaultLabel = defaultAdapter
-      ? t('connect.defaultDirectOption', { name: defaultAdapter.name,
-        address: environment.defaultRoute?.sourceAddress || '—' })
-      : t('connect.defaultDirect');
-    options.push({ value: '', label: defaultLabel });
-    for (const item of interfaces.filter(({ active, kind }) => active && kind !== 'loopback')) {
-      for (const candidate of item.addresses || []) {
-        if (!candidate.selectable) continue;
-        options.push({ value: candidate.address,
-          label: `${item.name} (${item.id}) · ${candidate.address}${item.kind === 'virtual' ? ` · ${t('connect.virtual')}` : ''}` });
-      }
+      : t(proxy.state === 'disabled' ? 'connect.treeProxyBypassed' : 'connect.statusUnknown');
+    byId('systemProxyNode').dataset.status = proxy.state === 'detected' ? 'healthy' :
+      proxy.state === 'disabled' ? 'inactive' : 'unknown';
+    for (const id of ['systemRouteName', 'systemRouteAddress', 'systemProxyName', 'systemProxyMode']) {
+      byId(id).title = byId(id).textContent;
     }
-    select.replaceChildren(...options.map(({ value, label }) => {
-      const option = document.createElement('option'); option.value = value; option.textContent = label; return option;
+
+    const optionContainer = byId('underlayTreeOptions');
+    const options = buildUnderlayOptions(environment, t);
+    optionContainer.replaceChildren(...options.map((option) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `network-underlay-option${option.selected ? ' active' : ''}`;
+      button.dataset.underlayAddress = option.value;
+      button.disabled = savingUnderlay;
+      button.setAttribute('aria-pressed', String(option.selected));
+      button.setAttribute('aria-label', t('connect.treeUseUnderlay', {
+        name: option.title, address: option.detail,
+      }));
+      const line = document.createElement('span'); line.className = 'network-underlay-line';
+      line.setAttribute('aria-hidden', 'true');
+      const icon = document.createElement('span'); icon.className = 'network-tree-icon';
+      icon.setAttribute('aria-hidden', 'true'); icon.textContent = option.kind === 'virtual' ? '◇' : '⇄';
+      const copy = document.createElement('span'); copy.className = 'network-underlay-copy';
+      const title = document.createElement('strong'); title.textContent = option.title;
+      const detail = document.createElement('small'); detail.textContent = option.detail;
+      copy.append(title, detail);
+      const badge = document.createElement('span'); badge.className = 'network-underlay-badge';
+      badge.textContent = option.selected ? t('connect.treeCurrent') : option.badge;
+      button.append(line, icon, copy, badge);
+      return button;
     }));
-    const selected = environment.selection?.mode === 'selected' ? environment.selection.sourceAddress : '';
-    select.value = options.some(({ value }) => value === selected) ? selected : previous && options.some(({ value }) => value === previous) ? previous : '';
-    select.disabled = savingUnderlay;
-    byId('localNetworkSummary').textContent = environment.selection?.mode === 'selected'
-      ? t('connect.selectedUnderlay', { name: interfaces.find(({ id }) => id === environment.selection.interfaceId)?.name || environment.selection.interfaceId,
-        address: environment.selection.sourceAddress })
-      : t('connect.defaultUnderlay', { name: defaultAdapter?.name || t('connect.notDetected'),
-        address: environment.defaultRoute?.sourceAddress || '—' });
+    optionContainer.dataset.available = String(environment.selection?.available !== false);
   }
 
   function renderTelemetry(telemetry = {}, t = translate) {
@@ -116,7 +146,6 @@
     if (typeof options.copy === 'function') copyText = options.copy;
     if (typeof options.save === 'function') saveSettings = options.save;
     if (typeof options.refresh === 'function') refreshState = options.refresh;
-    byId('localNetworkSummary').textContent = translate('connect.detecting');
     byId('copyTunnelIp').addEventListener('click', async () => {
       const value = byId('stIp').textContent.trim();
       if (!value || value === '—' || !copyText) return;
@@ -126,20 +155,27 @@
       button.textContent = translate('connect.copied');
       window.setTimeout(() => { button.textContent = previous; }, 1200);
     });
-    byId('underlaySourceAddress').addEventListener('change', async (event) => {
+    byId('underlayTreeOptions').addEventListener('click', async (event) => {
+      const target = event.target.closest('[data-underlay-address]');
+      if (!target || target.getAttribute('aria-pressed') === 'true') return;
       if (!saveSettings || savingUnderlay) return;
-      savingUnderlay = true; event.currentTarget.disabled = true;
+      savingUnderlay = true;
+      for (const button of byId('underlayTreeOptions').querySelectorAll('button')) button.disabled = true;
+      target.classList.add('pending');
       const status = byId('underlaySelectionStatus'); status.textContent = translate('connect.applyingUnderlay');
       try {
-        const result = await saveSettings({ underlaySourceAddress: event.currentTarget.value });
+        const result = await saveSettings({ underlaySourceAddress: target.dataset.underlayAddress });
         status.textContent = result?.ok ? translate('connect.underlayApplied') : (result?.error || translate('tower.saveFailed'));
         await refreshState?.();
       } catch (error) { status.textContent = error?.message || translate('tower.saveFailed'); }
-      finally { savingUnderlay = false; event.currentTarget.disabled = false; }
+      finally {
+        savingUnderlay = false; target.classList.remove('pending');
+        for (const button of byId('underlayTreeOptions').querySelectorAll('button')) button.disabled = false;
+      }
     });
   }
 
-  const api = Object.freeze({ renderEnvironment, renderStatus, renderTelemetry, sparkline, start });
+  const api = Object.freeze({ buildUnderlayOptions, renderEnvironment, renderStatus, renderTelemetry, sparkline, start });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (globalScope) globalScope.connectionOverview = api;
 })(typeof window !== 'undefined' ? window : null);

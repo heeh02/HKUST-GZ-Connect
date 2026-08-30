@@ -129,49 +129,55 @@
               </div>
               <span id="topologyStatus" class="topology-overall unknown" data-i18n="connect.statusUnknown">状态未知</span>
             </div>
-            <div class="network-environment-grid">
-              <article class="environment-card">
-                <span class="environment-icon" aria-hidden="true">⇄</span>
-                <span><small data-i18n="connect.defaultAdapter">默认真实网卡</small><strong id="defaultAdapterName">—</strong><em id="defaultAdapterAddress">—</em></span>
-              </article>
-              <article class="environment-card">
-                <span class="environment-icon" aria-hidden="true">↗</span>
-                <span><small data-i18n="connect.systemRoute">系统默认路径</small><strong id="systemRouteName">—</strong><em id="systemRouteAddress">—</em></span>
-              </article>
-              <article class="environment-card">
-                <span class="environment-icon" aria-hidden="true">⌁</span>
-                <span><small data-i18n="connect.systemProxy">系统代理</small><strong id="systemProxyName">—</strong><em id="systemProxyMode">—</em></span>
-              </article>
-              <article class="environment-card environment-virtual-card">
-                <span class="environment-icon" aria-hidden="true">◇</span>
-                <span><small data-i18n="connect.virtualAdapters">虚拟网卡 / TUN</small><strong id="virtualAdapterSummary">—</strong><em id="virtualAdapterDetail">—</em></span>
-              </article>
-            </div>
-            <div class="underlay-selector-row">
-              <label for="underlaySourceAddress"><strong data-i18n="connect.outboundPath">学校连接出站</strong><small data-i18n="connect.outboundHint">默认直连使用系统当前默认真实网卡。</small></label>
-              <select id="underlaySourceAddress" class="inp" aria-label="学校连接出站网卡" data-i18n-attr="aria-label:connect.outboundPath"></select>
-              <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
-            </div>
-            <div class="topology-flow">
-              <article class="topology-node" data-topology-node="local">
-                <span class="topology-node-icon" aria-hidden="true">⌁</span>
-                <span><strong data-i18n="connect.localNetwork">出站网卡</strong><small id="localNetworkSummary">正在检测…</small></span>
-              </article>
-              <span class="topology-arrow" aria-hidden="true">→</span>
-              <article class="topology-node" data-topology-node="browser">
-                <span class="topology-node-icon" aria-hidden="true">▣</span>
-                <span><strong data-i18n="nav.browser">校园浏览器</strong><small data-i18n="connect.automaticRouting">自动选择网络</small></span>
-              </article>
-              <span class="topology-arrow" aria-hidden="true">→</span>
-              <article class="topology-node" data-topology-node="tunnel">
-                <span class="topology-node-icon" aria-hidden="true">◇</span>
-                <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
-              </article>
-            </div>
-            <div class="topology-branches">
-              <div><span class="branch-dot campus"></span><span data-i18n="connect.campusTraffic">校园网站：按规则进入校园隧道</span></div>
-              <div><span class="branch-dot direct"></span><span data-i18n="connect.generalTraffic">其他网站：保持原网络路径</span></div>
-              <div id="proxyObservation" class="proxy-observation"><span class="branch-dot unknown"></span><span data-i18n="connect.proxyUnknown">外部代理：未观测到使用本地隧道的程序</span></div>
+            <div id="networkTree" class="network-tree" role="tree" aria-label="当前网络路径" data-i18n-attr="aria-label:connect.networkPath">
+              <div class="network-tree-root-wrap">
+                <article class="network-tree-node network-tree-root" role="treeitem">
+                  <span class="network-tree-icon" aria-hidden="true">⌁</span>
+                  <span><strong data-i18n="connect.treeRoot">本机流量</strong><small data-i18n="connect.treeRootHint">校园浏览器与系统应用</small></span>
+                </article>
+              </div>
+              <div class="network-tree-branches" role="group">
+                <section class="network-tree-branch campus-tree-branch" aria-labelledby="campusTreeTitle">
+                  <header class="network-tree-branch-title" id="campusTreeTitle">
+                    <span class="branch-dot campus"></span>
+                    <span><strong data-i18n="connect.treeCampus">校园网站</strong><small data-i18n="connect.treeCampusHint">自动进入校园隧道</small></span>
+                  </header>
+                  <div class="network-tree-chain">
+                    <article class="network-tree-node" data-topology-node="browser" role="treeitem">
+                      <span class="network-tree-icon" aria-hidden="true">▣</span>
+                      <span><strong data-i18n="nav.browser">校园浏览器</strong><small data-i18n="connect.automaticRouting">自动选择网络</small></span>
+                    </article>
+                    <article class="network-tree-node network-tree-service" data-topology-node="tunnel" role="treeitem">
+                      <span class="network-tree-icon" aria-hidden="true">◇</span>
+                      <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
+                    </article>
+                    <div class="network-underlay-branch" role="group" aria-labelledby="underlayTreeTitle">
+                      <div class="network-underlay-heading">
+                        <span><strong id="underlayTreeTitle" data-i18n="connect.treeUnderlay">连接出口</strong><small data-i18n="connect.treeUnderlayHint">点击网卡或连接线即可切换</small></span>
+                      </div>
+                      <div id="underlayTreeOptions" class="network-underlay-options"></div>
+                      <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
+                    </div>
+                  </div>
+                </section>
+                <section class="network-tree-branch general-tree-branch" aria-labelledby="generalTreeTitle">
+                  <header class="network-tree-branch-title" id="generalTreeTitle">
+                    <span class="branch-dot direct"></span>
+                    <span><strong data-i18n="connect.treeGeneral">其他流量</strong><small data-i18n="connect.treeGeneralHint">保持系统网络路径</small></span>
+                  </header>
+                  <div class="network-tree-chain">
+                    <article id="systemProxyNode" class="network-tree-node" role="treeitem">
+                      <span class="network-tree-icon" aria-hidden="true">↯</span>
+                      <span><strong id="systemProxyName">—</strong><small id="systemProxyMode">—</small></span>
+                    </article>
+                    <article id="systemRouteNode" class="network-tree-node" role="treeitem">
+                      <span class="network-tree-icon" aria-hidden="true">↗</span>
+                      <span><strong id="systemRouteName">—</strong><small id="systemRouteAddress">—</small></span>
+                    </article>
+                    <div id="proxyObservation" class="network-tree-observation"><span class="branch-dot unknown"></span><span data-i18n="connect.proxyUnknown">外部代理：未观测到使用本地隧道的程序</span></div>
+                  </div>
+                </section>
+              </div>
             </div>
           </section>
         </div>

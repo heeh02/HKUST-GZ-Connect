@@ -37,6 +37,10 @@ async function shellSnapshot(window, page) {
       cards: document.querySelectorAll('.category-card').length,
       stackRect: (() => { const r = document.getElementById('campusResources').getBoundingClientRect(); return { top: r.top, width: r.width, height: r.height, available: window.innerHeight - r.top - 28 }; })(),
       notificationNav: !!document.querySelector('.nav[data-page="notif"]'),
+      networkTree: !!document.getElementById('networkTree'),
+      networkTreeBranches: document.querySelectorAll('.network-tree-branch').length,
+      underlayOptions: document.querySelectorAll('[data-underlay-address]').length,
+      legacyUnderlaySelect: !!document.getElementById('underlaySourceAddress'),
     }))));
   })()`);
 }
@@ -70,6 +74,10 @@ async function main() {
       assert.deepEqual(connect.navOrder, ['connect', 'browser', 'tower', 'settings']);
       assert.equal(connect.notificationNav, false);
       assert.equal(connect.resourceInsideConnect, false);
+      assert.equal(connect.networkTree, true);
+      assert.equal(connect.networkTreeBranches, 2);
+      assert.equal(connect.underlayOptions, 2);
+      assert.equal(connect.legacyUnderlaySelect, false);
       assert.ok(connect.bodyOverflow <= 0 && connect.contentOverflow <= 0, `${label}: connection shell overflows horizontally`);
       await capture(window, output, `${label}-connect`);
 
@@ -88,6 +96,25 @@ async function main() {
       const tower = await shellSnapshot(window, 'tower'); assert.equal(tower.contentScroll, 0, `${label}: Control Tower did not start at the top`); await capture(window, output, `${label}-tower`);
       await shellSnapshot(window, 'settings'); await capture(window, output, `${label}-settings`);
     }
+    const underlaySwitch = await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('.nav[data-page="connect"]').click();
+      const target = document.querySelector('[data-underlay-address="198.18.0.1"]');
+      target.click();
+      return new Promise((resolve) => {
+        const deadline = Date.now() + 2000;
+        const check = () => {
+          const selected = document.querySelector('[data-underlay-address="198.18.0.1"]');
+          if (selected?.getAttribute('aria-pressed') === 'true') {
+            resolve({ selected: true, active: selected.classList.contains('active'), status: document.getElementById('underlaySelectionStatus').textContent });
+          } else if (Date.now() >= deadline) resolve({ selected: false, active: false, status: '' });
+          else setTimeout(check, 20);
+        };
+        check();
+      });
+    })()`);
+    assert.equal(underlaySwitch.selected, true);
+    assert.equal(underlaySwitch.active, true);
+    assert.ok(underlaySwitch.status, 'switching a connection line must publish a status');
     const shortcut = await window.webContents.executeJavaScript(`(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
       return { page: document.querySelector('.page.active').dataset.page, focused: document.activeElement.id };
