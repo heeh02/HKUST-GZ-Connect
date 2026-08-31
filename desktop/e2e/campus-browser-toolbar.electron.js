@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow, WebContentsView, session } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session } = require('electron');
 const {
   BLANK_CAMPUS_HOME,
   CampusBrowser,
@@ -14,6 +14,8 @@ const {
   TOOLBAR_HEIGHT,
 } = require('../lib/browser/session/campus-browser');
 const { CampusWorkspaceController } = require('../lib/browser/workspace/campus-workspace-controller');
+const { createDefaultCardBoardLayout } = require('../lib/card-board/runtime/card-board-migration');
+const { applyCardBoardOperations } = require('../lib/card-board/runtime/card-board-runtime');
 const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing/policy/campus-route');
 
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
@@ -57,7 +59,7 @@ async function waitForPage(contents, expression, description) {
     url: location.href,
     readyState: document.readyState,
     bridge: typeof window.campusWorkspace,
-    resources: document.querySelectorAll('#serviceViewGrid .resource-item').length,
+    resources: document.querySelectorAll('#workspacePersonalBoardHost .cb-site').length,
     body: document.body?.innerText?.slice(0, 500) || '',
   }))()`);
   throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(diagnostic)}`);
@@ -135,8 +137,8 @@ async function assertBookmarkOrganizer(browser) {
   await waitForMain(() => browser.activeTab()?.kind === 'workspace',
     'bookmark organizer Workspace tab');
   await waitForPage(browser.activeTab().view.webContents,
-    "document.getElementById('manageScreen').hidden === false",
-    'bookmark organizer screen');
+    "document.querySelector('#workspacePersonalBoardHost [data-card-board]')?.dataset.editing === 'true' && document.getElementById('manageScreen').hidden === true",
+    'inline bookmark organizer');
 }
 
 async function assertBlankNewTab(browser) {
@@ -301,14 +303,14 @@ async function assertFindBar(browser) {
 async function assertWorkspaceHome(browser) {
   const contents = browser.activeTab().view.webContents;
   await waitForPage(contents,
-    "document.querySelectorAll('#serviceViewGrid .resource-item').length === 2",
+    "document.querySelectorAll('#workspacePersonalBoardHost .cb-site').length === 2",
     'local Workspace Home resources');
   const state = await contents.executeJavaScript(`(() => ({
     duplicateHeader: document.querySelectorAll('.workspace-header').length,
     duplicateSearch: document.querySelectorAll('#workspaceSearch').length,
     activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
-    favoriteNames: [...document.querySelectorAll('#serviceViewGrid .resource-name')]
-      .map((value) => value.textContent),
+    favoriteNames: [...document.querySelectorAll('#workspacePersonalBoardHost .cb-site-copy strong')]
+      .map((value) => value.textContent).sort(),
     primaryTabs: [...document.querySelectorAll('[data-primary-view]')].map((value) => value.textContent),
     organizerEntry: document.getElementById('openManage')?.textContent,
     leakedUrls: document.body.textContent.includes('example.invalid'),
@@ -379,6 +381,38 @@ async function main() {
       category: 'custom', keywords: [], builtin: false,
       favorite: true, lastOpenedAt: null },
   ];
+  const cardBoardAuthority = Object.freeze({
+    officialCategoryIds: Object.freeze(['gateway']),
+    userCollectionIds: Object.freeze(['group_abcdefghijkl']),
+    includeUngroupedFavorites: true,
+    connectWidgetIds: Object.freeze([
+      'connection-metrics', 'network-adapter', 'connection-details',
+    ]),
+  });
+  let cardBoardDocument = createDefaultCardBoardLayout(cardBoardAuthority);
+  ipcMain.handle('get-card-board-layout', () => ({ document: cardBoardDocument }));
+  ipcMain.handle('commit-card-board-layout', (_event, request) => {
+    if (request.baseRevision !== cardBoardDocument.revision) {
+      const error = new Error('revision conflict');
+      error.code = 'CARD_BOARD_REVISION_CONFLICT';
+      throw error;
+    }
+    cardBoardDocument = applyCardBoardOperations(
+      cardBoardDocument, request.operations, cardBoardAuthority,
+    );
+    cardBoardDocument = { ...cardBoardDocument, revision: cardBoardDocument.revision + 1 };
+    return { document: cardBoardDocument, changed: request.operations.length > 0 };
+  });
+  ipcMain.handle('reset-card-board-layout', (_event, request) => {
+    if (request.baseRevision !== cardBoardDocument.revision) {
+      const error = new Error('revision conflict');
+      error.code = 'CARD_BOARD_REVISION_CONFLICT';
+      throw error;
+    }
+    const reset = createDefaultCardBoardLayout(cardBoardAuthority);
+    cardBoardDocument = { ...reset, revision: cardBoardDocument.revision + 1 };
+    return { document: cardBoardDocument, changed: true };
+  });
   let browser = null;
   const workspaceController = new CampusWorkspaceController({
     workspaceFile: path.join(__dirname, '..', 'renderer', 'campus-workspace.html'),
@@ -456,6 +490,9 @@ async function main() {
   } finally {
     browser.close();
     await isolatedSession.protocol.unhandle('https');
+    for (const channel of [
+      'get-card-board-layout', 'commit-card-board-layout', 'reset-card-board-layout',
+    ]) ipcMain.removeHandler(channel);
   }
 }
 
