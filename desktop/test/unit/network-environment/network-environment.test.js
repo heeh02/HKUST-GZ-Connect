@@ -125,6 +125,38 @@ test('public projection is bounded and resolves only usable addresses', () => {
   assert.equal(usableSourceAddress('fe80::1'), false);
 });
 
+test('public egress projection is source-address scoped and rejects private or cross-family observations', () => {
+  const raw = { platform: 'linux', status: 'ready', interfaces: [
+    { id: 'eth0', name: 'Ethernet', kind: 'physical', active: true, default: true,
+      addresses: [address('192.0.2.5')] },
+    { id: 'tun0', name: 'Tunnel', kind: 'virtual', active: true,
+      addresses: [address('192.0.2.5')] },
+  ] };
+  const projected = projectNetworkEnvironment(raw, '', [
+    { sourceAddress: '192.0.2.5', status: 'ready', address: '8.8.8.8',
+      family: 4, binding: 'source-address', provider: 'ipify' },
+  ]);
+  assert.equal(projected.interfaces[0].addresses[0].publicEgress.address, '8.8.8.8');
+  assert.equal(projected.interfaces[1].addresses[0].publicEgress.address, '8.8.8.8');
+  assert.equal(projected.interfaces[1].addresses[0].publicEgress.relation, 'same');
+  const rejected = projectNetworkEnvironment(raw, '', [
+    { sourceAddress: '192.0.2.5', status: 'ready', address: '2606:4700::1',
+      family: 6, binding: 'source-address', provider: 'ipify' },
+  ]);
+  assert.equal(rejected.interfaces.every(({ addresses }) => (
+    addresses[0].publicEgress.status === 'unavailable' &&
+    addresses[0].publicEgress.relation === 'unknown'
+  )), true);
+  const privateRejected = projectNetworkEnvironment(raw, '', [
+    { sourceAddress: '192.0.2.5', status: 'ready', address: '10.0.0.1',
+      family: 4, binding: 'source-address', provider: 'ipify' },
+  ]);
+  assert.equal(privateRejected.interfaces[0].addresses[0].publicEgress.status, 'unavailable');
+  assert.equal(Object.hasOwn(projected.interfaces[0].addresses[0].publicEgress, 'provider'), false);
+  assert.equal(Object.hasOwn(projected.interfaces[0].addresses[0].publicEgress, 'observedAt'), false);
+  assert.equal(Object.hasOwn(projected.interfaces[0].addresses[0].publicEgress, 'reason'), false);
+});
+
 test('Mihomo mode is not confirmed unless its advertised listener owns the system proxy port', async () => {
   const owner = await mihomoOwner({ platform: 'linux', endpoint: { host: '127.0.0.1', port: 7890 },
     processes: [{ executable: '/usr/bin/mihomo', args: 'mihomo --external-controller 127.0.0.1:9090' }],
@@ -174,4 +206,59 @@ test('service single-flights concurrent platform refreshes', async () => {
   const [left, right] = await Promise.all([first, second]);
   assert.deepEqual(left, right);
   assert.equal(left.defaultRoute.interfaceId, 'eth0');
+});
+
+test('public egress is asynchronous, memory-only, and compared only against same-family default egress', async () => {
+  const observed = [];
+  let tunnelOwnsSystemRoute = true;
+  let clock = 1_000;
+  let probeCalls = 0;
+  const service = new NetworkEnvironmentService({
+    platform: 'linux',
+    networkInterfaces: () => ({
+      eth0: [address('192.0.2.20')],
+      tun0: [address('100.64.0.8')],
+    }),
+    run: (_command, args) => args.includes('route') ? JSON.stringify([
+      { dst: 'default', dev: 'tun0', metric: tunnelOwnsSystemRoute ? 1 : 30 },
+      { dst: 'default', dev: 'eth0', metric: 20 },
+    ]) : '',
+    environment: {},
+    now: () => clock,
+    publicEgressProbe: { probe: async ({ sourceAddress }) => {
+      probeCalls += 1;
+      return { address: sourceAddress === '192.0.2.20' ? '8.8.8.8' : '1.1.1.1',
+        family: 4, binding: 'source-address', provider: 'ipify' };
+    } },
+  });
+  service.setPublicEgressListener((snapshot) => observed.push(snapshot));
+  const localOnly = await service.snapshot();
+  assert.equal(probeCalls, 0, 'ordinary snapshots never contact a public service without explicit opt-in');
+  assert.equal(localOnly.interfaces.flatMap(({ addresses }) => addresses)
+    .every(({ publicEgress }) => publicEgress === null), true);
+  const initial = await service.snapshot('', { probePublicEgress: true });
+  assert.equal(initial.schemaVersion, 2);
+  assert.equal(initial.interfaces.flatMap(({ addresses }) => addresses)
+    .every(({ publicEgress }) => publicEgress?.status === 'probing'), true);
+  for (let attempt = 0; attempt < 20 && service.cachedSnapshot().interfaces
+    .flatMap(({ addresses }) => addresses).some(({ publicEgress }) => publicEgress?.status !== 'ready'); attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const final = service.cachedSnapshot();
+  const physical = final.interfaces.find(({ id }) => id === 'eth0').addresses[0].publicEgress;
+  const tunnel = final.interfaces.find(({ id }) => id === 'tun0').addresses[0].publicEgress;
+  assert.equal(physical.relation, 'baseline');
+  assert.equal(tunnel.relation, 'different');
+  assert.equal(JSON.stringify(final).includes('expiresAt'), false);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.ok(observed.length <= 1, 'near-simultaneous probe completions are coalesced into one UI update');
+  clock += 60_001;
+  assert.equal(service.cachedSnapshot().interfaces.flatMap(({ addresses }) => addresses)
+    .every(({ publicEgress }) => publicEgress === null), true,
+  'expired public addresses are not projected by a cached or no-probe snapshot');
+  tunnelOwnsSystemRoute = false;
+  const changedRoute = await service.refresh('', { probePublicEgress: false });
+  assert.equal(changedRoute.interfaces.flatMap(({ addresses }) => addresses)
+    .every(({ publicEgress }) => publicEgress === null), true,
+  'system-route changes invalidate cached observations even when interface addresses stay identical');
 });

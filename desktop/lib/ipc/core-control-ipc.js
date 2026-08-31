@@ -23,11 +23,11 @@ function resourceOpenRequestFromIpc(value) {
 
 function registerCoreControlIpc(dependencies = {}) {
   const {
-    register, getState, getLoginAccount, connect, disconnect, reconnect,
+    register, getState, getNetworkEnvironment, getLoginAccount, connect, disconnect, reconnect,
     getLogs, openLog, copyText, openCampusBrowser, openBookmarkManager, openResource, checkUpdate, openExternal, resize,
   } = dependencies;
   for (const dependency of [
-    register, getState, getLoginAccount, connect, disconnect, reconnect,
+    register, getState, getNetworkEnvironment, getLoginAccount, connect, disconnect, reconnect,
     getLogs, openLog, copyText, openCampusBrowser, openBookmarkManager, openResource, checkUpdate, openExternal, resize,
   ]) {
     if (typeof dependency !== 'function') {
@@ -36,6 +36,10 @@ function registerCoreControlIpc(dependencies = {}) {
   }
 
   register('get-state', () => getState());
+  register('get-network-environment', (_event, ...args) => {
+    if (args.length) throw new TypeError('network environment request takes no arguments');
+    return getNetworkEnvironment();
+  });
   register('get-login-account', () => getLoginAccount());
   register('connect', () => connect());
   register('disconnect', () => disconnect());

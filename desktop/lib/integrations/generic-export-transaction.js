@@ -85,7 +85,6 @@ class GenericExportTransactionOwner {
     credentialFile = null,
     targetFile = null,
   } = {}) {
-    this.cancel();
     if (!GENERIC_EXPORT_ADAPTERS.includes(adapterId) || !ACTIONS.includes(action) ||
         bindingValue?.adapterId !== adapterId ||
         (adapterId === 'vscode_remote_ssh' && action !== 'copy')) {
@@ -132,7 +131,7 @@ class GenericExportTransactionOwner {
       throw error;
     }
     const expiresAt = this.now() + this.ttlMs;
-    this.#record = {
+    const nextRecord = {
       confirmationHandle,
       adapterId,
       action,
@@ -142,6 +141,9 @@ class GenericExportTransactionOwner {
       targetPlan,
       expiresAt,
     };
+    const previous = this.#record;
+    this.#record = nextRecord;
+    previous?.payload?.fill(0);
     return Object.freeze({
       schemaVersion: 1,
       confirmationHandle,

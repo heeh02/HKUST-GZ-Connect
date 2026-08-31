@@ -43,7 +43,6 @@ const {
   writeEngineOwnerRecord,
 } = require('./lib/connection/engine/engine-supervisor');
 const { ConnectionTelemetryCoordinator } = require('./lib/connection/telemetry/connection-telemetry-coordinator');
-const { buildPac } = require('./lib/routing/pac/pac');
 const { DomainRoutePolicyStore } = require('./lib/routing/policy/domain-route-policy');
 const { savePacFile } = require('./lib/routing/pac/pac-file');
 const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
@@ -613,7 +612,7 @@ const { monitor: networkStatusMonitor, startup: networkStartupCoordinator, envir
   isOnline: () => electronNet.isOnline(), onOffline: () => connectivityRecovery.networkOffline(),
   onOnline: () => connectivityRecovery.networkOnline(), shouldAutoConnect: () => { const s = loadSettingsOrReport(); return s.autoConnect !== false && Boolean(s.username) && hasPersistentCredential(); },
   pauseOffline: () => { connectivityRecovery.cancel(); const intent = connectionState.beginConnectIntent(); return connectivityRecovery.networkOffline(intent) ? intent : null; },
-  resumeInitialOffline: (intent) => connectivityRecovery.initialNetworkOnline(intent), connect: () => connect(), isQuitting: () => desktopShell?.isQuitting === true,
+  resumeInitialOffline: (intent) => connectivityRecovery.initialNetworkOnline(intent), connect: () => connect(), isQuitting: () => desktopShell?.isQuitting === true, onPublicEgress: (snapshot) => desktopShell?.send('network-environment', snapshot),
 });
 function rejectConnectionWhileQuitting(intent = connectionState.snapshot().intent) {
   if (desktopShell?.isQuitting !== true) return null;
@@ -768,7 +767,7 @@ async function connectOnce(isRetry, intent) {
   // underlay binding without weakening the final spawn boundary below.
   let underlaySelection = '';
   try { underlaySelection = loadSettingsOrReport().underlaySourceAddress; } catch {}
-  await networkEnvironmentService.refresh(underlaySelection);
+  await networkEnvironmentService.refresh(underlaySelection, { probePublicEgress: false });
   if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
   if (credentialTransactionBlocked) {
     const recovery = retryCredentialTransactionRecovery();
@@ -1216,11 +1215,9 @@ async function reconnect(expectedGeneration = null) {
 // ---------- PAC file (advanced app integration; no DNS probing) ----------
 let currentPacUrl = pathToFileURL(PAC_FILE).href;
 function refreshPacFile(settings = loadSettingsOrReport()) {
-  const saved = savePacFile(PAC_FILE, buildPac(
-    settings.routeDomains,
-    Number(settings.port),
-    domainRoutePolicy.options(),
-  ));
+  const saved = savePacFile(PAC_FILE, domainRoutePolicy.buildPac(Number(settings.port), {
+    defaultRoute: 'direct', campusPrivateIpv4: true,
+  }));
   currentPacUrl = saved.url;
   return saved;
 }
@@ -1345,8 +1342,8 @@ const integrationTargetSelector = createIntegrationTargetSelector({ dialog, getP
 const externalIntegrationRuntime = createExternalIntegrationRuntime({
   enabled: preReadyStorage.mode === 'profile-workspace', workspaceRoot: preReadyStorage.authority?.layout?.workspace?.root,
   getAuthority: () => persistenceRuntime.currentAuthority(), withProfileDocument: activeSchoolProfile.withProfileDocument,
-  getSettings: loadSettingsOrReport, getUserRules: () => domainRoutePolicy.list(), getServerResources: () => serverCampusResources,
-  getProxyCredential: loadStableProxyCredential, getPacSource: () => { const settings = loadSettingsOrReport(); return buildPac(settings.routeDomains, Number(settings.port), domainRoutePolicy.options()); },
+  getSettings: loadSettingsOrReport, getDomainPolicy: () => domainRoutePolicy.snapshot(),
+  getProxyCredential: loadStableProxyCredential, getPacSource: () => domainRoutePolicy.buildPac(Number(loadSettingsOrReport().port), { defaultRoute: 'direct', campusPrivateIpv4: true }),
   ensureSidecar: () => ensureExternalProxyAccess(socksPort()), writeClipboard: (text) => (clipboard.writeText(text), true),
   helperPath: proxyHelperPath(), credentialFile: PROXY_HELPER_CREDENTIAL, selectTarget: integrationTargetSelector,
 });
@@ -1443,7 +1440,7 @@ const controlStateSnapshot = createControlStateSnapshot({
   getResources: safeCampusResourceLibrary, getResourceGroups: () => resourceLibraryRuntime.listGroups(), getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
-  getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress),
+  getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress, { probePublicEgress: false }),
 });
 
 for (const [channel, handler] of Object.entries(authChallengeCoordinator.ipcHandlers())) {
@@ -1505,8 +1502,7 @@ registerSettingsCredentialIpc({
   clearOneShotCredential: (revision) => oneShotVpnCredential.clear(revision),
 });
 registerCoreControlIpc({
-  register: trustedHandle,
-  getState: controlStateSnapshot,
+  register: trustedHandle, getState: controlStateSnapshot, getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress, { probePublicEgress: true }),
   getLoginAccount: () => {
     try {
       if (hasCredentialForCurrentSession()) return { ok: false, username: '' };
@@ -1571,7 +1567,7 @@ desktopShell = new DesktopShell({
   disposeLifecycle: () => {
     schoolProfileOnboarding.cancel(); externalIntegrationRuntime.cancel();
     oneShotVpnCredential.clear();
-    networkStartupCoordinator.dispose(); connectionWaitRegistry.dispose();
+    networkStartupCoordinator.dispose(); networkEnvironmentService.dispose(); connectionWaitRegistry.dispose();
     connectivityRecovery.dispose();
     networkStatusMonitor.dispose();
   },

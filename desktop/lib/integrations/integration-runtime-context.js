@@ -13,6 +13,14 @@ const {
   validateWorkspaceScopeDocument,
 } = require('../profiles/schema/school-profile-schema');
 
+const EMPTY_DOMAIN_POLICY = Object.freeze({
+  userExact: Object.freeze([]),
+  userSubdomains: Object.freeze([]),
+  customExact: Object.freeze([]),
+  builtinSubdomains: Object.freeze([]),
+  serverExact: Object.freeze([]),
+});
+
 function pacDigest(value) {
   if (typeof value !== 'string' || !value.includes('function FindProxyForURL') ||
       Buffer.byteLength(value, 'utf8') > 512 * 1024) {
@@ -31,16 +39,23 @@ function validatedAccountAuthority(value) {
 }
 
 function createIntegrationRuntimeContext({
+  adapterId = 'clash_mihomo_yaml',
   authority,
   profileDocument,
   settings,
   userRules = [],
+  domainPolicy = null,
   serverResources = [],
   campusCidrs = [],
   proxyCredential,
   pacSource,
   engineGeneration = null,
 } = {}) {
+  if (!['clash_mihomo_yaml', 'vscode_remote_ssh'].includes(adapterId)) {
+    const error = new Error('integration adapter context is unavailable');
+    error.code = 'INTEGRATION_ADAPTER_UNAVAILABLE';
+    throw error;
+  }
   const profile = validateSchoolProfileDocument(profileDocument);
   const account = validatedAccountAuthority(authority?.account);
   const workspace = validateWorkspaceScopeDocument(authority?.workspaceState, { account });
@@ -57,11 +72,12 @@ function createIntegrationRuntimeContext({
   }
   const networkRules = createProfileNetworkRules({
     profileDocument,
-    accountCampusDomains: settings.routeDomains,
-    userRules,
-    customResources: settings.customResources,
-    serverResources,
-    campusCidrs,
+    domainPolicy: adapterId === 'clash_mihomo_yaml' ? domainPolicy : EMPTY_DOMAIN_POLICY,
+    accountCampusDomains: adapterId === 'clash_mihomo_yaml' ? settings.routeDomains : [],
+    userRules: adapterId === 'clash_mihomo_yaml' ? userRules : [],
+    customResources: adapterId === 'clash_mihomo_yaml' ? settings.customResources : [],
+    serverResources: adapterId === 'clash_mihomo_yaml' ? serverResources : [],
+    campusCidrs: adapterId === 'clash_mihomo_yaml' ? campusCidrs : [],
   });
   const common = Object.freeze({
     profileId: profile.profileId,
@@ -80,7 +96,9 @@ function createIntegrationRuntimeContext({
     proxySecurityRevision: settings.proxySecurityVersion,
     credentialRef: proxyCredential.reference(),
     networkRulesDigest: networkRules.rulesDigest,
-    pacDigest: pacDigest(pacSource),
+    pacDigest: adapterId === 'clash_mihomo_yaml'
+      ? pacDigest(pacSource)
+      : crypto.createHash('sha256').update(`vscode-remote-ssh:${profile.profileId}`, 'utf8').digest('hex'),
     engineGeneration,
   });
   return Object.freeze({
@@ -88,9 +106,14 @@ function createIntegrationRuntimeContext({
     pacSource,
     port: settings.port,
     credential: proxyCredential,
-    bindingFor(adapterId, recordRevision = 1) {
+    bindingFor(requestedAdapterId, recordRevision = 1) {
+      if (requestedAdapterId !== adapterId) {
+        const error = new Error('integration adapter context does not match');
+        error.code = 'INTEGRATION_ADAPTER_UNAVAILABLE';
+        throw error;
+      }
       return createIntegrationBinding({
-        ...common, adapterId, adapterVersion: 1, recordRevision,
+        ...common, adapterId: requestedAdapterId, adapterVersion: 1, recordRevision,
       });
     },
   });

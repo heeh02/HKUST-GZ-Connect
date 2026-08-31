@@ -204,7 +204,7 @@ async function exerciseIntegrationCenter(window) {
   assert.equal(explanation.open, true, 'Integration Center explanation did not expand');
   assert.match(explanation.text, /SOCKS5/u,
     'Integration Center explanation omitted its local proxy mechanism');
-  assert.match(explanation.text, /校园账号密码|campus password/iu,
+  assert.match(explanation.text, /校园(?:账号)?密码|campus password/iu,
     'Integration Center explanation omitted the credential boundary');
   const prepared = await window.webContents.executeJavaScript(`(async () => {
     document.querySelector('[data-integration-adapter="clash_mihomo_yaml"] [data-integration-action="copy"]').click();

@@ -70,10 +70,13 @@ function canonicalUserRules(value) {
 
 function canonicalResources(value, name) {
   if (!Array.isArray(value)) throw new TypeError(`${name} must be an array`);
-  const routes = normalizeResourceRoutes(value);
-  if (routes.length !== value.length) {
-    throw new TypeError(`${name} must contain canonical unique HTTP resources`);
+  if (value.some((resource) => normalizeResourceRoutes([resource]).length !== 1)) {
+    throw new TypeError(`${name} must contain valid HTTP resources`);
   }
+  // Multiple bookmarks may intentionally point at the same host. The shared
+  // domain-policy normalizer owns host de-duplication and precedence, so an
+  // export consumes the same canonical result as Campus Browser instead of
+  // rejecting otherwise valid user data.
   return value;
 }
 
@@ -94,6 +97,7 @@ function sha256(value) {
 
 function createProfileNetworkRules({
   profileDocument,
+  domainPolicy: providedDomainPolicy = null,
   accountCampusDomains = [],
   userRules = [],
   customResources = [],
@@ -102,17 +106,22 @@ function createProfileNetworkRules({
 } = {}) {
   const profile = validateSchoolProfileDocument(profileDocument);
   const gateway = normalizeGatewayOrigin(profileDocument.gateway.origin);
-  const schoolDomains = [...new Set([
-    ...profile.browser.campusDomains,
-    ...canonicalAccountCampusDomains(accountCampusDomains),
-  ])];
-  const domainPolicy = normalizeDomainRoutePolicy({
-    userRules: canonicalUserRules(userRules),
-    customResources: canonicalResources(customResources, 'custom resources'),
-    schoolDomains,
-    directPartnerDomains: profile.browser.directPartnerDomains,
-    serverResources: canonicalResources(serverResources, 'server resources'),
-  });
+  let domainPolicy;
+  if (providedDomainPolicy) {
+    domainPolicy = validateDomainPolicy(providedDomainPolicy);
+  } else {
+    const schoolDomains = [...new Set([
+      ...profile.browser.campusDomains,
+      ...canonicalAccountCampusDomains(accountCampusDomains),
+    ])];
+    domainPolicy = normalizeDomainRoutePolicy({
+      userRules: canonicalUserRules(userRules),
+      customResources: canonicalResources(customResources, 'custom resources'),
+      schoolDomains,
+      directPartnerDomains: profile.browser.directPartnerDomains,
+      serverResources: canonicalResources(serverResources, 'server resources'),
+    });
+  }
   const unsigned = {
     schemaVersion: PROFILE_NETWORK_RULES_VERSION,
     profileId: profile.profileId,

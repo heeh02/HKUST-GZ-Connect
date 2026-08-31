@@ -49,6 +49,7 @@ function setPage(page) {
   if (content) { content.classList.toggle('tower-scroll', page === 'tower'); content.classList.remove('user-scrolling'); content.scrollTop = 0; }
   if (page === 'browser') renderResources();
   if (page === 'settings') runUpdateCheck(false);
+  if (page === 'connect') window.connectionOverview.refreshEnvironment(st.loggedIn === true);
 }
 window.api.onOpenSettings?.(() => { show('dash'); setPage('settings'); refreshState(); });
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
@@ -81,7 +82,7 @@ function renderConnect(s) {
   // Status pushes carry the effective locale so a language switch re-renders
   // live; locally constructed state has no locale and keeps the current one.
   if (typeof s.locale === 'string') applyLocale(s.locale);
-  st = s;
+  st = { ...st, ...s };
   usabilityFeature?.updateConnection(s);
   connectedAt = s.connected ? (s.connectedAt || connectedAt) : null;
   $('power').classList.toggle('on', s.connected);
@@ -178,6 +179,7 @@ async function refreshState({ preserveTower = false } = {}) {
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   $('language').value = ['auto', 'zh', 'en'].includes(settings.language) ? settings.language : 'auto';
   browserNewTabSettings?.render(settings);
+  if (document.querySelector('.page.active')?.dataset.page === 'connect') window.connectionOverview.refreshEnvironment(s.loggedIn === true);
   return s;
 }
 
@@ -464,7 +466,7 @@ $('language').addEventListener('change', async () => {
   await refreshState();
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshState({ preserveTower: true });
+  if (!document.hidden) refreshState({ preserveTower: true }).then(() => window.connectionOverview.refreshEnvironment(st.loggedIn === true));
 });
 
 // copy + tools
@@ -551,6 +553,6 @@ $('manageResources').addEventListener('click', () => {
 $('addCategory').addEventListener('click', () => $('manageResources').click());
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();
-window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
+window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }), getEnvironment: () => window.api.getNetworkEnvironment(), subscribeEnvironment: (callback) => window.api.onNetworkEnvironment?.(callback) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
 usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

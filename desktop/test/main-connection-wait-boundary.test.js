@@ -15,7 +15,8 @@ test('Main connection waits are event-driven, intent-bound, and disposed on quit
   assert.match(source, /connect: async \(\) => \{ const \{ intent: _intent, \.\.\.result \} = await connect\(\); return result; \}/,
     'the internal wait correlation must not cross the Renderer IPC boundary');
   assert.match(source, /reconnect: async \(\) => \{ const \{ intent: _intent, \.\.\.result \} = await reconnect\(\); return result; \}/);
-  assert.match(source, /networkStartupCoordinator\.dispose\(\); connectionWaitRegistry\.dispose\(\)/);
+  assert.match(source, /networkStartupCoordinator\.dispose\(\); networkEnvironmentService\.dispose\(\); connectionWaitRegistry\.dispose\(\)/,
+    'network status, public-egress work, and intent waiters must share the quit boundary');
   assert.doesNotMatch(source, /setTimeout\(poll,\s*100\)/,
     'the old detached 100ms polling loop must not return');
 });

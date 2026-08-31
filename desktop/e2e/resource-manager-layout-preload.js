@@ -69,14 +69,20 @@ const state = {
     underlaySourceAddress: '',
   },
   networkEnvironment: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: 'linux',
     status: 'ready',
     interfaces: [
       { id: 'eth0', name: 'Ethernet', kind: 'physical', active: true, default: true,
-        systemDefault: false, addresses: [{ address: '192.0.2.20', family: 4, internal: false, selectable: true }] },
+        systemDefault: false, addresses: [{ address: '192.0.2.20', family: 4, internal: false, selectable: true,
+          publicEgress: { status: 'ready', address: '203.76.12.45', family: 4,
+            binding: 'source-address', provider: 'ipify', observedAt: 1_800_000_000_000,
+            relation: 'baseline', reason: '' } }] },
       { id: 'tun0', name: 'Mihomo TUN', kind: 'virtual', active: true, default: false,
-        systemDefault: true, addresses: [{ address: '198.18.0.1', family: 4, internal: false, selectable: true }] },
+        systemDefault: true, addresses: [{ address: '198.18.0.1', family: 4, internal: false, selectable: true,
+          publicEgress: { status: 'ready', address: '104.16.1.40', family: 4,
+            binding: 'source-address', provider: 'ipify', observedAt: 1_800_000_000_000,
+            relation: 'different', reason: '' } }] },
     ],
     defaultRoute: { interfaceId: 'eth0', sourceAddress: '192.0.2.20' },
     systemRoute: { interfaceId: 'tun0', sourceAddress: '198.18.0.1' },
@@ -104,6 +110,7 @@ const state = {
 
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
+  getNetworkEnvironment: async () => state.networkEnvironment,
   save: async (patch) => {
     state.settings = { ...state.settings, ...(patch || {}) };
     if (Object.hasOwn(patch || {}, 'underlaySourceAddress')) {
@@ -227,5 +234,6 @@ contextBridge.exposeInMainWorld('api', {
   resize: async () => ({ ok: true }),
   onStatus: () => {},
   onTelemetry: () => {},
+  onNetworkEnvironment: () => {},
   testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount }),
 });

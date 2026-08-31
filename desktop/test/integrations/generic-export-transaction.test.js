@@ -137,3 +137,23 @@ test('expiry cancellation and replacement invalidate old handles without returni
   }), { code: 'INTEGRATION_EXPORT_STALE' });
   assert.notEqual(first.confirmationHandle, second.confirmationHandle);
 });
+
+test('a failed replacement prepare leaves the prior confirmed preview intact', async () => {
+  const value = owner();
+  const current = binding();
+  const first = value.prepare({
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
+    networkRules: rules, port: 6180, credential,
+  });
+  assert.throws(() => value.prepare({
+    adapterId: 'clash_mihomo_yaml', action: 'save', binding: current,
+    networkRules: rules, port: 6180, credential,
+    targetFile: 'relative-and-invalid.yaml',
+  }), { code: 'INTEGRATION_EXPORT_TARGET_INVALID' });
+  assert.equal(value.snapshot().confirmationHandle, first.confirmationHandle);
+  assert.deepEqual(await value.execute({
+    confirmationHandle: first.confirmationHandle,
+    currentBinding: current,
+    perform: async () => {},
+  }), { ok: true, adapterId: 'clash_mihomo_yaml', action: 'copy' });
+});

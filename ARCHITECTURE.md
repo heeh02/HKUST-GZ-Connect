@@ -125,6 +125,11 @@ Desktop 负责用户意图、Engine 进程、浏览器、设置、安全存储�
 稳定的 Engine event/error code，不持有 Gateway Cookie、TwfID、CSRF、Modern token、
 transport token 或原始认证响应。
 
+`desktop/lib/network-environment/` 独立拥有跨平台网卡/路由观测。公网出口探测只能由 Main
+使用代码内固定的 HTTPS endpoint、绑定候选本机源地址并在内存中短时缓存；Renderer 不得提供
+endpoint、源地址或请求头。该结果仅表示外部服务对一次请求观测到的出口，不能推导“已代理”或
+“直连”，不得写入设置、日志、telemetry 或持久化状态，也不得进入连接成功与否的判定路径。
+
 ### 4.6 Profile / Account / Workspace storage
 
 持久用户状态按 `SchoolProfile -> CampusAccount -> WorkspaceScope` 归属。路径只能由安装本地生成的

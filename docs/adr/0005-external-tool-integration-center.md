@@ -35,6 +35,16 @@ replaces `Host`, `HostName`, and `User` and pastes it into their own SSH configu
 The application retains internal PAC generation where required for its own browser and routing implementation,
 but PAC is not a public Integration Center artifact.
 
+Website routing has one canonical `DomainRoutePolicyStore` snapshot. Campus Browser consumes that policy
+automatically. Clash/Mihomo receives a point-in-time copy only after an explicit export and manual import;
+ordinary browsers do not consume it automatically. The VS Code adapter is independent from website-domain
+rules and generates only its Remote-SSH `ProxyCommand` template.
+
+Adapter discovery is static and side-effect free. Listing adapters must not read credentials, build PAC,
+canonicalize bookmark data, or hide every adapter because one export context is temporarily unavailable.
+Adapter-specific Profile, listener, credential and policy validation begins only during `prepare`; confirmation
+revalidates the same binding before any clipboard, file or sidecar effect.
+
 Historical adapter IDs, managed coordinators, ownership records and disk-backup transactions are removed from
 production. Ordinary YAML save uses a single-file atomic export with in-memory rollback only.
 

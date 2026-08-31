@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('get-state'),
+  getNetworkEnvironment: () => ipcRenderer.invoke('get-network-environment'),
   getLoginAccount: () => ipcRenderer.invoke('get-login-account'),
   save: (payload) => ipcRenderer.invoke('save', payload),
   connect: () => ipcRenderer.invoke('connect'),
@@ -59,6 +60,12 @@ contextBridge.exposeInMainWorld('api', {
   },
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onTelemetry: (cb) => ipcRenderer.on('telemetry', (_e, t) => cb(t)),
+  onNetworkEnvironment: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (_event, snapshot) => cb(snapshot);
+    ipcRenderer.on('network-environment', listener);
+    return () => ipcRenderer.removeListener('network-environment', listener);
+  },
   onAuthChallenge: (cb) => {
     if (typeof cb !== 'function') return () => {};
     const listener = (_event, challenge) => cb(challenge);

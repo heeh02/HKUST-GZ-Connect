@@ -107,7 +107,7 @@ test('Renderer projections drop paths payloads keys and unknown adapters', () =>
   assert.equal(JSON.stringify(preview).includes('secret'), false);
 });
 
-test('list renders only non-destructive exports without unavailable adapters', async () => {
+test('list renders both non-destructive exporters and their bounded actions', async () => {
   const f = fixture();
   f.feature.start();
   await f.feature.refresh();
@@ -117,6 +117,18 @@ test('list renders only non-destructive exports without unavailable adapters', a
     'combined Clash / Mihomo adapter has copy and save');
   assert.equal(rows[1].children[1].children.length, 1, 'VS Code snippet is copy-only');
   assert.equal(f.elements.get('integrationError').textContent, '');
+});
+
+test('one unavailable exporter does not hide an independent supported exporter', async () => {
+  const unavailable = { ...view('clash_mihomo_yaml'), compatibilityState: 'unavailable',
+    bindingState: 'unavailable' };
+  const f = fixture({ views: [unavailable, view('vscode_remote_ssh')] });
+  f.feature.start();
+  await f.feature.refresh();
+  const rows = f.elements.get('integrationList').children;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].children[1].children.length, 0);
+  assert.equal(rows[1].children[1].children.length, 1);
 });
 
 test('prepare shows only a redacted preview and confirm consumes its exact handle', async () => {
@@ -133,7 +145,7 @@ test('prepare shows only a redacted preview and confirm consumes its exact handl
     confirmationHandle: `export-${'a'.repeat(32)}`,
   }]);
   assert.equal(f.elements.get('integrationDialog').open, false);
-  assert.equal(f.elements.get('integrationStatus').textContent, 'integration.success:');
+  assert.equal(f.elements.get('integrationStatus').textContent, 'integration.success.copy:');
 });
 
 test('expiry and failed confirmation close stale material and surface stable messages', async () => {

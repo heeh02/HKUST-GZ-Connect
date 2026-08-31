@@ -42,7 +42,13 @@ async function shellSnapshot(window, page) {
       networkTree: !!document.getElementById('networkTree'),
       networkTreeBranches: document.querySelectorAll('.network-tree-branch').length,
       underlayOptions: document.querySelectorAll('[data-underlay-address]').length,
+      underlayInterfaces: document.querySelectorAll('[data-underlay-interface]').length,
+      underlayOverflow: (() => { const node = document.getElementById('underlayTreeOptions'); return node.scrollWidth - node.clientWidth; })(),
       legacyUnderlaySelect: !!document.getElementById('underlaySourceAddress'),
+      integrationRows: document.querySelectorAll('[data-integration-adapter]').length,
+      routingScopes: document.querySelectorAll('.routing-consumer-scope > div').length,
+      towerRoutingWidth: document.getElementById('towerRoutingSection')?.getBoundingClientRect().width || 0,
+      towerGridWidth: document.querySelector('.page[data-page="tower"] .tower-grid')?.getBoundingClientRect().width || 0,
     }))));
   })()`);
 }
@@ -79,6 +85,8 @@ async function main() {
       assert.equal(connect.networkTree, true);
       assert.equal(connect.networkTreeBranches, 0);
       assert.equal(connect.underlayOptions, 2);
+      assert.equal(connect.underlayInterfaces, 2);
+      assert.ok(connect.underlayOverflow <= 0, `${label}: adapter choices overflow horizontally`);
       assert.equal(connect.legacyUnderlaySelect, false);
       assert.ok(connect.bodyOverflow <= 0 && connect.contentOverflow <= 0, `${label}: connection shell overflows horizontally`);
       if (label === 'default' || label === 'wide' || label === 'wide-tall' || label === 'ultrawide') {
@@ -99,9 +107,27 @@ async function main() {
         assert.equal(browser.layeredStacks, 0);
       }
       await capture(window, output, `${label}-browser`);
-      const tower = await shellSnapshot(window, 'tower'); assert.equal(tower.contentScroll, 0, `${label}: Control Tower did not start at the top`); await capture(window, output, `${label}-tower`);
+      const tower = await shellSnapshot(window, 'tower');
+      assert.equal(tower.contentScroll, 0, `${label}: Control Tower did not start at the top`);
+      assert.ok(tower.bodyOverflow <= 0 && tower.contentOverflow <= 0, `${label}: Control Tower overflows horizontally`);
+      assert.equal(tower.integrationRows, 2, `${label}: both independent export adapters must remain visible`);
+      assert.equal(tower.routingScopes, 3, `${label}: routing scope explanation is incomplete`);
+      if (width >= 1180) assert.ok(tower.towerRoutingWidth >= tower.towerGridWidth - 1,
+        `${label}: website routing does not use the full Control Tower width`);
+      await capture(window, output, `${label}-tower`);
       await shellSnapshot(window, 'settings'); await capture(window, output, `${label}-settings`);
     }
+    window.setContentSize(760, 900);
+    window.webContents.setZoomFactor(2);
+    await new Promise((resolve) => setTimeout(resolve, 260));
+    const zoomConnect = await shellSnapshot(window, 'connect');
+    assert.ok(zoomConnect.bodyOverflow <= 0 && zoomConnect.contentOverflow <= 0 &&
+      zoomConnect.underlayOverflow <= 0, '200% zoom: connection controls overflow horizontally');
+    const zoomTower = await shellSnapshot(window, 'tower');
+    assert.ok(zoomTower.bodyOverflow <= 0 && zoomTower.contentOverflow <= 0,
+      '200% zoom: Control Tower overflows horizontally');
+    assert.equal(zoomTower.integrationRows, 2, '200% zoom: an export adapter became inaccessible');
+    window.webContents.setZoomFactor(1);
     const underlaySwitch = await window.webContents.executeJavaScript(`(() => {
       document.querySelector('.nav[data-page="connect"]').click();
       const target = document.querySelector('[data-underlay-address="198.18.0.1"]');
@@ -110,7 +136,7 @@ async function main() {
         const deadline = Date.now() + 2000;
         const check = () => {
           const selected = document.querySelector('[data-underlay-address="198.18.0.1"]');
-          if (selected?.getAttribute('aria-pressed') === 'true') {
+          if (selected?.getAttribute('aria-checked') === 'true') {
             resolve({ selected: true, active: selected.classList.contains('active'), status: document.getElementById('underlaySelectionStatus').textContent });
           } else if (Date.now() >= deadline) resolve({ selected: false, active: false, status: '' });
           else setTimeout(check, 20);

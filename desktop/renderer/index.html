@@ -126,9 +126,9 @@
                 <p data-i18n="connect.adapterHint">选择校园隧道使用的网卡和源 IP。</p>
               </div>
             </div>
-            <div id="networkTree" class="network-tree network-tree-compact" role="tree" aria-label="连接网卡" data-i18n-attr="aria-label:connect.adapterTitle">
+            <div id="networkTree" class="network-tree network-tree-compact" role="group" aria-label="连接网卡" data-i18n-attr="aria-label:connect.adapterTitle">
               <div class="network-tree-root-wrap">
-                <article class="network-tree-node network-tree-root network-tree-service" data-topology-node="tunnel" role="treeitem">
+                <article class="network-tree-node network-tree-root network-tree-service" data-topology-node="tunnel">
                   <span class="network-tree-icon" aria-hidden="true">◇</span>
                   <span><strong>HKUST(GZ) Connect</strong><small id="tunnelSummary" data-i18n="connect.tunnelInactive">校园隧道未连接</small></span>
                 </article>
@@ -138,6 +138,7 @@
                   <span><strong id="underlayTreeTitle" data-i18n="connect.treeUnderlay">可用网卡</strong><small data-i18n="connect.treeUnderlayHint">点击网卡或连接线即可切换</small></span>
                 </div>
                 <div id="underlayTreeOptions" class="network-underlay-options"></div>
+                <p class="network-egress-note" data-i18n="connect.publicEgressNotice">公网出口由外部查询服务按本机源地址观测；不证明具体网卡路径，出口不同也不等于已使用代理。</p>
                 <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
               </div>
             </div>
@@ -258,43 +259,51 @@
           <p class="hint" data-i18n="tower.portHint">普通用户无需配置端口。高级软件可使用本机 SOCKS5；应用不会修改系统 DNS、默认路由或全局代理。</p>
         </div>
 
-        <div id="towerRoutingSection" class="card tower-card tower-routing-card">
+        <div id="towerRoutingSection" class="card tower-card tower-routing-card tower-access-card">
           <div class="card-heading routing-card-heading">
             <span class="card-heading-icon" aria-hidden="true">↗</span>
             <div>
-              <div class="card-title" data-i18n="routing.title">网站网络规则</div>
-              <p class="card-sub" data-i18n="routing.stackSummary">按校园隧道与直连分组；点击域名即可编辑。</p>
+              <div class="card-title" data-i18n="routing.accessTitle">校园访问方式</div>
+              <p class="card-sub" data-i18n="routing.accessSummary">学校基础规则自动维护；这里只管理个人例外，校园浏览器会立即使用。</p>
             </div>
             <button id="manageRoutingRules" class="mini" type="button" data-i18n="routing.add">添加规则</button>
           </div>
-          <div id="routingRuleStacks" class="category-stack-grid routing-stack-grid" aria-live="polite"></div>
-          <p id="routingRuleStackStatus" class="manager-empty" aria-live="polite"></p>
-        </div>
-
-        <div id="towerToolsSection" class="card tower-card tower-tools-card">
-          <div class="card-heading">
-            <span class="card-heading-icon" aria-hidden="true">⌘</span>
-            <div>
-              <div class="card-title" data-i18n="integration.title">外部工具集成</div>
-              <p class="card-sub" data-i18n="tower.toolsSub">按需生成配置，应用不会改动第三方软件。</p>
-            </div>
+          <div class="routing-consumer-scope" aria-label="规则生效范围" data-i18n-attr="aria-label:routing.scopeTitle">
+            <div><strong data-i18n="routing.scopeCampusBrowser">校园浏览器</strong><span data-i18n="routing.scopeAutomatic">自动生效</span></div>
+            <div><strong data-i18n="routing.scopeGeneralBrowser">Chrome / Safari / Edge</strong><span data-i18n="routing.scopeNotAutomatic">不会自动使用</span></div>
+            <div><strong>Clash / Mihomo</strong><span data-i18n="routing.scopeExportRequired">导出并手动导入后生效</span></div>
           </div>
-          <p class="hint integration-hint" data-i18n="integration.hint">生成与当前学校绑定的 Clash、Mihomo 配置和 VS Code Remote-SSH 片段；应用不会安装或修改第三方软件。</p>
-          <details class="integration-explainer">
-            <summary data-i18n="integration.explainSummary">查看功能说明</summary>
-            <div class="integration-explainer-body">
-              <p data-i18n="integration.explainLead">这里生成的是连接信息，不会安装或接管 Clash、Mihomo 或 VS Code。</p>
-              <ol>
-                <li data-i18n="integration.explainStep1">Campus Connect 先在本机建立只通往当前学校的安全隧道。</li>
-                <li data-i18n="integration.explainStep2">Clash / Mihomo 配置把该隧道加入为一个本地 SOCKS5 节点，并附带校园域名分流规则。</li>
-                <li data-i18n="integration.explainStep3">将 YAML 合并进自己的客户端后，校园网站走学校隧道，其他网站继续按原规则访问。</li>
-              </ol>
-              <p class="integration-privacy" data-i18n="integration.explainPrivacy">配置含本机代理凭据，但不含校园账号密码；请勿上传、同步或分享。</p>
+          <div class="routing-policy-section">
+            <div class="routing-section-heading">
+              <strong data-i18n="routing.websiteAccess">网站怎么访问</strong>
+              <span data-i18n="routing.directExplanation">“保持原网络”不经过 HKUST(GZ) Connect，但仍遵循系统现有代理或 TUN。</span>
             </div>
-          </details>
-          <div id="integrationList" class="integration-list" aria-live="polite"></div>
-          <p id="integrationStatus" class="integration-status" data-i18n="integration.loading">正在读取集成状态…</p>
-          <p id="integrationError" class="dialog-error" role="alert"></p>
+            <div id="routingRuleStacks" class="category-stack-grid routing-stack-grid"></div>
+            <p id="routingRuleStackStatus" class="manager-empty" role="status"></p>
+          </div>
+          <section id="towerToolsSection" class="routing-export-section" aria-labelledby="integrationSectionTitle">
+            <div class="routing-section-heading integration-section-heading">
+              <div>
+                <strong id="integrationSectionTitle" data-i18n="integration.title">在其他软件中使用（可选）</strong>
+                <span data-i18n="integration.hint">这里只生成配置内容，不安装、启动或修改第三方软件。</span>
+              </div>
+              <details class="integration-explainer">
+                <summary data-i18n="integration.explainSummary">查看功能说明</summary>
+                <div class="integration-explainer-body">
+                  <p data-i18n="integration.explainLead">校园浏览器会自动使用上方规则；其他软件只有在你导出并手动导入后才会使用相应配置。</p>
+                  <ol>
+                    <li data-i18n="integration.explainStep1">Clash / Mihomo YAML 包含本机 SOCKS5 入口、学校基础规则和个人规则。</li>
+                    <li data-i18n="integration.explainStep2">VS Code 仅生成 Remote-SSH ProxyCommand 模板；你需要自行填写 Host、HostName 和 User。</li>
+                    <li data-i18n="integration.explainStep3">规则变化后不会自动覆盖第三方文件；需要时请重新生成并再次导入。</li>
+                  </ol>
+                  <p class="integration-privacy" data-i18n="integration.explainPrivacy">配置可能含本机代理凭据或私有文件引用，但不含校园密码；请勿上传、同步或分享。</p>
+                </div>
+              </details>
+            </div>
+            <div id="integrationList" class="integration-list"></div>
+            <p id="integrationStatus" class="integration-status" role="status" data-i18n="integration.loading">正在读取可生成项目…</p>
+            <p id="integrationError" class="dialog-error" role="alert"></p>
+          </section>
         </div>
 
         <div id="towerQuickSection" class="card tower-card tower-quick-card">

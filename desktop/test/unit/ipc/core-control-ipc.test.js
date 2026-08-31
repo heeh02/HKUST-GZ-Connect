@@ -18,6 +18,7 @@ function fixture() {
   registerCoreControlIpc({
     register: (channel, handler) => handlers.set(channel, handler),
     getState: operation('state'),
+    getNetworkEnvironment: operation('network-environment'),
     getLoginAccount: operation('login-account'),
     connect: operation('connect'),
     disconnect: operation('disconnect'),
@@ -38,10 +39,21 @@ function fixture() {
 test('core facade registers the exact narrow control channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
-    'get-state', 'get-login-account', 'connect', 'disconnect', 'reconnect',
+    'get-state', 'get-network-environment', 'get-login-account', 'connect', 'disconnect', 'reconnect',
     'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-bookmark-manager', 'open-resource',
     'check-update', 'open-external', 'resize',
   ]);
+});
+
+test('network environment refresh accepts no renderer-selected endpoint or source address', () => {
+  const f = fixture();
+  f.handlers.get('get-network-environment')({});
+  assert.deepEqual(f.calls.find(([name]) => name === 'network-environment'), [
+    'network-environment',
+  ]);
+  assert.throws(() => f.handlers.get('get-network-environment')({}, {
+    sourceAddress: '192.0.2.10', endpoint: 'https://attacker.invalid',
+  }), /takes no arguments/u);
 });
 
 test('WebResource open accepts only one bounded opaque ID', () => {

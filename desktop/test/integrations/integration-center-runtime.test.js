@@ -64,6 +64,14 @@ test('list exposes only the two non-destructive configuration exports', () => {
   assert.equal(views.every((view) => view.bindingState === 'not-installed'), true);
 });
 
+test('list stays available without touching export context', () => {
+  let contextReads = 0;
+  const f = fixture();
+  f.runtime.getContext = () => { contextReads += 1; throw new Error('not ready'); };
+  assert.equal(f.runtime.list().every((view) => view.compatibilityState === 'supported'), true);
+  assert.equal(contextReads, 0);
+});
+
 test('Clash save selects a destination while VS Code remains copy-only', async () => {
   const f = fixture();
   await f.runtime.prepare({ adapterId: 'clash_mihomo_yaml', action: 'save' });
@@ -79,13 +87,12 @@ test('Clash save selects a destination while VS Code remains copy-only', async (
   }), { code: 'INTEGRATION_ADAPTER_UNAVAILABLE' });
 });
 
-test('confirm refreshes context and provisions a sidecar only for the VS Code snippet', async () => {
+test('confirm refreshes the exact adapter context before consuming a preview', async () => {
   const f = fixture();
   const preview = await f.runtime.prepare({ adapterId: 'vscode_remote_ssh', action: 'copy' });
   assert.deepEqual(await f.runtime.confirm({ confirmationHandle: preview.confirmationHandle }), {
     ok: true, name: 'generic',
   });
-  assert.ok(f.calls.some(([name]) => name === 'sidecar'));
   f.runtime.cancel();
   assert.ok(f.calls.some(([owner, action]) => owner === 'generic' && action === 'cancel'));
 });

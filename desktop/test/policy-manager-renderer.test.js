@@ -47,7 +47,10 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
     'the legacy bulk domain editor must not compete with the routing manager');
   assert.doesNotMatch(app, /\$\('routeDomains'\)/,
     'Control Tower must not mutate a second routing source');
-  assert.doesNotMatch(html, /(?:routing|rule)[^>]{0,50}(?:import|export|sync)/i);
+  const routingDialog = html.slice(html.indexOf('<dialog id="routingRulesDialog"'),
+    html.indexOf('</dialog>', html.indexOf('<dialog id="routingRulesDialog"')));
+  assert.doesNotMatch(routingDialog, /(?:import|export|sync)/i,
+    'the rule editor itself remains local-only and never mutates an external tool');
 });
 
 test('certificate manager reveals only origin, fingerprint, timestamp, and revoke controls', () => {

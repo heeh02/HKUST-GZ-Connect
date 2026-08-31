@@ -15,7 +15,7 @@ test('latency sparkline is bounded and stable for empty and noisy samples', () =
   }
 });
 
-test('network tree keeps one default line and selectable physical or virtual alternatives', () => {
+test('network tree groups selectable source addresses by adapter without losing exact selection', () => {
   const environment = {
     defaultRoute: { interfaceId: 'en0', sourceAddress: '192.0.2.10' },
     selection: { mode: 'default', interfaceId: 'en0', sourceAddress: '', available: true },
@@ -23,20 +23,36 @@ test('network tree keeps one default line and selectable physical or virtual alt
       { id: 'en0', name: 'Wi-Fi', kind: 'physical', active: true, default: true,
         addresses: [{ address: '192.0.2.10', selectable: true }] },
       { id: 'utun4', name: 'Tailscale', kind: 'virtual', active: true, default: false,
-        addresses: [{ address: '100.64.0.2', selectable: true }] },
+        addresses: [
+          { address: '100.64.0.2', family: 4, selectable: true,
+            publicEgress: { status: 'ready', address: '104.16.1.4', relation: 'different' } },
+          { address: 'fd7a:115c:a1e0::1', family: 6, selectable: true,
+            publicEgress: { status: 'unavailable', relation: 'unknown' } },
+        ] },
     ],
   };
   const t = (key) => key;
   const options = buildUnderlayOptions(environment, t);
-  assert.deepEqual(options.map(({ value, selected }) => ({ value, selected })), [
-    { value: '', selected: true },
-    { value: '100.64.0.2', selected: false },
+  assert.equal(options.length, 2);
+  assert.deepEqual(options.map(({ interfaceId, selected, sources }) => ({
+    interfaceId, selected, values: sources.map(({ value }) => value),
+  })), [
+    { interfaceId: 'en0', selected: true, values: [''] },
+    { interfaceId: 'utun4', selected: false,
+      values: ['100.64.0.2', 'fd7a:115c:a1e0::1'] },
   ]);
   environment.selection = { mode: 'selected', interfaceId: 'utun4',
     sourceAddress: '100.64.0.2', available: true };
-  assert.equal(buildUnderlayOptions(environment, t)[1].selected, true);
+  assert.equal(buildUnderlayOptions(environment, t)[0].selected, true,
+    'the explicitly selected interface is promoted without splitting its addresses into cards');
+  assert.equal(buildUnderlayOptions(environment, t)[0].sources[0].selected, true);
   environment.selection.available = false;
   assert.equal(buildUnderlayOptions(environment, t).some(({ selected }) => selected), false);
+
+  environment.interfaces.push({ id: 'mirror0', name: 'Mirror', kind: 'virtual', active: true,
+    default: false, addresses: [{ address: '100.64.0.2', family: 4, selectable: true }] });
+  assert.equal(buildUnderlayOptions(environment, t).length, 3,
+    'the same source address on two interfaces must not hide either interface card');
 });
 
 test('connection overview exposes one compact adapter tree instead of duplicate network diagnostics', () => {

@@ -11,9 +11,9 @@ const BASELINE = Object.freeze({
   // credential boundary. Main simultaneously stopped consuming four facade
   // bindings, so the effective semantic dependency cap below still shrank.
   mainDirectDependencies: 36,
-  // Eight leaf modules form the reviewed macOS/Windows/Linux network-environment
-  // domain; Main still owns no additional direct dependency and is smaller.
-  mainTransitiveDependencies: 162,
+  // The cross-platform network-environment domain now owns one additional
+  // HTTPS-only public-egress leaf. Main gained no direct dependency or lines.
+  mainTransitiveDependencies: 163,
   // This transition cap includes the disconnected-session recovery, async
   // platform discovery and one-shot credential security closures. Further
   // feature work must extract responsibilities instead of growing Main again.

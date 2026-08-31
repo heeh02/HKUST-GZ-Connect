@@ -1,20 +1,42 @@
 'use strict';
 
 const net = require('node:net');
+const { isPublicEgressAddress } = require('../egress/public-egress-probe');
 
 const ID = /^[A-Za-z0-9_.:-]{1,64}$/u;
 const KINDS = new Set(['physical', 'virtual', 'loopback', 'unknown']);
 const PROXY_MODES = new Set(['direct', 'rule', 'global', 'script', 'unknown']);
+const EGRESS_STATES = new Set(['probing', 'ready', 'unavailable']);
 const safeText = (value, max = 96) => typeof value === 'string' && value.trim() &&
   value.length <= max && !/[\u0000-\u001f\u007f<>]/u.test(value) ? value.trim() : '';
 
-function address(value) {
+function publicEgress(value, relation = 'unknown', sourceFamily = 0) {
+  const source = value && typeof value === 'object' ? value : {};
+  const status = EGRESS_STATES.has(source.status) ? source.status : '';
+  if (!status) return null;
+  const observedAddress = safeText(source.address, 64);
+  const family = net.isIP(observedAddress);
+  const validReady = status !== 'ready' || (family === sourceFamily &&
+    isPublicEgressAddress(observedAddress) && source.binding === 'source-address');
+  return Object.freeze({
+    status: validReady ? status : 'unavailable',
+    address: status === 'ready' && validReady ? observedAddress : '',
+    family: status === 'ready' && validReady ? family : 0,
+    binding: source.binding === 'source-address' ? 'source-address' : 'unknown',
+    relation: validReady && ['baseline', 'same', 'different'].includes(relation)
+      ? relation : 'unknown',
+  });
+}
+
+function address(value, egress = null, relation = 'unknown') {
   const source = value && typeof value === 'object' ? value : {};
   const ip = safeText(source.address, 64);
   if (!net.isIP(ip)) return null;
   const internal = source.internal === true;
-  return Object.freeze({ address: ip, family: net.isIP(ip), internal,
-    selectable: !internal && usableSourceAddress(ip) });
+  const family = net.isIP(ip);
+  return Object.freeze({ address: ip, family, internal,
+    selectable: !internal && usableSourceAddress(ip),
+    publicEgress: publicEgress(egress, relation, family) });
 }
 
 function usableSourceAddress(value) {
@@ -32,12 +54,16 @@ function usableSourceAddress(value) {
   return false;
 }
 
-function networkInterface(value) {
+function networkInterface(value, egressBySource = new Map(), relations = new Map()) {
   const source = value && typeof value === 'object' ? value : {};
   const id = safeText(source.id, 64);
   if (!ID.test(id)) return null;
   const addresses = [...new Map((Array.isArray(source.addresses) ? source.addresses : [])
-    .map(address).filter(Boolean).map((item) => [item.address, item])).values()].slice(0, 16);
+    .map((item) => {
+      const key = `${id}\u0000${item?.address || ''}`;
+      return address(item, egressBySource.get(item?.address), relations.get(key));
+    })
+    .filter(Boolean).map((item) => [item.address, item])).values()].slice(0, 16);
   return Object.freeze({
     id,
     name: safeText(source.name, 96) || id,
@@ -82,10 +108,35 @@ function proxy(value) {
   });
 }
 
-function projectNetworkEnvironment(value = {}, selection = '') {
+function projectNetworkEnvironment(value = {}, selection = '', publicEgressRecords = []) {
   const source = value && typeof value === 'object' ? value : {};
-  const interfaces = (Array.isArray(source.interfaces) ? source.interfaces : [])
-    .map(networkInterface).filter(Boolean).slice(0, 64);
+  const rawInterfaces = Array.isArray(source.interfaces) ? source.interfaces : [];
+  const egressBySource = new Map((Array.isArray(publicEgressRecords) ? publicEgressRecords : [])
+    .filter((record) => record && typeof record.sourceAddress === 'string')
+    .slice(0, 32).map((record) => [record.sourceAddress, record]));
+  const rawDefault = rawInterfaces.find((item) => item?.default === true) || null;
+  const baselineByFamily = new Map();
+  for (const candidate of Array.isArray(rawDefault?.addresses) ? rawDefault.addresses : []) {
+    const family = net.isIP(candidate?.address);
+    const observed = egressBySource.get(candidate?.address);
+    if (family && observed?.status === 'ready' && net.isIP(observed.address) === family &&
+        !baselineByFamily.has(family)) baselineByFamily.set(family, observed.address);
+  }
+  const relations = new Map();
+  for (const item of rawInterfaces) {
+    for (const candidate of Array.isArray(item?.addresses) ? item.addresses : []) {
+      const sourceAddress = candidate?.address;
+      const observed = egressBySource.get(sourceAddress);
+      const family = net.isIP(sourceAddress);
+      const baseline = baselineByFamily.get(family);
+      const key = `${item?.id || ''}\u0000${sourceAddress || ''}`;
+      relations.set(key, observed?.status === 'ready' && item === rawDefault
+        ? 'baseline' : observed?.status === 'ready' && baseline
+          ? (baseline === observed.address ? 'same' : 'different') : 'unknown');
+    }
+  }
+  const interfaces = rawInterfaces.map((item) => networkInterface(item, egressBySource, relations))
+    .filter(Boolean).slice(0, 64);
   const selectedAddress = safeText(selection, 64);
   const selected = usableSourceAddress(selectedAddress) ? interfaces.find((item) => (
     item.addresses.some(({ address: candidate }) => candidate === selectedAddress)
@@ -93,7 +144,7 @@ function projectNetworkEnvironment(value = {}, selection = '') {
   const defaultInterface = interfaces.find((item) => item.default) || null;
   const systemDefaultInterface = interfaces.find((item) => item.systemDefault) || defaultInterface;
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: ['darwin', 'win32', 'linux'].includes(source.platform) ? source.platform : 'unknown',
     status: ['ready', 'partial', 'unknown'].includes(source.status) ? source.status : 'unknown',
     interfaces: Object.freeze(interfaces),

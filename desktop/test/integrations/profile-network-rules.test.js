@@ -64,7 +64,17 @@ test('rules digest changes on policy change and rejects noncanonical or tampered
   assert.throws(() => createProfileNetworkRules({
     profileDocument: reviewed,
     customResources: [{ url: 'javascript:alert(1)', route: 'campus' }],
-  }), /canonical unique HTTP/u);
+  }), /valid HTTP/u);
+  const duplicateHost = createProfileNetworkRules({
+    profileDocument: reviewed,
+    customResources: [
+      { url: 'https://same.example.edu/first', route: 'direct' },
+      { url: 'https://same.example.edu/second', route: 'direct' },
+    ],
+  });
+  assert.deepEqual(duplicateHost.domainPolicy.customExact, [{
+    host: 'same.example.edu', route: 'direct',
+  }], 'bookmark duplicates collapse through the same policy normalizer used by Campus Browser');
 });
 
 test('CIDR v1 is exact canonical IPv4 and custom Profiles inherit no HKUST rule', () => {

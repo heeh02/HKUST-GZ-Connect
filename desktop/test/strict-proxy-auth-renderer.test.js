@@ -73,13 +73,13 @@ test('bilingual help states the secure default, explicit compatibility downgrade
   assert.match(zh, /应用内浏览器(?:会)?自动处理/);
   assert.match(zh, /Clash.*Mihomo.*VS Code/);
   assert.match(zh, /点击应用/);
-  assert.match(zh, /外部工具集成/);
+  assert.match(zh, /在其他软件中使用/);
   assert.match(zh, /127\.0\.0\.1/);
   assert.match(en, /Campus Browser handles it automatically/i);
   assert.match(en, /local authorization boundary/i);
   assert.match(en, /legacy SOCKS5 client/i);
   assert.match(en, /Click Apply/i);
-  assert.match(en, /External Tool Integrations/i);
+  assert.match(en, /Use in other apps/i);
   assert.match(en, /127\.0\.0\.1/);
 });
 
@@ -103,9 +103,10 @@ test('Clash and Mihomo share one explained configuration surface', () => {
   assert.doesNotMatch(integrationFeature, /['"]mihomo_yaml['"]/u,
     'the retired duplicate adapter must not remain a second Renderer card');
   assert.match(i18n.dictionaries.zh['integration.adapter.clash_mihomo_yaml'], /Clash \/ Mihomo/u);
-  assert.match(i18n.dictionaries.zh['integration.explainStep2'], /SOCKS5.*校园域名分流/u);
-  assert.match(i18n.dictionaries.zh['integration.explainPrivacy'], /不含校园账号密码/u);
-  assert.match(i18n.dictionaries.en['integration.explainStep3'], /other sites keep their existing routes/i);
+  assert.match(i18n.dictionaries.zh['integration.explainStep1'], /SOCKS5.*学校基础规则.*个人规则/u);
+  assert.match(i18n.dictionaries.zh['integration.explainStep2'], /VS Code.*ProxyCommand/u);
+  assert.match(i18n.dictionaries.zh['integration.explainPrivacy'], /不含校园密码/u);
+  assert.match(i18n.dictionaries.en['integration.explainStep3'], /never overwrite third-party files/i);
 });
 
 test('strict proxy authentication card wraps safely in narrow windows', () => {
