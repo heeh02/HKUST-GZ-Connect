@@ -44,6 +44,21 @@ test('six cards are dealt into three two-card stacks when only three slots fit',
   assert.equal(document.decks.length, 0, 'responsive stacking leaked into persisted layout data');
 });
 
+test('automatic stacks never exceed three cards even when the viewport has one slot', () => {
+  const cards = Array.from({ length: 12 }, (_, index) => card('official-category', `category-${index}`));
+  const document = boardModel.defaultDocument({ 'browser-catalog': cards });
+  for (const columns of [1, 2, 4]) {
+    const projected = boardModel.presentationUnits(document, 'browser-catalog', {
+      columns,
+      availableHeight: 560,
+    });
+    assert.equal(projected.units.length, 4, `${columns} columns must keep four shallow decks`);
+    assert.deepEqual(projected.units.map(({ placements }) => placements.length), [3, 3, 3, 3]);
+    assert.equal(Math.max(...projected.units.map(({ placements }) => placements.length)), 3);
+  }
+  assert.equal(document.decks.length, 0, 'shallow responsive decks must remain presentation-only');
+});
+
 test('vertical expansion deals automatic stacks back into independent slots', () => {
   const document = boardModel.defaultDocument({
     'browser-catalog': Array.from({ length: 6 }, (_, index) => (

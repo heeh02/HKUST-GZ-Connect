@@ -53,7 +53,7 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
 test('Campus Browser separates official and personal responsive card boards without website-card nesting', () => {
   assert.match(cardBoardCss, /\.cb-board-grid\s*\{[^}]*repeat\(var\(--cb-columns/u);
   assert.match(cardBoardCss, /\.cb-card-header\s*\{[^}]*min-height:\s*43px/u);
-  assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*14px/u);
+  assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*12px/u);
   assert.match(cardBoardCss, /\.cb-site\s*\{[^}]*border-bottom:\s*1px solid/u);
   assert.match(cardBoardCss, /@container\s+card-content\s*\(min-width:\s*360px\)[\s\S]*repeat\(2,/u);
   assert.match(cardBoardCss, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/u);
@@ -86,7 +86,8 @@ test('connection-first shell preserves restrained brand controls and progressive
   assert.match(controlCss, /\.sidebar\s*\{[^}]*flex:\s*0 0 72px/u);
   assert.match(controlCss, /\.nav\.active\s*\{[^}]*box-shadow:\s*0 6px 16px/u);
   assert.match(controlCss, /\.connection-layout\s*\{[^}]*grid-template-columns:/u);
-  assert.match(controlCss, /\.network-topology\s*\{[^}]*border-radius:\s*18px/u);
+  assert.match(controlCss, /\.network-path-details\s*\{[^}]*border-radius:\s*14px/u);
+  assert.match(controlHtml, /id="networkPathDetails"[^>]*class="network-path-details"/u);
   assert.match(controlHtml, /id="power"[^>]*class="connection-action"|class="connection-action"[^>]*id="power"/u);
   assert.match(controlHtml, /id="power"[^>]*role="switch"|role="switch"[^>]*id="power"/u);
   assert.match(controlCss, /#power\.connection-action\s*\{[^}]*width:\s*52px[^}]*height:\s*29px/u);

@@ -18,6 +18,7 @@
       emptyBoardHint: 'Restore or pin cards while organizing.', noResults: 'No matching sites', dragCard: 'Move card',
       resizeCard: 'Change card size', pinToConnect: 'Pin to Connection', removeFromConnect: 'Remove from Connection',
       hideCard: 'Hide from this board', draftChanged: 'Layout draft changed', saved: 'Layout saved',
+      editHint: 'Drag cards to reorder; drop one onto another to stack them.',
     }) : Object.freeze({
       edit: '整理', done: '完成', cancel: '取消', undo: '撤销', redo: '重做', reset: '恢复布局',
       saveFailed: '布局未保存，请重试。', stale: '布局已变化，请基于最新布局重试。',
@@ -25,6 +26,7 @@
       emptyBoardHint: '可在整理模式中恢复或固定卡片。', noResults: '没有符合条件的网站', dragCard: '拖动卡片',
       resizeCard: '调整卡片尺寸', pinToConnect: '固定到连接页', removeFromConnect: '从连接页移除',
       hideCard: '从当前页面隐藏', draftChanged: '布局草稿已更改', saved: '布局已保存',
+      editHint: '拖动卡片调整位置；拖到另一张卡片中间可叠放。',
     });
   }
 

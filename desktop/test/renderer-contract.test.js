@@ -76,6 +76,22 @@ test('dashboard separates connection, personal Campus Browser, advanced tower, a
   assert.match(html, /class="custom-url-details" hidden/u);
 });
 
+test('Connection keeps student essentials visible and progressively discloses network diagnostics', () => {
+  assert.match(html, /id="currentNetworkExit"/u);
+  assert.match(html, /id="networkPathDetails"[^>]*class="network-path-details"/u);
+  assert.match(html, /data-i18n="connect\.networkPathAction"/u);
+  assert.match(html, /data-i18n="stats\.connections">正在使用校园隧道的应用/u);
+});
+
+test('Campus Browser exposes plain-language actions without a nested surface shell', () => {
+  assert.match(html, /id="openCampusWorkspace"[^>]*data-i18n="browser\.openWindow"[^>]*>打开校园浏览器</u);
+  assert.match(html, /id="addWebsite"[^>]*data-i18n="browser\.addWebsite"[^>]*>添加网站</u);
+  assert.match(html, /id="manageResources"[^>]*data-i18n="resources\.manage"[^>]*>整理分类与网站</u);
+  assert.match(html, /class="category-workspace"/u);
+  assert.doesNotMatch(html, /class="quick-card category-workspace"/u,
+    'Campus Browser must not wrap Card Board in another large white card');
+});
+
 test('dashboard usability layer keeps status shortcuts feedback and recovery outside Main', () => {
   assert.match(html, /id="navConnectionState"/u);
   assert.match(html, /id="globalToast"[^>]*aria-live="polite"/u);
@@ -146,6 +162,10 @@ test('Campus Browser chrome keeps the minimum task set and exposes app settings'
   assert.match(browserJs, /command\('open-resource',\s*entry\.id\)/u);
   assert.match(browserJs, /command\('manage-bookmarks'\)/u);
   assert.doesNotMatch(browserHtml, /id="openExternal"/u);
+  assert.match(browserHtml, /id="loadingBanner"[^>]*hidden/u);
+  assert.match(browserHtml, /id="loadingBannerName"/u);
+  assert.match(browserHtml, /id="loadingBannerRoute"/u);
+  assert.match(browserJs, /next\.loadingLabel/u);
 });
 
 test('Campus Workspace is a real local renderer with ID-only actions and modular portal surfaces', () => {

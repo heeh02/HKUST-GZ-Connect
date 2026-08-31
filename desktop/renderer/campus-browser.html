@@ -75,6 +75,11 @@
     </div>
     <div id="bookmarkBar" class="bookmark-bar" aria-label="书签栏"
          data-i18n-attr="aria-label:browser.bookmarkBar">
+      <div id="loadingBanner" class="loading-banner" role="status" aria-live="polite" hidden>
+        <span class="loading-banner-indicator" aria-hidden="true"></span>
+        <strong id="loadingBannerName">正在打开网站</strong>
+        <span id="loadingBannerRoute">通过校园隧道</span>
+      </div>
       <div id="bookmarkItems" class="bookmark-items"></div>
       <div id="bookmarkMoreWrap" class="bookmark-folder" hidden>
         <button id="bookmarkMore" class="bookmark-control" type="button" aria-expanded="false"

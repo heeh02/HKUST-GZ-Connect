@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { buildUnderlayOptions, sparkline } = require('../renderer/connection-overview');
+const { buildUnderlayOptions, networkPathSummary, sparkline } = require('../renderer/connection-overview');
 
 test('latency sparkline is bounded and stable for empty and noisy samples', () => {
   assert.equal(sparkline([]), 'M2 24 L118 24');
@@ -59,9 +59,10 @@ test('connection overview exposes one compact adapter tree instead of duplicate 
   const renderer = path.join(__dirname, '..', 'renderer');
   const html = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(renderer, 'app.js'), 'utf8');
-  for (const id of ['networkTree', 'underlayTreeOptions', 'tunnelSummary']) {
+  for (const id of ['networkPathDetails', 'currentNetworkExit', 'networkTree', 'underlayTreeOptions', 'tunnelSummary']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
+  assert.match(html, /<details id="networkPathDetails"[^>]*>[\s\S]*class="network-topology"/u);
   for (const removed of [
     'defaultAdapterName', 'virtualAdapterSummary', 'underlaySourceAddress',
     'systemRouteName', 'systemProxyName',
@@ -73,4 +74,18 @@ test('connection overview exposes one compact adapter tree instead of duplicate 
   assert.match(html, /data-topology-node="tunnel"/u);
   assert.match(app, /connectionOverview\.start\(\{[^\n]*save:\s*\(patch\)\s*=>\s*window\.api\.save/u);
   assert.match(app, /refresh:\s*\(\)\s*=>\s*refreshState/u);
+});
+
+test('connection summary speaks in adapter and public-exit terms', () => {
+  const options = [{
+    interfaceId: 'en0', title: 'Wi-Fi · en0', selected: true,
+    sources: [{ value: '', localAddress: '192.0.2.10', selected: true,
+      publicEgress: { status: 'ready', address: '203.0.113.8', relation: 'baseline' } }],
+  }];
+  const t = (key, vars = {}) => key === 'connect.defaultDirectShort' ? '默认直连'
+    : key === 'connect.publicEgressValue' ? `公网出口 ${vars.address}` : key;
+  assert.deepEqual(networkPathSummary(options, t), {
+    title: 'Wi-Fi · en0',
+    detail: '公网出口 203.0.113.8 · 默认直连',
+  });
 });

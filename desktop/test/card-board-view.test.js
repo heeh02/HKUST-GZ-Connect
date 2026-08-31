@@ -26,12 +26,12 @@ function resource(index) {
   };
 }
 
-function fixture({ editing = false, expandedByDeck = {}, frontByDeck = {} } = {}) {
+function fixture({ editing = false, expandedByDeck = {}, frontByDeck = {}, courseSize = 'medium' } = {}) {
   const placements = [
     {
       placementId: 'placement_courses', boardId: 'browser-catalog',
       card: { kind: 'official-category', id: 'courses' }, deckId: 'deck-academic',
-      order: 0, size: 'medium', hidden: false,
+      order: 0, size: courseSize, hidden: false,
     },
     {
       placementId: 'placement_research', boardId: 'browser-catalog',
@@ -74,6 +74,7 @@ test('board view exposes semantic board, deck, placement, and toggle state', () 
   const research = placementMarkup(markup, 'placement_research');
   assert.match(courses, /data-expanded="true"/u);
   assert.match(courses, /data-card-action="toggle" aria-expanded="true"/u);
+  assert.match(courses, /class="cb-card-chevron"/u);
   assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_courses"/u);
   assert.ok(markup.indexOf('data-card-placement-id="placement_courses"') <
     markup.indexOf('data-card-placement-id="placement_research"'),
@@ -114,12 +115,14 @@ test('editing adds drag/menu/drop affordances while browsing leaves no draggable
   assert.match(editing, /data-card-edit-action="pin"/u);
 });
 
-test('large categories show twelve sites before explicit expansion and keep ID-only actions', () => {
-  const markup = fixture();
-  const courses = placementMarkup(markup, 'placement_courses');
-  assert.equal((courses.match(/data-card-resource-id=/gu) || []).length, 12);
-  assert.match(courses, /data-card-action="expand-all"/u);
-  assert.doesNotMatch(courses, /https?:\/\//u);
+test('small medium and large cards preview four six and eight sites before explicit expansion', () => {
+  for (const [courseSize, expected] of [['small', 4], ['medium', 6], ['large', 8]]) {
+    const markup = fixture({ courseSize });
+    const courses = placementMarkup(markup, 'placement_courses');
+    assert.equal((courses.match(/data-card-resource-id=/gu) || []).length, expected, courseSize);
+    assert.match(courses, /data-card-action="expand-all"/u);
+    assert.doesNotMatch(courses, /https?:\/\//u);
+  }
 
   const expanded = view.renderSiteRows(Array.from({ length: 13 }, (_, index) => resource(index)), {
     escapeHtml, translate, expandedAll: true,
@@ -142,6 +145,16 @@ test('ordinary cards use one brand tone while system widgets retain the sparse g
   assert.equal(view.cardTone('user-collection'), 'brand');
   assert.equal(view.cardTone('system-widget'), 'gold');
   assert.match(fixture(), /data-card-tone="brand"/u);
+});
+
+test('official category icons are semantic instead of one repeated grid glyph', () => {
+  const markup = fixture();
+  const courses = placementMarkup(markup, 'placement_courses');
+  const research = placementMarkup(markup, 'placement_research');
+  assert.notEqual(
+    courses.match(/<span class="cb-category-icon">([\s\S]*?)<\/span>/u)?.[1],
+    research.match(/<span class="cb-category-icon">([\s\S]*?)<\/span>/u)?.[1],
+  );
 });
 
 test('stack depth uses a bounded data attribute instead of CSP-blocked inline style', () => {

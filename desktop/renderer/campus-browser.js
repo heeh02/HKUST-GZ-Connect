@@ -56,6 +56,9 @@ const bookmarkItems = document.getElementById('bookmarkItems');
 const bookmarkMoreWrap = document.getElementById('bookmarkMoreWrap');
 const bookmarkMore = document.getElementById('bookmarkMore');
 const manageBookmarks = document.getElementById('manageBookmarks');
+const loadingBanner = document.getElementById('loadingBanner');
+const loadingBannerName = document.getElementById('loadingBannerName');
+const loadingBannerRoute = document.getElementById('loadingBannerRoute');
 let lastBookmarks = [];
 let bookmarkLayoutFrame = null;
 document.getElementById('browserProfileName').textContent = profileName || t('browser.workspace');
@@ -274,6 +277,10 @@ window.campusBrowserUI = {
       ? (next.slow ? t('browser.loadingSlow') : t('browser.loading'))
       : (next.routeLabel || t('browser.routeCampus'));
     state.classList.toggle('loading', !!next.loading);
+    loadingBanner.hidden = !next.loading;
+    loadingBannerName.textContent = next.loadingLabel || t('browser.loadingSite');
+    loadingBannerRoute.textContent = t(next.route === 'direct'
+      ? 'browser.loadingViaDirect' : 'browser.loadingViaCampus');
     const download = next.download && typeof next.download === 'object' ? next.download : null;
     downloadStatus.hidden = !download;
     downloadStatus.className = `download-status${download?.status ? ` ${download.status}` : ''}`;

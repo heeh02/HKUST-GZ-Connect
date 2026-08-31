@@ -7,6 +7,7 @@
 
   const BOARD_IDS = Object.freeze(['browser-catalog', 'browser-personal', 'connect']);
   const CARD_SIZES = Object.freeze(['small', 'medium', 'large']);
+  const MAX_AUTO_STACK_DEPTH = 3;
 
   function boundedString(value, max = 96) {
     return String(value || '').trim().slice(0, max);
@@ -46,6 +47,35 @@
       result.push(items.slice(offset, offset + size));
       offset += size;
     }
+    return result;
+  }
+
+  function weightedPartitions(units, count, maxWeight = MAX_AUTO_STACK_DEPTH) {
+    const source = Array.isArray(units) ? units : [];
+    const groupCount = Math.max(1, Math.min(source.length || 1, Number(count) || 1));
+    const weights = source.map((unit) => Math.max(1, unit?.placements?.length || 1));
+    const result = [];
+    let offset = 0;
+    let remainingWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    for (let group = 0; group < groupCount && offset < source.length; group += 1) {
+      const groupsLeft = groupCount - group;
+      const target = Math.ceil(remainingWeight / groupsLeft);
+      const partition = [];
+      let weight = 0;
+      while (offset < source.length) {
+        const nextWeight = weights[offset];
+        const unitsAfter = source.length - (offset + 1);
+        const mustLeave = groupsLeft - 1;
+        if (partition.length && (weight >= target || weight + nextWeight > maxWeight || unitsAfter < mustLeave)) break;
+        partition.push(source[offset]);
+        weight += nextWeight;
+        offset += 1;
+        if (weight >= maxWeight || source.length - offset === mustLeave) break;
+      }
+      result.push(partition);
+      remainingWeight -= weight;
+    }
+    while (offset < source.length) result.at(-1).push(source[offset++]);
     return result;
   }
 
@@ -210,7 +240,12 @@
         }))),
       });
     }
-    const partitions = balancedPartitions(source, capacity.slotCount);
+    const cardCount = source.reduce((sum, unit) => sum + Math.max(1, unit?.placements?.length || 1), 0);
+    const deckCount = Math.min(source.length, Math.max(
+      capacity.slotCount,
+      Math.ceil(cardCount / MAX_AUTO_STACK_DEPTH),
+    ));
+    const partitions = weightedPartitions(source, deckCount);
     const projected = partitions.map((partition, order) => {
       if (partition.length === 1) {
         return Object.freeze({
@@ -392,6 +427,7 @@
   return Object.freeze({
     BOARD_IDS,
     CARD_SIZES,
+    MAX_AUTO_STACK_DEPTH,
     applyDraftOperation,
     applyDraftOperations,
     boardUnits,

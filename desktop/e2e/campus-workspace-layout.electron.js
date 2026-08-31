@@ -236,7 +236,13 @@ async function main() {
       '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
     );
     card.querySelector('[data-card-action="toggle"]').click();
-    const updated = document.querySelector(
+    let updated = document.querySelector(
+      '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
+    );
+    const previewCount = updated.querySelectorAll('[data-card-resource-id]').length;
+    const expandAll = updated.querySelector('[data-card-action="expand-all"]');
+    expandAll?.click();
+    updated = document.querySelector(
       '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
     );
     updated.querySelector('[data-card-resource-id="sis"] [data-resource-action="open"]').click();
@@ -244,12 +250,16 @@ async function main() {
     return {
       ids: [...updated.querySelectorAll('[data-card-resource-id]')]
         .map((item) => item.dataset.cardResourceId),
+      previewCount,
+      expandedAll: !!expandAll,
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
       selectedCategory: updated.querySelector('.cb-card-title')?.textContent,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
+  assert.equal(courses.previewCount, 4);
+  assert.equal(courses.expandedAll, true);
   assert.equal(courses.ids.includes('new-student'), false);
   assert.equal(courses.serviceScreenVisible, true);
   assert.match(courses.selectedCategory, /课程、选课与成绩/u);

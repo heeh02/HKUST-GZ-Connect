@@ -823,6 +823,7 @@ class CampusBrowser {
       url: this.currentUrl(active),
       title: activeTitle,
       loading: !!active?.loading,
+      loadingLabel: active?.loading ? active.loadingLabel || '' : '',
       slow: !!active?.slow,
       findOpen: this.findOpen,
       route: active?.route || ROUTE_CAMPUS,
@@ -835,7 +836,7 @@ class CampusBrowser {
         id: tab.id,
         title: tab.view.webContents.isDestroyed()
           ? this.t('tab.new')
-          : tab.view.webContents.getTitle() || this.t('tab.new'),
+          : tab.view.webContents.getTitle() || tab.loadingLabel || this.t('tab.new'),
         loading: tab.loading,
         route: tab.route,
       })),
@@ -1005,6 +1006,9 @@ class CampusBrowser {
     contents.on('will-redirect', rejectNonWebNavigation);
     contents.on('did-start-loading', () => {
       tab.loading = true;
+      if (!tab.loadingLabel) {
+        try { tab.loadingLabel = new URL(this.currentUrl(tab)).hostname; } catch { tab.loadingLabel = ''; }
+      }
       if (!tab.renderingError) tab.failedUrl = '';
       this.clearSlowTimer(tab);
       tab.slowTimer = setTimeout(() => {
@@ -1017,6 +1021,7 @@ class CampusBrowser {
     });
     contents.on('did-stop-loading', () => {
       tab.loading = false;
+      tab.loadingLabel = '';
       tab.renderingError = false;
       this.clearSlowTimer(tab);
       this.scheduleToolbarUpdate();
@@ -1238,11 +1243,15 @@ class CampusBrowser {
           backgroundThrottling: true,
         },
       });
+      view.setBackgroundColor?.('#f4f6f9');
       tab = {
         ...(options.blankPage === true ? { kind: 'blank' } : {}),
         view,
         failedUrl: '',
-        loading: false,
+        loading: url !== BLANK_CAMPUS_HOME,
+        loadingLabel: typeof options.displayName === 'string' && options.displayName.trim()
+          ? options.displayName.trim().slice(0, 96)
+          : (() => { try { return new URL(url).hostname; } catch { return ''; } })(),
         slow: false,
         slowTimer: null,
         renderingError: false,
@@ -1552,7 +1561,7 @@ class CampusBrowser {
     return true;
   }
 
-  async open(rawUrl, port, route = null) {
+  async open(rawUrl, port, route = null, options = {}) {
     const url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     const resolution = this.resolveRoute(url, null, route);
     // ensureCampusReady() proves the current engine generation has reached its
@@ -1575,7 +1584,7 @@ class CampusBrowser {
         this.createTab(url, ROUTE_DIRECT);
       }
     } else {
-      this.createTab(url, resolution.route);
+      this.createTab(url, resolution.route, { displayName: options.displayName || '' });
     }
     return url;
   }

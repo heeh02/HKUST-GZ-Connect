@@ -204,7 +204,14 @@ class CampusBrowserManager {
       }
     }
     try {
-      await this.getOrCreate().open(request.url, this.getSocksPort(), request.route);
+      const browser = this.getOrCreate();
+      if (request.displayName) {
+        await browser.open(request.url, this.getSocksPort(), request.route, {
+          displayName: request.displayName,
+        });
+      } else {
+        await browser.open(request.url, this.getSocksPort(), request.route);
+      }
       return { ok: true, url: request.url, route: request.route };
     } catch (error) {
       const message = error.code === 'SETTINGS_READ_FAILED'

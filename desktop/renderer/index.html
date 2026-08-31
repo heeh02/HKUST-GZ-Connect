@@ -71,9 +71,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 11.5a4 4 0 0 1 6 0M11 13.6a1.6 1.6 0 0 1 2 0"/></svg>
           <span class="nav-label" data-i18n="nav.connect">连接</span>
         </button>
-        <button class="nav" data-page="browser" title="校园浏览器" data-i18n-attr="title:nav.browser">
+        <button class="nav" data-page="browser" title="校园浏览器" data-i18n-attr="title:nav.browserFull">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 8h18M7 6h.01M10 6h.01"/><path d="M9 12h6v7l-3-2-3 2z"/></svg>
-          <span class="nav-label" data-i18n="nav.browser">校园浏览器</span>
+          <span class="nav-label" data-i18n="nav.browser">校园浏览</span>
         </button>
       </div>
       <div class="side-group bottom">
@@ -118,9 +118,22 @@
                 <span class="metric-value" id="stPing">—</span>
                 <svg id="latencySparkline" class="latency-sparkline" viewBox="0 0 120 30" role="img" aria-label="最近延迟趋势"><path d="M2 24 L118 24"/></svg>
               </article>
+              <article class="connection-metric exit-metric">
+                <span class="metric-label" data-i18n="connect.currentExit">当前出口</span>
+                <span class="metric-value exit" id="currentNetworkExit">—</span>
+                <span class="metric-hint" id="currentNetworkExitHint" data-i18n="connect.defaultDirectHint">默认网卡即为直连</span>
+              </article>
             </div>
           </div>
-          <section class="network-topology" aria-labelledby="networkTopologyTitle">
+          <details id="networkPathDetails" class="network-path-details">
+            <summary>
+              <span>
+                <strong data-i18n="connect.networkPathAction">切换网卡与查看网络路径</strong>
+                <small id="networkPathDetailsSummary">当前网卡与公网出口</small>
+              </span>
+              <span class="network-path-chevron" aria-hidden="true">⌄</span>
+            </summary>
+            <section class="network-topology" aria-labelledby="networkTopologyTitle">
             <div class="topology-heading">
               <div>
                 <h2 id="networkTopologyTitle" data-i18n="connect.adapterTitle">连接网卡</h2>
@@ -143,7 +156,8 @@
                 <span id="underlaySelectionStatus" class="settings-action-status" aria-live="polite"></span>
               </div>
             </div>
-          </section>
+            </section>
+          </details>
           <section id="connectCardBoard" class="connect-card-board" aria-labelledby="connectCardBoardTitle" hidden>
             <div class="connect-card-board-heading">
               <h2 id="connectCardBoardTitle">我的快捷卡片</h2>
@@ -156,7 +170,7 @@
           <summary data-i18n="section.details">更多连接信息</summary>
           <div class="connection-detail-grid">
             <div><span data-i18n="stats.duration">连接时长</span><strong id="stDur">0:00</strong></div>
-            <div><span data-i18n="stats.connections">活动连接</span><strong id="stConn">0</strong></div>
+            <div><span data-i18n="stats.connections">正在使用校园隧道的应用</span><strong id="stConn">0</strong></div>
             <div><span data-i18n="stats.dnsMode">域名解析</span><strong id="stDns">—</strong></div>
             <div><span data-i18n="gateway.label">校园网关</span><strong id="gwName">remote.hkust-gz.edu.cn</strong><small id="gatewaySchoolName" data-i18n="gateway.sub">广州 · HKUST(GZ) 校园网</small></div>
           </div>
@@ -175,9 +189,9 @@
             <p class="page-sub" data-i18n="browser.subtitle">按自己的用途整理网站，一次点击即可打开。</p>
           </div>
           <div class="browser-page-actions">
-            <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开浏览器</button>
-            <button id="addWebsite" class="mini browser-add-category" type="button" aria-label="添加网站" title="添加网站" data-i18n-attr="aria-label:browser.addWebsite; title:browser.addWebsite">＋</button>
-            <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理</button>
+            <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开校园浏览器</button>
+            <button id="addWebsite" class="mini browser-add-category" type="button" data-i18n="browser.addWebsite">添加网站</button>
+            <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理分类与网站</button>
             <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
           </div>
         </div>
@@ -188,14 +202,11 @@
                  data-i18n-attr="placeholder:browser.search; aria-label:browser.search" />
           <kbd>⌘K</kbd>
         </div>
-        <div class="quick-card category-workspace" id="resourceShelf" data-resource-layout="compact">
+        <div class="category-workspace" id="resourceShelf" data-resource-layout="compact">
           <div class="category-workspace-heading">
-            <div>
-              <h3 data-i18n="browser.categoriesLabel">网站分类</h3>
-              <div class="category-source-tabs" role="tablist" aria-label="分类来源" data-i18n-attr="aria-label:browser.categorySource">
-                <button id="categoryModeCatalog" class="active" type="button" role="tab" aria-selected="true" aria-controls="campusResources" data-i18n="browser.catalogMode">校园服务</button>
-                <button id="categoryModePersonal" type="button" role="tab" aria-selected="false" aria-controls="campusResources" tabindex="-1" data-i18n="browser.personalMode">我的分类</button>
-              </div>
+            <div class="category-source-tabs" role="tablist" aria-label="分类来源" data-i18n-attr="aria-label:browser.categorySource">
+              <button id="categoryModeCatalog" class="active" type="button" role="tab" aria-selected="true" aria-controls="campusResources" data-i18n="browser.catalogMode">校园服务</button>
+              <button id="categoryModePersonal" type="button" role="tab" aria-selected="false" aria-controls="campusResources" tabindex="-1" data-i18n="browser.personalMode">我的分类</button>
             </div>
             <span id="categoryLayoutSummary" class="category-layout-summary"></span>
           </div>
@@ -658,12 +669,14 @@
   <script src="resource-layout-controller.js"></script>
   <script src="usability-controller.js"></script>
   <script src="student-home.js"></script>
+  <script src="campus-search-presenter.js"></script>
   <script src="notification-view.js"></script>
   <script src="notification-drawer.js"></script>
   <script src="connection-overview.js"></script>
   <script src="stacked-card-layout.js"></script>
   <script src="campus-workspace-model.js"></script>
   <script src="components/card-board/card-board-model.js"></script>
+  <script src="components/card-board/card-board-icons.js"></script>
   <script src="components/card-board/card-board-view.js"></script>
   <script src="components/card-board/card-board-drag.js"></script>
   <script src="components/card-board/card-board-adapter.js"></script>

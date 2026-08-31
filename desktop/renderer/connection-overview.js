@@ -78,6 +78,25 @@
     }).join(' ');
   }
 
+  function networkPathSummary(options, t = (key) => key) {
+    const selectedOption = (Array.isArray(options) ? options : []).find(({ selected }) => selected)
+      || (Array.isArray(options) ? options[0] : null);
+    const selectedSource = selectedOption?.sources?.find(({ selected }) => selected)
+      || selectedOption?.sources?.[0] || null;
+    const egress = selectedSource?.publicEgress;
+    const publicText = egress?.status === 'ready'
+      ? t('connect.publicEgressValue', { address: egress.address })
+      : t(egress?.status === 'probing' ? 'connect.publicEgressDetecting'
+        : egress?.status === 'unavailable' ? 'connect.publicEgressUnavailable'
+          : 'connect.publicEgressPending');
+    const relation = selectedSource?.value === ''
+      ? t('connect.defaultDirectShort') : t('connect.treeCurrent');
+    return Object.freeze({
+      title: selectedOption?.title || t('connect.defaultDirect'),
+      detail: `${publicText} · ${relation}`,
+    });
+  }
+
   function renderStatus(state = {}, t = translate) {
     const connected = state.connected === true;
     const busy = state.connecting === true;
@@ -91,6 +110,13 @@
   function renderEnvironment(environment, t = translate) {
     const optionContainer = byId('underlayTreeOptions');
     const options = buildUnderlayOptions(environment, t);
+    const summary = networkPathSummary(options, t);
+    const currentExit = byId('currentNetworkExit');
+    const currentExitHint = byId('currentNetworkExitHint');
+    const detailsSummary = byId('networkPathDetailsSummary');
+    if (currentExit) currentExit.textContent = summary.title;
+    if (currentExitHint) currentExitHint.textContent = summary.detail;
+    if (detailsSummary) detailsSummary.textContent = t('connect.networkPathSummary', summary);
     const focusedAddress = document.activeElement?.dataset?.underlayAddress;
     optionContainer.setAttribute('role', 'radiogroup');
     optionContainer.setAttribute('aria-label', t('connect.treeUnderlay'));
@@ -215,7 +241,16 @@
     });
   }
 
-  const api = Object.freeze({ buildUnderlayOptions, refreshEnvironment, renderEnvironment, renderStatus, renderTelemetry, sparkline, start });
+  const api = Object.freeze({
+    buildUnderlayOptions,
+    networkPathSummary,
+    refreshEnvironment,
+    renderEnvironment,
+    renderStatus,
+    renderTelemetry,
+    sparkline,
+    start,
+  });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (globalScope) globalScope.connectionOverview = api;
 })(typeof window !== 'undefined' ? window : null);

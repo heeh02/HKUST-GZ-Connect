@@ -43,7 +43,9 @@ test('ID-only open resolves inside Main ownership and records activity after suc
     ActivityStoreClass: FakeActivityStore,
   });
   const result = await runtime.openById('outlook');
-  assert.deepEqual(requests, [{ url: 'https://outlook.office.com/owa/', route: 'direct' }]);
+  assert.deepEqual(requests, [{
+    url: 'https://outlook.office.com/owa/', route: 'direct', displayName: 'Outlook',
+  }]);
   assert.equal(result.resourceId, 'outlook');
   assert.equal(result.resources[0].lastOpenedAt, 10);
   assert.equal(result.resources[0].name, '邮箱');

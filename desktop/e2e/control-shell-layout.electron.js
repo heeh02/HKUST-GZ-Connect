@@ -41,6 +41,8 @@ async function shellSnapshot(window, page) {
       autoStacks: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-auto-stacked="true"]').length || 0,
       stackCounts: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-stack-count]') || [])]
         .map((node) => Number(node.dataset.stackCount || 0)),
+      autoStackCounts: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-auto-stacked="true"]') || [])]
+        .map((node) => Number(node.dataset.stackCount || 0)),
       categoryNames: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-ref-kind="official-category"] .cb-card-title') || [])].map((node) => node.textContent),
       cards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id]').length || 0,
       expandedCards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id][data-expanded="true"]').length || 0,
@@ -292,8 +294,10 @@ async function main() {
       if (label === 'default') assert.ok(browser.boardColumns >= 2,
         'default 16:9 window collapsed the card board into one oversized stack');
       assert.equal(browser.boardRows, 1, `${label}: compact-height board should use one row of stacks`);
-      assert.equal(browser.decks, expectedBoardColumns,
-        `${label}: cards were not dealt into the available visual slots`);
+      assert.equal(browser.decks, Math.max(expectedBoardColumns, Math.ceil(12 / 3)),
+        `${label}: cards were not dealt into shallow three-card stacks`);
+      assert.ok(Math.max(...browser.autoStackCounts) <= 3,
+        `${label}: an automatic stack exceeds the three-card visual limit`);
       assert.ok(browser.autoStacks >= 1, `${label}: overflow cards remained independent rows`);
       assert.equal(browser.stackCounts.reduce((sum, count) => sum + count, 0), 12,
         `${label}: automatic stacks lost a category card`);
@@ -354,7 +358,7 @@ async function main() {
     assert.equal(tallBrowser.boardRows, 2, 'vertical expansion did not create a second row of card slots');
     assert.equal(tallBrowser.decks, 6, 'vertical expansion did not deal cards into six visible slots');
     assert.equal(tallBrowser.stackCounts.reduce((sum, count) => sum + count, 0), 12);
-    assert.ok(Math.max(...tallBrowser.stackCounts) <= 3,
+    assert.ok(Math.max(...tallBrowser.autoStackCounts) <= 3,
       'vertical expansion left an unnecessarily deep automatic stack');
     await capture(window, output, 'tall-browser');
     await settle(window, 1440, 900);

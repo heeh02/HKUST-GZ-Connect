@@ -156,10 +156,17 @@ class ResourceLibraryRuntime {
   }
 
   async openById(resourceId, locale = 'zh') {
-    const resource = resolveResourceById(this.loadResources(), resourceId);
+    const available = this.loadResources();
+    const resource = resolveResourceById(available, resourceId);
+    const presentation = available.find((candidate) => candidate?.id === resource.id);
     const context = this.captureContext();
     if (!this.isContextCurrent(context)) throw new Error('resource context is stale');
-    const result = await this.openRequest({ url: resource.url, route: resource.route });
+    const result = await this.openRequest({
+      url: resource.url,
+      route: resource.route,
+      displayName: typeof presentation?.name === 'string' && presentation.name
+        ? presentation.name : resource.id,
+    });
     if (!result?.ok) return result;
     if (this.isContextCurrent(context)) {
       try { this.activityStore.recordOpen(resource.id, this.loadResources()); } catch {}

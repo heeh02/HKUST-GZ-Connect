@@ -249,6 +249,7 @@ input {
 .download-status[hidden] { display: none; }
 
 .bookmark-bar {
+  position: relative;
   height: 32px;
   display: flex;
   align-items: center;
@@ -258,6 +259,31 @@ input {
   background: #fff;
   -webkit-app-region: no-drag;
 }
+.loading-banner {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  padding: 0 10px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #0b2a5b;
+  font-size: 11px;
+}
+.loading-banner[hidden] { display: none; }
+.loading-banner-indicator {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border: 2px solid #c7d3e2;
+  border-top-color: #174a86;
+  border-radius: 50%;
+  animation: loading-banner-spin 700ms linear infinite;
+}
+.loading-banner strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loading-banner > span:last-child { margin-left: auto; color: #174a86; font-weight: 650; white-space: nowrap; }
+@keyframes loading-banner-spin { to { transform: rotate(360deg); } }
 .bookmark-items {
   min-width: 0;
   flex: 1;

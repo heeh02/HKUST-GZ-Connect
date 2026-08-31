@@ -36,6 +36,8 @@ test('a card stack exposes layered headers and a distinct drawn front card', () 
   assert.match(css, /\.cb-card-header\.is-draggable\s*\{[^}]*cursor:\s*grab/su);
   assert.doesNotMatch(css, /\.cb-drag-handle\s*\{/u,
     'the obsolete tiny drag handle is still a first-class visual control');
+  assert.match(css, /\.cb-card\s*\{[^}]*border-radius:\s*12px/su);
+  assert.match(css, /\.cb-card-chevron\s*\{[^}]*width:\s*18px[^}]*height:\s*18px/su);
 });
 
 test('card color is restrained to brand and sparse gold tones on white surfaces', () => {
@@ -57,6 +59,14 @@ test('the compact window gets its own card density without changing the shell mi
   assert.match(css, /@media\s*\(max-width:\s*560px\)[\s\S]*?\.cb-category-icon\s*\{[^}]*width:\s*22px[^}]*height:\s*22px/u);
 });
 
+test('Campus Browser removes the redundant surface and keeps compact navigation icon-only', () => {
+  const shellCss = require('node:fs').readFileSync(require('node:path').join(
+    __dirname, '..', 'renderer', 'styles.css',
+  ), 'utf8');
+  assert.match(shellCss, /\.category-workspace\s*\{[^}]*padding:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/su);
+  assert.match(shellCss, /@media\s*\(max-width:\s*519px\)[\s\S]*?\.nav-label\s*\{[^}]*display:\s*none/u);
+});
+
 test('compact website rows retain the approved icon and text density', () => {
   assert.match(css, /\.cb-site\s*\{[^}]*min-height:\s*54px/su);
   assert.match(css, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/su);
@@ -65,5 +75,5 @@ test('compact website rows retain the approved icon and text density', () => {
 });
 
 test('Reduced Motion removes card position animation without hiding state', () => {
-  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.cb-card,[\s\S]*?\.cb-card-body\s*\{[^}]*animation:\s*none\s*!important[^}]*transition-duration:\s*\.01ms\s*!important/su);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.cb-card,[\s\S]*?\.cb-card-body,[\s\S]*?\.cb-card-chevron\s*\{[^}]*animation:\s*none\s*!important[^}]*transition-duration:\s*\.01ms\s*!important/su);
 });

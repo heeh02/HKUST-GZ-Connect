@@ -11,7 +11,15 @@ function normalizeOpenRequest(input, t, fallback) {
     : [ROUTE_CAMPUS, ROUTE_DIRECT].includes(source.route)
     ? source.route
     : routeForUrl(url);
-  return { url, route };
+  let displayName = '';
+  if (source.displayName != null) {
+    if (typeof source.displayName !== 'string' || !source.displayName.trim() ||
+        source.displayName.trim().length > 96 || /[\u0000-\u001f\u007f<>]/u.test(source.displayName)) {
+      throw new TypeError('Campus Browser display name is invalid');
+    }
+    displayName = source.displayName.trim();
+  }
+  return displayName ? { url, route, displayName } : { url, route };
 }
 
 function requiresCampusTunnel(route) {

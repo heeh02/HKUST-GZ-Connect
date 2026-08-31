@@ -101,7 +101,9 @@
     const button = documentNode?.getElementById('manageResources');
     if (!button) return;
     const english = String(documentNode.documentElement.lang || '').toLowerCase().startsWith('en');
-    button.textContent = editing ? (english ? 'Done' : '完成') : (english ? 'Organize' : '整理');
+    button.textContent = editing
+      ? (english ? 'Done' : '完成')
+      : (english ? 'Organize categories & sites' : '整理分类与网站');
     button.setAttribute('aria-pressed', String(editing));
     syncSourceTabs();
   }

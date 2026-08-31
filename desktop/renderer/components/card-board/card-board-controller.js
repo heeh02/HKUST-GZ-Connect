@@ -120,7 +120,8 @@
         return;
       }
       const labels = strings();
-      toolbar.innerHTML = `<button type="button" data-board-action="undo"${historyIndex <= 0 ? ' disabled' : ''}>${escapeHtml(labels.undo)}</button>`
+      toolbar.innerHTML = `<span class="cb-edit-hint">${escapeHtml(labels.editHint)}</span>`
+        + `<button type="button" data-board-action="undo"${historyIndex <= 0 ? ' disabled' : ''}>${escapeHtml(labels.undo)}</button>`
         + `<button type="button" data-board-action="redo"${historyIndex >= history.length - 1 ? ' disabled' : ''}>${escapeHtml(labels.redo)}</button>`
         + `<button type="button" data-board-action="reset">${escapeHtml(labels.reset)}</button>`
         + `<span class="cb-toolbar-spacer"></span><button type="button" data-board-action="cancel">${escapeHtml(labels.cancel)}</button>`

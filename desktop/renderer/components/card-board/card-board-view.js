@@ -1,26 +1,15 @@
 (function initializeCardBoardView(root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module !== 'undefined' && module.exports ? require('./card-board-icons') : root.cardBoardIcons,
+    typeof module !== 'undefined' && module.exports ? require('../../campus-search-presenter') : root.campusSearchPresenter,
+  );
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.cardBoardView = api;
-})(typeof self !== 'undefined' ? self : globalThis, function cardBoardViewFactory() {
+})(typeof self !== 'undefined' ? self : globalThis, function cardBoardViewFactory(icons, searchPresenter) {
   'use strict';
 
-  function siteIcon(resource) {
-    const category = String(resource?.category || 'custom');
-    const paths = category === 'learning' || category === 'courses'
-      ? '<path d="M4 6h6.5A2.5 2.5 0 0 1 13 8.5V19a2.5 2.5 0 0 0-2.5-2.5H4zM20 6h-4.5A2.5 2.5 0 0 0 13 8.5V19a2.5 2.5 0 0 1 2.5-2.5H20z"/>'
-      : '<rect x="5" y="5" width="5" height="5"/><rect x="14" y="5" width="5" height="5"/><rect x="5" y="14" width="5" height="5"/><rect x="14" y="14" width="5" height="5"/>';
-    return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
-  }
-
-  function categoryIcon(kind) {
-    if (kind === 'user-collection') {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l1.7 2H20.5v9.5h-17z"/></svg>';
-    }
-    if (kind === 'system-widget') {
-      return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8M12 8v8"/></svg>';
-    }
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>';
+  if (!icons?.categoryIcon || !icons?.siteIcon || !searchPresenter?.present || !searchPresenter?.highlight) {
+    throw new TypeError('card board presentation dependencies are required');
   }
 
   function label(strings, key, fallback) {
@@ -33,7 +22,8 @@
 
   function renderSiteRows(items, options) {
     const { escapeHtml: esc, translate, expandedAll = false } = options;
-    const visible = expandedAll ? items : items.slice(0, 12);
+    const previewLimit = Math.max(1, Math.min(8, Number(options.previewLimit) || 4));
+    const visible = expandedAll ? items : items.slice(0, previewLimit);
     if (!visible.length) {
       return `<p class="cb-empty">${esc(label(options.strings, 'emptyCategory', '此分类暂无网站'))}</p>`;
     }
@@ -42,13 +32,19 @@
         ? translate('resources.routeDirect') : translate('resources.routeCampus');
       const favorite = resource.favorite === true;
       const favoriteLabel = translate(favorite ? 'resources.unfavorite' : 'resources.favorite');
+      const name = options.searchQuery
+        ? searchPresenter.highlight(resource.name, options.searchQuery, esc) : esc(resource.name);
+      const description = options.showDescription && resource.description
+        ? `<span class="cb-site-description">${searchPresenter.highlight(resource.description, options.searchQuery, esc)}</span>` : '';
+      const audience = options.showDescription && resource.searchAudience
+        ? `<span class="cb-site-audience">${esc(resource.searchAudience)}</span><span aria-hidden="true"> · </span>` : '';
       return `<div class="cb-site" data-card-resource-id="${esc(resource.id)}" data-campus-id="${esc(resource.id)}">`
         + `<button class="cb-site-open" type="button" data-resource-action="open" title="${esc(resource.name)}">`
-        + `<span class="cb-site-icon">${siteIcon(resource)}</span><span class="cb-site-copy">`
-        + `<strong>${esc(resource.name)}</strong><small>${esc(route)}</small></span></button>`
+        + `<span class="cb-site-icon">${icons.siteIcon(resource)}</span><span class="cb-site-copy">`
+        + `<strong>${name}</strong>${description}<small class="cb-site-route ${resource.route === 'direct' ? 'direct' : 'campus'}">${audience}${esc(route)}</small></span></button>`
         + `<button class="resource-favorite${favorite ? ' active' : ''}" type="button" data-resource-action="favorite" title="${esc(favoriteLabel)}" aria-label="${esc(favoriteLabel)}" aria-pressed="${favorite}">${favorite ? '★' : '☆'}</button></div>`;
     }).join('');
-    const more = items.length > 12 && !expandedAll
+    const more = items.length > visible.length && !expandedAll
       ? `<button class="cb-expand-all" type="button" data-card-action="expand-all">${esc(label(options.strings, 'expandAll', `展开全部（${items.length}）`).replace('{count}', String(items.length)))}</button>`
       : '';
     return rows + more;
@@ -87,12 +83,15 @@
       + `><header class="cb-card-header${context.editing ? ' is-draggable' : ''}">`
       + `<button class="cb-card-toggle" type="button" data-card-action="toggle"`
       + ` aria-expanded="${expanded}" aria-controls="${bodyId}">`
-      + `<span class="cb-category-icon">${categoryIcon(kind)}</span><span class="cb-card-title">${esc(cardName)}</span>`
-      + `<span class="cb-card-count" aria-label="${esc(String(count))}">${count}</span></button>${editControls}</header>`
+      + `<span class="cb-category-icon">${icons.categoryIcon(kind, placement.card.id)}</span><span class="cb-card-title">${esc(cardName)}</span>`
+      + `<span class="cb-card-count" aria-label="${esc(String(count))}">${count}</span>`
+      + '<span class="cb-card-chevron" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m7 4 6 6-6 6"/></svg></span>'
+      + `</button>${editControls}</header>`
       + `<div id="${bodyId}" class="cb-card-body" ${expanded ? '' : 'hidden'}>`
       + `<div class="cb-site-list">${renderSiteRows(card?.items || [], {
         ...context,
         expandedAll: context.expandedAll?.has(placement.placementId),
+        previewLimit: placement.size === 'large' ? 8 : placement.size === 'medium' ? 6 : 4,
       })}</div></div>`
       + (context.editing ? '<div class="cb-drop-zones" aria-hidden="true"><span data-card-drop="before"></span><span data-card-drop="stack"></span><span data-card-drop="after"></span></div>' : '')
       + '</article>';
@@ -136,21 +135,25 @@
   }
 
   function renderSearch(categories, query, context) {
-    const needle = String(query || '').trim().toLocaleLowerCase();
-    const sections = categories.map((category) => {
-      const groupMatch = category.name.toLocaleLowerCase().includes(needle);
-      const items = category.items.filter((resource) => groupMatch || [
-        resource.name,
-        resource.description,
-        resource.url,
-        ...(Array.isArray(resource.keywords) ? resource.keywords : []),
-      ].some((value) => String(value || '').toLocaleLowerCase().includes(needle)));
-      if (!items.length) return '';
-      return `<section class="cb-search-section"><h3>${context.escapeHtml(category.name)}<span>${items.length}</span></h3>`
-        + `<div class="cb-site-list">${renderSiteRows(items, { ...context, expandedAll: true })}</div></section>`;
+    const sections = searchPresenter.present(categories, query).map((category) => {
+      const items = category.items.map(({ resource, audience }) => ({ ...resource, searchAudience: audience }));
+      return `<section class="cb-search-section"><h3>${searchPresenter.highlight(category.name, query, context.escapeHtml)}<span>${items.length}</span></h3>`
+        + `<div class="cb-site-list">${renderSiteRows(items, {
+          ...context,
+          expandedAll: true,
+          searchQuery: query,
+          showDescription: true,
+        })}</div></section>`;
     }).join('');
     return `<div class="cb-search-results">${sections || `<div class="cb-board-empty"><strong>${context.escapeHtml(label(context.strings, 'noResults', '没有符合条件的网站'))}</strong></div>`}</div>`;
   }
 
-  return Object.freeze({ cardTone, categoryIcon, renderBoard, renderSearch, renderSiteRows, siteIcon });
+  return Object.freeze({
+    cardTone,
+    categoryIcon: icons.categoryIcon,
+    renderBoard,
+    renderSearch,
+    renderSiteRows,
+    siteIcon: icons.siteIcon,
+  });
 });
