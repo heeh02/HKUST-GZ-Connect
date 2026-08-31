@@ -55,7 +55,7 @@ test('Campus Browser separates official and personal responsive card boards with
   assert.match(cardBoardCss, /\.cb-card-header\s*\{[^}]*min-height:\s*43px/u);
   assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*14px/u);
   assert.match(cardBoardCss, /\.cb-site\s*\{[^}]*border-bottom:\s*1px solid/u);
-  assert.match(cardBoardCss, /@container\s+card-content\s*\(min-width:\s*440px\)[\s\S]*repeat\(2,/u);
+  assert.match(cardBoardCss, /@container\s+card-content\s*\(min-width:\s*360px\)[\s\S]*repeat\(2,/u);
   assert.match(cardBoardCss, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/u);
   assert.match(controlHtml, /data-page="browser"/u);
   assert.match(controlHtml, /id="resourceSearch"/u);

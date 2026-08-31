@@ -53,6 +53,7 @@
   function renderPlacement(placement, card, context) {
     const esc = context.escapeHtml;
     const expanded = context.expandedPlacementId === placement.placementId;
+    const front = context.frontPlacementId === placement.placementId;
     const bodyId = `card-board-body-${placement.placementId}`.replace(/[^a-zA-Z0-9_-]/g, '-');
     const count = Array.isArray(card?.items) ? card.items.length : 0;
     const kind = placement.card.kind;
@@ -65,16 +66,20 @@
     const cardName = card?.name || placement.card.id;
     const editControls = context.editing
       ? `<div class="cb-card-edit-controls" data-card-edit-controls>`
-        + `<button class="cb-icon-action cb-drag-handle" type="button" draggable="true" data-card-drag-handle aria-label="${esc(label(context.strings, 'dragCard', '拖动卡片'))}" title="${esc(label(context.strings, 'dragCard', '拖动卡片'))}">⠿</button>`
         + `<button class="cb-icon-action" type="button" data-card-edit-action="resize" data-card-next-size="${nextSize}" aria-label="${esc(label(context.strings, 'resizeCard', '调整卡片尺寸'))}" title="${esc(label(context.strings, 'resizeCard', '调整卡片尺寸'))}">↔</button>`
         + (canPin ? `<button class="cb-icon-action" type="button" data-card-edit-action="pin" aria-label="${esc(label(context.strings, 'pinToConnect', '固定到连接页'))}" title="${esc(label(context.strings, 'pinToConnect', '固定到连接页'))}">⌂</button>` : '')
         + `<button class="cb-icon-action" type="button" data-card-edit-action="remove" aria-label="${esc(removeLabel)}" title="${esc(removeLabel)}">×</button></div>`
       : '';
-    return `<article class="cb-card${expanded ? ' is-expanded' : ''}" role="group"`
+    const dragLabel = esc(label(context.strings, 'dragCard', '拖动卡片'));
+    const depth = Math.max(0, Number(context.stackDepth) || 0);
+    return `<article class="cb-card${expanded ? ' is-expanded' : ''}${front ? ' is-front' : ''}" role="group"`
       + ` data-card-placement-id="${esc(placement.placementId)}" data-card-ref-kind="${esc(kind)}"`
       + ` data-card-ref-id="${esc(placement.card.id)}" data-card-size="${esc(placement.size)}"`
-      + ` data-expanded="${expanded}" data-dragging="false">`
-      + `<header class="cb-card-header"><button class="cb-card-toggle" type="button" data-card-action="toggle"`
+      + ` data-expanded="${expanded}" data-card-front="${front}" data-dragging="false"`
+      + ` style="--cb-stack-depth:${depth};--cb-stack-inset:${Math.min(depth, 5) * 2}px"`
+      + (context.editing ? ` draggable="true" tabindex="0" data-card-drag-handle aria-label="${dragLabel}"` : '')
+      + `><header class="cb-card-header${context.editing ? ' is-draggable' : ''}">`
+      + `<button class="cb-card-toggle" type="button" data-card-action="toggle"`
       + ` aria-expanded="${expanded}" aria-controls="${bodyId}">`
       + `<span class="cb-category-icon">${categoryIcon(kind)}</span><span class="cb-card-title">${esc(cardName)}</span>`
       + `<span class="cb-card-count" aria-label="${esc(String(count))}">${count}</span></button>${editControls}</header>`
@@ -89,29 +94,43 @@
 
   function renderDeck(unit, cardsByKey, context) {
     const deckId = unit.deck?.deckId || unit.unitId;
+    const requestedFront = context.frontByDeck[deckId]
+      || context.expandedByDeck[deckId]
+      || unit.deck?.activePlacementId
+      || unit.placements.at(-1)?.placementId
+      || null;
+    const frontPlacementId = unit.placements.some(({ placementId }) => placementId === requestedFront)
+      ? requestedFront : unit.placements.at(-1)?.placementId || null;
     const activePlacementId = context.expandedByDeck[deckId]
-      || unit.deck?.activePlacementId || null;
-    const placements = unit.placements.map((placement) => {
+      || (unit.automatic ? null : unit.deck?.activePlacementId) || null;
+    const orderedPlacements = [
+      ...unit.placements.filter(({ placementId }) => placementId !== frontPlacementId),
+      ...unit.placements.filter(({ placementId }) => placementId === frontPlacementId),
+    ];
+    const placements = orderedPlacements.map((placement, index) => {
       const card = cardsByKey.get(`${placement.card.kind}:${placement.card.id}`);
       return renderPlacement(placement, card, {
         ...context,
         expandedPlacementId: activePlacementId,
+        frontPlacementId,
+        stackDepth: orderedPlacements.length - index - 1,
       });
     }).join('');
     const size = unit.placements.find(({ placementId }) => placementId === activePlacementId)?.size
       || unit.placements[0]?.size || 'small';
     return `<section class="cb-deck${unit.placements.length > 1 ? ' is-stacked' : ''}" role="listitem"`
-      + ` data-card-deck-id="${context.escapeHtml(deckId)}" data-card-size="${context.escapeHtml(size)}">${placements}</section>`;
+      + ` data-card-deck-id="${context.escapeHtml(deckId)}" data-card-size="${context.escapeHtml(size)}"`
+      + ` data-auto-stacked="${unit.automatic === true}" data-stack-count="${unit.placements.length}">${placements}</section>`;
   }
 
-  function renderBoard({ boardId, units, cardsByKey, expandedByDeck = {}, expandedAll = new Set(), editing = false,
-    escapeHtml, translate, strings = {}, columns = 1 } = {}) {
-    const context = { boardId, expandedByDeck, expandedAll, editing, escapeHtml, translate, strings };
+  function renderBoard({ boardId, units, cardsByKey, expandedByDeck = {}, frontByDeck = {}, expandedAll = new Set(), editing = false,
+    escapeHtml, translate, strings = {}, columns = 1, rows = 1 } = {}) {
+    const context = { boardId, expandedByDeck, frontByDeck, expandedAll, editing, escapeHtml, translate, strings };
     const content = units.map((unit) => renderDeck(unit, cardsByKey, context)).join('');
     const empty = `<div class="cb-board-empty"><strong>${escapeHtml(label(strings, 'emptyBoard', '这里还没有卡片'))}</strong>`
       + `<span>${escapeHtml(label(strings, 'emptyBoardHint', '可在整理模式中恢复或固定卡片。'))}</span></div>`;
     return `<div class="cb-board-grid" role="list" data-card-board data-board-id="${escapeHtml(boardId)}"`
-      + ` data-editing="${editing}" data-board-columns="${columns}">${content || empty}</div>`;
+      + ` data-editing="${editing}" data-board-columns="${columns}" data-board-rows="${rows}">${content || empty}</div>`;
   }
 
   function renderSearch(categories, query, context) {

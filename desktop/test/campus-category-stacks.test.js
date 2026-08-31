@@ -30,11 +30,11 @@ test('official task categories and personal folders remain separate projections'
 test('responsive capacity follows the shared logical card-board grid', () => {
   assert.equal(balancedPartitions, stackedCardLayout.balancedPartitions,
     'Campus Browser and routing rules share one stack partition implementation');
-  assert.deepEqual(getLayoutCapacity(759, 640), { columns: 1, rows: 1, slotCount: 1 });
-  assert.deepEqual(getLayoutCapacity(760, 640), { columns: 2, rows: 1, slotCount: 2 });
-  assert.deepEqual(getLayoutCapacity(1099, 819), { columns: 2, rows: 1, slotCount: 2 });
-  assert.deepEqual(getLayoutCapacity(1100, 820), { columns: 3, rows: 2, slotCount: 6 });
-  assert.deepEqual(getLayoutCapacity(1440, 820), { columns: 4, rows: 2, slotCount: 8 });
+  assert.deepEqual(getLayoutCapacity(655, 640), { columns: 1, rows: 1, slotCount: 1 });
+  assert.deepEqual(getLayoutCapacity(656, 640), { columns: 2, rows: 1, slotCount: 2 });
+  assert.deepEqual(getLayoutCapacity(991, 699), { columns: 2, rows: 1, slotCount: 2 });
+  assert.deepEqual(getLayoutCapacity(992, 700), { columns: 3, rows: 2, slotCount: 6 });
+  assert.deepEqual(getLayoutCapacity(1352, 700), { columns: 4, rows: 2, slotCount: 8 });
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 3), [[1, 2], [3, 4], [5, 6]]);
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 6), [[1], [2], [3], [4], [5], [6]]);
 });

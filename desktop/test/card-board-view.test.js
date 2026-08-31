@@ -26,7 +26,7 @@ function resource(index) {
   };
 }
 
-function fixture({ editing = false, expandedByDeck = {} } = {}) {
+function fixture({ editing = false, expandedByDeck = {}, frontByDeck = {} } = {}) {
   const placements = [
     {
       placementId: 'placement_courses', boardId: 'browser-catalog',
@@ -54,7 +54,7 @@ function fixture({ editing = false, expandedByDeck = {} } = {}) {
   ]);
   return view.renderBoard({
     boardId: 'browser-catalog', units: [unit], cardsByKey,
-    expandedByDeck, editing, escapeHtml, translate, columns: 2,
+    expandedByDeck, frontByDeck, editing, escapeHtml, translate, columns: 2,
   });
 }
 
@@ -80,13 +80,20 @@ test('board view exposes semantic board, deck, placement, and toggle state', () 
 });
 
 test('changing the active card expands it in place and collapses its deck sibling', () => {
-  const markup = fixture({ expandedByDeck: { 'deck-academic': 'placement_research' } });
+  const markup = fixture({
+    expandedByDeck: { 'deck-academic': 'placement_research' },
+    frontByDeck: { 'deck-academic': 'placement_research' },
+  });
   const courses = placementMarkup(markup, 'placement_courses');
   const research = placementMarkup(markup, 'placement_research');
   assert.match(courses, /data-expanded="false"/u);
   assert.match(courses, /class="cb-card-body" hidden/u);
   assert.match(research, /data-expanded="true"/u);
   assert.doesNotMatch(research, /class="cb-card-body" hidden/u);
+  assert.ok(markup.indexOf('data-card-placement-id="placement_research"') >
+    markup.indexOf('data-card-placement-id="placement_courses"'),
+  'the drawn card was not moved to the visual front of its stack');
+  assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_research"/u);
 });
 
 test('editing adds drag/menu/drop affordances while browsing leaves no draggable target', () => {
@@ -94,6 +101,9 @@ test('editing adds drag/menu/drop affordances while browsing leaves no draggable
   assert.doesNotMatch(browsing, /data-card-drag-handle|data-card-drop=/u);
   const editing = fixture({ editing: true });
   assert.equal((editing.match(/data-card-drag-handle/gu) || []).length, 2);
+  assert.doesNotMatch(editing, />⠿<\/button>/u,
+    'editing still requires a tiny drag-handle button instead of dragging the card');
+  assert.equal((editing.match(/class="cb-card-header is-draggable"/gu) || []).length, 2);
   assert.equal((editing.match(/data-card-drop="before"/gu) || []).length, 2);
   assert.equal((editing.match(/data-card-drop="stack"/gu) || []).length, 2);
   assert.equal((editing.match(/data-card-drop="after"/gu) || []).length, 2);

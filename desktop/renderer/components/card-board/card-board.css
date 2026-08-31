@@ -17,8 +17,8 @@
 
   .cb-deck[data-card-size="medium"] { grid-column: span 2; }
   .cb-deck[data-card-size="large"] { grid-column: 1 / -1; }
-  .cb-deck.is-stacked { grid-column: span 2; }
-  .cb-deck:has(.cb-card.is-expanded) { grid-column: span 2; }
+  .cb-deck.is-stacked { grid-column: span 1; }
+  .cb-deck:has(.cb-card.is-expanded) { grid-column: span 1; }
   .cb-deck:has(.cb-card.is-expanded)[data-card-size="large"] { grid-column: 1 / -1; }
   .cb-board-grid[data-board-columns="1"] > .cb-deck { grid-column: 1 / -1; }
 
@@ -46,14 +46,31 @@
     box-shadow: 0 1px 2px rgba(10,35,75,.04), 0 10px 28px rgba(10,35,75,.08);
   }
 
-  .cb-deck.is-stacked {
-    padding: 4px;
-    border: 1px solid #e1e8f1;
-    background: linear-gradient(145deg, #f8fafd, #eef3f9);
+  .cb-card.is-front {
+    z-index: 4;
+    border-color: #c5d3e4;
+    box-shadow: 0 1px 2px rgba(10,35,75,.04), 0 9px 24px rgba(10,35,75,.08);
   }
 
-  .cb-deck.is-stacked .cb-card + .cb-card { margin-top: 5px; }
-  .cb-deck.is-stacked .cb-card:not(.is-expanded) { background: #f9fbfe; }
+  .cb-deck.is-stacked {
+    padding: 8px 7px 9px;
+    border: 1px solid #dce5f0;
+    background: linear-gradient(145deg, #f9fbfe 0%, #edf3f9 100%);
+    box-shadow: 0 10px 30px rgba(10,35,75,.055);
+  }
+
+  .cb-deck.is-stacked .cb-card + .cb-card { margin-top: -7px; }
+  .cb-deck.is-stacked .cb-card:not(.is-front) {
+    width: calc(100% - var(--cb-stack-inset, 0px) - var(--cb-stack-inset, 0px));
+    margin-inline: var(--cb-stack-inset, 0px);
+    background: #f6f9fd;
+    box-shadow: 0 1px 2px rgba(10,35,75,.035);
+  }
+  .cb-deck.is-stacked .cb-card:not(.is-front):hover {
+    z-index: 5;
+    border-color: #9fb2ca;
+    transform: translateY(-3px);
+  }
 
   .cb-card-header {
     position: relative;
@@ -62,6 +79,9 @@
     align-items: center;
     background: linear-gradient(105deg, #fffdf8 0%, #f5f8fc 88%);
   }
+
+  .cb-card-header.is-draggable { cursor: grab; touch-action: none; }
+  .cb-card-header.is-draggable:active { cursor: grabbing; }
 
   .cb-card-toggle {
     min-width: 0;
@@ -142,7 +162,7 @@
     padding: 5px 12px 9px;
   }
 
-  @container card-content (min-width: 440px) {
+  @container card-content (min-width: 360px) {
     .cb-site-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
@@ -252,9 +272,6 @@
   }
 
   .cb-icon-action:hover { color: #0b2a5b; background: #e9eff7; }
-  .cb-drag-handle { cursor: grab; touch-action: none; }
-  .cb-drag-handle:active { cursor: grabbing; }
-
   .cb-board-grid[data-editing="true"] .cb-deck {
     padding: 3px;
     border: 1px dashed #bdcada;

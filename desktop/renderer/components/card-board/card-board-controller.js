@@ -4,13 +4,14 @@
     typeof module !== 'undefined' && module.exports ? require('./card-board-view') : root.cardBoardView,
     typeof module !== 'undefined' && module.exports ? require('./card-board-drag') : root.cardBoardDrag,
     typeof module !== 'undefined' && module.exports ? require('./card-board-adapter') : root.cardBoardAdapter,
+    typeof module !== 'undefined' && module.exports ? require('./card-board-motion') : root.cardBoardMotion,
   );
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.cardBoardController = api;
-})(typeof self !== 'undefined' ? self : globalThis, function cardBoardControllerFactory(model, view, drag, adapterTools) {
+})(typeof self !== 'undefined' ? self : globalThis, function cardBoardControllerFactory(model, view, drag, adapterTools, motion) {
   'use strict';
 
-  if (!model || !view || !drag || !adapterTools) throw new TypeError('card board dependencies are required');
+  if (!model || !view || !drag || !adapterTools || !motion) throw new TypeError('card board dependencies are required');
   const { createMemoryAdapter, localeStrings, normalizeAdapter, resultDocument } = adapterTools;
 
   function unitIndexForPlacement(document, placementId) {
@@ -85,11 +86,13 @@
     let editing = false;
     let resetRequested = false;
     let expandedByDeck = {};
+    let frontByDeck = {};
     const expandedAll = new Set();
     let columns = model.columnsForWidth(container.getBoundingClientRect().width);
-    let resizeFrame = null;
+    let availableHeight = motion.availableHeight(container);
     let destroyed = false;
     let dragFeature = null;
+    let responsiveFeature = null;
     const hasExternalAdapter = [requestedAdapter?.get, requestedAdapter?.commit, requestedAdapter?.reset]
       .every((method) => typeof method === 'function');
     const adapter = normalizeAdapter(requestedAdapter, documentState);
@@ -124,26 +127,31 @@
         + `<button class="cb-toolbar-primary" type="button" data-board-action="done">${escapeHtml(labels.done)}</button>`;
     }
 
-    function render({ preserveFocus = true } = {}) {
+    function render({ preserveFocus = true, animate = false } = {}) {
       if (destroyed) return;
+      const previousRects = animate ? motion.placementRects(container) : null;
       const focusedPlacementId = preserveFocus
         ? container.ownerDocument.activeElement?.closest?.('[data-card-placement-id]')?.dataset.cardPlacementId : null;
       const current = reconcile(liveDocument());
-      const units = model.boardUnits(current, boardId).map((unit) => ({
+      const logicalUnits = model.boardUnits(current, boardId).map((unit) => ({
         ...unit,
         placements: unit.placements.filter((placement) => cardsByKey.has(model.cardKey(placement.card))),
       })).filter(({ placements }) => placements.length);
+      availableHeight = motion.availableHeight(container);
+      const presentation = model.dealUnits(logicalUnits, { columns, availableHeight });
       const context = {
         boardId,
-        units,
+        units: presentation.units,
         cardsByKey,
         expandedByDeck,
+        frontByDeck,
         expandedAll,
         editing,
         escapeHtml,
         translate,
         strings: strings(),
         columns,
+        rows: presentation.capacity.rows,
         pinnedCardKeys: new Set(current.placements
           .filter((placement) => placement.boardId === 'connect' && !placement.hidden)
           .map((placement) => model.cardKey(placement.card))),
@@ -152,16 +160,19 @@
         ? view.renderSearch(categories, query, context)
         : view.renderBoard(context);
       container.style.setProperty('--cb-columns', String(columns));
+      container.dataset.cardBoardSlots = String(presentation.capacity.slotCount);
       renderToolbar();
       if (manageButton) {
         manageButton.textContent = editing ? strings().done : strings().edit;
         manageButton.setAttribute('aria-pressed', String(editing));
       }
       if (focusedPlacementId) {
-        [...container.querySelectorAll('[data-card-placement-id]')]
-          .find((card) => card.dataset.cardPlacementId === focusedPlacementId)
-          ?.querySelector('[data-card-action="toggle"], [data-card-drag-handle]')?.focus({ preventScroll: true });
+        const focusedCard = [...container.querySelectorAll('[data-card-placement-id]')]
+          .find((card) => card.dataset.cardPlacementId === focusedPlacementId);
+        const focusTarget = editing ? focusedCard : focusedCard?.querySelector('[data-card-action="toggle"]');
+        focusTarget?.focus({ preventScroll: true });
       }
+      motion.animateFrom(container, previousRects);
     }
 
     function pushDraft(nextDocument, nextOperations, message = strings().draftChanged) {
@@ -315,12 +326,16 @@
       const placement = liveDocument().placements.find((candidate) =>
         candidate.boardId === boardId && candidate.card.kind === kind && candidate.card.id === id && !candidate.hidden);
       if (!placement) return false;
-      const deckId = placement.deckId || placement.placementId;
+      const visibleCard = [...container.querySelectorAll('[data-card-placement-id]')]
+        .find((card) => card.dataset.cardPlacementId === placement.placementId);
+      const deckId = visibleCard?.closest('[data-card-deck-id]')?.dataset.cardDeckId
+        || placement.deckId || placement.placementId;
+      frontByDeck = { ...frontByDeck, [deckId]: placement.placementId };
       expandedByDeck = { ...expandedByDeck, [deckId]: placement.placementId };
-      render({ preserveFocus: false });
+      render({ preserveFocus: false, animate: true });
       const target = [...container.querySelectorAll('[data-card-placement-id]')]
         .find((card) => card.dataset.cardPlacementId === placement.placementId);
-      target?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      motion.scrollPlacementIntoView(container, placement.placementId);
       target?.querySelector('[data-card-action="toggle"]')?.focus({ preventScroll: true });
       return true;
     }
@@ -330,8 +345,12 @@
       const placementId = placementElement?.dataset.cardPlacementId;
       if (event.target.closest('[data-card-action="toggle"]') && placementId) {
         const deckId = placementElement.closest('[data-card-deck-id]')?.dataset.cardDeckId || placementId;
+        frontByDeck = { ...frontByDeck, [deckId]: placementId };
         expandedByDeck = model.toggleExpandedPlacement(expandedByDeck, deckId, placementId);
-        render();
+        render({ animate: true });
+        if (expandedByDeck[deckId] === placementId) {
+          motion.scrollPlacementIntoView(container, placementId);
+        }
         return;
       }
       if (event.target.closest('[data-card-action="expand-all"]') && placementId) {
@@ -436,22 +455,22 @@
       externalTargets: externalDropTargets,
       announce: announceMessage,
     });
-    const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => {
-      cancelAnimationFrame(resizeFrame);
-      resizeFrame = requestAnimationFrame(() => {
-        const nextColumns = model.columnsForWidth(entries[0]?.contentRect?.width || container.clientWidth);
-        if (nextColumns === columns) return;
-        columns = nextColumns;
-        render();
-      });
-    }) : null;
-    resizeObserver?.observe(container);
+    responsiveFeature = motion.observeResponsive({
+      container,
+      model,
+      current: () => ({ columns, availableHeight }),
+      onChange: (next) => {
+        columns = next.columns;
+        availableHeight = next.availableHeight;
+        if (!next.measureOnly) render({ animate: next.animate === true });
+      },
+    });
 
     return Object.freeze({
       cancelEdit,
       destroy() {
         destroyed = true;
-        resizeObserver?.disconnect();
+        responsiveFeature?.destroy();
         dragFeature?.destroy();
         container.removeEventListener('click', handleClick);
         toolbar?.removeEventListener('click', handleToolbarClick);

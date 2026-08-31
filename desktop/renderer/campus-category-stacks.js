@@ -20,8 +20,7 @@
 
   function getLayoutCapacity(width, height) {
     const columns = cardBoardModel.columnsForWidth(width);
-    const rows = Math.max(0, Number(height) || 0) >= 820 ? 2 : 1;
-    return Object.freeze({ columns, rows, slotCount: columns * rows });
+    return cardBoardModel.layoutCapacity(columns, height);
   }
 
   function personalCategoryProjection(resources, groups, translate) {

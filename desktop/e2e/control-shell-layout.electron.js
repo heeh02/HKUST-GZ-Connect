@@ -23,7 +23,7 @@ async function shellSnapshot(window, page) {
     document.querySelector('.nav[data-page="${page}"]').click();
     const root = document.querySelector('.content');
     const visible = document.querySelector('.page.active');
-    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => resolve({
       page: visible.dataset.page,
       viewport: { width: window.innerWidth, height: window.innerHeight },
       bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -34,8 +34,13 @@ async function shellSnapshot(window, page) {
       navOrder: [...document.querySelectorAll('.nav')].map((node) => node.dataset.page),
       resourceInsideConnect: !!document.querySelector('.page[data-page="connect"] #resourceShelf'),
       boardId: visible.querySelector('[data-card-board]')?.dataset.boardId || null,
+      boardColumns: Number(visible.querySelector('[data-card-board]')?.dataset.boardColumns || 0),
+      boardRows: Number(visible.querySelector('[data-card-board]')?.dataset.boardRows || 0),
       boardEditing: visible.querySelector('[data-card-board]')?.dataset.editing || null,
       decks: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-deck-id]').length || 0,
+      autoStacks: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-auto-stacked="true"]').length || 0,
+      stackCounts: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-stack-count]') || [])]
+        .map((node) => Number(node.dataset.stackCount || 0)),
       categoryNames: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-ref-kind="official-category"] .cb-card-title') || [])].map((node) => node.textContent),
       cards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id]').length || 0,
       expandedCards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id][data-expanded="true"]').length || 0,
@@ -56,7 +61,7 @@ async function shellSnapshot(window, page) {
       routingScopes: document.querySelectorAll('.routing-consumer-scope > div').length,
       towerRoutingWidth: document.getElementById('towerRoutingSection')?.getBoundingClientRect().width || 0,
       towerGridWidth: document.querySelector('.page[data-page="tower"] .tower-grid')?.getBoundingClientRect().width || 0,
-    }))));
+    }), 180))));
   })()`);
 }
 
@@ -92,7 +97,7 @@ async function exerciseCardExpansion(window) {
     const targetPlacementId = cards[1].dataset.cardPlacementId;
     const before = deck.getBoundingClientRect();
     cards[1].querySelector('[data-card-action="toggle"]').click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 280))));
     const updatedDeck = document.querySelector('[data-card-deck-id="' + deckId + '"]');
     const updatedCards = [...updatedDeck.querySelectorAll(':scope > [data-card-placement-id]')];
     const target = updatedCards.find((card) => card.dataset.cardPlacementId === targetPlacementId);
@@ -104,11 +109,14 @@ async function exerciseCardExpansion(window) {
       cardCount: updatedCards.length,
       deckStayedInPlace: Math.abs(before.left - after.left) <= 1 && Math.abs(before.top - after.top) <= 1,
       targetExpanded: target.dataset.expanded,
+      targetFront: target.dataset.cardFront,
+      targetIsLast: updatedCards.at(-1)?.dataset.cardPlacementId === targetPlacementId,
       siblingExpanded: sibling.dataset.expanded,
       expandedInDeck: updatedDeck.querySelectorAll('[data-expanded="true"]').length,
       bodyWidth: body.getBoundingClientRect().width,
       siteColumns: getComputedStyle(sites).gridTemplateColumns.split(' ').filter(Boolean).length,
       bodyOverflowY: getComputedStyle(body).overflowY,
+      targetVisible: target.getBoundingClientRect().bottom <= window.innerHeight + 1,
     };
   })()`);
 }
@@ -129,6 +137,28 @@ async function exerciseInlineOrganizeAndPin(window) {
     const actions = [...toolbar.querySelectorAll('[data-board-action]')]
       .map((button) => button.dataset.boardAction).sort();
     const handlesInEdit = board.querySelectorAll('[data-card-drag-handle]').length;
+    const dragCards = [...board.querySelectorAll('[data-card-drag-handle]')];
+    const pointerSource = dragCards.at(-1);
+    const pointerTarget = dragCards[2];
+    const wholeCardDrag = pointerSource?.matches('[data-card-placement-id]') === true &&
+      pointerSource?.draggable === true && !pointerSource?.textContent.includes('⠿');
+    if (pointerSource && pointerTarget && pointerSource !== pointerTarget) {
+      const transfer = new DataTransfer();
+      const rect = pointerTarget.getBoundingClientRect();
+      pointerSource.dispatchEvent(new DragEvent('dragstart', {
+        bubbles: true, cancelable: true, dataTransfer: transfer,
+      }));
+      pointerTarget.dispatchEvent(new DragEvent('dragover', {
+        bubbles: true, cancelable: true, dataTransfer: transfer,
+        clientY: rect.top + rect.height / 2,
+      }));
+      pointerTarget.dispatchEvent(new DragEvent('drop', {
+        bubbles: true, cancelable: true, dataTransfer: transfer,
+        clientY: rect.top + rect.height / 2,
+      }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      board = boardHost.querySelector('[data-card-board]');
+    }
     const handle = board.querySelector('[data-card-drag-handle]');
     handle.focus();
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
@@ -176,6 +206,7 @@ async function exerciseInlineOrganizeAndPin(window) {
       editingAfterSave: boardHost.querySelector('[data-card-board]').dataset.editing,
       actions,
       handlesInEdit,
+      wholeCardDrag,
       keyboardAnnouncement,
       managerCalls: afterManagerCount - beforeManagerCount,
       commitCalls: commitState.commit,
@@ -250,6 +281,17 @@ async function main() {
       const browser = await shellSnapshot(window, 'browser');
       assert.equal(browser.categoryNames.length, 12, `${label}: an official category title is inaccessible`);
       assert.equal(browser.boardId, 'browser-catalog', `${label}: official cards use the wrong board`);
+      const expectedBoardColumns = browser.stackRect.width < 656 ? 1
+        : browser.stackRect.width < 992 ? 2 : browser.stackRect.width < 1352 ? 3 : 4;
+      assert.equal(browser.boardColumns, expectedBoardColumns, `${label}: unexpected responsive column count`);
+      if (label === 'default') assert.ok(browser.boardColumns >= 2,
+        'default 16:9 window collapsed the card board into one oversized stack');
+      assert.equal(browser.boardRows, 1, `${label}: compact-height board should use one row of stacks`);
+      assert.equal(browser.decks, expectedBoardColumns,
+        `${label}: cards were not dealt into the available visual slots`);
+      assert.ok(browser.autoStacks >= 1, `${label}: overflow cards remained independent rows`);
+      assert.equal(browser.stackCounts.reduce((sum, count) => sum + count, 0), 12,
+        `${label}: automatic stacks lost a category card`);
       assert.equal(browser.boardEditing, 'false', `${label}: browsing opened in editing mode`);
       assert.equal(browser.cards, 12, `${label}: official cards are missing`);
       assert.equal(browser.dragHandles, 0, `${label}: ordinary browsing exposed drag handles`);
@@ -301,6 +343,16 @@ async function main() {
     assert.equal(categoryModes.catalog.selected, 'true');
     assert.equal(categoryModes.catalog.boardId, 'browser-catalog');
     assert.equal(categoryModes.catalog.names.length, 12, 'catalog mode must restore all official task categories');
+    await settle(window, 1280, 1100);
+    const tallBrowser = await shellSnapshot(window, 'browser');
+    assert.equal(tallBrowser.boardColumns, 3);
+    assert.equal(tallBrowser.boardRows, 2, 'vertical expansion did not create a second row of card slots');
+    assert.equal(tallBrowser.decks, 6, 'vertical expansion did not deal cards into six visible slots');
+    assert.equal(tallBrowser.stackCounts.reduce((sum, count) => sum + count, 0), 12);
+    assert.ok(Math.max(...tallBrowser.stackCounts) <= 3,
+      'vertical expansion left an unnecessarily deep automatic stack');
+    await capture(window, output, 'tall-browser');
+    await settle(window, 1440, 900);
     const catalogSearch = await window.webContents.executeJavaScript(`(async () => {
       const input = document.getElementById('resourceSearch');
       input.value = '科研';
@@ -325,12 +377,16 @@ async function main() {
     assert.ok(expansion.cardCount >= 2, 'the deck fixture did not expose two cards');
     assert.equal(expansion.deckStayedInPlace, true, 'click expansion moved its deck to another slot');
     assert.equal(expansion.targetExpanded, 'true', 'the clicked card did not expand in place');
+    assert.equal(expansion.targetFront, 'true', 'the clicked card was not drawn to the front');
+    assert.equal(expansion.targetIsLast, true, 'the clicked card did not move to the visual top of its stack');
+    assert.equal(expansion.targetVisible, true, 'the drawn card remained below the visible workspace');
     assert.equal(expansion.siblingExpanded, 'false', 'the sibling in the same deck stayed expanded');
     assert.equal(expansion.expandedInDeck, 1, 'a deck exposed more than one expanded card');
-    assert.ok(expansion.bodyWidth >= 440, 'wide-card fixture did not reach the two-column threshold');
-    assert.equal(expansion.siteColumns, 2, 'a card at least 440px wide did not show two site columns');
+    assert.ok(expansion.bodyWidth >= 360, 'wide-card fixture did not reach the two-column threshold');
+    assert.equal(expansion.siteColumns, 2, 'a card at least 360px wide did not show two site columns');
     assert.notEqual(expansion.bodyOverflowY, 'auto', 'expanded card added an inner scrollbar');
     assert.notEqual(expansion.bodyOverflowY, 'scroll', 'expanded card added an inner scrollbar');
+    await capture(window, output, 'drawn-browser');
 
     const organize = await exerciseInlineOrganizeAndPin(window);
     assert.equal(organize.pageDuringEdit, 'browser', 'Organize navigated away from the current board');
@@ -338,12 +394,16 @@ async function main() {
     assert.equal(organize.editingAfterSave, 'false', 'Done did not leave inline editing');
     assert.deepEqual(organize.actions, ['cancel', 'done', 'redo', 'reset', 'undo']);
     assert.equal(organize.handlesInEdit, 12, 'editing did not expose one drag handle per official card');
+    assert.equal(organize.wholeCardDrag, true,
+      'editing still exposes a tiny handle instead of making the card draggable');
     assert.match(organize.keyboardAnnouncement, /取消|移动/u,
       'keyboard move did not publish a live announcement');
     assert.equal(organize.managerCalls, 0, 'Organize still opened the detached bookmark manager');
     assert.ok(organize.commitCalls >= 1, 'Done did not commit the inline layout draft');
     assert.ok(organize.lastOperations.some(({ type }) => type === 'pin-to-board'),
       'pinning did not reach the revision-bound layout commit');
+    assert.ok(organize.lastOperations.some(({ type }) => type === 'create-deck'),
+      'dragging one whole card onto another did not create a persistent stack');
     assert.equal(organize.sourceStillVisible, true, 'pinning moved the source card out of Campus Browser');
     assert.equal(organize.connectBoardId, 'connect', 'connection cards use the wrong board');
     assert.equal(organize.pinnedVisible, true, 'the pinned category did not appear on Connection');

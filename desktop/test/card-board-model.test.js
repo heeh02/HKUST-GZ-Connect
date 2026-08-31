@@ -17,15 +17,70 @@ function placementFor(document, kind, id, boardId) {
 
 test('responsive projection uses the approved 1/2/3/4-column board thresholds', () => {
   for (const [width, expected] of [
-    [0, 1], [759, 1], [760, 2], [1099, 2],
-    [1100, 3], [1439, 3], [1440, 4], [4096, 4],
+    [0, 1], [655, 1], [656, 2], [991, 2],
+    [992, 3], [1351, 3], [1352, 4], [4096, 4],
   ]) assert.equal(boardModel.columnsForWidth(width), expected, `${width}px board width`);
 });
 
 test('website density follows card content width and never expands beyond two columns', () => {
   for (const [width, expected] of [
-    [0, 1], [439, 1], [440, 2], [719, 2], [720, 2], [1600, 2],
+    [0, 1], [359, 1], [360, 2], [719, 2], [720, 2], [1600, 2],
   ]) assert.equal(boardModel.resourceColumnsForWidth(width), expected, `${width}px card width`);
+});
+
+test('six cards are dealt into three two-card stacks when only three slots fit', () => {
+  const cards = Array.from({ length: 6 }, (_, index) => card('official-category', `category-${index}`));
+  const document = boardModel.defaultDocument({ 'browser-catalog': cards });
+  const compact = boardModel.presentationUnits(document, 'browser-catalog', {
+    columns: 3,
+    availableHeight: 560,
+  });
+  assert.equal(compact.capacity.rows, 1);
+  assert.equal(compact.capacity.slotCount, 3);
+  assert.deepEqual(compact.units.map(({ placements }) => placements.length), [2, 2, 2]);
+  assert.equal(compact.units.every(({ automatic }) => automatic === true), true);
+  assert.deepEqual(compact.units.flatMap(({ placements }) => placements.map(({ card: ref }) => ref.id)),
+    cards.map(({ id }) => id), 'automatic stacks changed the logical card order');
+  assert.equal(document.decks.length, 0, 'responsive stacking leaked into persisted layout data');
+});
+
+test('vertical expansion deals automatic stacks back into independent slots', () => {
+  const document = boardModel.defaultDocument({
+    'browser-catalog': Array.from({ length: 6 }, (_, index) => (
+      card('official-category', `category-${index}`)
+    )),
+  });
+  const expanded = boardModel.presentationUnits(document, 'browser-catalog', {
+    columns: 3,
+    availableHeight: 720,
+  });
+  assert.deepEqual(expanded.capacity, { columns: 3, rows: 2, slotCount: 6 });
+  assert.deepEqual(expanded.units.map(({ placements }) => placements.length), [1, 1, 1, 1, 1, 1]);
+  assert.equal(expanded.units.every(({ automatic }) => automatic === false), true);
+});
+
+test('responsive dealing treats a persisted manual deck as one logical unit without rewriting it', () => {
+  const initial = boardModel.defaultDocument({
+    'browser-catalog': Array.from({ length: 5 }, (_, index) => (
+      card('official-category', `category-${index}`)
+    )),
+  });
+  const first = initial.placements[0];
+  const second = initial.placements[1];
+  const manual = boardModel.applyDraftOperation(initial, {
+    type: 'create-deck', boardId: 'browser-catalog',
+    placementIds: [first.placementId, second.placementId],
+    activePlacementId: second.placementId, index: 0,
+  });
+  const before = boardModel.cloneDocument(manual);
+  const presentation = boardModel.presentationUnits(manual, 'browser-catalog', {
+    columns: 2, availableHeight: 500,
+  });
+  assert.equal(presentation.units.length, 2);
+  assert.deepEqual(presentation.units.map(({ placements }) => placements.length), [3, 2]);
+  assert.deepEqual(manual, before, 'responsive projection rewrote the persisted manual deck');
+  assert.equal(manual.decks.length, 1);
+  assert.deepEqual(manual.decks[0].placementIds, [first.placementId, second.placementId]);
 });
 
 test('official, personal, and connect cards remain separate logical boards', () => {

@@ -54,7 +54,10 @@
     function onDragStart(event) {
       const handle = event.target.closest('[data-card-drag-handle]');
       const card = handle?.closest('[data-card-placement-id]');
-      if (!card || !editingMode()) {
+      const interactive = event.target.closest(
+        '.cb-icon-action, .cb-site-open, .resource-favorite, .cb-expand-all',
+      );
+      if (!card || interactive || !editingMode()) {
         event.preventDefault();
         return;
       }
@@ -132,7 +135,9 @@
       container.querySelectorAll('[data-card-placement-id]').forEach((card) => {
         const picked = card.dataset.cardPlacementId === keyboardPlacementId;
         card.dataset.keyboardPicked = String(picked);
-        card.querySelector('[data-card-drag-handle]')?.setAttribute('aria-pressed', String(picked));
+        const handle = card.matches?.('[data-card-drag-handle]')
+          ? card : card.querySelector('[data-card-drag-handle]');
+        handle?.setAttribute('aria-pressed', String(picked));
       });
     }
 

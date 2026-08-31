@@ -12,7 +12,7 @@ const css = fs.readFileSync(path.join(
 test('card-board density is container-driven with a hard two-column ceiling', () => {
   assert.match(css, /\.cb-card-body\s*\{[^}]*container:\s*card-content\s*\/\s*inline-size/su);
   assert.match(css, /\.cb-site-list\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/su);
-  assert.match(css, /@container\s+card-content\s*\(min-width:\s*440px\)\s*\{[\s\S]*?\.cb-site-list\s*\{[^}]*repeat\(2,/u);
+  assert.match(css, /@container\s+card-content\s*\(min-width:\s*360px\)\s*\{[\s\S]*?\.cb-site-list\s*\{[^}]*repeat\(2,/u);
   assert.doesNotMatch(css, /\.cb-site-list\s*\{[^}]*repeat\((?:3|4),/u);
 });
 
@@ -22,6 +22,16 @@ test('card boards have restrained hover and edit feedback without permanent inne
   assert.match(css, /data-card-drop-target="stack"[^}]*outline:\s*2px solid #b48927/su);
   assert.doesNotMatch(css, /\.cb-(?:card-body|site-list|deck)\s*\{[^}]*overflow-y:\s*(?:auto|scroll)/u,
     'card content must grow into page scrolling instead of nesting a permanent scrollbar');
+});
+
+test('a card stack exposes layered headers and a distinct drawn front card', () => {
+  assert.match(css,
+    /\.cb-deck\.is-stacked \.cb-card \+ \.cb-card\s*\{[^}]*margin-top:\s*-\d+px/su,
+    'stack members are still ordinary vertical rows');
+  assert.match(css, /\.cb-card\.is-front\s*\{[^}]*z-index:\s*\d+/su);
+  assert.match(css, /\.cb-card-header\.is-draggable\s*\{[^}]*cursor:\s*grab/su);
+  assert.doesNotMatch(css, /\.cb-drag-handle\s*\{/u,
+    'the obsolete tiny drag handle is still a first-class visual control');
 });
 
 test('compact website rows retain the approved icon and text density', () => {

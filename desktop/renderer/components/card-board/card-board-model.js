@@ -18,14 +18,35 @@
 
   function columnsForWidth(width) {
     const safeWidth = Math.max(0, Number(width) || 0);
-    if (safeWidth < 760) return 1;
-    if (safeWidth < 1100) return 2;
-    if (safeWidth < 1440) return 3;
+    if (safeWidth < 656) return 1;
+    if (safeWidth < 992) return 2;
+    if (safeWidth < 1352) return 3;
     return 4;
   }
 
   function resourceColumnsForWidth(width) {
-    return Math.max(0, Number(width) || 0) >= 440 ? 2 : 1;
+    return Math.max(0, Number(width) || 0) >= 360 ? 2 : 1;
+  }
+
+  function layoutCapacity(columns, availableHeight) {
+    const safeColumns = Math.max(1, Math.min(4, Number(columns) || 1));
+    const rows = Math.max(0, Number(availableHeight) || 0) >= 700 ? 2 : 1;
+    return Object.freeze({ columns: safeColumns, rows, slotCount: safeColumns * rows });
+  }
+
+  function balancedPartitions(values, count) {
+    const items = Array.isArray(values) ? values : [];
+    const partitions = Math.max(1, Math.min(items.length || 1, Number(count) || 1));
+    const base = Math.floor(items.length / partitions);
+    const extra = items.length % partitions;
+    const result = [];
+    let offset = 0;
+    for (let index = 0; index < partitions; index += 1) {
+      const size = base + (index < extra ? 1 : 0);
+      result.push(items.slice(offset, offset + size));
+      offset += size;
+    }
+    return result;
   }
 
   function cloneDocument(document) {
@@ -174,6 +195,53 @@
       }));
     return [...decks, ...standalone]
       .sort((left, right) => left.order - right.order || left.unitId.localeCompare(right.unitId));
+  }
+
+  function dealUnits(units, { columns = 1, availableHeight = 0 } = {}) {
+    const source = Array.isArray(units) ? units : [];
+    const capacity = layoutCapacity(columns, availableHeight);
+    if (source.length <= capacity.slotCount) {
+      return Object.freeze({
+        capacity,
+        units: Object.freeze(source.map((unit) => Object.freeze({
+          ...unit,
+          automatic: false,
+          sourceUnitIds: Object.freeze([unit.unitId]),
+        }))),
+      });
+    }
+    const partitions = balancedPartitions(source, capacity.slotCount);
+    const projected = partitions.map((partition, order) => {
+      if (partition.length === 1) {
+        return Object.freeze({
+          ...partition[0], order, automatic: false,
+          sourceUnitIds: Object.freeze([partition[0].unitId]),
+        });
+      }
+      const placements = partition.flatMap(({ placements }) => placements);
+      const unitId = `auto-deck-${order}`;
+      return Object.freeze({
+        kind: 'deck',
+        unitId,
+        order,
+        automatic: true,
+        sourceUnitIds: Object.freeze(partition.map(({ unitId: id }) => id)),
+        deck: Object.freeze({
+          deckId: unitId,
+          boardId: placements[0]?.boardId || 'browser-catalog',
+          placementIds: Object.freeze(placements.map(({ placementId }) => placementId)),
+          activePlacementId: placements.at(-1)?.placementId || '',
+          order,
+          automatic: true,
+        }),
+        placements: Object.freeze(placements),
+      });
+    });
+    return Object.freeze({ capacity, units: Object.freeze(projected) });
+  }
+
+  function presentationUnits(document, boardId, options = {}) {
+    return dealUnits(boardUnits(document, boardId), options);
   }
 
   function toggleExpandedPlacement(expandedByDeck, deckId, placementId) {
@@ -331,6 +399,9 @@
     cloneDocument,
     columnsForWidth,
     defaultDocument,
+    dealUnits,
+    layoutCapacity,
+    presentationUnits,
     reconcileBoard,
     repairDocument,
     resourceColumnsForWidth,
