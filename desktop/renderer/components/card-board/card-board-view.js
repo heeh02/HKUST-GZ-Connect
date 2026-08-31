@@ -32,10 +32,12 @@
         ? translate('resources.routeDirect') : translate('resources.routeCampus');
       const favorite = resource.favorite === true;
       const favoriteLabel = translate(favorite ? 'resources.unfavorite' : 'resources.favorite');
-      const name = options.searchQuery
-        ? searchPresenter.highlight(resource.name, options.searchQuery, esc) : esc(resource.name);
-      const description = options.showDescription && resource.description
-        ? `<span class="cb-site-description">${searchPresenter.highlight(resource.description, options.searchQuery, esc)}</span>` : '';
+      const highlightQuery = resource.searchMatchedTerm || options.searchQuery;
+      const name = highlightQuery
+        ? searchPresenter.highlight(resource.name, highlightQuery, esc) : esc(resource.name);
+      const descriptionText = resource.searchUseCase || resource.description;
+      const description = options.showDescription && descriptionText
+        ? `<span class="cb-site-description">${searchPresenter.highlight(descriptionText, highlightQuery, esc)}</span>` : '';
       const audience = options.showDescription && resource.searchAudience
         ? `<span class="cb-site-audience">${esc(resource.searchAudience)}</span><span aria-hidden="true"> · </span>` : '';
       return `<div class="cb-site" data-card-resource-id="${esc(resource.id)}" data-campus-id="${esc(resource.id)}">`
@@ -136,7 +138,12 @@
 
   function renderSearch(categories, query, context) {
     const sections = searchPresenter.present(categories, query).map((category) => {
-      const items = category.items.map(({ resource, audience }) => ({ ...resource, searchAudience: audience }));
+      const items = category.items.map(({ resource, audience, useCase, matchedTerm }) => ({
+        ...resource,
+        searchAudience: audience,
+        searchUseCase: useCase,
+        searchMatchedTerm: matchedTerm,
+      }));
       return `<section class="cb-search-section"><h3>${searchPresenter.highlight(category.name, query, context.escapeHtml)}<span>${items.length}</span></h3>`
         + `<div class="cb-site-list">${renderSiteRows(items, {
           ...context,

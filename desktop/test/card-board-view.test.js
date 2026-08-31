@@ -140,6 +140,17 @@ test('card and website labels are escaped at the view boundary', () => {
   assert.match(markup, /&lt;img src=x onerror=alert\(1\)&gt;/u);
 });
 
+test('search projection shows the reviewed purpose instead of an ambiguous generic description', () => {
+  const markup = view.renderSearch([{
+    id: 'expenses', name: '经费、采购与报销', items: [{
+      id: 'pbms', name: '项目资金管理系统 PBMS', description: '科研项目经费、预算与报销管理',
+      keywords: ['报销'], route: 'campus', favorite: false,
+    }],
+  }], '报销', { escapeHtml, translate, strings: {} });
+  assert.match(markup, /科研项目经费<mark>报销<\/mark>/u);
+  assert.match(markup, /科研项目负责人 \/ 项目成员/u);
+});
+
 test('ordinary cards use one brand tone while system widgets retain the sparse gold accent', () => {
   assert.equal(view.cardTone('official-category'), 'brand');
   assert.equal(view.cardTone('user-collection'), 'brand');

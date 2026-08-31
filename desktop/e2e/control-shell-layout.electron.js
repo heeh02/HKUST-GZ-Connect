@@ -92,7 +92,7 @@ async function exerciseCardExpansion(window) {
   return window.webContents.executeJavaScript(`(async () => {
     document.querySelector('.nav[data-page="browser"]').click();
     document.getElementById('categoryModeCatalog').click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 320))));
     const deck = document.querySelector('#campusResources .cb-deck.is-stacked');
     const deckId = deck.dataset.cardDeckId;
     const cards = [...deck.querySelectorAll(':scope > [data-card-placement-id]')];
@@ -251,6 +251,12 @@ async function main() {
   await app.whenReady();
   const output = process.env.HKUSTGZ_CONTROL_SCREENSHOT_DIR || '';
   const preview = process.env.HKUSTGZ_CONTROL_PREVIEW === '1';
+  const realCatalog = process.env.HKUSTGZ_CONTROL_PREVIEW_REAL === '1';
+  if (realCatalog) {
+    process.env.HKUSTGZ_CONTROL_PREVIEW_RESOURCES_JSON = fs.readFileSync(path.join(
+      __dirname, '..', 'assets', 'profiles', 'hkustgz', 'builtin-resources.json',
+    ), 'utf8');
+  }
   const window = new BrowserWindow({
     show: false,
     width: preview ? 1024 : 480,
@@ -380,7 +386,46 @@ async function main() {
       return result;
     })()`);
     assert.ok(catalogSearch.headings.some((name) => name.includes('科研')));
-    assert.equal(catalogSearch.sites, 1, 'official category search must return its reviewed site');
+    if (realCatalog) assert.ok(catalogSearch.sites >= 1, 'real catalog search lost reviewed research sites');
+    else assert.equal(catalogSearch.sites, 1, 'official category search must return its reviewed site');
+    if (realCatalog) {
+      const taskSearches = await window.webContents.executeJavaScript(`(async () => {
+        const input = document.getElementById('resourceSearch');
+        const inspect = async (query) => {
+          input.value = query;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return [...document.querySelectorAll('#campusResources .cb-catalog-board .cb-site')].map((row) => ({
+            id: row.dataset.campusId,
+            description: row.querySelector('.cb-site-description')?.textContent || '',
+            route: row.querySelector('.cb-site-route')?.textContent || '',
+          }));
+        };
+        return {
+          library: await inspect('图书馆'),
+          expenses: await inspect('我想报销'),
+          certificate: await inspect('我要申请在读证明'),
+          hpc: await inspect('HPC2'),
+        };
+      })()`);
+      assert.deepEqual(taskSearches.library.map(({ id }) => id), ['library'],
+        'library search fanned out into unrelated IT resources');
+      assert.deepEqual(taskSearches.expenses.map(({ id }) => id).sort(), ['e-form', 'e-tender', 'pbms']);
+      assert.deepEqual(Object.fromEntries(taskSearches.expenses.map(({ id, description }) => [id, description])), {
+        'e-form': '差旅与行政申请',
+        'pbms': '科研项目经费报销',
+        'e-tender': '采购与招标前置流程',
+      });
+      assert.deepEqual(taskSearches.certificate.map(({ id }) => id), ['academic-edoc']);
+      assert.match(taskSearches.certificate[0].route, /学生.*直连/u);
+      assert.deepEqual(taskSearches.hpc.map(({ id }) => id), ['hpc-login']);
+      assert.match(taskSearches.hpc[0].route, /研究生.*博士.*校园隧道/u);
+      const strictProxyAuth = await window.webContents.executeJavaScript(`(() => {
+        document.querySelector('.nav[data-page="tower"]').click();
+        return document.getElementById('strictProxyAuth').checked;
+      })()`);
+      assert.equal(strictProxyAuth, true, 'preview contradicted the new-install strict-auth default');
+    }
     await window.webContents.executeJavaScript(`(() => {
       const input = document.getElementById('resourceSearch');
       input.value = '';

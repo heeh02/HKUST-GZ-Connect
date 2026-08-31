@@ -3,6 +3,22 @@
 const { contextBridge } = require('electron');
 const fixtureLocale = process.env.HKUSTGZ_E2E_LOCALE === 'en' ? 'en' : 'zh';
 
+function reviewedPreviewResources() {
+  const payload = process.env.HKUSTGZ_CONTROL_PREVIEW_RESOURCES_JSON || '';
+  if (!payload) return null;
+  const document = JSON.parse(payload);
+  return document.resources.map((resource) => ({
+    ...resource,
+    name: fixtureLocale === 'en' ? resource.localizedName?.en || resource.name : resource.name,
+    description: fixtureLocale === 'en'
+      ? resource.localizedDescription?.en || resource.description : resource.description,
+    favorite: false,
+    lastOpenedAt: null,
+    reviewed: true,
+    builtin: true,
+  }));
+}
+
 const builtinResource = Object.freeze({
   id: 'builtin-home',
   name: fixtureLocale === 'en' ? 'Built-in School Home' : '内置学校主页',
@@ -15,7 +31,7 @@ const builtinResource = Object.freeze({
   lastOpenedAt: null,
   builtin: true,
 });
-let resources = [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
+let resources = reviewedPreviewResources() || [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
   id: `fixture-${index}`,
   name: fixtureLocale === 'en' ? `Test Site ${index + 1}` : `测试网站 ${index + 1}`,
   url: `https://fixture-${index}.example.edu/`,
@@ -67,6 +83,7 @@ const state = {
   loggedIn: true,
   settings: {
     port: 1080,
+    strictProxyAuth: true,
     autoReconnect: true,
     maxAttempts: 3,
     closeAction: 'ask',

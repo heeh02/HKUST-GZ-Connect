@@ -332,7 +332,7 @@
       const deckId = visibleCard?.closest('[data-card-deck-id]')?.dataset.cardDeckId
         || placement.deckId || placement.placementId;
       frontByDeck = { ...frontByDeck, [deckId]: placement.placementId };
-      expandedByDeck = { ...expandedByDeck, [deckId]: placement.placementId };
+      expandedByDeck = { [deckId]: placement.placementId };
       render({ preserveFocus: false, animate: true });
       const target = [...container.querySelectorAll('[data-card-placement-id]')]
         .find((card) => card.dataset.cardPlacementId === placement.placementId);
@@ -347,7 +347,7 @@
       if (event.target.closest('[data-card-action="toggle"]') && placementId) {
         const deckId = placementElement.closest('[data-card-deck-id]')?.dataset.cardDeckId || placementId;
         frontByDeck = { ...frontByDeck, [deckId]: placementId };
-        expandedByDeck = model.toggleExpandedPlacement(expandedByDeck, deckId, placementId);
+        expandedByDeck = model.toggleExclusiveExpandedPlacement(expandedByDeck, deckId, placementId);
         render({ animate: true });
         return;
       }

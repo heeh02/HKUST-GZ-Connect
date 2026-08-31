@@ -141,6 +141,15 @@ test('one expanded placement is tracked independently per deck and toggles close
   assert.equal(Object.isFrozen(collapsed), true);
 });
 
+test('ordinary browsing keeps only one expanded card across automatic decks', () => {
+  let expanded = boardModel.toggleExclusiveExpandedPlacement({}, 'auto-deck-0', 'placement-a');
+  assert.deepEqual(expanded, { 'auto-deck-0': 'placement-a' });
+  expanded = boardModel.toggleExclusiveExpandedPlacement(expanded, 'auto-deck-1', 'placement-b');
+  assert.deepEqual(expanded, { 'auto-deck-1': 'placement-b' });
+  expanded = boardModel.toggleExclusiveExpandedPlacement(expanded, 'auto-deck-1', 'placement-b');
+  assert.deepEqual(expanded, {});
+});
+
 test('draft drop operations distinguish insertion, stacking, and extraction', () => {
   const initial = boardModel.defaultDocument({
     'browser-catalog': [

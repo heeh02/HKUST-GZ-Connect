@@ -286,6 +286,12 @@
     return Object.freeze(next);
   }
 
+  function toggleExclusiveExpandedPlacement(expandedByDeck, deckId, placementId) {
+    return Object.freeze(expandedByDeck?.[deckId] === placementId
+      ? {}
+      : { [deckId]: placementId });
+  }
+
   function findPlacement(document, placementId) {
     return document.placements.find((placement) => placement.placementId === placementId) || null;
   }
@@ -441,6 +447,7 @@
     reconcileBoard,
     repairDocument,
     resourceColumnsForWidth,
+    toggleExclusiveExpandedPlacement,
     toggleExpandedPlacement,
   });
 });
