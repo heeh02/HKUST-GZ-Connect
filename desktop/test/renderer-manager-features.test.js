@@ -21,9 +21,12 @@ test('shared manager view escapes dynamic values and bounds operation errors', (
   assert.equal(managerView.collectionFromResult({ rules: 'invalid' }, 'rules'), null);
 });
 
-test('routing manager normalizes host-only input and drops untrusted view fields', () => {
+test('routing manager accepts full web URLs and drops untrusted view fields', () => {
   assert.equal(normalizeRoutingHostInput(' Login.Example.Test. ', translate), 'login.example.test');
-  for (const invalid of ['', 'https://example.test', '*.example.test', 'a..b']) {
+  assert.equal(normalizeRoutingHostInput(
+    'https://hpc2login.hpc.hkust-gz.edu.cn/login?next=%2F', translate,
+  ), 'hpc2login.hpc.hkust-gz.edu.cn');
+  for (const invalid of ['', 'file:///tmp/x', '*.example.test', 'a..b']) {
     assert.throws(() => normalizeRoutingHostInput(invalid, translate), /routing\.invalidHost/);
   }
   assert.deepEqual(routingRulesForView([{

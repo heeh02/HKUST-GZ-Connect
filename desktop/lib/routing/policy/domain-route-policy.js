@@ -47,7 +47,7 @@ function normalizeResourceRoutes(resources) {
   const seen = new Set();
   const result = [];
   for (const resource of Array.isArray(resources) ? resources : []) {
-    if (!resource || !validRoute(resource.route)) continue;
+    if (!resource || resource.routePreference === 'auto' || !validRoute(resource.route)) continue;
     const host = hostnameForUrl(resource.url);
     if (!host || seen.has(host)) continue;
     seen.add(host);

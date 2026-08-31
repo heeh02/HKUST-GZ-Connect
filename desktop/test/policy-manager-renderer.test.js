@@ -16,12 +16,14 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
   assert.match(html, /<dialog id="routingRulesDialog"[^>]*aria-labelledby="routingRulesTitle"[^>]*aria-describedby="routingRulesDescription"/);
   assert.match(html, /id="routingRuleStacks"[^>]*category-stack-grid[^>]*routing-stack-grid/u);
   assert.doesNotMatch(html, /id="routingRuleList"/u);
-  assert.match(html, /id="routingRuleHost"[^>]*maxlength="253"[^>]*autocomplete="off"/);
+  assert.match(html, /id="routingRuleHost"[^>]*maxlength="2048"[^>]*autocomplete="off"/);
+  assert.match(html, /id="routingRulePreview"[^>]*role="status"/u);
   assert.match(html, /id="routingRuleScope"[\s\S]*value="exact"[\s\S]*value="subdomains"/);
   assert.match(html, /id="routingRuleRoute"[\s\S]*value="campus"[\s\S]*value="direct"/);
   assert.match(html, /id="routingRuleError"[^>]*role="alert"/);
   assert.match(html, /id="deleteRoutingRule"[^>]*hidden/u);
   assert.match(routing, /api\.listRoutingRules\(\)/);
+  assert.match(routing, /api\.previewRoutingTarget\(value\)/);
   assert.match(routing, /api\.saveRoutingRule\(payload\)/);
   assert.match(routing, /api\.deleteRoutingRule\(\{[\s\S]{0,120}host: rule\.host,[\s\S]{0,120}includeSubdomains: rule\.includeSubdomains/);
   assert.match(routing, /payload\.previous\s*=\s*\{/,

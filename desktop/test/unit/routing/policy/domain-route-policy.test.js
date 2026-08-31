@@ -51,6 +51,18 @@ test('browser resolution follows user, custom, school, server, then safe default
   assert.equal(resolveDomainRouteForUrl('https://unknown.example/', options).route, 'campus');
 });
 
+test('automatic custom websites defer to lower-priority school policy', () => {
+  const options = {
+    customResources: [{ url: 'https://library.hkust-gz.edu.cn/', route: 'direct',
+      routePreference: 'auto' }],
+    schoolDomains: ['hkust-gz.edu.cn'],
+  };
+  const policy = normalizeDomainRoutePolicy(options);
+  assert.deepEqual(policy.customExact, []);
+  assert.equal(resolveDomainRouteForUrl('https://library.hkust-gz.edu.cn/', options).source,
+    'builtin');
+});
+
 test('reviewed profile domains replace static deployment defaults when supplied', () => {
   const options = {
     schoolDomains: ['campus.example.edu'],

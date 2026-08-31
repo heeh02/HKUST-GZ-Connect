@@ -162,6 +162,29 @@ contextBridge.exposeInMainWorld('api', {
     resources = [...resources.filter((item) => item.id !== saved.id), saved];
     return { ok: true, resource: saved, resources };
   },
+  createFavoriteResource: async (resource) => {
+    const saved = {
+      id: `custom-test-${nextCustomId++}`,
+      name: resource.name,
+      url: normalizeFixtureUrl(resource.url),
+      description: resource.description || '',
+      routePreference: 'auto',
+      route: resource.routePreference === 'direct' ? 'direct' : 'campus',
+      builtin: false,
+      category: 'custom',
+      keywords: [],
+      favorite: true,
+      lastOpenedAt: null,
+    };
+    resources = [...resources, saved];
+    state.campusResources = resources;
+    if (resource.groupId) {
+      state.resourceGroups = state.resourceGroups.map((group) => group.id === resource.groupId
+        ? { ...group, resourceIds: [...group.resourceIds, saved.id] } : group);
+    }
+    return { ok: true, resource: saved, resources, groups: state.resourceGroups,
+      affectedResourceIds: [] };
+  },
   deleteResource: async (resourceId) => {
     resources = resources.filter((resource) => resource.id !== resourceId);
     return { ok: true, resources };
@@ -180,13 +203,26 @@ contextBridge.exposeInMainWorld('api', {
     return { ok: true, resources };
   },
   listRoutingRules: async () => ({ ok: true, rules: routingRules }),
+  previewRoutingTarget: async (target) => {
+    try {
+      const input = String(target || '').trim();
+      const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(input) ? input : `https://${input}`);
+      return { ok: true, target: { host: parsed.hostname.toLowerCase(), inputKind: 'url',
+        discardedPort: !!parsed.port, discardedPath: parsed.pathname !== '/' },
+      resolution: { route: parsed.hostname.endsWith('.example.com') ? 'direct' : 'campus',
+        source: 'default', matchedRule: null } };
+    } catch { return { ok: false, error: 'invalid target' }; }
+  },
   saveRoutingRule: async (rule) => {
+    const input = String(rule.target || rule.host || '').trim();
+    const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(input) ? input : `https://${input}`);
+    const host = parsed.hostname.toLowerCase();
     if (rule.previous) routingRules = routingRules.filter((item) => !(
       item.host === rule.previous.host && item.includeSubdomains === rule.previous.includeSubdomains
     ));
     routingRules = [...routingRules.filter((item) => !(
-      item.host === rule.host && item.includeSubdomains === rule.includeSubdomains
-    )), { host: rule.host, includeSubdomains: rule.includeSubdomains,
+      item.host === host && item.includeSubdomains === rule.includeSubdomains
+    )), { host, includeSubdomains: rule.includeSubdomains,
       route: rule.route, updatedAt: Date.now() }];
     return { ok: true, rules: routingRules };
   },
@@ -235,5 +271,6 @@ contextBridge.exposeInMainWorld('api', {
   onStatus: () => {},
   onTelemetry: () => {},
   onNetworkEnvironment: () => {},
-  testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount }),
+  testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount,
+    resources, resourceGroups: state.resourceGroups }),
 });

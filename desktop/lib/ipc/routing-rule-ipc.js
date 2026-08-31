@@ -1,6 +1,12 @@
 'use strict';
 
 const { allowedKeys, boundedString } = require('./ipc-guard');
+const { normalizeRoutingTarget } = require('../routing/rules/routing-rule-store');
+
+const SAFE_SOURCES = new Set([
+  'safety', 'user-exact', 'user-subdomain', 'custom-resource', 'builtin',
+  'server-resource', 'inherited', 'default',
+]);
 
 function routingIdentityFromIpc(value) {
   const source = allowedKeys(value, ['host', 'includeSubdomains']);
@@ -14,13 +20,21 @@ function routingIdentityFromIpc(value) {
 }
 
 function routingRuleFromIpc(value) {
-  const source = allowedKeys(value, ['host', 'includeSubdomains', 'route', 'previous']);
+  const source = allowedKeys(value, [
+    'host', 'target', 'includeSubdomains', 'route', 'previous',
+  ]);
   if (source.route !== 'campus' && source.route !== 'direct') {
     throw new TypeError('路由规则路径无效');
   }
+  if ((source.host == null) === (source.target == null)) {
+    throw new TypeError('路由规则目标无效');
+  }
+  const host = normalizeRoutingTarget(boundedString(source.target ?? source.host, {
+    minLength: 1, maxLength: 2048, trim: true,
+  })).host;
   return {
     ...routingIdentityFromIpc({
-      host: source.host,
+      host,
       includeSubdomains: source.includeSubdomains,
     }),
     route: source.route,
@@ -35,7 +49,8 @@ function safeRules(policy) {
 function registerRoutingRuleIpc({ register, policy, runTransaction } = {}) {
   if (typeof register !== 'function' || !policy || typeof policy.list !== 'function' ||
       typeof policy.upsert !== 'function' || typeof policy.remove !== 'function' ||
-      typeof policy.replace !== 'function' || typeof runTransaction !== 'function') {
+      typeof policy.replace !== 'function' || typeof policy.resolve !== 'function' ||
+      typeof runTransaction !== 'function') {
     throw new TypeError('routing rule IPC dependencies are incomplete');
   }
   register('list-routing-rules', () => {
@@ -43,6 +58,29 @@ function registerRoutingRuleIpc({ register, policy, runTransaction } = {}) {
       return { ok: true, rules: policy.list() };
     } catch (error) {
       return { ok: false, error: error.message, rules: safeRules(policy) };
+    }
+  });
+  register('preview-routing-target', (_event, rawTarget) => {
+    try {
+      const target = normalizeRoutingTarget(boundedString(rawTarget, {
+        minLength: 1, maxLength: 2048, trim: true,
+      }));
+      const resolution = policy.resolve(`https://${target.host}/`);
+      return {
+        ok: true,
+        target,
+        resolution: {
+          route: resolution?.route === 'direct' ? 'direct' : 'campus',
+          source: SAFE_SOURCES.has(resolution?.source) ? resolution.source : 'default',
+          matchedRule: resolution?.matchedRule && typeof resolution.matchedRule.host === 'string'
+            ? {
+              host: resolution.matchedRule.host,
+              includeSubdomains: resolution.matchedRule.includeSubdomains === true,
+            } : null,
+        },
+      };
+    } catch (error) {
+      return { ok: false, error: error.message };
     }
   });
   register('save-routing-rule', async (_event, payload) => {

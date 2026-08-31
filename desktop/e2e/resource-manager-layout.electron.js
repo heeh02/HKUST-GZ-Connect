@@ -119,18 +119,28 @@ async function addAndOpenCustomResource(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
     if (dialog.open) dialog.close();
-    const add = document.getElementById('quickAddCampus');
+    const add = document.getElementById('addWebsite');
     if (!add) return { controlPresent: false };
-    document.getElementById('campusUrl').value = '103.189.154.10:4433';
     add.click();
+    const addDialog = document.getElementById('addWebsiteDialog');
+    document.getElementById('addWebsiteUrl').value = 'https://hpc2login.hpc.hkust-gz.edu.cn/';
+    document.getElementById('addWebsiteUrl').dispatchEvent(new Event('blur'));
     await new Promise((resolve) => setTimeout(resolve, 25));
+    document.getElementById('addWebsiteName').value = 'HPC2 登录';
+    document.getElementById('addWebsiteGroup').value = 'group_research12345';
+    document.getElementById('addWebsiteRoute').value = 'campus';
+    document.getElementById('addWebsiteForm').requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const state = window.api.testState();
+    const saved = state.resources.find((resource) => resource.url === 'https://hpc2login.hpc.hkust-gz.edu.cn/');
+    const group = state.resourceGroups.find(({ id }) => id === 'group_research12345');
     return {
       controlPresent: true,
-      error: document.getElementById('quickAddErr')?.textContent || '',
-      savedMessage: document.getElementById('resourceSaved')?.textContent || '',
-      openedRequest: window.api.testState().lastOpenRequest,
-      savedRows: [...document.querySelectorAll('.resource-editor-row')]
-        .filter((candidate) => candidate.textContent.includes('103.189.154.10:4433')).length,
+      dialogClosed: !addDialog.open,
+      error: document.getElementById('addWebsiteError')?.textContent || '',
+      openedRequest: state.lastOpenRequest,
+      saved,
+      grouped: group?.resourceIds.includes(saved?.id) === true,
     };
   })()`);
 }
@@ -138,11 +148,13 @@ async function addAndOpenCustomResource(window) {
 function assertCustomResourceAddAndOpen(result) {
   assert.equal(result.controlPresent, true, 'dashboard is missing the add-to-favorites action');
   assert.equal(result.error, '', 'adding and opening a shortcut reported an error');
-  assert.equal(result.savedMessage, '已添加到常用网站', 'adding and opening did not confirm the saved shortcut');
-  assert.equal(result.savedRows, 1, 'adding and opening did not persist a shortcut');
-  assert.deepEqual(result.openedRequest, {
-    resourceId: 'custom-test-2',
-  }, 'adding and opening did not use the saved WebResource ID');
+  assert.equal(result.dialogClosed, true, 'successful add did not close its dialog');
+  assert.equal(result.saved.url, 'https://hpc2login.hpc.hkust-gz.edu.cn/');
+  assert.equal(result.saved.route, 'campus');
+  assert.equal(result.saved.favorite, true);
+  assert.equal(result.grouped, true, 'added website was not placed in the selected category');
+  assert.deepEqual(result.openedRequest, { resourceId: result.saved.id },
+    'adding and opening did not use the saved WebResource ID');
 }
 
 async function exerciseIntegrationCenter(window) {

@@ -22,6 +22,7 @@ function capturedResource(existing, candidate) {
     description: '',
     url: candidate.url,
     route: candidate.route,
+    routePreference: candidate.route,
     category: 'custom',
     keywords: [],
     favoriteOnly: true,

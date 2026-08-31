@@ -32,7 +32,8 @@ function result(route, source, rule = null) {
 
 function resourceMatch(host, resources) {
   for (const resource of Array.isArray(resources) ? resources : []) {
-    if (!resource || (resource.route !== ROUTE_CAMPUS && resource.route !== ROUTE_DIRECT)) continue;
+    if (!resource || resource.routePreference === 'auto' ||
+        (resource.route !== ROUTE_CAMPUS && resource.route !== ROUTE_DIRECT)) continue;
     const resourceHost = hostnameForUrl(resource.url);
     if (resourceHost && resourceHost === host) return resource;
   }

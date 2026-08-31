@@ -10,6 +10,7 @@ const { isIsolatedNetworkHost } = require('../policy/host-safety');
 const RULE_FILE_VERSION = 1;
 const MAX_ROUTING_RULES = 128;
 const MAX_HOST_LENGTH = 253;
+const MAX_ROUTING_TARGET_LENGTH = 2048;
 const MAX_ROUTING_DOCUMENT_BYTES = 512 * 1024;
 let temporarySequence = 0;
 
@@ -61,6 +62,35 @@ function normalizeRuleHost(value) {
     throw invalidHost();
   }
   return ascii;
+}
+
+function normalizeRoutingTarget(value) {
+  const invalid = () => {
+    const error = new TypeError('网站地址或域名无效');
+    error.code = 'ROUTING_TARGET_INVALID';
+    return error;
+  };
+  if (typeof value !== 'string') throw invalid();
+  const input = value.trim();
+  if (!input || input.length > MAX_ROUTING_TARGET_LENGTH ||
+      /[\u0000-\u0020\u007f]/u.test(input) || input.includes('*')) throw invalid();
+  const explicitScheme = /^[a-z][a-z0-9+.-]*:\/\//iu.test(input) ||
+    /^(?:data|file|ftp|javascript|mailto):/iu.test(input);
+  const candidate = input.startsWith('//') ? `https:${input}`
+    : explicitScheme ? input : `https://${input}`;
+  let parsed;
+  try { parsed = new URL(candidate); } catch { throw invalid(); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+      parsed.username || parsed.password) throw invalid();
+  let host;
+  try { host = normalizeRuleHost(parsed.hostname); } catch { throw invalid(); }
+  return Object.freeze({
+    host,
+    inputKind: explicitScheme || input.startsWith('//') || /[/?#]/u.test(input)
+      ? 'url' : 'host',
+    discardedPort: parsed.port !== '',
+    discardedPath: parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '',
+  });
 }
 
 function validRoute(route) {
@@ -219,12 +249,14 @@ function deleteRoutingRule(currentRules, host, includeSubdomains = false) {
 module.exports = {
   MAX_ROUTING_RULES,
   MAX_ROUTING_DOCUMENT_BYTES,
+  MAX_ROUTING_TARGET_LENGTH,
   RULE_FILE_VERSION,
   deleteRoutingRule,
   fsyncDirectory,
   loadRoutingRules,
   normalizeRoutingRules,
   normalizeRuleHost,
+  normalizeRoutingTarget,
   saveRoutingRules,
   upsertRoutingRule,
 };

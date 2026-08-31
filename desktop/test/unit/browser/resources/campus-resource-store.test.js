@@ -97,3 +97,28 @@ test('custom shortcuts strip ordinary queries and reject temporary login paramet
     }), /临时登录链接/u);
   }
 });
+
+test('same-host shortcuts share one explicit or automatic route preference', () => {
+  const first = upsertCustomResource([], {
+    name: 'HPC login', url: 'https://hpc.example.edu/login',
+    route: 'campus', routePreference: 'campus',
+  });
+  const second = upsertCustomResource(first.resources, {
+    name: 'HPC dashboard', url: 'https://hpc.example.edu/dashboard',
+    route: 'direct', routePreference: 'direct',
+  });
+  assert.deepEqual(second.affectedResourceIds, [first.resource.id]);
+  assert.deepEqual(second.resources.map(({ route, routePreference }) => (
+    [route, routePreference || route]
+  )), [['direct', 'direct'], ['direct', 'direct']]);
+
+  const automatic = upsertCustomResource(second.resources, {
+    id: second.resource.id,
+    name: second.resource.name,
+    url: second.resource.url,
+    route: 'campus',
+    routePreference: 'auto',
+  });
+  assert.deepEqual(automatic.affectedResourceIds, [first.resource.id]);
+  assert.ok(automatic.resources.every(({ routePreference }) => routePreference === 'auto'));
+});

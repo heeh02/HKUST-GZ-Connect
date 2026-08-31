@@ -58,8 +58,9 @@
               data-i18n-attr="title:browser.viaCampus">校园访问</span>
         <select id="routeSelector" class="route-selector" aria-label="此标签的网络路径" title="选择此标签的网络路径"
                 data-i18n-attr="aria-label:browser.routeLabel; title:browser.routeTitle">
-          <option value="campus" data-i18n="browser.routeCampus">校园隧道</option>
-          <option value="direct" data-i18n="browser.routeDirect">直连</option>
+          <option id="routeAutoOption" value="auto" data-i18n="browser.routeFollow">跟随规则</option>
+          <option value="campus" data-i18n="browser.routeAlwaysCampus">始终使用校园隧道</option>
+          <option value="direct" data-i18n="browser.routeAlwaysDirect">始终保持原网络</option>
         </select>
       </form>
       <button id="browserSettings" class="icon" title="打开设置"

@@ -520,6 +520,35 @@ test('a transactional routing policy owns the live Session update exactly once',
     'the main-process transaction already activated or safely suspended the Session');
 });
 
+test('following rules removes only the exact personal override and recomputes the route', async () => {
+  let fixed = null;
+  const mutations = [];
+  const routingPolicy = {
+    appliesLiveSession: true,
+    resolve: () => fixed
+      ? { route: fixed, source: 'user-exact', matchedRule: {
+        host: 'portal.example.internal', includeSubdomains: false,
+      } }
+      : { route: ROUTE_CAMPUS, source: 'builtin', matchedRule: null },
+    proxyConfig: async () => ({ mode: 'pac_script',
+      pacScript: `data:application/x-ns-proxy-autoconfig;base64,${Buffer.from(
+        'function FindProxyForURL(){return "DIRECT";}',
+      ).toString('base64')}`, proxyBypassRules: '<-loopback>' }),
+    upsert: async (payload) => { fixed = payload.route; mutations.push(['upsert', payload]); },
+    remove: async (payload) => { fixed = null; mutations.push(['remove', payload]); },
+  };
+  const { browser } = createFakeBrowser({ routingPolicy, ensureCampusReady: async () => true });
+  await browser.open('portal.example.internal', 1080);
+  assert.equal(await browser.setTabRoute(browser.activeTabId, ROUTE_DIRECT), true);
+  assert.equal(browser.activeTab().routeSource, 'user-exact');
+  assert.equal(await browser.setTabRoute(browser.activeTabId, 'auto'), true);
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS);
+  assert.equal(browser.activeTab().routeSource, 'builtin');
+  assert.deepEqual(mutations.at(-1), ['remove', {
+    host: 'portal.example.internal', includeSubdomains: false,
+  }]);
+});
+
 test('a provisional load failure keeps the failed URL and shows an error page', async () => {
   function makeSession(name) {
     return {

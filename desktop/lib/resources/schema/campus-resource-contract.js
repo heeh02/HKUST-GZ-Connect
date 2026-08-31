@@ -19,6 +19,7 @@ const MAX_RESOURCE_KEYWORD_LENGTH = 40;
 const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|id_token|relaystate|samlresponse|session|state|ticket|token)$/iu;
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
+const ROUTE_PREFERENCES = Object.freeze(['auto', ROUTE_CAMPUS, ROUTE_DIRECT]);
 const RESOURCE_CATEGORIES = Object.freeze([
   'gateway',
   'newcomer',
@@ -146,7 +147,7 @@ function normalizedResource(value, {
     'id', 'name', 'description', 'localizedName', 'localizedDescription',
     'url', 'route', 'category', 'keywords',
   ];
-  if (builtin !== true) allowedKeys.push('favoriteOnly');
+  if (builtin !== true) allowedKeys.push('favoriteOnly', 'routePreference');
   const source = exact
     ? exactKeys(value, allowedKeys,
       ['id', 'name', 'description', 'url'], 'WebResource')
@@ -156,6 +157,10 @@ function normalizedResource(value, {
   const route = source.route == null ? defaultRoute : source.route;
   if (route !== ROUTE_CAMPUS && route !== ROUTE_DIRECT) {
     throw new TypeError('resource route is unsupported');
+  }
+  const routePreference = builtin === true ? route : (source.routePreference || route);
+  if (!ROUTE_PREFERENCES.includes(routePreference)) {
+    throw new TypeError('resource route preference is unsupported');
   }
   const category = source.category == null
     ? (builtin === true ? 'common' : 'custom')
@@ -220,6 +225,7 @@ function normalizedResource(value, {
     reviewed: reviewed === true,
     builtin: builtin === true,
   };
+  if (builtin !== true && source.routePreference === 'auto') resource.routePreference = 'auto';
   if (builtin !== true && source.favoriteOnly === true) resource.favoriteOnly = true;
   return deepFreeze(resource);
 }
@@ -357,6 +363,7 @@ function normalizeResource(value) {
     category: value.category,
     keywords: value.keywords,
     favoriteOnly: value.favoriteOnly,
+    routePreference: value.routePreference,
   }, route);
 }
 
@@ -391,6 +398,7 @@ module.exports = {
   MAX_MERGED_RESOURCES,
   MAX_RESOURCE_DESCRIPTION_LENGTH,
   MAX_RESOURCE_DOCUMENT_BYTES,
+  ROUTE_PREFERENCES,
   MAX_RESOURCE_ID_LENGTH,
   MAX_RESOURCE_NAME_LENGTH,
   MAX_RESOURCE_URL_LENGTH,

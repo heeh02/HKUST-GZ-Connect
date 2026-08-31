@@ -43,6 +43,7 @@ const reload = document.getElementById('reload');
 const state = document.getElementById('state');
 const tabs = document.getElementById('tabs');
 const routeSelector = document.getElementById('routeSelector');
+const routeAutoOption = document.getElementById('routeAutoOption');
 const routeBadge = document.getElementById('routeBadge');
 const findBar = document.getElementById('findBar');
 const findInput = document.getElementById('findInput');
@@ -251,7 +252,10 @@ window.campusBrowserUI = {
     if (document.activeElement !== address) address.value = next.workspace ? '' : (next.url || '');
     back.disabled = !next.canGoBack;
     forward.disabled = !next.canGoForward;
-    routeSelector.value = next.route === 'direct' ? 'direct' : 'campus';
+    const fixed = next.routeSource === 'user-exact';
+    routeSelector.value = fixed ? (next.route === 'direct' ? 'direct' : 'campus') : 'auto';
+    routeAutoOption.textContent = t(next.route === 'direct'
+      ? 'browser.routeFollowDirect' : 'browser.routeFollowCampus');
     routeSelector.disabled = next.workspace === true;
     credential.disabled = next.workspace === true;
     routeSelector.hidden = next.workspace === true;

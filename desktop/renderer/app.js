@@ -550,7 +550,7 @@ $('manageResources').addEventListener('click', () => {
     usabilityFeature?.toast(t('quick.browserOpenFailed'), 'error');
   });
 });
-$('addCategory').addEventListener('click', () => $('manageResources').click());
+window.addWebsiteDialog.start({ api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, setResources: (resources) => { campusResources = resources; renderResources(); }, getGroups: () => resourceGroups, setGroups: (groups) => { resourceGroups = groups; renderResources(); }, toast: (message, tone) => usabilityFeature?.toast(message, tone) });
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
 resourceLayoutFeature.start();
 window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }), getEnvironment: () => window.api.getNetworkEnvironment(), subscribeEnvironment: (callback) => window.api.onNetworkEnvironment?.(callback) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });

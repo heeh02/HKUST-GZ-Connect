@@ -469,7 +469,9 @@ function proxyHelperPath() {
   });
 }
 function campusResources(settings = loadSettingsOrReport()) {
-  return activeSchoolProfile.mergeResourceLibrary(settings.customResources, settings.hiddenBuiltinResourceIds);
+  return resourceLibraryRuntime.resolveRoutes(activeSchoolProfile.mergeResourceLibrary(
+    settings.customResources, settings.hiddenBuiltinResourceIds,
+  ), (url) => domainRoutePolicy.resolve(url));
 }
 function safeCampusResources(settings = null) {
   try { return campusResources(settings || loadSettingsOrReport()); }
@@ -1459,6 +1461,7 @@ registerControlDataIpc({
     saveSettings,
     runTransaction: runDomainPolicyTransaction,
     safeResources: safeCampusResourceLibrary,
+    routingPolicy: domainRoutePolicy,
     activityStore: resourceLibraryRuntime, onChanged: resourcesChanged,
   },
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,

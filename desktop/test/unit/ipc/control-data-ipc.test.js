@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { registerControlDataIpc } = require('../../../lib/ipc/control-data-ipc');
 const { registerCampusResourceIpc } = require('../../../lib/ipc/campus-resource-ipc');
+const { runRoutingPolicyTransaction } = require('../../../lib/routing/rules/routing-policy-transaction');
 
 function fixture() {
   const handlers = new Map();
@@ -11,6 +12,7 @@ function fixture() {
   let pins = [{ origin: 'https://campus.example', fingerprint: 'A'.repeat(64) }];
   let settings = { customResources: [] };
   let favorites = { schemaVersion: 1, entries: [] };
+  let groups = { schemaVersion: 2, collections: [], placements: [] };
   const runTransaction = async (build) => {
     const operations = build();
     return operations.commit();
@@ -23,6 +25,7 @@ function fixture() {
         upsert: (rule) => { rules = [rule]; return rules; },
         remove: () => { rules = []; return rules; },
         replace: (next) => { rules = next; return rules; },
+        resolve: () => ({ route: 'campus', source: 'default', matchedRule: null }),
       },
       runTransaction,
     },
@@ -37,6 +40,12 @@ function fixture() {
       saveSettings: (next) => { settings = next; return settings; },
       runTransaction,
       safeResources: () => settings.customResources,
+      routingPolicy: {
+        resolve: () => ({ route: 'campus', source: 'default' }),
+        list: () => rules.map((rule) => ({ ...rule })),
+        upsert: (rule) => { rules = [rule]; return rules; },
+        replace: (next) => { rules = next; return rules; },
+      },
       activityStore: {
         snapshot: () => ({
           favorites,
@@ -50,6 +59,10 @@ function fixture() {
           return favorites;
         },
         replaceFavorites: (document) => { favorites = document; return favorites; },
+        groupsSnapshot: () => groups,
+        replaceGroups: (document) => { groups = document; return groups; },
+        listGroups: () => [],
+        addResourcesToGroup: () => groups,
       },
     },
     schools: {
@@ -75,18 +88,21 @@ function fixture() {
       translate: (key) => key,
     },
   });
-  return { handlers, get pins() { return pins; }, get rules() { return rules; } };
+  return { handlers, get pins() { return pins; }, get rules() { return rules; },
+    get settings() { return settings; }, get favorites() { return favorites; } };
 }
 
 test('facade registers exact routing certificate resource and school channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
     'list-routing-rules',
+    'preview-routing-target',
     'save-routing-rule',
     'delete-routing-rule',
     'list-certificate-pins',
     'delete-certificate-pin',
     'save-resource',
+    'create-favorite-resource',
     'delete-resource',
     'restore-builtin-resources',
     'reorder-resources',
@@ -152,6 +168,37 @@ test('resource handlers preserve transactional CRUD and reject unknown IPC field
   assert.equal((await f.handlers.get('delete-resource')({}, id)).ok, true);
 });
 
+test('full URL add atomically creates and favorites a resource with an automatic route', async () => {
+  const f = fixture();
+  const added = await f.handlers.get('create-favorite-resource')({}, {
+    name: 'HPC2 login',
+    url: 'https://hpc2login.hpc.hkust-gz.edu.cn/',
+    description: '',
+    routePreference: 'auto',
+    groupId: null,
+  });
+  assert.equal(added.ok, true);
+  assert.equal(added.resource.url, 'https://hpc2login.hpc.hkust-gz.edu.cn/');
+  assert.equal(added.resource.routePreference, 'auto');
+  assert.equal(f.settings.customResources.length, 1);
+  assert.deepEqual(f.favorites.entries, [added.resource.id]);
+});
+
+test('a fixed add writes the exact host into the shared personal routing policy', async () => {
+  const f = fixture();
+  const added = await f.handlers.get('create-favorite-resource')({}, {
+    name: 'HPC2 login',
+    url: 'https://hpc2login.hpc.hkust-gz.edu.cn/login?next=%2Fhome',
+    description: '',
+    routePreference: 'campus',
+    groupId: null,
+  });
+  assert.equal(added.ok, true);
+  assert.equal(added.resource.routePreference, 'auto');
+  assert.deepEqual(f.rules, [{ host: 'hpc2login.hpc.hkust-gz.edu.cn',
+    includeSubdomains: false, route: 'campus' }]);
+});
+
 test('built-in resources can be hidden persistently and restored without editing the reviewed list', async () => {
   const handlers = new Map();
   const builtin = Object.freeze({
@@ -170,6 +217,14 @@ test('built-in resources can be hidden persistently and restored without editing
       snapshot: () => ({ favorites: { schemaVersion: 1, entries: [] } }),
       toggleFavorite: () => {},
       replaceFavorites: () => {},
+      groupsSnapshot: () => ({ schemaVersion: 2, collections: [], placements: [] }),
+      replaceGroups: () => {},
+      listGroups: () => [],
+      addResourcesToGroup: () => {},
+    },
+    routingPolicy: {
+      resolve: () => ({ route: 'campus', source: 'default' }),
+      list: () => [], upsert: () => {}, replace: () => {},
     },
   });
   const deleted = await handlers.get('delete-resource')({}, 'home');
@@ -180,4 +235,45 @@ test('built-in resources can be hidden persistently and restored without editing
   assert.equal(restored.ok, true);
   assert.deepEqual(settings.hiddenBuiltinResourceIds, []);
   assert.equal(restored.resources[0].id, 'home');
+});
+
+test('add website rolls settings and favorites back when category placement fails', async () => {
+  const handlers = new Map();
+  let settings = { customResources: [], hiddenBuiltinResourceIds: [] };
+  let favorites = { schemaVersion: 1, entries: [] };
+  const emptyGroups = { schemaVersion: 2, collections: [], placements: [] };
+  registerCampusResourceIpc({
+    register: (channel, handler) => handlers.set(channel, handler),
+    loadSettings: () => structuredClone(settings),
+    saveSettings: (next) => { settings = structuredClone(next); },
+    runTransaction: async (build) => runRoutingPolicyTransaction({
+      ...build(), suspend: async () => {}, applyExternal: async () => {},
+      applyBrowser: async () => {}, restoreExternal: async () => {},
+      restoreBrowser: async () => {},
+    }),
+    safeResources: () => settings.customResources,
+    activityStore: {
+      snapshot: () => ({ favorites }),
+      toggleFavorite: (resourceId) => {
+        favorites = { schemaVersion: 1, entries: [resourceId] }; return favorites;
+      },
+      replaceFavorites: (next) => { favorites = structuredClone(next); },
+      groupsSnapshot: () => emptyGroups,
+      replaceGroups: () => {},
+      listGroups: () => [{ id: 'group_abcdefghijkl', name: 'HPC', resourceIds: [] }],
+      addResourcesToGroup: () => { throw new Error('placement write failed'); },
+    },
+    routingPolicy: {
+      resolve: () => ({ route: 'campus', source: 'default' }),
+      list: () => [], upsert: () => {}, replace: () => {},
+    },
+  });
+  const result = await handlers.get('create-favorite-resource')({}, {
+    name: 'HPC2', url: 'https://hpc2login.hpc.hkust-gz.edu.cn/', description: '',
+    routePreference: 'campus', groupId: 'group_abcdefghijkl',
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /placement write failed/u);
+  assert.deepEqual(settings.customResources, []);
+  assert.deepEqual(favorites.entries, []);
 });

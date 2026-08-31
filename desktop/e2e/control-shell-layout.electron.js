@@ -60,6 +60,20 @@ async function capture(window, output, label) {
   fs.writeFileSync(path.join(output, `${label}.png`), (await window.webContents.capturePage()).toPNG());
 }
 
+async function addWebsiteSnapshot(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    document.getElementById('addWebsite').click();
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const dialog = document.getElementById('addWebsiteDialog');
+      const rect = dialog.getBoundingClientRect();
+      resolve({ open: dialog.open, left: rect.left, right: rect.right, top: rect.top,
+        bottom: rect.bottom, width: rect.width, viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight, bodyOverflow: dialog.scrollWidth - dialog.clientWidth,
+        routeOptions: [...document.getElementById('addWebsiteRoute').options].map(({ value }) => value) });
+    })));
+  })()`);
+}
+
 async function main() {
   await app.whenReady();
   const output = process.env.HKUSTGZ_CONTROL_SCREENSHOT_DIR || '';
@@ -107,6 +121,17 @@ async function main() {
         assert.equal(browser.layeredStacks, 0);
       }
       await capture(window, output, `${label}-browser`);
+      const addWebsite = await addWebsiteSnapshot(window);
+      assert.equal(addWebsite.open, true, `${label}: Add Website dialog did not open`);
+      assert.deepEqual(addWebsite.routeOptions, ['auto', 'campus', 'direct']);
+      assert.ok(addWebsite.left >= 8 && addWebsite.right <= addWebsite.viewportWidth - 8,
+        `${label}: Add Website dialog escapes horizontal safe area: ${JSON.stringify(addWebsite)}`);
+      assert.ok(addWebsite.top >= 8 && addWebsite.bottom <= addWebsite.viewportHeight - 8,
+        `${label}: Add Website dialog escapes vertical safe area`);
+      assert.ok(addWebsite.width <= 520 && addWebsite.bodyOverflow <= 0,
+        `${label}: Add Website dialog is too wide or overflows`);
+      await capture(window, output, `${label}-add-website`);
+      await window.webContents.executeJavaScript(`document.getElementById('addWebsiteDialog').close()`);
       const tower = await shellSnapshot(window, 'tower');
       assert.equal(tower.contentScroll, 0, `${label}: Control Tower did not start at the top`);
       assert.ok(tower.bodyOverflow <= 0 && tower.contentOverflow <= 0, `${label}: Control Tower overflows horizontally`);

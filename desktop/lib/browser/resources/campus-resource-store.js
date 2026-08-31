@@ -19,6 +19,10 @@ function builtinIdentity(resources) {
   };
 }
 
+function canonicalCustomResourceUrl(value) {
+  return sanitizeCustomResourceUrl(normalizeCampusUrl(value), { rejectSensitive: true });
+}
+
 function generatedId(url, existing) {
   const digest = crypto.createHash('sha256').update(url).digest('hex').slice(0, 8);
   let id = `custom-${digest}`;
@@ -36,9 +40,14 @@ function normalizedInput(payload, existing, builtins) {
   if (!String(source.url || '').trim()) throw new Error('网站网址不能为空');
   let url;
   try {
-    url = sanitizeCustomResourceUrl(normalizeCampusUrl(source.url), { rejectSensitive: true });
+    url = canonicalCustomResourceUrl(source.url);
   } catch (error) {
     throw new Error(error.message);
+  }
+  const routePreference = source.routePreference || source.route ||
+    previous?.routePreference || previous?.route || 'campus';
+  if (!['auto', 'campus', 'direct'].includes(routePreference)) {
+    throw new Error('网站网络偏好无效');
   }
   if (source.route === 'direct' && isIsolatedNetworkHost(new URL(url).hostname)) {
     throw new Error('本机、私网和特殊地址不能设为直连');
@@ -47,6 +56,7 @@ function normalizedInput(payload, existing, builtins) {
     ...source,
     id,
     url,
+    routePreference,
     ...(previous?.favoriteOnly === true ? { favoriteOnly: true } : {}),
   });
   if (!normalized) throw new Error('网站名称、描述或网址无效');
@@ -63,13 +73,25 @@ function upsertCustomResource(current, payload, { builtinResources = [] } = {}) 
   const duplicate = resources.find((item, itemIndex) =>
     item.url === resource.url && itemIndex !== index);
   if (duplicate) throw new Error('该网址已经存在');
-  const next = index === -1
+  let next = index === -1
     ? [...resources, resource]
     : resources.map((item, itemIndex) => (itemIndex === index ? resource : item));
+  const hostname = new URL(resource.url).hostname;
+  const affectedResourceIds = [];
+  next = next.map((item) => {
+    if (item.id === resource.id || new URL(item.url).hostname !== hostname) return item;
+    if (item.routePreference === resource.routePreference && item.route === resource.route) return item;
+    affectedResourceIds.push(item.id);
+    return normalizeCustomResources([{
+      ...item,
+      route: resource.route,
+      routePreference: resource.routePreference,
+    }])[0];
+  });
   if (next.length > MAX_CUSTOM_RESOURCES) {
     throw new Error(`自定义网站最多保存 ${MAX_CUSTOM_RESOURCES} 个`);
   }
-  return { resource, resources: next };
+  return { resource, resources: next, affectedResourceIds };
 }
 
 function deleteCustomResource(current, id, { builtinResources = [] } = {}) {
@@ -101,6 +123,7 @@ function reorderCustomResources(current, ids) {
 }
 
 module.exports = {
+  canonicalCustomResourceUrl,
   deleteCustomResource,
   hideBuiltinResource,
   reorderCustomResources,

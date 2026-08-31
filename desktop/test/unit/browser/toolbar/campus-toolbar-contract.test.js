@@ -10,6 +10,9 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.deepEqual(normalizeToolbarCommand('set-route', 'direct'), {
     command: 'set-route', value: 'direct',
   });
+  assert.deepEqual(normalizeToolbarCommand('set-route', 'auto'), {
+    command: 'set-route', value: 'auto',
+  });
   assert.deepEqual(normalizeToolbarCommand('navigate', 'https://example.com/'), {
     command: 'navigate', value: 'https://example.com/',
   });

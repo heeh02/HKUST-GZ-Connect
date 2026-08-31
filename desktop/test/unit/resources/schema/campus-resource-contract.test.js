@@ -118,6 +118,11 @@ test('legacy custom resources are projected without persisted query material', (
     url: 'https://resource.example.edu/start?ticket=temporary&view=student',
   })]);
   assert.equal(projected.url, 'https://resource.example.edu/start');
+  assert.equal(Object.hasOwn(projected, 'routePreference'), false,
+    'legacy resources retain their previous fixed route without a schema rewrite');
+  const [automatic] = normalizeCustomResources([resource(2, { route: 'campus',
+    routePreference: 'auto' })]);
+  assert.equal(automatic.routePreference, 'auto');
 });
 
 test('browser-only favorite lifecycle is optional bounded and round-trips locally', () => {

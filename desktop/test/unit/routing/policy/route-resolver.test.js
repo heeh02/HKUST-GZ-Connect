@@ -62,6 +62,10 @@ test('custom websites, school defaults, and server suggestions share one precede
   const serverResources = [{ url: target, route: 'direct' }];
   assert.equal(resolveRouteForUrl(target, { customResources, serverResources }).source, 'custom-resource');
   assert.equal(resolveRouteForUrl(target, {
+    customResources: [{ url: target, route: 'campus', routePreference: 'auto' }],
+    serverResources,
+  }).source, 'server-resource');
+  assert.equal(resolveRouteForUrl(target, {
     serverResources, directPartnerDomains: ['office.com'],
   }).source, 'builtin');
   assert.equal(resolveRouteForUrl('https://library.hkust-gz.edu.cn/', {

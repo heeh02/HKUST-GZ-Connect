@@ -168,7 +168,7 @@
           </div>
           <div class="browser-page-actions">
             <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开浏览器</button>
-            <button id="addCategory" class="mini browser-add-category" type="button" aria-label="新建分类" data-i18n-attr="aria-label:browser.addCategory">＋</button>
+            <button id="addWebsite" class="mini browser-add-category" type="button" aria-label="添加网站" title="添加网站" data-i18n-attr="aria-label:browser.addWebsite; title:browser.addWebsite">＋</button>
             <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理</button>
             <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
           </div>
@@ -486,6 +486,7 @@
           <label><span data-i18n="dialog.url">网址</span><input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
           <label><span data-i18n="dialog.description">说明</span><input id="resourceDescription" class="inp" maxlength="80" /></label>
           <label><span data-i18n="dialog.route">网络路径</span><select id="resourceRoute" class="inp">
+            <option value="auto" data-i18n="addWebsite.routeAuto">自动（推荐）</option>
             <option value="campus" data-i18n="resources.routeCampus">校园隧道</option>
             <option value="direct" data-i18n="resources.routeDirect">直连</option>
           </select></label>
@@ -502,12 +503,55 @@
     </form>
   </dialog>
 
+  <dialog id="addWebsiteDialog" class="manager-dialog add-website-dialog" aria-labelledby="addWebsiteTitle" aria-describedby="addWebsiteDescription">
+    <form id="addWebsiteForm" class="manager-shell" novalidate>
+      <div class="dialog-head">
+        <div>
+          <h3 id="addWebsiteTitle" data-i18n="addWebsite.title">添加网站</h3>
+          <p id="addWebsiteDescription" data-i18n="addWebsite.description">保存到自己的分类，并选择它以后使用的网络路径。</p>
+        </div>
+        <button id="closeAddWebsite" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
+      </div>
+      <div class="manager-body add-website-body">
+        <label class="manager-field manager-field-wide">
+          <span data-i18n="addWebsite.url">网站地址</span>
+          <input id="addWebsiteUrl" class="inp" type="text" inputmode="url" maxlength="2048" autocomplete="off" autocapitalize="none" spellcheck="false" required
+                 placeholder="https://hpc2login.hpc.hkust-gz.edu.cn/" data-i18n-attr="placeholder:addWebsite.urlPlaceholder" />
+        </label>
+        <p id="addWebsitePreview" class="add-website-preview manager-field-wide" role="status" hidden></p>
+        <label class="manager-field">
+          <span data-i18n="addWebsite.name">显示名称</span>
+          <input id="addWebsiteName" class="inp" maxlength="40" required />
+        </label>
+        <label class="manager-field">
+          <span data-i18n="addWebsite.group">保存到分类</span>
+          <select id="addWebsiteGroup" class="inp"></select>
+        </label>
+        <label class="manager-field manager-field-wide">
+          <span data-i18n="addWebsite.route">网络路径</span>
+          <select id="addWebsiteRoute" class="inp">
+            <option value="auto" data-i18n="addWebsite.routeAuto">自动（推荐）</option>
+            <option value="campus" data-i18n="addWebsite.routeCampus">始终使用校园隧道</option>
+            <option value="direct" data-i18n="addWebsite.routeDirect">始终保持原网络</option>
+          </select>
+          <small id="addWebsiteRouteHint" class="manager-field-hint" data-i18n="addWebsite.routeHint">自动会跟随学校基础规则和你的个人规则。</small>
+        </label>
+        <p id="addWebsiteConflict" class="add-website-warning manager-field-wide" role="status" hidden></p>
+        <p id="addWebsiteError" class="dialog-error manager-field-wide" role="alert"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancelAddWebsite" class="ghost sm" type="button" data-i18n="addWebsite.cancel">取消</button>
+        <button id="submitAddWebsite" class="primary sm" type="submit" data-i18n="addWebsite.submit">添加并打开</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="routingRulesDialog" class="manager-dialog" aria-labelledby="routingRulesTitle" aria-describedby="routingRulesDescription">
     <div class="manager-shell">
       <div class="dialog-head">
         <div>
           <h3 id="routingRulesTitle" data-i18n="routing.title">网站网络规则</h3>
-          <p id="routingRulesDescription" data-i18n="routing.sub">规则只保存在这台电脑上；精确规则优先于包含子域规则。</p>
+          <p id="routingRulesDescription" data-i18n="routing.sub">规则只保存在这台电脑上；校园浏览器立即使用，外部工具需重新生成并导入配置。</p>
         </div>
         <button id="closeRoutingRulesDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:routing.close">×</button>
       </div>
@@ -516,10 +560,11 @@
           <input id="routingOriginalHost" type="hidden" />
           <input id="routingOriginalScope" type="hidden" />
           <label class="manager-field manager-field-wide">
-            <span data-i18n="routing.host">域名或子域名</span>
-            <input id="routingRuleHost" class="inp" type="text" maxlength="253" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="routingRuleError"
-                   placeholder="例如 login.microsoftonline.com" data-i18n-attr="placeholder:routing.hostPlaceholder" />
+            <span data-i18n="routing.host">网站地址或域名</span>
+            <input id="routingRuleHost" class="inp" type="text" maxlength="2048" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="routingRulePreview routingRuleError"
+                   placeholder="例如 https://hpc2login.hpc.hkust-gz.edu.cn/" data-i18n-attr="placeholder:routing.hostPlaceholder" />
           </label>
+          <p id="routingRulePreview" class="routing-rule-preview manager-field-wide" role="status" hidden></p>
           <label class="manager-field">
             <span data-i18n="routing.scope">匹配范围</span>
             <select id="routingRuleScope" class="inp">
@@ -610,6 +655,7 @@
   <script src="routing-manager.js"></script>
   <script src="certificate-manager.js"></script>
   <script src="resource-manager.js"></script>
+  <script src="add-website-dialog.js"></script>
   <script src="proxy-auth-migration.js"></script>
   <script src="school-profile-selector.js"></script>
   <script src="integration-center.js"></script>

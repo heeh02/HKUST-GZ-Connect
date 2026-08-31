@@ -772,7 +772,7 @@ class CampusBrowser {
 
   updateAllTabRoutes() {
     for (const tab of this.tabs) {
-      const url = this.currentUrl(tab) || tab.failedUrl;
+      const url = tab.failedUrl || this.currentUrl(tab);
       if (url) this.updateTabRoute(tab, url);
     }
   }
@@ -1340,14 +1340,14 @@ class CampusBrowser {
   }
 
   async setTabRoute(id, route) {
-    if (![ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
+    if (!['auto', ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
     const tab = this.tabManager.find(id);
     if (!tab || tab.kind === 'workspace' || !this.window || this.window.isDestroyed()) return false;
     const navigationIntent = this.beginNavigationIntent(tab);
     // A route-switch request invalidates the in-flight page regardless of
     // whether reconnecting/configuring the requested route later succeeds.
     this.clearCredentialCandidate(tab);
-    const url = this.currentUrl(tab) || this.homeUrl;
+    const url = tab.failedUrl || this.currentUrl(tab) || this.homeUrl;
     let host;
     try {
       host = normalizeRuleHost(new URL(url).hostname);
@@ -1355,21 +1355,21 @@ class CampusBrowser {
       return false;
     }
     if (route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
-
-    await this.routingPolicy.upsert({
-      host,
-      includeSubdomains: false,
-      route,
-    });
+    if (route === 'auto') {
+      if (typeof this.routingPolicy.remove !== 'function') return false;
+      await this.routingPolicy.remove({ host, includeSubdomains: false });
+    } else {
+      await this.routingPolicy.upsert({ host, includeSubdomains: false, route });
+    }
     if (this.routingPolicy.appliesLiveSession !== true) {
       await this.configure(this.configuredPort || 1080, { force: true });
     }
     if (!this.navigationIntentCurrent(tab, navigationIntent)) return true;
     this.clearSlowTimer(tab);
     this.updateAllTabRoutes();
-    tab.route = route;
-    tab.routeSource = 'user-exact';
-    tab.matchedRule = { host, includeSubdomains: false };
+    const resolution = this.updateTabRoute(tab, url);
+    if (resolution?.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+    if (!this.navigationIntentCurrent(tab, navigationIntent)) return true;
     if (tab.failedUrl || tab.renderingError) {
       this.navigate(url, tab);
     } else if (!tab.view.webContents.isDestroyed()) {

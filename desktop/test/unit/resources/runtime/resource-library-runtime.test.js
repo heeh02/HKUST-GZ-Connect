@@ -48,6 +48,12 @@ test('ID-only open resolves inside Main ownership and records activity after suc
   assert.equal(result.resources[0].lastOpenedAt, 10);
   assert.equal(result.resources[0].name, '邮箱');
   assert.equal(Object.hasOwn(result, 'url'), false);
+  const effective = runtime.resolveRoutes(resources, () => ({
+    route: 'campus', source: 'user-exact',
+  }));
+  assert.equal(effective[0].route, 'campus');
+  assert.equal(effective[0].routeSource, 'user-exact',
+    'resource labels must show the same effective route used by the browser');
 });
 
 test('reviewed URL additions migrate favorite recent and group IDs without losing activity', () => {

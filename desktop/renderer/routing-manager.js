@@ -11,13 +11,21 @@
 
   function normalizeRoutingHostInput(value, translate) {
     const source = String(value || '').trim();
-    if (!source || source.length > 254 || /[\u0000-\u0020\u007f:/@*?#\\]/u.test(source)
-        || source.startsWith('.') || source.endsWith('..')) {
+    if (!source || source.length > 2048 || /[\u0000-\u0020\u007f*]/u.test(source)) {
       throw new Error(translate('routing.invalidHost'));
     }
-    const withoutRootDot = source.endsWith('.') ? source.slice(0, -1) : source;
+    const explicitScheme = /^[a-z][a-z0-9+.-]*:\/\//iu.test(source) ||
+      /^(?:data|file|ftp|javascript|mailto):/iu.test(source);
+    const candidate = source.startsWith('//') ? `https:${source}`
+      : explicitScheme ? source : `https://${source}`;
     let host;
-    try { host = new URL(`https://${withoutRootDot}`).hostname.toLowerCase().replace(/\.$/, ''); }
+    try {
+      const parsed = new URL(candidate);
+      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+        throw new Error('unsafe');
+      }
+      host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+    }
     catch { throw new Error(translate('routing.invalidHost')); }
     if (!host || host.length > 253 || host.includes('..') || host.split('.').some((label) => (
       !label || label.length > 63 || !/^[a-z0-9-]+$/u.test(label)
@@ -70,6 +78,8 @@
     let started = false;
     let renderedContainer = null;
     let renderSignature = '';
+    let previewRevision = 0;
+    let previewTimer = null;
 
     const ruleKey = (rule) => `${rule.host}|${rule.includeSubdomains === true ? '1' : '0'}`;
     const currentRule = () => rules.find((rule) => (
@@ -82,6 +92,34 @@
       pendingDeleteTimer = null;
       $('deleteRoutingRule').textContent = translate('routing.delete');
     };
+
+    function clearPreview() {
+      previewRevision += 1;
+      clearTimeoutFn(previewTimer);
+      previewTimer = null;
+      $('routingRulePreview').textContent = '';
+      $('routingRulePreview').hidden = true;
+    }
+
+    async function previewTarget() {
+      const value = $('routingRuleHost').value.trim();
+      if (!value) { clearPreview(); return; }
+      const revision = ++previewRevision;
+      const result = await api.previewRoutingTarget(value).catch(() => null);
+      if (revision !== previewRevision) return;
+      if (!result?.ok || !result.target) {
+        $('routingRulePreview').textContent = translate('routing.previewInvalid');
+        $('routingRulePreview').hidden = false;
+        return;
+      }
+      const route = translate(result.resolution?.route === 'direct'
+        ? 'routing.routeDirect' : 'routing.routeCampus');
+      const source = translate(`routing.source.${result.resolution?.source || 'default'}`);
+      $('routingRulePreview').textContent = translate('routing.preview', {
+        host: result.target.host, route, source,
+      });
+      $('routingRulePreview').hidden = false;
+    }
 
     function ruleRows(items) {
       const esc = shared.escapeHtml;
@@ -174,6 +212,7 @@
       $('routingRuleRoute').value = rule.route;
       $('routingRuleError').textContent = '';
       $('routingRuleSaved').textContent = '';
+      clearPreview();
       updateFormMode();
       if (!dialog.open) dialog.showModal();
       $('routingRuleHost').focus();
@@ -234,6 +273,7 @@
       setBusy(true);
       $('routingRuleError').textContent = '';
       $('routingRuleSaved').textContent = '';
+      void previewTarget();
       try {
         const result = await api.deleteRoutingRule({
           host: rule.host, includeSubdomains: rule.includeSubdomains,
@@ -267,7 +307,8 @@
         $('routingRuleError').textContent = translate('routing.saveFailed');
         return;
       }
-      const payload = { host, includeSubdomains: scope === 'subdomains', route };
+      const payload = { target: $('routingRuleHost').value,
+        includeSubdomains: scope === 'subdomains', route };
       if ($('routingOriginalHost').value && ['exact', 'subdomains'].includes($('routingOriginalScope').value)) {
         payload.previous = { host: $('routingOriginalHost').value,
           includeSubdomains: $('routingOriginalScope').value === 'subdomains' };
@@ -296,6 +337,11 @@
       $('cancelRoutingRule').addEventListener('click', () => clearForm());
       $('deleteRoutingRule').addEventListener('click', deleteCurrentRule);
       $('routingRuleForm').addEventListener('submit', saveRule);
+      $('routingRuleHost').addEventListener('input', () => {
+        clearTimeoutFn(previewTimer);
+        previewTimer = setTimeoutFn(() => { previewTimer = null; void previewTarget(); }, 180);
+      });
+      $('routingRuleHost').addEventListener('blur', () => { void previewTarget(); });
       dialog.addEventListener('close', () => { disarmDelete(); clearForm(); });
       $('routingRuleStacks').addEventListener('click', (event) => {
         const tab = event.target.closest('[data-routing-stack-activate]');

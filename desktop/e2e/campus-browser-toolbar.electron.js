@@ -172,7 +172,7 @@ async function assertConfiguredHomeAndSuspendedRecovery(browser, preference, com
     /SOCKS5 127\.0\.0\.1:11080/,
     'toolbar metadata and the live PAC must share the Campus default');
   await waitFor(browser.window,
-    "document.getElementById('routeSelector').value === 'campus'",
+    "document.getElementById('routeSelector').value === 'auto'",
     'configured homepage route label');
   assertOnlyActiveTabAttached(browser);
 
@@ -237,6 +237,16 @@ async function assertRouteSwitch(browser) {
     "document.getElementById('routeSelector').value === 'direct'",
     'route selector to follow the tab route',
   );
+  await browser.window.webContents.executeJavaScript(`(() => {
+    const selector = document.getElementById('routeSelector');
+    selector.value = 'auto';
+    selector.dispatchEvent(new Event('change'));
+  })()`);
+  await waitForMain(() => browser.activeTab()?.route === 'campus' &&
+    browser.activeTab()?.routeSource !== 'user-exact', 'route switch back to policy');
+  await waitFor(browser.window,
+    "document.getElementById('routeSelector').value === 'auto'",
+    'route selector to display the inherited policy');
 }
 
 async function assertFindBar(browser) {

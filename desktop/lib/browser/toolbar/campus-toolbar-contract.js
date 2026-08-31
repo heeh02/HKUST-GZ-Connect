@@ -21,7 +21,7 @@ const TAB_COMMANDS = new Set(['switch-tab', 'close-tab']);
 const TEXT_LIMITS = Object.freeze({ navigate: 2048, find: 512 });
 const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
-const ROUTES = new Set(['campus', 'direct']);
+const ROUTES = new Set(['auto', 'campus', 'direct']);
 
 function normalizeToolbarCommand(rawCommand, rawValue = '') {
   if (typeof rawCommand !== 'string') return null;

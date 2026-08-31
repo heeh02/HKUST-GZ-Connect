@@ -59,6 +59,18 @@ class ResourceLibraryRuntime {
     return localizeResources(this.list(settings), locale);
   }
 
+  resolveRoutes(resources, resolveRoute) {
+    if (!Array.isArray(resources) || typeof resolveRoute !== 'function') {
+      throw new TypeError('resource route projection dependencies are incomplete');
+    }
+    return Object.freeze(resources.map((resource) => {
+      const resolution = resolveRoute(resource.url);
+      return Object.freeze({ ...resource,
+        route: resolution?.route === 'direct' ? 'direct' : 'campus',
+        routeSource: resolution?.source || 'default' });
+    }));
+  }
+
   snapshot() { return this.#reconcileActivity(null); }
 
   toggleFavorite(resourceId, resources) {
