@@ -133,6 +133,12 @@ test('card and website labels are escaped at the view boundary', () => {
   assert.match(markup, /&lt;img src=x onerror=alert\(1\)&gt;/u);
 });
 
+test('stack depth uses a bounded data attribute instead of CSP-blocked inline style', () => {
+  const markup = fixture();
+  assert.match(markup, /data-stack-depth="[01]"/u);
+  assert.doesNotMatch(markup, /\sstyle=/u);
+});
+
 test('45 reviewed sites across 12 categories stay within the projection budget', () => {
   const placements = Array.from({ length: 12 }, (_, index) => ({
     placementId: `placement-${index}`,

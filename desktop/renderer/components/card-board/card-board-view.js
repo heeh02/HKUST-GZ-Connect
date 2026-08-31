@@ -76,7 +76,7 @@
       + ` data-card-placement-id="${esc(placement.placementId)}" data-card-ref-kind="${esc(kind)}"`
       + ` data-card-ref-id="${esc(placement.card.id)}" data-card-size="${esc(placement.size)}"`
       + ` data-expanded="${expanded}" data-card-front="${front}" data-dragging="false"`
-      + ` style="--cb-stack-depth:${depth};--cb-stack-inset:${Math.min(depth, 5) * 2}px"`
+      + ` data-stack-depth="${Math.min(depth, 5)}"`
       + (context.editing ? ` draggable="true" tabindex="0" data-card-drag-handle aria-label="${dragLabel}"` : '')
       + `><header class="cb-card-header${context.editing ? ' is-draggable' : ''}">`
       + `<button class="cb-card-toggle" type="button" data-card-action="toggle"`

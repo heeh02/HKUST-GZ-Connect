@@ -60,6 +60,12 @@
   }
 
   .cb-deck.is-stacked .cb-card + .cb-card { margin-top: -7px; }
+  .cb-card[data-stack-depth="0"] { --cb-stack-inset: 0px; }
+  .cb-card[data-stack-depth="1"] { --cb-stack-inset: 2px; }
+  .cb-card[data-stack-depth="2"] { --cb-stack-inset: 4px; }
+  .cb-card[data-stack-depth="3"] { --cb-stack-inset: 6px; }
+  .cb-card[data-stack-depth="4"] { --cb-stack-inset: 8px; }
+  .cb-card[data-stack-depth="5"] { --cb-stack-inset: 10px; }
   .cb-deck.is-stacked .cb-card:not(.is-front) {
     width: calc(100% - var(--cb-stack-inset, 0px) - var(--cb-stack-inset, 0px));
     margin-inline: var(--cb-stack-inset, 0px);

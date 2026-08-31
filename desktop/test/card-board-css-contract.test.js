@@ -29,6 +29,7 @@ test('a card stack exposes layered headers and a distinct drawn front card', () 
     /\.cb-deck\.is-stacked \.cb-card \+ \.cb-card\s*\{[^}]*margin-top:\s*-\d+px/su,
     'stack members are still ordinary vertical rows');
   assert.match(css, /\.cb-card\.is-front\s*\{[^}]*z-index:\s*\d+/su);
+  assert.match(css, /\.cb-card\[data-stack-depth="5"\]\s*\{[^}]*--cb-stack-inset:\s*10px/su);
   assert.match(css, /\.cb-card-header\.is-draggable\s*\{[^}]*cursor:\s*grab/su);
   assert.doesNotMatch(css, /\.cb-drag-handle\s*\{/u,
     'the obsolete tiny drag handle is still a first-class visual control');
