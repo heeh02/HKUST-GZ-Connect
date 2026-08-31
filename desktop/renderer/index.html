@@ -113,10 +113,11 @@
                 <span class="metric-value ip" id="stIp">—</span>
                 <button id="copyTunnelIp" class="metric-copy" type="button" data-i18n="connect.copyIp">复制</button>
               </article>
-              <article class="connection-metric latency-metric">
+              <article id="latencyMetric" class="connection-metric latency-metric is-empty">
                 <span class="metric-label" data-i18n="stats.latency">当前延迟</span>
                 <span class="metric-value" id="stPing">—</span>
                 <svg id="latencySparkline" class="latency-sparkline" viewBox="0 0 120 30" role="img" aria-label="最近延迟趋势"><path d="M2 24 L118 24"/></svg>
+                <span id="latencyHint" class="metric-hint" data-i18n="connect.latencyEmpty">连接后显示延迟</span>
               </article>
               <article class="connection-metric exit-metric">
                 <span class="metric-label" data-i18n="connect.currentExit">当前出口</span>

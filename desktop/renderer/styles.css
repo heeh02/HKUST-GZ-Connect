@@ -1071,6 +1071,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .metric-copy { align-self: flex-start; padding: 2px 0; border: 0; color: var(--navy-2); background: transparent; font: inherit; font-size: 11px; cursor: pointer; }
 .latency-sparkline { width: 100%; height: 25px; overflow: visible; }
 .latency-sparkline path { fill: none; stroke: var(--ok); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.latency-metric.is-empty .latency-sparkline { display: none; }
 .network-topology {
   min-height: 0;
   padding: 16px;
@@ -1517,6 +1518,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .nav { width: 48px; min-height: 54px; border-radius: 15px; }
   .nav svg { width: 19px; height: 19px; }
   .nav-label { display: none; }
+  .nav::after {
+    content: attr(title);
+    position: absolute;
+    z-index: 20;
+    top: 50%;
+    left: calc(100% + 8px);
+    padding: 5px 8px;
+    border: 1px solid #d9e1ea;
+    border-radius: 7px;
+    color: #0b2a5b;
+    background: #fff;
+    box-shadow: 0 6px 16px rgba(10,35,75,.12);
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(2px, -50%);
+    transition: opacity 120ms, transform 120ms;
+  }
+  .nav:hover::after,
+  .nav:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
   .page { padding: 12px 9px 18px; }
   .page[data-page="connect"] { padding-top: 12px; gap: 12px; }
   .page[data-page="connect"] .hero-card { min-height: 108px; padding: 15px 16px; }

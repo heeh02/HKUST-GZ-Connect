@@ -250,12 +250,16 @@ async function reducedMotionSnapshot(window) {
 async function main() {
   await app.whenReady();
   const output = process.env.HKUSTGZ_CONTROL_SCREENSHOT_DIR || '';
-  const window = new BrowserWindow({ show: false, width: 480, height: 854,
+  const preview = process.env.HKUSTGZ_CONTROL_PREVIEW === '1';
+  const window = new BrowserWindow({
+    show: false,
+    width: preview ? 1024 : 480,
+    height: preview ? 576 : 854,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload } });
   try {
     await window.loadFile(renderer);
     await window.webContents.executeJavaScript("new Promise((resolve) => { const done = () => document.getElementById('dash').hidden ? setTimeout(done, 20) : resolve(); done(); })");
-    if (process.env.HKUSTGZ_CONTROL_PREVIEW === '1') {
+    if (preview) {
       window.show();
       await new Promise((resolve) => window.once('closed', resolve));
       return;

@@ -108,6 +108,8 @@ function renderConnect(s) {
   $('statGrid').hidden = false;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
+  $('latencyMetric').classList.toggle('is-empty', !s.connected);
+  $('latencyHint').hidden = s.connected || s.connecting;
   $('stDns').textContent = dnsModeLabel(s.dnsMode);
   if (s.connected && connectedAt) { startDur(); $('stDur').textContent = fmtDur(Date.now() - connectedAt); }
   else { stopDur(); $('stDur').textContent = '0:00'; $('stPing').textContent = '—'; $('stConn').textContent = '0'; $('appList').innerHTML = ''; }
@@ -117,7 +119,10 @@ function renderConnect(s) {
 function renderTelemetry(tele) {
   window.connectionOverview.renderTelemetry(tele, t);
   if (tele.connectedAt) connectedAt = tele.connectedAt;
-  $('stPing').textContent = (tele.latencyMs != null) ? Math.round(tele.latencyMs) + ' ms' : '—';
+  const latencyAvailable = tele.latencyMs != null;
+  $('stPing').textContent = latencyAvailable ? Math.round(tele.latencyMs) + ' ms' : '—';
+  $('latencyMetric').classList.toggle('is-empty', !latencyAvailable);
+  $('latencyHint').hidden = latencyAvailable;
   $('stConn').textContent = tele.connCount || 0;
   const list = $('appList');
   if (!tele.apps || !tele.apps.length) { list.innerHTML = `<div class="app-empty">${esc(t('stats.appsEmpty'))}</div>`; return; }

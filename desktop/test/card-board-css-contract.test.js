@@ -65,6 +65,7 @@ test('Campus Browser removes the redundant surface and keeps compact navigation 
   ), 'utf8');
   assert.match(shellCss, /\.category-workspace\s*\{[^}]*padding:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/su);
   assert.match(shellCss, /@media\s*\(max-width:\s*519px\)[\s\S]*?\.nav-label\s*\{[^}]*display:\s*none/u);
+  assert.match(shellCss, /@media\s*\(max-width:\s*519px\)[\s\S]*?\.nav::after\s*\{[^}]*content:\s*attr\(title\)/u);
 });
 
 test('compact website rows retain the approved icon and text density', () => {
