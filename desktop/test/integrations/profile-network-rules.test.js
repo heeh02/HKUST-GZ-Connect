@@ -41,7 +41,7 @@ test('one immutable rules snapshot binds Profile, account policy, CIDRs and Gate
     profileId: 'hkustgz',
     profileRevision: 1,
     rulesDigest: rules.rulesDigest,
-    domainRuleCount: 15,
+    domainRuleCount: 20,
     campusCidrCount: 2,
   });
 });

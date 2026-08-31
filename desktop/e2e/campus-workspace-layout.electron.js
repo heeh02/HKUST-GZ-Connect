@@ -202,7 +202,7 @@ async function main() {
   const courses = await window.webContents.executeJavaScript(`(() => {
     document.getElementById('primaryCatalog').click();
     [...document.querySelectorAll('.secondary-tab')]
-      .find((button) => button.textContent.includes('课程与考试')).click();
+      .find((button) => button.textContent.includes('课程、选课与成绩')).click();
     const grid = document.getElementById('serviceViewGrid');
     grid.querySelector('[data-resource-id="sis"] .resource-open').click();
     return {
@@ -216,7 +216,7 @@ async function main() {
   assert.equal(courses.ids.includes('canvas'), true);
   assert.equal(courses.ids.includes('new-student'), false);
   assert.equal(courses.serviceScreenVisible, true);
-  assert.match(courses.selectedCategory, /课程与考试/u);
+  assert.match(courses.selectedCategory, /课程、选课与成绩/u);
 
   assert.equal(controller.focus(window.webContents, 'search', '请假'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));

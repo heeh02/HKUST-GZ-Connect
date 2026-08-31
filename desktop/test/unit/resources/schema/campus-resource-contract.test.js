@@ -37,10 +37,10 @@ function resource(index, overrides = {}) {
 
 test('the sole reviewed resource document is bounded, frozen and route-compatible', () => {
   const resources = parseBuiltinResourceDocument(fs.readFileSync(sourceFile));
-  assert.equal(resources.length, 30);
+  assert.equal(resources.length, 45);
   const byId = new Map(resources.map((resource) => [resource.id, resource]));
   assert.equal(byId.get('official-portal').url, 'https://myportal.hkust-gz.edu.cn/');
-  assert.equal(byId.get('home').route, 'campus');
+  assert.equal(byId.get('home').route, 'direct');
   assert.equal(byId.get('outlook').route, 'direct');
   assert.equal(byId.get('home').category, 'tools');
   assert.equal(byId.get('new-student').category, 'newcomer');
@@ -55,7 +55,15 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
   assert.equal(byId.get('e-form').category, 'gateway');
   assert.equal(byId.get('student-request-guide').category, 'documents');
   assert.equal(byId.get('grade-reporting').category, 'staff');
+  assert.equal(byId.get('ug-credit-transfer').category, 'courses');
+  assert.equal(byId.get('thesis-exam').category, 'research');
+  assert.deepEqual(resources.filter(({ route }) => route === 'campus').map(({ id }) => id), [
+    'lims', 'rpms', 'hpc-login', 'pbms', 'e-tender',
+  ]);
+  assert.equal(resources.every(({ route }) => route === 'direct' || route === 'campus'), true);
   assert.deepEqual(byId.get('canvas').keywords, ['Canvas', '上课', '课程', '作业', '教学', '课件']);
+  assert.equal(byId.get('student-finance').keywords.includes('PGS'), true);
+  assert.equal(byId.get('thesis-exam').keywords.includes('PhD'), true);
   assert.equal(byId.get('home').schemaVersion, 1);
   assert.equal(byId.get('home').reviewed, true);
   assert.deepEqual(byId.get('home').localizedName, { zh: '学校主页', en: 'School Homepage' });
@@ -66,6 +74,10 @@ test('the sole reviewed resource document is bounded, frozen and route-compatibl
     'ug-credit-transfer', 'academic-calendar', 'academic-tools', 'lims',
     'instrument-sharing', 'rpms', 'student-finance', 'pbms', 'e-tender',
     'career-center', 'student-request-guide', 'e-form', 'edoc-verification', 'itd',
+    'my-account', 'klms', 'final-exam-schedule', 'annual-progress',
+    'quarterly-progress', 'aigc', 'hpc-docs', 'hpc-login', 'student-aid',
+    'student-dorm', 'rpg-handbook', 'pg-graduation-guide', 'microsoft-365',
+    'onedrive-sharepoint', 'teams',
   ]) assert.equal(resources.some((resource) => resource.id === id), true, id);
   assert.equal(Object.isFrozen(resources), true);
   assert.equal(Object.isFrozen(resources[0]), true);

@@ -170,9 +170,8 @@ async function run() {
     `document.querySelector('.page[data-page="settings"]')?.hidden === false`,
     'Campus Browser settings button did not open Settings');
   const portalOpen = await invoke(control, 'window.api.openCampusBrowser({})');
-  assert.equal(portalOpen.ok, false,
-    'the reviewed official portal must require campus credentials in this credential-free fixture');
-  assert.match(portalOpen.error, /账号|密码|account|password|credential/iu);
+  assert.equal(portalOpen.ok, true,
+    'the reviewed Direct official portal must remain usable without the campus Engine');
   const workspaceOpen = await invoke(control, 'window.api.openBookmarkManager()');
   assert.deepEqual(workspaceOpen, { ok: true, url: 'about:blank', route: 'direct' });
   const workspace = await waitFor(() => webContents.getAllWebContents().find((contents) => (

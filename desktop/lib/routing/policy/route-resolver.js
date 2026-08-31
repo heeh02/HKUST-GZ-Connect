@@ -13,7 +13,7 @@ const { isIsolatedNetworkHost } = require('./host-safety');
 function hostnameForUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) return '';
     return parsed.hostname.toLowerCase().replace(/\.$/, '');
   } catch {
     return '';
@@ -77,10 +77,10 @@ function resolveRouteForUrl(rawUrl, {
   const custom = resourceMatch(host, customResources);
   if (custom) return result(custom.route, 'custom-resource');
 
-  if (schoolDomainMatch(host, directPartnerDomains)) return result(ROUTE_DIRECT, 'builtin');
-  if (schoolDomainMatch(host, schoolDomains)) return result(ROUTE_CAMPUS, 'builtin');
   const server = resourceMatch(host, serverResources);
   if (server) return result(server.route, 'server-resource');
+  if (schoolDomainMatch(host, directPartnerDomains)) return result(ROUTE_DIRECT, 'builtin');
+  if (schoolDomainMatch(host, schoolDomains)) return result(ROUTE_CAMPUS, 'builtin');
   if (inheritedRoute === ROUTE_CAMPUS || inheritedRoute === ROUTE_DIRECT) {
     return result(inheritedRoute, 'inherited');
   }

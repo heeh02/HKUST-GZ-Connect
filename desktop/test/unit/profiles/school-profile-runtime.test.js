@@ -37,7 +37,7 @@ test('active context binds the single reviewed profile to the exact source confi
   assert.equal(context.profile.profileId, 'hkustgz');
   assert.equal(context.gatewayHost, 'remote.hkust-gz.edu.cn');
   assert.equal(context.gatewayPort, 443);
-  assert.equal(context.builtinResources.length, 30);
+  assert.equal(context.builtinResources.length, 45);
   assert.equal(Object.isFrozen(context.builtinResources), true);
   assert.equal(
     context.engineConfigPath,

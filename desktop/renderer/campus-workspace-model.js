@@ -6,16 +6,16 @@
   'use strict';
 
   const TASK_CATEGORIES = Object.freeze([
-    Object.freeze({ id: 'newcomer', labelKey: 'newcomer' }),
     Object.freeze({ id: 'courses', labelKey: 'courses' }),
     Object.freeze({ id: 'research', labelKey: 'research' }),
     Object.freeze({ id: 'labs', labelKey: 'labs' }),
     Object.freeze({ id: 'student-finance', labelKey: 'studentFinance' }),
     Object.freeze({ id: 'expenses', labelKey: 'expenses' }),
-    Object.freeze({ id: 'career', labelKey: 'career' }),
-    Object.freeze({ id: 'campus-life', labelKey: 'campusLife' }),
     Object.freeze({ id: 'documents', labelKey: 'documents' }),
+    Object.freeze({ id: 'campus-life', labelKey: 'campusLife' }),
+    Object.freeze({ id: 'career', labelKey: 'career' }),
     Object.freeze({ id: 'tools', labelKey: 'tools' }),
+    Object.freeze({ id: 'newcomer', labelKey: 'newcomer' }),
     Object.freeze({ id: 'staff', labelKey: 'staff' }),
     Object.freeze({ id: 'custom', labelKey: 'custom' }),
   ]);

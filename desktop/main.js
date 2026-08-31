@@ -486,7 +486,7 @@ function safeCampusResourceLibrary(settings = null) {
 const certificateTrustStore = new CampusCertificateTrustStore({
   filePath: CAMPUS_CERTIFICATE_TRUST,
 });
-let serverCampusResources = [];
+let serverCampusResources = activeSchoolProfile.mergeResourceLibrary([], []);
 const domainRoutePolicy = new DomainRoutePolicyStore({
   filePath: ROUTING_RULES,
   // Browser webRequest executes for every main-frame and subresource request.

@@ -20,9 +20,9 @@ const I18N = Object.freeze({
     mutationFailed: '操作未完成，请重试。', mutationStale: '页面状态已变化，请基于最新内容重试。',
     openedAt: '打开于 {time}', pageRange: '{start}–{end} / {total}', previousPage: '上一页', nextPage: '下一页',
     campus: '校园隧道', direct: '直连',
-    newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
-    studentFinance: '财务缴费', expenses: '报销与采购', career: '实习与就业', campusLife: '校园生活',
-    documents: '证明、毕业与离校', tools: '通用工具', staff: '教职工工具', custom: '自定义',
+    newcomer: '入学、账号与迎新', courses: '课程、选课与成绩', research: '科研、进度与计算', labs: '实验室与仪器',
+    studentFinance: '学费、奖助与津贴', expenses: '经费、采购与报销', career: '实习、就业与发展', campusLife: '住宿与空间',
+    documents: '申请、证明与毕业', tools: '协作、图书馆与 IT', staff: '教师与行政', custom: '自定义',
   }),
   en: Object.freeze({
     title: 'Campus Workspace', manage: 'Organize Favorites', clear: 'Back to Workspace',
@@ -44,9 +44,9 @@ const I18N = Object.freeze({
     mutationStale: 'The workspace changed. Retry from the latest view.',
     openedAt: 'Opened {time}', pageRange: '{start}–{end} / {total}', previousPage: 'Previous page', nextPage: 'Next page',
     campus: 'Campus Tunnel', direct: 'Direct',
-    newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
-    studentFinance: 'Student Finance', expenses: 'Expenses & Procurement', career: 'Career & Internships', campusLife: 'Campus Life',
-    documents: 'Documents & Graduation', tools: 'General Tools', staff: 'Staff Tools', custom: 'Custom',
+    newcomer: 'Onboarding & Account', courses: 'Courses, Enrollment & Grades', research: 'Research, Progress & Computing', labs: 'Labs & Instruments',
+    studentFinance: 'Fees, Aid & Studentships', expenses: 'Funding, Procurement & Expenses', career: 'Internships, Career & Development', campusLife: 'Housing & Spaces',
+    documents: 'Applications, Documents & Graduation', tools: 'Collaboration, Library & IT', staff: 'Teaching & Administration', custom: 'Custom',
   }),
 });
 

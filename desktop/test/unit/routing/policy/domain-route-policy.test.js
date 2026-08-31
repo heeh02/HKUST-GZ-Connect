@@ -35,7 +35,7 @@ test('normalizes the shared policy without retaining paths, queries, or credenti
   assert.doesNotMatch(JSON.stringify(policy), /SAMLRequest|token|secret|4433|\/path/);
 });
 
-test('browser resolution follows user, custom, school, server, then safe default', () => {
+test('browser resolution follows user, custom, reviewed exact, school, then safe default', () => {
   const options = {
     userRules: [{
       host: 'office.com', includeSubdomains: true, route: 'campus', updatedAt: 1,
@@ -48,6 +48,14 @@ test('browser resolution follows user, custom, school, server, then safe default
   assert.equal(resolveDomainRouteForUrl('https://outlook.office.com/', options).source, 'user-subdomain');
   assert.equal(resolveDomainRouteForUrl('https://library.hkust-gz.edu.cn/', options).source, 'builtin');
   assert.equal(resolveDomainRouteForUrl('https://vendor.example/', options).source, 'server-resource');
+  assert.equal(resolveDomainRouteForUrl('https://library.hkust-gz.edu.cn/', {
+    ...options,
+    serverResources: [{ url: 'https://library.hkust-gz.edu.cn/', route: 'direct' }],
+  }).source, 'server-resource');
+  assert.equal(evaluate(buildDomainRoutePac({
+    schoolDomains: ['hkust-gz.edu.cn'],
+    serverResources: [{ url: 'https://library.hkust-gz.edu.cn/', route: 'direct' }],
+  }, 6180), 'https://library.hkust-gz.edu.cn/', 'library.hkust-gz.edu.cn'), 'DIRECT');
   assert.equal(resolveDomainRouteForUrl('https://unknown.example/', options).route, 'campus');
 });
 

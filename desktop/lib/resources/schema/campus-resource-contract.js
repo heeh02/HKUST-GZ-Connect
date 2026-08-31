@@ -3,7 +3,7 @@
 const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('../../routing/policy/campus-route');
 const { isIsolatedNetworkHost } = require('../../routing/policy/host-safety');
 
-const MAX_BUILTIN_RESOURCES = 32;
+const MAX_BUILTIN_RESOURCES = 64;
 const MAX_CUSTOM_RESOURCES = 32;
 // P1 retains the 1.x visible shelf limit. Builtin and custom source documents
 // remain independently lossless up to their own limits; projection decides

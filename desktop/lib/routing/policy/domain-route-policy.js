@@ -22,8 +22,8 @@ const POLICY_SOURCES = Object.freeze([
   'user-exact',
   'user-subdomain',
   'custom-resource',
-  'builtin',
   'server-resource',
+  'builtin',
   'inherited',
   'default',
 ]);
@@ -150,9 +150,9 @@ function FindProxyForURL(url, host) {
   if (CAMPUS_PRIVATE_IPV4 && forceCampusHost(host)) return ${JSON.stringify(proxy)};
   var route = exactRoute(USER_EXACT, host)
     || suffixRoute(USER_SUBDOMAINS, host)
-    || exactRoute(CUSTOM_EXACT, host);
+    || exactRoute(CUSTOM_EXACT, host)
+    || exactRoute(SERVER_EXACT, host);
   route = route || suffixRoute(BUILTIN_SUBDOMAINS, host)
-    || exactRoute(SERVER_EXACT, host)
     || DEFAULT_ROUTE;
   return route === "direct" ? "DIRECT" : ${JSON.stringify(proxy)};
 }

@@ -30,8 +30,13 @@
       "microsoftonline-p.com",
       "msauth.net",
       "msftauth.net",
+      "cloud.microsoft",
       "office.com",
       "office.net",
+      "sharepoint.com",
+      "teams.microsoft.com",
+      "sso.hkust-gz.edu.cn",
+      "gzcas.hkust-gz.edu.cn",
       "hkust-gz.instructure.com",
       "instructure.com",
       "instructuremedia.com"
