@@ -32,7 +32,10 @@ async function waitFor(window, expression, description) {
 }
 
 async function waitForMain(condition, description) {
-  const deadline = Date.now() + 5000;
+  // Cold WebContentsView creation on shared macOS runners can exceed five
+  // seconds even for about:blank. This remains a bounded assertion and does
+  // not weaken the expected URL or tab-kind checks.
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (condition()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
