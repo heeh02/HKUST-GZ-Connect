@@ -21,11 +21,14 @@ let resources = [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
   url: `https://fixture-${index}.example.edu/`,
   description: fixtureLocale === 'en' ? 'Layout regression fixture' : '用于布局回归测试',
   route: index % 2 ? 'direct' : 'campus',
-  category: ['common', 'academic', 'campus-service', 'custom'][index % 4],
+  category: index >= 18 ? [
+    'gateway', 'courses', 'research', 'labs', 'student-finance', 'expenses',
+    'documents', 'campus-life', 'career', 'tools', 'newcomer', 'staff',
+  ][index - 18] : ['common', 'academic', 'campus-service', 'custom'][index % 4],
   keywords: [],
   favorite: index < 10,
   lastOpenedAt: index >= 10 && index < 20 ? 100 - index : null,
-  reviewed: index >= 20,
+  reviewed: index >= 18,
   builtin: false,
 }))];
 let lastOpenRequest = null;

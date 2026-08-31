@@ -1232,8 +1232,33 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   font-size: 10.5px;
 }
 .category-workspace { padding: 20px; border-radius: 18px; background: linear-gradient(145deg, #fff 0%, #fcfdff 100%); box-shadow: var(--shadow-sm); }
-.category-workspace-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.category-workspace-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .category-workspace-heading h3 { margin: 0; color: var(--navy); font-size: 17px; font-weight: 700; }
+.category-source-tabs { display: flex; align-items: center; gap: 18px; margin-top: 10px; }
+.category-source-tabs button {
+  position: relative;
+  padding: 0 0 7px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.category-source-tabs button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+.category-source-tabs button:hover { color: var(--navy-2); }
+.category-source-tabs button.active { color: var(--navy); }
+.category-source-tabs button.active::after { background: var(--navy-2); }
 .category-layout-summary { color: var(--muted); font-size: 11px; }
 .category-stack-grid { display: grid; grid-template-columns: repeat(var(--stack-columns, 2), minmax(0, 1fr)); gap: 16px; align-items: start; min-height: 0; }
 .category-stack { position: relative; min-width: 0; }
@@ -1305,7 +1330,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   transition: color 120ms;
 }
 .category-site-copy small { color: var(--muted); font-size: 11px; }
-.category-site .resource-favorite { position: static; width: 28px; height: 28px; color: #b88a20; background: transparent; font-size: 16px; }
+.category-site .resource-favorite { position: static; width: 28px; height: 28px; color: #a5afbe; background: transparent; font-size: 16px; }
+.category-site .resource-favorite:hover, .category-site .resource-favorite.active { color: #b88a20; }
 .category-empty { margin: 22px 4px; color: var(--muted); font-size: 12px; }
 .category-empty-state {
   grid-column: 1 / -1;

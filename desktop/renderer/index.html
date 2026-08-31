@@ -182,7 +182,13 @@
         </div>
         <div class="quick-card category-workspace" id="resourceShelf" data-resource-layout="compact">
           <div class="category-workspace-heading">
-            <h3 data-i18n="browser.categoriesLabel">我的网站分类</h3>
+            <div>
+              <h3 data-i18n="browser.categoriesLabel">网站分类</h3>
+              <div class="category-source-tabs" role="tablist" aria-label="分类来源" data-i18n-attr="aria-label:browser.categorySource">
+                <button id="categoryModeCatalog" class="active" type="button" role="tab" aria-selected="true" aria-controls="campusResources" data-i18n="browser.catalogMode">校园服务</button>
+                <button id="categoryModePersonal" type="button" role="tab" aria-selected="false" aria-controls="campusResources" tabindex="-1" data-i18n="browser.personalMode">我的分类</button>
+              </div>
+            </div>
             <span id="categoryLayoutSummary" class="category-layout-summary"></span>
           </div>
           <div class="resource-library-controls" hidden aria-hidden="true">
@@ -191,7 +197,7 @@
             </select>
             <div id="resourceViewChips" class="resource-view-chips" hidden aria-hidden="true"></div>
           </div>
-          <div id="campusResources" class="category-stack-grid" aria-label="我的网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
+          <div id="campusResources" class="category-stack-grid" role="tabpanel" aria-label="网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
           <details class="custom-url-details" hidden aria-hidden="true">
             <summary data-i18n="resources.openOther">打开其他网址</summary>
             <div class="custom-url-body">
@@ -648,6 +654,7 @@
   <script src="notification-drawer.js"></script>
   <script src="connection-overview.js"></script>
   <script src="stacked-card-layout.js"></script>
+  <script src="campus-workspace-model.js"></script>
   <script src="campus-category-stacks.js"></script>
   <script src="browser-data-settings.js"></script>
   <script src="browser-new-tab-settings.js"></script>

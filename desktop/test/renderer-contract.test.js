@@ -86,7 +86,7 @@ test('dashboard usability layer keeps status shortcuts feedback and recovery out
     'global shortcuts belong to the usability module');
 });
 
-test('personal categories support responsive stacks and ID-only resource actions', () => {
+test('official and personal categories share responsive stacks and ID-only resource actions', () => {
   for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
@@ -96,6 +96,8 @@ test('personal categories support responsive stacks and ID-only resource actions
   assert.match(css, /\.category-stack-grid/u);
   assert.match(css, /\.stacked-category-tab/u);
   assert.match(categoryStacksJs, /balancedPartitions/u);
+  assert.match(categoryStacksJs, /officialCategoryProjection/u);
+  assert.match(categoryStacksJs, /personalCategoryProjection/u);
   assert.match(categoryStacksJs, /data-stack-activate/u);
   assert.match(categoryStacksJs, /data-campus-id/u);
   assert.match(layoutControllerJs, /new window\.ResizeObserver/u);
@@ -106,6 +108,10 @@ test('personal categories support responsive stacks and ID-only resource actions
   const studentHomeScript = html.indexOf('<script src="student-home.js"></script>');
   assert.ok(policyScript > 0 && policyScript < controllerScript && controllerScript < studentHomeScript,
     'resource layout modules must load before Student Home');
+  const workspaceModelScript = html.indexOf('<script src="campus-workspace-model.js"></script>');
+  const categoryStacksScript = html.indexOf('<script src="campus-category-stacks.js"></script>');
+  assert.ok(workspaceModelScript > 0 && workspaceModelScript < categoryStacksScript,
+    'the shared official taxonomy must load before category stacks');
 });
 
 test('control panel has responsive wide and compact layout rules', () => {

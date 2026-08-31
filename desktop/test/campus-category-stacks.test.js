@@ -6,10 +6,31 @@ const categoryStacks = require('../renderer/campus-category-stacks');
 const { balancedPartitions, getLayoutCapacity } = categoryStacks;
 const stackedCardLayout = require('../renderer/stacked-card-layout');
 
+test('official task categories and personal folders remain separate projections', () => {
+  const resources = [
+    { id: 'portal', name: 'Portal', reviewed: true, category: 'gateway', favorite: true },
+    { id: 'sis', name: 'SIS', reviewed: true, category: 'courses', favorite: true },
+    { id: 'apr', name: 'APR', reviewed: true, category: 'research', favorite: false },
+    { id: 'custom', name: 'Custom', reviewed: false, category: 'custom', favorite: true },
+  ];
+  const translate = (key) => key;
+  const official = categoryStacks.officialCategoryProjection(resources, translate);
+  assert.deepEqual(official.map(({ id }) => id), ['gateway', 'courses', 'research']);
+  assert.deepEqual(official.map(({ items }) => items.map(({ id }) => id)), [
+    ['portal'], ['sis'], ['apr'],
+  ]);
+  const personal = categoryStacks.personalCategoryProjection(resources, [{
+    id: 'study', name: 'Study', resourceIds: ['sis'],
+  }], translate);
+  assert.deepEqual(personal.map(({ id }) => id), ['ungrouped', 'study']);
+  assert.deepEqual(personal[0].items.map(({ id }) => id), ['portal', 'custom']);
+});
+
 test('responsive capacity keeps six categories in three stable stacks before tall expansion', () => {
   assert.equal(balancedPartitions, stackedCardLayout.balancedPartitions,
     'Campus Browser and routing rules share one stack partition implementation');
   assert.deepEqual(getLayoutCapacity(1009, 640), { columns: 3, rows: 1, slotCount: 3 });
+  assert.deepEqual(getLayoutCapacity(1009, 760), { columns: 3, rows: 2, slotCount: 6 });
   assert.deepEqual(getLayoutCapacity(1009, 800), { columns: 3, rows: 2, slotCount: 6 });
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 3), [[1, 2], [3, 4], [5, 6]]);
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 6), [[1], [2], [3], [4], [5], [6]]);
@@ -91,6 +112,7 @@ test('category activation focuses the replacement heading and stable resize does
       translate: (key) => key,
       escapeHtml: (value) => String(value),
     };
+    categoryStacks.selectView('personal');
     categoryStacks.render(options);
     categoryStacks.start({ document: fakeDocument });
     assert.equal(writes, 1);

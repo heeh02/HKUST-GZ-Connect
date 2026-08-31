@@ -110,15 +110,15 @@ async function main() {
       await capture(window, output, `${label}-connect`);
 
       const browser = await shellSnapshot(window, 'browser');
-      assert.equal(browser.categoryNames.length, 6, `${label}: a category title is inaccessible`);
+      assert.equal(browser.categoryNames.length, 12, `${label}: an official category title is inaccessible`);
       assert.ok(browser.bodyOverflow <= 0 && browser.contentOverflow <= 0, `${label}: category shell overflows horizontally`);
       if (width === 1180 && height === 900) {
-        assert.equal(browser.stacks, 3, `six categories and three slots must form three stacks: ${JSON.stringify(browser)}`);
-        assert.equal(browser.layeredStacks, 3, 'every wide stack should expose two categories');
+        assert.equal(browser.stacks, 3, `twelve categories and three slots must form three stacks: ${JSON.stringify(browser)}`);
+        assert.equal(browser.layeredStacks, 3, 'every wide stack should expose its official categories');
       }
       if (width === 1180 && height === 1100) {
-        assert.equal(browser.stacks, 6, `a taller three-column window must fully unfold six categories: ${JSON.stringify(browser)}`);
-        assert.equal(browser.layeredStacks, 0);
+        assert.equal(browser.stacks, 6, `a taller three-column window must unfold into six stacks: ${JSON.stringify(browser)}`);
+        assert.equal(browser.layeredStacks, 6);
       }
       await capture(window, output, `${label}-browser`);
       const addWebsite = await addWebsiteSnapshot(window);
@@ -142,6 +142,40 @@ async function main() {
       await capture(window, output, `${label}-tower`);
       await shellSnapshot(window, 'settings'); await capture(window, output, `${label}-settings`);
     }
+    const categoryModes = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('.nav[data-page="browser"]').click();
+      document.getElementById('categoryModePersonal').click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const personal = {
+        selected: document.getElementById('categoryModePersonal').getAttribute('aria-selected'),
+        names: [...document.querySelectorAll('#campusResources .stacked-category-tab span, #campusResources .category-card > header h3')].map((node) => node.textContent),
+      };
+      document.getElementById('categoryModeCatalog').click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { personal, catalog: {
+        selected: document.getElementById('categoryModeCatalog').getAttribute('aria-selected'),
+        names: [...document.querySelectorAll('#campusResources .stacked-category-tab span, #campusResources .category-card > header h3')].map((node) => node.textContent),
+      } };
+    })()`);
+    assert.equal(categoryModes.personal.selected, 'true');
+    assert.equal(categoryModes.personal.names.length, 6, 'personal mode must keep six user folders');
+    assert.equal(categoryModes.catalog.selected, 'true');
+    assert.equal(categoryModes.catalog.names.length, 12, 'catalog mode must restore all official task categories');
+    const catalogSearch = await window.webContents.executeJavaScript(`(async () => {
+      const input = document.getElementById('resourceSearch');
+      input.value = '科研';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const result = {
+        headings: [...document.querySelectorAll('#campusResources .category-search-section h3')].map((node) => node.textContent),
+        sites: document.querySelectorAll('#campusResources .category-site').length,
+      };
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return result;
+    })()`);
+    assert.ok(catalogSearch.headings.some((name) => name.includes('科研')));
+    assert.equal(catalogSearch.sites, 1, 'official category search must return its reviewed site');
     window.setContentSize(760, 900);
     window.webContents.setZoomFactor(2);
     await new Promise((resolve) => setTimeout(resolve, 260));
