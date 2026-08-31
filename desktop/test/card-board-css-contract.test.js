@@ -35,6 +35,14 @@ test('a card stack exposes layered headers and a distinct drawn front card', () 
     'the obsolete tiny drag handle is still a first-class visual control');
 });
 
+test('card color is restrained to bounded category tones on white surfaces', () => {
+  for (const tone of ['blue', 'teal', 'gold', 'violet', 'slate']) {
+    assert.match(css, new RegExp(`data-card-tone="${tone}"`, 'u'));
+  }
+  assert.match(css, /\.cb-card-header\s*\{[^}]*linear-gradient\([^)]*#fff[^}]*--cb-tone-wash/su);
+  assert.match(css, /\.cb-category-icon\s*\{[^}]*color:\s*var\(--cb-tone\)[^}]*background:\s*var\(--cb-tone-soft\)/su);
+});
+
 test('compact website rows retain the approved icon and text density', () => {
   assert.match(css, /\.cb-site\s*\{[^}]*min-height:\s*54px/su);
   assert.match(css, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/su);

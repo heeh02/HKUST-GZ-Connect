@@ -23,10 +23,13 @@
   .cb-board-grid[data-board-columns="1"] > .cb-deck { grid-column: 1 / -1; }
 
   .cb-card {
+    --cb-tone: #1f5792;
+    --cb-tone-soft: #eaf2fb;
+    --cb-tone-wash: #f6f9fd;
     position: relative;
     min-width: 0;
     overflow: clip;
-    border: 1px solid #dbe4ef;
+    border: 1px solid #dce3ec;
     border-radius: 14px;
     background: #fff;
     transition:
@@ -34,6 +37,12 @@
       border-color 120ms cubic-bezier(.2,.8,.2,1),
       box-shadow 200ms cubic-bezier(.2,.8,.2,1);
   }
+
+  .cb-card[data-card-tone="blue"] { --cb-tone: #1d568f; --cb-tone-soft: #e9f2fb; --cb-tone-wash: #f5f9fe; }
+  .cb-card[data-card-tone="teal"] { --cb-tone: #197565; --cb-tone-soft: #e8f5f1; --cb-tone-wash: #f4fbf8; }
+  .cb-card[data-card-tone="gold"] { --cb-tone: #946b12; --cb-tone-soft: #f8edcf; --cb-tone-wash: #fffaf0; }
+  .cb-card[data-card-tone="violet"] { --cb-tone: #67538b; --cb-tone-soft: #f0ebf8; --cb-tone-wash: #faf8fd; }
+  .cb-card[data-card-tone="slate"] { --cb-tone: #506a86; --cb-tone-soft: #ebf0f5; --cb-tone-wash: #f7f9fb; }
 
   .cb-card:hover {
     z-index: 2;
@@ -48,14 +57,14 @@
 
   .cb-card.is-front {
     z-index: 4;
-    border-color: #c5d3e4;
+    border-color: var(--cb-tone);
     box-shadow: 0 1px 2px rgba(10,35,75,.04), 0 9px 24px rgba(10,35,75,.08);
   }
 
   .cb-deck.is-stacked {
     padding: 8px 7px 9px;
-    border: 1px solid #dce5f0;
-    background: linear-gradient(145deg, #f9fbfe 0%, #edf3f9 100%);
+    border: 1px solid #e1e7ef;
+    background: linear-gradient(145deg, #fff 0%, #f4f7fa 100%);
     box-shadow: 0 10px 30px rgba(10,35,75,.055);
   }
 
@@ -69,7 +78,7 @@
   .cb-deck.is-stacked .cb-card:not(.is-front) {
     width: calc(100% - var(--cb-stack-inset, 0px) - var(--cb-stack-inset, 0px));
     margin-inline: var(--cb-stack-inset, 0px);
-    background: #f6f9fd;
+    background: #fbfcfe;
     box-shadow: 0 1px 2px rgba(10,35,75,.035);
   }
   .cb-deck.is-stacked .cb-card:not(.is-front):hover {
@@ -83,7 +92,7 @@
     min-height: 43px;
     display: flex;
     align-items: center;
-    background: linear-gradient(105deg, #fffdf8 0%, #f5f8fc 88%);
+    background: linear-gradient(105deg, #fff 0%, var(--cb-tone-wash) 100%);
   }
 
   .cb-card-header.is-draggable { cursor: grab; touch-action: none; }
@@ -120,8 +129,8 @@
     display: grid;
     place-items: center;
     border-radius: 7px;
-    color: #174a86;
-    background: #e9f0f8;
+    color: var(--cb-tone);
+    background: var(--cb-tone-soft);
   }
 
   .cb-category-icon svg {

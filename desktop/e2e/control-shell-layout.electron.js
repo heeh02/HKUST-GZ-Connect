@@ -259,7 +259,7 @@ async function main() {
       return;
     }
     for (const [label, width, height] of [
-      ['minimum', 820, 540], ['default', 1024, 576], ['wide', 1280, 720],
+      ['narrow', 440, 540], ['minimum', 820, 540], ['default', 1024, 576], ['wide', 1280, 720],
       ['ultrawide', 1440, 900],
     ]) {
       await settle(window, width, height);
