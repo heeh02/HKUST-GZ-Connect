@@ -43,7 +43,7 @@ cd desktop
 npm test                          # node --test 单元测试
 npm run test:renderer-layout      # Electron 界面布局 e2e 测试
 npm audit --audit-level=high
-node --check main.js preload.js campus-preload.js lib/campus-browser.js \
+node --check main.js preload.js campus-preload.js lib/browser/session/campus-browser.js \
   renderer/campus-browser.js renderer/app.js
 
 cd ../independent
@@ -159,7 +159,7 @@ cd desktop
 npm test                          # node --test unit tests
 npm run test:renderer-layout      # Electron renderer layout e2e test
 npm audit --audit-level=high
-node --check main.js preload.js campus-preload.js lib/campus-browser.js \
+node --check main.js preload.js campus-preload.js lib/browser/session/campus-browser.js \
   renderer/campus-browser.js renderer/app.js
 
 cd ../independent

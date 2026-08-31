@@ -20,6 +20,15 @@ test('Main connection waits are event-driven, intent-bound, and disposed on quit
     'the old detached 100ms polling loop must not return');
 });
 
+test('browser readiness outlives the bounded Engine data-plane retry window', () => {
+  const match = source.match(/const BROWSER_CONNECTION_READY_TIMEOUT_MS = ([\d_]+);/u);
+  assert.ok(match, 'Main must name one reviewed Browser readiness deadline');
+  const timeoutMs = Number(match[1].replaceAll('_', ''));
+  assert.ok(timeoutMs >= 60_000 && timeoutMs <= 120_000);
+  assert.match(source,
+    /function waitForConnected\(intent, timeoutMs = BROWSER_CONNECTION_READY_TIMEOUT_MS\)/u);
+});
+
 test('settings failures publish terminal intent state to pending waiters', () => {
   const recovery = source.slice(
     source.indexOf('async function recoverConnectivity('),

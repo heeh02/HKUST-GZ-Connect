@@ -9,7 +9,8 @@
   --color-brand-gold-raised: #c79b3c;
   --color-brand-gold-soft: #ece1c6;
   --color-text: #1b2536;
-  --color-text-muted: #8793a5;
+  /* 5.1:1 on white and at least 4.7:1 on the light field surfaces. */
+  --color-text-muted: #5f6f86;
   --color-border: #e5eaf2;
   --color-field: #f4f7fb;
   --color-panel: #eef2f8;

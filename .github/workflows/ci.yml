@@ -166,7 +166,6 @@ jobs:
         run: |
           bash -n ../hkustgzconnect
           bash -n ../tools/mac-cli/proxy-credential.sh
-          bash -n scripts/install-mac.sh
           bash -n scripts/rebuild-mac.sh
           bash -n scripts/build-engine.sh
 

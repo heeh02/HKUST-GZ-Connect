@@ -34,6 +34,14 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
     'the campus browser opens the same inline rule stacks without sending page data');
   assert.match(routing, /stackLayout\.balancedPartitions/u,
     'routing rules and Campus Browser categories must share the stack partition core');
+  assert.match(routing, /role="region" aria-labelledby="\$\{headingId\}"/u,
+    'the active routing card must expose a labelled region');
+  assert.match(routing, /tabindex="-1" data-routing-heading/u,
+    'a newly activated routing card must provide a programmatic heading focus target');
+  assert.match(routing, /focus\(\{ preventScroll: true \}\)/u,
+    'routing-card activation must move focus without resetting the scroll position');
+  assert.match(routing, /renderSignature !== nextSignature/u,
+    'stable ResizeObserver notifications must not rebuild routing-card markup');
   assert.match(app, /routingManager\.start\(\{[\s\S]{0,120}setPage\('tower'\)/);
   assert.doesNotMatch(html, /id="routeDomains"/,
     'the legacy bulk domain editor must not compete with the routing manager');

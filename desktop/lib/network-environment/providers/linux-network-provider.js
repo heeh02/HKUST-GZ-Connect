@@ -24,9 +24,9 @@ function environmentProxy(environment = {}) {
   } catch { return { state: 'unknown', type: 'unknown', endpoint: null, owner: {} }; }
 }
 
-function firstCommand(run, commands, args) {
+async function firstCommand(run, commands, args) {
   for (const command of commands) {
-    const value = run(command, args);
+    const value = await run(command, args);
     if (value) return value;
   }
   return '';
@@ -36,9 +36,9 @@ function unquote(value) {
   return String(value || '').trim().replace(/^['"]|['"]$/gu, '');
 }
 
-function gnomeProxy(run) {
+async function gnomeProxy(run) {
   const commands = ['/usr/bin/gsettings', '/usr/local/bin/gsettings', 'gsettings'];
-  const output = firstCommand(run, commands, ['list-recursively', 'org.gnome.system.proxy']);
+  const output = await firstCommand(run, commands, ['list-recursively', 'org.gnome.system.proxy']);
   if (!output) return null;
   const values = new Map(String(output).split(/\r?\n/u).map((line) => {
     const match = line.match(/^(org\.gnome\.system\.proxy(?:\.[a-z]+)?)\s+([a-z-]+)\s+(.+)$/u);
@@ -61,20 +61,23 @@ function gnomeProxy(run) {
   return { state: 'unknown', type: 'unknown', endpoint: null, owner: {} };
 }
 
-function detectLinux({ interfaces, run, environment }) {
-  const routes = linuxRoutes(firstCommand(run, ['/usr/sbin/ip', '/usr/bin/ip', '/sbin/ip', 'ip'],
-    ['-j', 'route', 'show', 'default']));
+async function detectLinux({ interfaces, run, environment }) {
+  const [routeOutput, desktopProxy, processOutput] = await Promise.all([
+    firstCommand(run, ['/usr/sbin/ip', '/usr/bin/ip', '/sbin/ip', 'ip'],
+      ['-j', 'route', 'show', 'default']),
+    gnomeProxy(run),
+    firstCommand(run, ['/bin/ps', '/usr/bin/ps', 'ps'], ['-axo', 'pid=,comm=,args=']),
+  ]);
+  const routes = linuxRoutes(routeOutput);
   const systemRoute = routes[0] || null;
   const physicalRoute = routes.find((route) => interfaces.some((item) => (
     item.id === route.interfaceId && item.kind === 'physical'
   ))) || null;
-  const desktopProxy = gnomeProxy(run);
   const processProxy = environmentProxy(environment);
   const proxy = desktopProxy?.state === 'detected' ? desktopProxy :
     processProxy.state === 'detected' ? processProxy : desktopProxy || processProxy;
-  const processes = unixProcessTable(firstCommand(run, ['/bin/ps', '/usr/bin/ps', 'ps'],
-    ['-axo', 'pid=,comm=,args=']));
-  const owner = mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'linux' });
+  const processes = unixProcessTable(processOutput);
+  const owner = await mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'linux' });
   return { platform: 'linux', status: physicalRoute ? 'ready' : 'partial',
     interfaces: interfaces.map((item) => ({ ...item, default: item.id === physicalRoute?.interfaceId,
       systemDefault: item.id === systemRoute?.interfaceId })),

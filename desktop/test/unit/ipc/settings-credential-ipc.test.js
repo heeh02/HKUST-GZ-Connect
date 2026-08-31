@@ -101,6 +101,32 @@ test('underlay selection is a policy change and reconnects an active Engine', as
   assert.ok(f.calls.some(([name]) => name === 'reconnect'));
 });
 
+test('a committed policy save returns a typed warning when reconnect fails', async () => {
+  const f = fixture({
+    hasActiveEngine: () => true,
+    reconnect: async () => ({ ok: false, error: 'synthetic reconnect failure' }),
+  });
+  const result = await f.handlers.get('save')({}, { port: 6180 });
+  assert.equal(result.ok, true);
+  assert.equal(result.outcome, 'saved_reconnect_failed');
+  assert.equal(result.warning, 'synthetic reconnect failure');
+  assert.equal(result.settings.port, 6180, 'the committed settings remain authoritative');
+  assert.equal(result.reconnected, false);
+  assert.deepEqual(result.reconnect, { attempted: true, status: 'failed' });
+});
+
+test('a reconnect exception is contained after save and reported as a typed warning', async () => {
+  const f = fixture({
+    hasActiveEngine: () => true,
+    reconnect: async () => { throw new Error('synthetic reconnect exception'); },
+  });
+  const result = await f.handlers.get('save')({}, { underlaySourceAddress: '192.0.2.8' });
+  assert.equal(result.ok, true);
+  assert.equal(result.outcome, 'saved_reconnect_failed');
+  assert.equal(result.warning, 'synthetic reconnect exception');
+  assert.deepEqual(result.reconnect, { attempted: true, status: 'failed' });
+});
+
 test('an inherited compatibility choice can be acknowledged without restarting the Engine', async () => {
   const f = fixture();
   f.current = {
@@ -130,6 +156,94 @@ test('password save uses the credential transaction and clears every request ref
     ['password', 'synthetic-password', 'bob'],
   ]);
   assert.ok(f.calls.some(([name, status]) => name === 'recovery' && status === 'committed'));
+});
+
+test('unavailable protected storage stages one Profile-bound use without plaintext persistence', async () => {
+  let stagedRequest = null;
+  const cleared = [];
+  const f = fixture({
+    credentialStorageAvailable: () => false,
+    stageOneShotCredential: (request) => {
+      stagedRequest = request;
+      f.calls.push(['stage-one-shot', request.profileId, request.username, request.password]);
+      return { ok: true, revision: 7, storage: 'memory_only' };
+    },
+    clearOneShotCredential: (revision) => { cleared.push(revision); return true; },
+  });
+  const payload = {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'hkustgz',
+  };
+  const result = await f.handlers.get('save')({}, payload);
+  assert.equal(result.ok, true);
+  assert.equal(result.outcome, 'saved_memory_only');
+  assert.equal(result.credentialStorage, 'memory_only');
+  assert.equal(result.warning, 'error.passwordStoreUnavailable');
+  assert.equal(payload.password, '');
+  assert.equal(stagedRequest.password, '', 'the transient staging request is cleared');
+  assert.equal(f.calls.some(([name]) => name === 'password'), false);
+  assert.deepEqual(f.calls.filter(([name]) => name === 'remove-password'), [
+    ['remove-password'],
+  ]);
+  assert.deepEqual(cleared, []);
+});
+
+test('a failed memory-only replacement clears only its staged revision', async () => {
+  const cleared = [];
+  const f = fixture({
+    credentialStorageAvailable: () => false,
+    stageOneShotCredential: () => ({ ok: true, revision: 9, storage: 'memory_only' }),
+    clearOneShotCredential: (revision) => { cleared.push(revision); return true; },
+    removePassword: () => false,
+  });
+  const result = await f.handlers.get('save')({}, {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'hkustgz',
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'error.settingsSaveFailed');
+  assert.deepEqual(cleared, [9]);
+  assert.equal(f.calls.some(([name]) => name === 'save'), false);
+});
+
+test('a thrown credential transaction cannot leave a staged one-shot password live', async () => {
+  const cleared = [];
+  const f = fixture({
+    credentialStorageAvailable: () => false,
+    stageOneShotCredential: () => ({ ok: true, revision: 10, storage: 'memory_only' }),
+    clearOneShotCredential: (revision) => { cleared.push(revision); return true; },
+    runCredentialMutation: ({ mutate }) => { mutate(); throw new Error('transaction crashed'); },
+  });
+  const result = await f.handlers.get('save')({}, {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'hkustgz',
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(cleared, [10]);
+});
+
+test('queued credential save rechecks Profile identity before staging or persistence', async () => {
+  let activeProfileId = 'hkustgz';
+  let f;
+  f = fixture({
+    getActiveProfileId: () => activeProfileId,
+    credentialStorageAvailable: () => false,
+    stageOneShotCredential: () => {
+      f.calls.push(['stage-one-shot']);
+      return { ok: true, revision: 1, storage: 'memory_only' };
+    },
+    clearOneShotCredential: () => true,
+    runSerialTransaction: async (build) => {
+      activeProfileId = 'school-b';
+      return build().commit();
+    },
+  });
+  const payload = {
+    username: 'bob', password: 'synthetic-password', expectedProfileId: 'hkustgz',
+  };
+  const result = await f.handlers.get('save')({}, payload);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'error.profileCredentialContextChanged');
+  assert.equal(f.calls.some(([name]) => name === 'stage-one-shot' || name === 'password' ||
+    name === 'save'), false);
+  assert.equal(payload.password, '');
 });
 
 test('password plus network policy is rejected before writes and clears the payload', async () => {
@@ -221,6 +335,18 @@ test('logout stops the Engine then atomically removes credential and username', 
   assert.deepEqual(f.calls.filter(([name]) => (
     name === 'disconnect' || name === 'remove-password'
   )), [['disconnect'], ['remove-password']]);
+});
+
+test('logout clears an unconsumed one-shot credential after the Engine stops', async () => {
+  const calls = [];
+  const f = fixture({
+    credentialStorageAvailable: () => false,
+    stageOneShotCredential: () => ({ ok: true, revision: 1, storage: 'memory_only' }),
+    clearOneShotCredential: (revision) => { calls.push(['clear-one-shot', revision]); return true; },
+  });
+  const result = await f.handlers.get('logout')();
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [['clear-one-shot', undefined]]);
 });
 
 test('blocked logout retries recovery and never mutates while the block remains', async () => {

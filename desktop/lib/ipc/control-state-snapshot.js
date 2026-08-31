@@ -71,7 +71,7 @@ function createControlStateSnapshot({
   };
   if (typeof platform !== 'string' || !platform) throw new TypeError('platform is required');
 
-  const common = () => ({
+  const common = async () => ({
     ...dependencies.getStatus(),
     pacUrl: dependencies.getPacUrl(),
     locale: dependencies.getLocale(),
@@ -79,17 +79,17 @@ function createControlStateSnapshot({
     version: dependencies.getVersion(),
     update: dependencies.getUpdate(),
     authChallenge: dependencies.getAuthChallenge(),
-    networkEnvironment: dependencies.getNetworkEnvironment(),
+    networkEnvironment: await dependencies.getNetworkEnvironment(),
   });
 
-  return function controlStateSnapshot() {
+  return async function controlStateSnapshot() {
     let settings;
     try {
       settings = dependencies.loadSettings();
     } catch {
       const resources = dependencies.getFallbackResources();
       return {
-        ...common(),
+        ...await common(),
         settings: null,
         hasPassword: false,
         loggedIn: false,
@@ -107,7 +107,7 @@ function createControlStateSnapshot({
     const favoriteCount = resources.filter(({ favorite }) => favorite === true).length;
     const recentCount = resources.filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt)).length;
     return {
-      ...common(),
+      ...await common(),
       settings: publicSettings,
       hasPassword: passwordPresent,
       loggedIn: passwordPresent && dependencies.hasAccountIdentity(settings),

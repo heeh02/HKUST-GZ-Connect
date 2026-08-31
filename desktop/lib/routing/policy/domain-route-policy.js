@@ -184,10 +184,19 @@ class DomainRoutePolicyStore {
     this.serverResources = typeof serverResources === 'function'
       ? serverResources
       : () => serverResources;
+    this.cachedRules = null;
   }
 
-  list() {
-    return loadRoutingRules(this.filePath);
+  cacheRules(rules) {
+    this.cachedRules = Object.freeze(rules.map((rule) => Object.freeze({ ...rule })));
+    return this.list();
+  }
+
+  list({ reload = false } = {}) {
+    if (reload || this.cachedRules === null) {
+      this.cacheRules(loadRoutingRules(this.filePath));
+    }
+    return this.cachedRules.map((rule) => ({ ...rule }));
   }
 
   options() {
@@ -215,18 +224,20 @@ class DomainRoutePolicyStore {
     }
     const result = upsertRoutingRule(current, payload, now);
     const rules = saveRoutingRules(this.filePath, result.rules);
-    return { rule: result.rule, rules };
+    return { rule: result.rule, rules: this.cacheRules(rules) };
   }
 
   remove({ host, includeSubdomains = false } = {}) {
-    return saveRoutingRules(
+    const rules = saveRoutingRules(
       this.filePath,
       deleteRoutingRule(this.list(), host, includeSubdomains),
     );
+    return this.cacheRules(rules);
   }
 
   replace(rules) {
-    return saveRoutingRules(this.filePath, rules);
+    const saved = saveRoutingRules(this.filePath, rules);
+    return this.cacheRules(saved);
   }
 
   buildPac(port, config) {

@@ -44,9 +44,9 @@ function fixture(overrides = {}) {
   return { calls, snapshot };
 }
 
-test('projects settings, resources and key-free profile compatibility views', () => {
+test('projects settings, resources and key-free profile compatibility views', async () => {
   const { calls, snapshot } = fixture();
-  const value = snapshot();
+  const value = await snapshot();
   assert.equal(value.connected, true);
   assert.equal(value.loggedIn, true);
   assert.equal(value.hasPassword, true);
@@ -74,13 +74,13 @@ test('account labels are masked before entering ordinary Renderer state', () => 
   assert.equal(maskedAccountLabel(''), '');
 });
 
-test('settings failure returns the bounded fallback without probing credentials', () => {
+test('settings failure returns the bounded fallback without probing credentials', async () => {
   let credentialReads = 0;
   const { calls, snapshot } = fixture({
     loadSettings: () => { throw new Error('corrupt settings'); },
     hasCredential: () => { credentialReads += 1; return true; },
   });
-  const value = snapshot();
+  const value = await snapshot();
   assert.equal(value.settings, null);
   assert.equal(value.loggedIn, false);
   assert.equal(value.hasPassword, false);
@@ -90,16 +90,17 @@ test('settings failure returns the bounded fallback without probing credentials'
   assert.deepEqual(calls, [{ locale: 'zh-CN' }]);
 });
 
-test('persistent Account identity can stay logged in without a plaintext settings username', () => {
+test('persistent Account identity can stay logged in without a plaintext settings username', async () => {
   const { snapshot } = fixture({
     loadSettings: () => ({ username: '', port: 6180 }),
     hasAccountIdentity: () => true,
   });
-  assert.equal(snapshot().loggedIn, true);
-  assert.equal(snapshot().settings.username, '');
+  const value = await snapshot();
+  assert.equal(value.loggedIn, true);
+  assert.equal(value.settings.username, '');
 });
 
-test('legacy custom URL conflicts cannot make get-state fail', () => {
+test('legacy custom URL conflicts cannot make get-state fail', async () => {
   const builtins = validateBuiltinResourceDocument([{
     id: 'home',
     name: 'Home',
@@ -120,7 +121,7 @@ test('legacy custom URL conflicts cannot make get-state fail', () => {
       builtins, settings.customResources,
     ).resources,
   });
-  assert.deepEqual(snapshot().campusResources.map(({ id }) => id), ['home']);
+  assert.deepEqual((await snapshot()).campusResources.map(({ id }) => id), ['home']);
   assert.equal(customResources.length, 1, 'the compatibility view must not rewrite settings');
 });
 

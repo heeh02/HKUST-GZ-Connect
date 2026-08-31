@@ -171,12 +171,17 @@ async function exerciseIntegrationCenter(window) {
     const initialHost = document.querySelector('.routing-rule-row strong')?.textContent || '';
     document.querySelector('[data-routing-stack-activate]')?.click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const focusedHeading = document.activeElement;
+    const stableRenderChanged = window.routingManager.start().renderStacks();
     return {
       groups: accessibleGroups(),
       initialGroup,
       initialHost,
       afterGroup: document.querySelector('[data-routing-group]')?.dataset.routingGroup || '',
       afterHost: document.querySelector('.routing-rule-row strong')?.textContent || '',
+      focusedRoute: focusedHeading?.dataset.routingHeading || '',
+      stableRenderChanged,
+      focusPreserved: document.activeElement === focusedHeading,
       legacyList: !!document.getElementById('routingRuleList'),
     };
   })()`);
@@ -186,6 +191,9 @@ async function exerciseIntegrationCenter(window) {
     initialHost: 'login.example.com',
     afterGroup: 'campus',
     afterHost: '',
+    focusedRoute: 'campus',
+    stableRenderChanged: false,
+    focusPreserved: true,
     legacyList: false,
   }, 'routing stacks must lead with the populated route and keep the empty route accessible');
   const explanation = await window.webContents.executeJavaScript(`(() => {

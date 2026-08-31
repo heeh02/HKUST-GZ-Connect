@@ -109,7 +109,8 @@ test('Clash and Mihomo share one explained configuration surface', () => {
 });
 
 test('strict proxy authentication card wraps safely in narrow windows', () => {
-  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*border-radius:[^}]*background:/);
+  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*background:/);
+  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*border-radius:/);
   assert.match(css, /\.sw\s*>\s*span\s*\{[^}]*min-width:\s*0/);
   assert.match(css, /\.sw input\s*\{[^}]*flex:\s*0 0 auto/);
   assert.match(css, /\.proxy-auth-details summary\s*\{[^}]*display:\s*flex/);

@@ -8,8 +8,6 @@ const test = require('node:test');
 const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
-const connectionCss = fs.readFileSync(path.join(rendererDir, 'styles', 'connection-strip.css'), 'utf8');
-const productCss = fs.readFileSync(path.join(rendererDir, 'styles', 'product-shell.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
 const categoryStacksJs = fs.readFileSync(path.join(rendererDir, 'campus-category-stacks.js'), 'utf8');
@@ -95,8 +93,8 @@ test('personal categories support responsive stacks and ID-only resource actions
   assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
   assert.match(appJs, /window\.api\.toggleResourceFavorite\(resource\.id\)/u);
   assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
-  assert.match(productCss, /\.category-stack-grid/u);
-  assert.match(productCss, /\.stacked-category-tab/u);
+  assert.match(css, /\.category-stack-grid/u);
+  assert.match(css, /\.stacked-category-tab/u);
   assert.match(categoryStacksJs, /balancedPartitions/u);
   assert.match(categoryStacksJs, /data-stack-activate/u);
   assert.match(categoryStacksJs, /data-campus-id/u);
@@ -116,8 +114,13 @@ test('control panel has responsive wide and compact layout rules', () => {
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
   assert.match(css, /data-resource-layout="standard"/u);
   assert.match(css, /data-resource-layout="wide"/u);
-  assert.match(connectionCss, /\.page\[data-page="connect"\][^{]*\{/);
+  assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
   assert.match(appJs, /const content = document\.querySelector\('\.content'\)[\s\S]{0,220}content\.scrollTop\s*=\s*0/u);
+});
+
+test('Control Tower distinguishes a committed save from a failed reconnect', () => {
+  assert.match(appJs, /outcome === 'saved_reconnect_failed'/u);
+  assert.match(appJs, /`\$\{t\('tower\.saved'\)\} · \$\{result\.warning/u);
 });
 
 test('Campus Browser chrome keeps the minimum task set and exposes app settings', () => {
@@ -151,7 +154,9 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   assert.doesNotMatch(workspaceModel, /SCREENS[^\n]*catalog/u);
   assert.match(workspaceModel, /TASK_CATEGORIES[\s\S]*id:\s*'courses'[\s\S]*categoryOf/u);
   assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
-  assert.match(workspaceJs, /command\('toggle-favorite',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /mutate\('toggle-favorite',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /campusWorkspace\?\.request\(name, payload\)/u);
+  assert.match(workspaceJs, /workspaceMutationFeedback[\s\S]*role', 'alert'/u);
   assert.match(workspaceJs, /command\('focus-address'\)/u);
   assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
   assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
@@ -170,9 +175,9 @@ test('notifications keep a compact state summary and raw diagnostics collapsed',
 });
 
 test('connected status remains static instead of continuously repainting Electron', () => {
-  assert.match(connectionCss, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
-  assert.doesNotMatch(connectionCss, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
-  assert.doesNotMatch(`${css}\n${connectionCss}`, /@keyframes\s+ping/);
+  assert.match(css, /\.conn-status\.on\s*\{[^}]*color:\s*var\(--ok\)/);
+  assert.doesNotMatch(css, /\.conn-status\.on\s+\.dot\s*\{[^}]*animation:/);
+  assert.doesNotMatch(css, /@keyframes\s+ping/);
 });
 
 test('update download uses one stable delegated listener', () => {

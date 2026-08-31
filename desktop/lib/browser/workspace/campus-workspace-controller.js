@@ -2,6 +2,7 @@
 
 const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
+const REQUEST_ID = /^workspace-[a-z0-9](?:[a-z0-9-]{0,63})$/u;
 const GROUP_NAME_MAX = 30;
 const RESOURCE_CATEGORIES = new Set([
   'gateway', 'newcomer', 'courses', 'labs', 'student-finance', 'expenses',
@@ -17,6 +18,17 @@ const COMMANDS = new Set([
   'rename-resource',
   'delete-resource',
   'manage-rules',
+  'create-group',
+  'rename-group',
+  'delete-group',
+  'reorder-groups',
+  'move-resource',
+  'add-resources-to-group',
+]);
+const MUTATION_COMMANDS = new Set([
+  'toggle-favorite',
+  'rename-resource',
+  'delete-resource',
   'create-group',
   'rename-group',
   'delete-group',
@@ -94,6 +106,40 @@ function normalizeWorkspaceCommand(value) {
         resourceIds: Object.freeze([...source.resourceIds]) }) : null;
   }
   return null;
+}
+
+function normalizeWorkspaceRequest(value) {
+  const source = plainObject(value);
+  if (!source || Object.keys(source).sort().join(',') !== 'command,requestId' ||
+      !REQUEST_ID.test(source.requestId)) return null;
+  const command = normalizeWorkspaceCommand(source.command);
+  if (!command || !MUTATION_COMMANDS.has(command.command)) return null;
+  return Object.freeze({ requestId: source.requestId, command });
+}
+
+function resultError(value, fallback = '') {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > 300 || /[\u0000-\u001f\u007f]/u.test(text)) return fallback;
+  return text;
+}
+
+function projectWorkspaceResult(requestId, value, thrown = null) {
+  if (!REQUEST_ID.test(requestId)) {
+    throw new TypeError('Campus Workspace request identity is invalid');
+  }
+  if (!thrown && value?.ok === true) {
+    return Object.freeze({ requestId, ok: true });
+  }
+  const stale = thrown?.code === 'stale_context' || value?.stale === true;
+  return Object.freeze({
+    requestId,
+    ok: false,
+    code: stale ? 'WORKSPACE_MUTATION_STALE' : 'WORKSPACE_MUTATION_FAILED',
+    // Filesystem and transaction exceptions can contain local paths. Only an
+    // explicitly projected user message or a typed command result may cross
+    // this sandbox boundary; the renderer owns the localized fallback.
+    error: resultError(thrown?.userMessage || (!thrown && value?.error)),
+  });
 }
 
 function projectWorkspaceResources(value) {
@@ -235,10 +281,53 @@ class CampusWorkspaceController {
   focusSearch(contents) { return this.focus(contents, 'search'); }
 
   attach(contents) {
+    const pending = new Set();
+    const sendResult = (result) => {
+      if (!contents || contents.isDestroyed?.()) return false;
+      try {
+        contents.send?.('campus-workspace-result', result);
+        return true;
+      } catch {
+        return false;
+      }
+    };
     contents.on('ipc-message', (_event, channel, payload) => {
       if (channel !== 'campus-workspace-command') return;
+      const rawRequestId = plainObject(payload) && typeof payload.requestId === 'string' &&
+        REQUEST_ID.test(payload.requestId) ? payload.requestId : null;
+      if (rawRequestId) {
+        const request = normalizeWorkspaceRequest(payload);
+        if (!request) {
+          sendResult(projectWorkspaceResult(rawRequestId, {
+            ok: false, error: '',
+          }));
+          return;
+        }
+        if (pending.has(request.requestId)) {
+          sendResult(projectWorkspaceResult(request.requestId, {
+            ok: false, error: '',
+          }));
+          return;
+        }
+        pending.add(request.requestId);
+        Promise.resolve()
+          .then(() => this.onCommand(request.command))
+          .then((value) => {
+            if (contents.isDestroyed?.()) return;
+            const result = projectWorkspaceResult(request.requestId, value);
+            if (result.ok) {
+              try { this.sendState(contents); } catch {}
+            }
+            sendResult(result);
+          })
+          .catch((error) => {
+            sendResult(projectWorkspaceResult(request.requestId, null, error));
+          })
+          .finally(() => pending.delete(request.requestId));
+        return;
+      }
       const command = normalizeWorkspaceCommand(payload);
-      if (!command) return;
+      if (!command || MUTATION_COMMANDS.has(command.command)) return;
       if (command.command === 'ready') {
         this.sendState(contents);
         return;
@@ -251,6 +340,8 @@ class CampusWorkspaceController {
 module.exports = {
   CampusWorkspaceController,
   normalizeWorkspaceCommand,
+  normalizeWorkspaceRequest,
+  projectWorkspaceResult,
   projectWorkspaceGroups,
   projectWorkspaceResources,
 };

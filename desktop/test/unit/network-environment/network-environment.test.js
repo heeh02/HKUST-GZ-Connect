@@ -6,13 +6,30 @@ const { detectLinux } = require('../../../lib/network-environment/providers/linu
 const { detectMacos } = require('../../../lib/network-environment/providers/macos-network-provider');
 const { detectWindows } = require('../../../lib/network-environment/providers/windows-network-provider');
 const { mihomoOwner } = require('../../../lib/network-environment/providers/proxy/mihomo-controller-provider');
+const { createCommandRunner } = require('../../../lib/network-environment/platform/command-runner');
 const { NetworkEnvironmentService } = require('../../../lib/network-environment/runtime/network-environment-service');
 const { projectNetworkEnvironment, usableSourceAddress } =
   require('../../../lib/network-environment/schema/network-environment-schema');
 
 const address = (value) => ({ address: value, family: 4, internal: false });
 
-test('macOS separates the system TUN route from the default physical underlay', () => {
+test('platform commands complete asynchronously and collapse failures to unknown output', async () => {
+  let callback = null;
+  const run = createCommandRunner({ exec: (_command, _args, _options, done) => { callback = done; } });
+  let settled = false;
+  const pending = run('/usr/bin/example').then((value) => { settled = true; return value; });
+  await Promise.resolve();
+  assert.equal(settled, false, 'platform command execution must not block Main');
+  callback(null, 'ready\n');
+  assert.equal(await pending, 'ready\n');
+
+  const failed = createCommandRunner({ exec: (_command, _args, _options, done) => {
+    done(new Error('unavailable'), 'partial');
+  } });
+  assert.equal(await failed('/usr/bin/missing'), '');
+});
+
+test('macOS separates the system TUN route from the default physical underlay', async () => {
   const interfaces = [
     { id: 'en0', name: 'en0', kind: 'unknown', active: true, addresses: [address('10.0.0.8')] },
     { id: 'utun4', name: 'utun4', kind: 'virtual', active: true, addresses: [address('100.64.0.2')] },
@@ -28,14 +45,14 @@ test('macOS separates the system TUN route from the default physical underlay', 
       tun: { enable: false } });
     return '';
   };
-  const result = detectMacos({ interfaces, run });
+  const result = await detectMacos({ interfaces, run });
   assert.equal(result.interfaces.find(({ id }) => id === 'en0').default, true);
   assert.equal(result.interfaces.find(({ id }) => id === 'utun4').systemDefault, true);
   assert.deepEqual(result.systemProxy.owner, { provider: 'mihomo', name: 'Mihomo / Clash', mode: 'rule',
     tunEnabled: false, confidence: 'confirmed' });
 });
 
-test('Linux detects physical underlay, TUN system route, desktop proxy, and advertised Mihomo mode', () => {
+test('Linux detects physical underlay, TUN system route, desktop proxy, and advertised Mihomo mode', async () => {
   const interfaces = [
     { id: 'eth0', name: 'eth0', kind: 'physical', active: true, addresses: [address('192.0.2.8')] },
     { id: 'tun0', name: 'tun0', kind: 'virtual', active: true, addresses: [address('100.64.0.5')] },
@@ -56,14 +73,14 @@ test('Linux detects physical underlay, TUN system route, desktop proxy, and adve
     }
     return '';
   };
-  const result = detectLinux({ interfaces, run, environment: {} });
+  const result = await detectLinux({ interfaces, run, environment: {} });
   assert.equal(result.interfaces.find(({ id }) => id === 'eth0').default, true);
   assert.equal(result.interfaces.find(({ id }) => id === 'tun0').systemDefault, true);
   assert.equal(result.systemProxy.owner.mode, 'global');
   assert.equal(result.systemProxy.owner.tunEnabled, true);
 });
 
-test('Windows uses interface indices as safe IDs and separates Wintun from hardware underlay', () => {
+test('Windows uses interface indices as safe IDs and separates Wintun from hardware underlay', async () => {
   const interfaces = [
     { id: 'Ethernet 2', name: 'Ethernet 2', kind: 'unknown', active: true,
       addresses: [address('192.0.2.10')] },
@@ -85,7 +102,7 @@ test('Windows uses interface indices as safe IDs and separates Wintun from hardw
       CommandLine: 'mihomo.exe --external-controller 127.0.0.1:9090' } });
     return '';
   };
-  const result = detectWindows({ interfaces, run });
+  const result = await detectWindows({ interfaces, run });
   const physical = result.interfaces.find(({ name }) => name === 'Ethernet 2');
   const virtual = result.interfaces.find(({ name }) => name === 'Mihomo');
   assert.equal(physical.id, 'if:7');
@@ -108,8 +125,8 @@ test('public projection is bounded and resolves only usable addresses', () => {
   assert.equal(usableSourceAddress('fe80::1'), false);
 });
 
-test('Mihomo mode is not confirmed unless its advertised listener owns the system proxy port', () => {
-  const owner = mihomoOwner({ platform: 'linux', endpoint: { host: '127.0.0.1', port: 7890 },
+test('Mihomo mode is not confirmed unless its advertised listener owns the system proxy port', async () => {
+  const owner = await mihomoOwner({ platform: 'linux', endpoint: { host: '127.0.0.1', port: 7890 },
     processes: [{ executable: '/usr/bin/mihomo', args: 'mihomo --external-controller 127.0.0.1:9090' }],
     run: () => JSON.stringify({ mode: 'global', 'mixed-port': 8888, tun: { enable: true } }) });
   assert.equal(owner.confidence, 'observed');
@@ -117,7 +134,7 @@ test('Mihomo mode is not confirmed unless its advertised listener owns the syste
   assert.equal(owner.tunEnabled, null);
 });
 
-test('service emits paired Engine underlay arguments for default and explicit selections', () => {
+test('service emits paired Engine underlay arguments for default and explicit selections', async () => {
   let detections = 0;
   const service = new NetworkEnvironmentService({ platform: 'linux', now: () => 100,
     networkInterfaces: () => ({ eth0: [address('192.0.2.20')], tun0: [address('100.64.0.8')] }),
@@ -127,10 +144,34 @@ test('service emits paired Engine underlay arguments for default and explicit se
       ]); }
       return '';
     }, environment: {} });
+  await service.refresh();
   assert.deepEqual(service.engineArguments(''), ['--source-interface', 'eth0',
     '--source-address', '192.0.2.20']);
   assert.deepEqual(service.engineArguments('100.64.0.8'), ['--source-interface', 'tun0',
     '--source-address', '100.64.0.8']);
   assert.equal(service.engineArguments('192.0.2.99'), null);
   assert.equal(detections, 1, 'the bounded cache avoids repeated platform probes');
+});
+
+test('service single-flights concurrent platform refreshes', async () => {
+  let routeCalls = 0;
+  let releaseRoute;
+  const routeResult = new Promise((resolve) => { releaseRoute = resolve; });
+  const service = new NetworkEnvironmentService({
+    platform: 'linux',
+    networkInterfaces: () => ({ eth0: [address('192.0.2.20')] }),
+    run: async (_command, args) => {
+      if (args.includes('route')) { routeCalls += 1; return routeResult; }
+      return '';
+    },
+    environment: {},
+  });
+  const first = service.snapshot();
+  const second = service.snapshot();
+  await Promise.resolve();
+  assert.equal(routeCalls, 1);
+  releaseRoute(JSON.stringify([{ dst: 'default', dev: 'eth0', metric: 10 }]));
+  const [left, right] = await Promise.all([first, second]);
+  assert.deepEqual(left, right);
+  assert.equal(left.defaultRoute.interfaceId, 'eth0');
 });

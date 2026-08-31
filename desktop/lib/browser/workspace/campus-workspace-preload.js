@@ -4,10 +4,19 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const NO_VALUE = new Set(['ready', 'focus-address', 'manage-rules']);
 const RESOURCE = new Set(['open-resource', 'toggle-favorite']);
+const MUTATION = new Set([
+  'toggle-favorite', 'rename-resource', 'delete-resource', 'create-group',
+  'rename-group', 'delete-group', 'reorder-groups', 'move-resource',
+  'add-resources-to-group',
+]);
 const RESOURCE_ID = /^[a-z0-9-]{1,40}$/u;
 const GROUP_ID = /^group_[a-z0-9_-]{12,64}$/u;
+const REQUEST_ID = /^workspace-[a-z0-9](?:[a-z0-9-]{0,63})$/u;
+const REQUEST_TIMEOUT_MS = 15_000;
+let requestSequence = 0;
+const pendingRequests = new Map();
 
-function command(name, payload = {}) {
+function commandMessage(name, payload = {}) {
   let message = null;
   if (NO_VALUE.has(name)) message = { command: name };
   else if (RESOURCE.has(name) && RESOURCE_ID.test(payload.resourceId)) {
@@ -42,13 +51,89 @@ function command(name, payload = {}) {
              GROUP_ID.test(payload.groupId)) {
     message = { command: name, resourceIds: [...payload.resourceIds], groupId: payload.groupId };
   }
+  return message;
+}
+
+function requestId() {
+  requestSequence = requestSequence >= Number.MAX_SAFE_INTEGER ? 1 : requestSequence + 1;
+  return `workspace-${Date.now().toString(36)}-${requestSequence.toString(36)}`;
+}
+
+function projectResult(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      !REQUEST_ID.test(value.requestId) || typeof value.ok !== 'boolean') return null;
+  if (value.ok === true) {
+    return Object.keys(value).sort().join(',') === 'ok,requestId'
+      ? Object.freeze({ requestId: value.requestId, ok: true }) : null;
+  }
+  if (Object.keys(value).sort().join(',') !== 'code,error,ok,requestId' ||
+      !['WORKSPACE_MUTATION_FAILED', 'WORKSPACE_MUTATION_STALE'].includes(value.code) ||
+      typeof value.error !== 'string' || value.error.length > 300 ||
+      /[\u0000-\u001f\u007f]/u.test(value.error)) return null;
+  return Object.freeze({
+    requestId: value.requestId,
+    ok: false,
+    code: value.code,
+    error: value.error,
+  });
+}
+
+ipcRenderer.on('campus-workspace-result', (_event, rawResult) => {
+  const result = projectResult(rawResult);
+  if (!result) return;
+  const pending = pendingRequests.get(result.requestId);
+  if (!pending) return;
+  pendingRequests.delete(result.requestId);
+  clearTimeout(pending.timer);
+  pending.resolve(result);
+});
+
+function request(name, payload = {}) {
+  const message = commandMessage(name, payload);
+  if (!message || !MUTATION.has(name)) {
+    return Promise.resolve(Object.freeze({
+      requestId: null,
+      ok: false,
+      code: 'WORKSPACE_MUTATION_FAILED',
+      error: '',
+    }));
+  }
+  const identity = requestId();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (!pendingRequests.delete(identity)) return;
+      resolve(Object.freeze({
+        requestId: identity,
+        ok: false,
+        code: 'WORKSPACE_MUTATION_STALE',
+        error: '',
+      }));
+    }, REQUEST_TIMEOUT_MS);
+    pendingRequests.set(identity, { resolve, timer });
+    ipcRenderer.send('campus-workspace-command', {
+      requestId: identity,
+      command: message,
+    });
+  });
+}
+
+function command(name, payload = {}) {
+  const message = commandMessage(name, payload);
   if (!message) return false;
+  if (MUTATION.has(name)) {
+    // Retain the historical fire-and-forget return only for compatibility
+    // with older local automation. The product renderer uses request() and
+    // always surfaces its result.
+    request(name, payload).catch(() => {});
+    return true;
+  }
   ipcRenderer.send('campus-workspace-command', message);
   return true;
 }
 
 contextBridge.exposeInMainWorld('campusWorkspace', Object.freeze({
   command,
+  request,
   onState(callback) {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, state) => callback(state);

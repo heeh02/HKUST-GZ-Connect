@@ -5,7 +5,7 @@
   --workspace-blue: #174a86;
   --workspace-gold: #b48927;
   --workspace-ink: #25364e;
-  --workspace-muted: #76849a;
+  --workspace-muted: #5f6f86;
   --workspace-line: #dde5f0;
   --workspace-field: #f7f9fc;
 }
@@ -257,7 +257,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding: 0 30px 6px 51px;
 }
 #manageScreen .resource-manage-row { display: flex; }
-.resource-memberships { min-width: 0; overflow: hidden; color: var(--workspace-muted); font-size: 10px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.resource-memberships { min-width: 0; overflow: hidden; color: var(--workspace-muted); font-size: 10.5px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .resource-manage-action {
   min-height: 28px;
   padding: 0 8px;
@@ -284,7 +284,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .manage-folder.active .manage-folder-select { background: #e4ecf7; }
 .manage-folder-actions { display: none; align-items: center; padding-right: 4px; }
 .manage-folder:hover .manage-folder-actions, .manage-folder.active .manage-folder-actions { display: flex; }
-.manage-folder-action { min-width: 24px; height: 27px; padding: 0 4px; border: 0; border-radius: 6px; color: #6d7b8f; background: transparent; font-size: 9.5px; }
+.manage-folder-action { min-width: 24px; height: 27px; padding: 0 4px; border: 0; border-radius: 6px; color: var(--workspace-muted); background: transparent; font-size: 10.5px; }
 .manage-folder-action:hover { color: var(--workspace-navy); background: #fff; }
 .bulk-actions {
   display: grid;

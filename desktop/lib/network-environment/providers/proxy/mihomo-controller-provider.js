@@ -29,7 +29,7 @@ function flagValue(args, names) {
     ?.replace(/^(?:"|')|(?:"|')$/gu, '') || '';
 }
 
-function controllerRequest(process, run, platform) {
+async function controllerRequest(process, run, platform) {
   const socket = flagValue(process.args, ['-ext-ctl-unix', '--external-controller-unix']);
   const controller = flagValue(process.args, ['-ext-ctl', '--external-controller']);
   const curlCommands = platform === 'win32' ? ['curl.exe'] : ['/usr/bin/curl', '/usr/local/bin/curl', 'curl'];
@@ -48,14 +48,14 @@ function controllerRequest(process, run, platform) {
   }
   for (const args of requests) {
     for (const command of curlCommands) {
-      const raw = run(command, args, { timeout: 1500 });
+      const raw = await run(command, args, { timeout: 1500 });
       if (raw) return raw;
     }
   }
   return '';
 }
 
-function mihomoOwner({ processes = [], endpoint, run, platform = process.platform }) {
+async function mihomoOwner({ processes = [], endpoint, run, platform = process.platform }) {
   if (!endpoint || !LOOPBACKS.has(endpoint.host)) return null;
   const matching = processes.filter((item) => /mihomo|clash/iu.test(`${item.executable} ${item.args}`));
   const candidates = [...matching].sort((left, right) => (
@@ -70,7 +70,7 @@ function mihomoOwner({ processes = [], endpoint, run, platform = process.platfor
     mode: 'unknown', tunEnabled: null, confidence: 'observed' };
   for (const process of candidates) {
     try {
-      const config = JSON.parse(controllerRequest(process, run, platform));
+      const config = JSON.parse(await controllerRequest(process, run, platform));
       const ports = ['mixed-port', 'port', 'socks-port'].map((key) => Number(config[key]))
         .filter((port) => Number.isInteger(port) && port > 0);
       if (!ports.includes(endpoint.port)) continue;

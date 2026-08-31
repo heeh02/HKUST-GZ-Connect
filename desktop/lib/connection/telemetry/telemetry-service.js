@@ -35,6 +35,7 @@ class TelemetryService {
     this.runId = 0;
     this.generation = null;
     this.busy = null;
+    this.healthInFlight = null;
     this.lastAppsAt = -Infinity;
     this.lastLatencyAt = -Infinity;
     this.lastHealthAt = -Infinity;
@@ -66,10 +67,39 @@ class TelemetryService {
 
   launchPump(runId, generation) {
     Promise.resolve().then(() => this.pump(runId, generation)).catch((error) => {
-      this.lastError = error;
-      if (this.onError) {
-        try { this.onError(error, generation); } catch {}
+      this.reportError(error, generation);
+    });
+  }
+
+  reportError(error, generation) {
+    this.lastError = error;
+    if (this.onError) {
+      try { this.onError(error, generation); } catch {}
+    }
+  }
+
+  launchHealth(runId, generation, timestamp) {
+    if (this.healthInFlight || typeof this.collectHealth !== 'function') return;
+    const record = { runId, generation };
+    this.healthInFlight = record;
+    // Mark the attempt at launch so a slow probe cannot be duplicated by the
+    // normal telemetry cadence. The probe owns its own bounded deadline.
+    this.lastHealthAt = timestamp;
+    Promise.resolve().then(() => this.collectHealth(generation)).then((health) => {
+      if (!this.current(runId, generation) || this.healthInFlight !== record) return;
+      if (health && typeof health.kind === 'string') {
+        this.snapshot.tunnelHealth = health.kind;
+        this.snapshot.failedHealthTargetCount = Array.isArray(health.failedTargets)
+          ? Math.min(8, health.failedTargets.length)
+          : 0;
       }
+      if (typeof this.emit === 'function') {
+        this.emit({ ...this.snapshot, apps: [...this.snapshot.apps] }, generation);
+      }
+    }, (error) => {
+      if (this.current(runId, generation)) this.reportError(error, generation);
+    }).finally(() => {
+      if (this.healthInFlight === record) this.healthInFlight = null;
     });
   }
 
@@ -117,15 +147,7 @@ class TelemetryService {
       const healthInterval = visible ? VISIBLE_HEALTH_REFRESH_MS : HIDDEN_HEALTH_REFRESH_MS;
       if (typeof this.collectHealth === 'function' &&
           timestamp - this.lastHealthAt >= healthInterval) {
-        const health = await this.collectHealth(generation);
-        if (!this.current(runId, generation)) return;
-        if (health && typeof health.kind === 'string') {
-          this.snapshot.tunnelHealth = health.kind;
-          this.snapshot.failedHealthTargetCount = Array.isArray(health.failedTargets)
-            ? Math.min(8, health.failedTargets.length)
-            : 0;
-        }
-        this.lastHealthAt = timestamp;
+        this.launchHealth(runId, generation, timestamp);
       }
 
       if (this.current(runId, generation) && typeof this.emit === 'function') {
@@ -143,6 +165,7 @@ class TelemetryService {
     if (this.timer) this.clearTimeoutFn(this.timer);
     this.timer = null;
     this.busy = null;
+    this.healthInFlight = null;
     this.lastAppsAt = -Infinity;
     this.lastLatencyAt = -Infinity;
     this.lastHealthAt = -Infinity;

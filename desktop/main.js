@@ -13,9 +13,13 @@ const {
   credentialLoadErrorKey,
   hasStoredPassword,
   loadPasswordResult: readPasswordResult,
+  protectedStorageAvailable,
   restorePasswordSnapshot,
   savePassword: writePassword,
 } = require('./lib/persistence/credentials/credential-store');
+const {
+  OneShotVpnCredentialBroker,
+} = require('./lib/persistence/credentials/one-shot-vpn-credential');
 const {
   recoverCredentialSettingsTransaction,
   runCredentialSettingsMutation,
@@ -113,6 +117,7 @@ const activeSchoolProfile = createPreReadySchoolProfileController({
   packageRoot: __dirname, isPackaged: app.isPackaged,
   resourcesPath: process.resourcesPath, desktopDir: __dirname,
 });
+const oneShotVpnCredential = new OneShotVpnCredentialBroker();
 const activeContextLease = new ActiveContextLease(activeSchoolProfile.activeContextBinding());
 const preReadyStorage = activeSchoolProfile.withProfileDocument((profile) => (
   selectProfileWorkspacePreReadyStorage({ userData: DATA, profile })
@@ -175,6 +180,11 @@ const connectionState = new ConnectionStateMachine();
 const connectionWaitRegistry = new ConnectionWaitRegistry();
 connectionWaitRegistry.observe(connectionState.snapshot());
 const MAX_ATTEMPTS = 3;
+// The reviewed Engine can spend up to roughly 52 seconds in bounded Modern
+// data-plane setup retries after authentication. Browser readiness must not
+// report a timeout while that same, still-current attempt can legitimately
+// reach listener_ready.
+const BROWSER_CONNECTION_READY_TIMEOUT_MS = 75_000;
 let connectedAt = null;
 let telemetryCoordinator = null;
 let activeProxyCredential = null;
@@ -328,13 +338,35 @@ function assertSettingsPersistenceAvailable() {
     }
   }
 }
+let routingSettingsSnapshot = null;
+function routingSettings() {
+  if (!routingSettingsSnapshot) routingSettingsSnapshot = loadSettingsOrReport();
+  return routingSettingsSnapshot;
+}
 function saveSettings(settings) {
   assertSettingsPersistenceAvailable();
-  return persistenceRuntime.saveSettings(settings);
+  const saved = persistenceRuntime.saveSettings(settings);
+  routingSettingsSnapshot = saved;
+  return saved;
 }
 function savePassword(pw, username) { return persistenceRuntime.saveCredential(pw, username); }
-function hasStoredCredential() {
+function hasPersistentCredential() {
   return !credentialTransactionBlocked && persistenceRuntime.hasCredential();
+}
+function hasOneShotCredential() {
+  try {
+    return oneShotVpnCredential.has({
+      profileId: activeSchoolProfile.activeContextBinding().profileId,
+    });
+  } catch {
+    return false;
+  }
+}
+function hasStoredCredential() {
+  return hasPersistentCredential() || hasOneShotCredential();
+}
+function hasCredentialForCurrentSession() {
+  return hasStoredCredential() || engineSupervisor.hasActive;
 }
 function syncRecoveryNotice(emitState = true) {
   state.notice = [settingsRecoveryNoticeText, credentialRecoveryNoticeText]
@@ -456,8 +488,12 @@ const certificateTrustStore = new CampusCertificateTrustStore({
 let serverCampusResources = [];
 const domainRoutePolicy = new DomainRoutePolicyStore({
   filePath: ROUTING_RULES,
-  customResources: () => loadSettingsOrReport().customResources,
-  schoolDomains: () => loadSettingsOrReport().routeDomains,
+  // Browser webRequest executes for every main-frame and subresource request.
+  // The app is the sole settings writer, so an immutable snapshot updated by
+  // saveSettings() avoids re-reading the complete Profile/Account/Workspace
+  // authority (and Windows ACLs) on that hot path.
+  customResources: () => routingSettings().customResources,
+  schoolDomains: () => routingSettings().routeDomains,
   directPartnerDomains: () => activeSchoolProfile.directPartnerDomains,
   serverResources: () => serverCampusResources,
 });
@@ -575,7 +611,7 @@ const connectivityRecovery = new ConnectivityRecovery({
 const { monitor: networkStatusMonitor, startup: networkStartupCoordinator, environment: networkEnvironmentService } = createNetworkStartupSystem({
   appIsPackaged: app.isPackaged, environment: process.env, dataDirectory: DATA, fileSystem: fs,
   isOnline: () => electronNet.isOnline(), onOffline: () => connectivityRecovery.networkOffline(),
-  onOnline: () => connectivityRecovery.networkOnline(), shouldAutoConnect: () => { const s = loadSettingsOrReport(); return s.autoConnect !== false && Boolean(s.username) && hasStoredCredential(); },
+  onOnline: () => connectivityRecovery.networkOnline(), shouldAutoConnect: () => { const s = loadSettingsOrReport(); return s.autoConnect !== false && Boolean(s.username) && hasPersistentCredential(); },
   pauseOffline: () => { connectivityRecovery.cancel(); const intent = connectionState.beginConnectIntent(); return connectivityRecovery.networkOffline(intent) ? intent : null; },
   resumeInitialOffline: (intent) => connectivityRecovery.initialNetworkOnline(intent), connect: () => connect(), isQuitting: () => desktopShell?.isQuitting === true,
 });
@@ -726,6 +762,14 @@ async function connectOnce(isRetry, intent) {
   if (!connectionState.beginConnectAttempt(intent, { isRetry })) {
     return { ok: false, stale: true };
   }
+  // Platform inspection launches route/proxy/process helpers. Run it
+  // asynchronously before the final no-yield settings/credential snapshot so
+  // Electron's Main loop stays responsive and the Engine receives a current
+  // underlay binding without weakening the final spawn boundary below.
+  let underlaySelection = '';
+  try { underlaySelection = loadSettingsOrReport().underlaySourceAddress; } catch {}
+  await networkEnvironmentService.refresh(underlaySelection);
+  if (!connectionState.canContinue(intent)) return { ok: false, stale: true };
   if (credentialTransactionBlocked) {
     const recovery = retryCredentialTransactionRecovery();
     if (recovery.status === 'blocked') {
@@ -782,7 +826,9 @@ async function connectOnce(isRetry, intent) {
   const engineConfig = engineConfigBinding.path;
   try {
     s = loadSettings();
-    const credentialOwner = persistenceRuntime.openCredential();
+    const credentialOwner = persistenceRuntime.openCredential() || oneShotVpnCredential.open({
+      profileId: activeSchoolProfile.activeContextBinding().profileId,
+    });
     if (credentialOwner) {
       try {
         credentialOwner.withStrings((account, password) => {
@@ -846,7 +892,15 @@ async function connectOnce(isRetry, intent) {
   }
   let resolvedBin;
   try { resolvedBin = fs.realpathSync(bin); } catch { resolvedBin = path.resolve(bin); }
-  if (!launch.synthetic) killStrayEngines(resolvedBin);
+  if (!launch.synthetic && killStrayEngines(resolvedBin) !== true) {
+    proxyCredential?.destroy();
+    removeExternalProxySidecar();
+    pw = '';
+    return failConnectionStart(intent, 'error.engineCleanupUnconfirmed', {
+      ok: false,
+      cleanupUnconfirmed: true,
+    });
+  }
   let diagnosticTail = '';
   let engineGeneration = null;
   let ownedEngine = null;
@@ -929,7 +983,16 @@ async function connectOnce(isRetry, intent) {
   if (!launch.synthetic && process.platform === 'win32' &&
       Number.isInteger(child.pid) && child.pid > 0) {
     ownedEngine = { pid: child.pid, executablePath: resolvedBin };
-    try { writeEngineOwnerRecord(ENGINE_OWNER, ownedEngine); } catch {}
+    try {
+      writeEngineOwnerRecord(ENGINE_OWNER, ownedEngine);
+    } catch {
+      clearActiveProxyCredential(engineGeneration);
+      removeExternalProxySidecar();
+      state.lastError = t('error.engineCleanupUnconfirmed');
+      emit();
+      await engineSupervisor.stop({ graceMs: 0, forceWaitMs: STOP_FORCE_WAIT_MS });
+      return { ok: false, cleanupUnconfirmed: true };
+    }
   }
   let browserActivationInFlight = null;
   const finishConnected = () => {
@@ -1113,7 +1176,7 @@ async function disconnect() {
   return { ok: result.ok };
 }
 
-function waitForConnected(intent, timeoutMs = 45000) {
+function waitForConnected(intent, timeoutMs = BROWSER_CONNECTION_READY_TIMEOUT_MS) {
   return connectionWaitRegistry.wait(intent, { timeoutMs });
 }
 
@@ -1301,7 +1364,7 @@ const profileSwitching = createMainProfileSwitchComposition({
     clearProxyCredential: clearActiveProxyCredential, clearConnectionPresentation,
     ensureEngineStopped, cleanupOrphanedEngine: () => killStrayEngines(enginePath()),
     revokeProxyAccess: revokeExternalProxyAccess,
-    clearServerState: () => { serverCampusResources = []; state.lastError = null;
+    clearServerState: () => { oneShotVpnCredential.clear(); serverCampusResources = []; state.lastError = null;
       state.browserNotice = null; clearConnectionPresentation(); return true; },
     closeLog: () => logWriter?.close().catch(reportLogFailure),
   },
@@ -1372,7 +1435,9 @@ function trustedHandle(channel, handler) {
 
 const controlStateSnapshot = createControlStateSnapshot({
   getStatus: statusSnapshot, loadSettings: loadSettingsOrReport,
-  hasCredential: hasStoredCredential, hasAccountIdentity: () => persistenceRuntime.hasAccountIdentity(),
+  hasCredential: hasCredentialForCurrentSession,
+  hasAccountIdentity: () => persistenceRuntime.hasAccountIdentity() ||
+    hasOneShotCredential() || engineSupervisor.hasActive,
   getPacUrl: pacUrl, getLocale: () => locale, platform: process.platform,
   getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
   getResources: safeCampusResourceLibrary, getResourceGroups: () => resourceLibraryRuntime.listGroups(), getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
@@ -1435,13 +1500,16 @@ registerSettingsCredentialIpc({
   reconnect,
   disconnect,
   getActiveProfileId: () => activeSchoolProfile.activeContextBinding().profileId,
+  credentialStorageAvailable: () => protectedStorageAvailable(safeStorage, process.platform),
+  stageOneShotCredential: (request) => oneShotVpnCredential.stage(request),
+  clearOneShotCredential: (revision) => oneShotVpnCredential.clear(revision),
 });
 registerCoreControlIpc({
   register: trustedHandle,
   getState: controlStateSnapshot,
   getLoginAccount: () => {
     try {
-      if (hasStoredCredential()) return { ok: false, username: '' };
+      if (hasCredentialForCurrentSession()) return { ok: false, username: '' };
       return { ok: true, username: loadSettingsOrReport().username };
     } catch { return { ok: false, username: '' }; }
   },
@@ -1502,6 +1570,7 @@ desktopShell = new DesktopShell({
   rememberCloseAction,
   disposeLifecycle: () => {
     schoolProfileOnboarding.cancel(); externalIntegrationRuntime.cancel();
+    oneShotVpnCredential.clear();
     networkStartupCoordinator.dispose(); connectionWaitRegistry.dispose();
     connectivityRecovery.dispose();
     networkStatusMonitor.dispose();

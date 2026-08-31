@@ -42,15 +42,23 @@ function systemProxy(output) {
   return { state: 'disabled', type: 'unknown', endpoint: null, owner: {} };
 }
 
-function detectMacos({ interfaces, run }) {
-  const systemDefaultId = defaultInterface(run('/sbin/route', ['-n', 'get', 'default']));
-  const names = hardwareNames(run('/usr/sbin/networksetup', ['-listallhardwareports']));
-  const routeInterfaces = defaultInterfaces(run('/usr/sbin/netstat', ['-rn', '-f', 'inet']));
+async function detectMacos({ interfaces, run }) {
+  const [defaultRouteOutput, hardwareOutput, routesOutput, proxyOutput, processOutput] =
+    await Promise.all([
+      run('/sbin/route', ['-n', 'get', 'default']),
+      run('/usr/sbin/networksetup', ['-listallhardwareports']),
+      run('/usr/sbin/netstat', ['-rn', '-f', 'inet']),
+      run('/usr/sbin/scutil', ['--proxy']),
+      run('/bin/ps', ['-axo', 'pid=,comm=,args=']),
+    ]);
+  const systemDefaultId = defaultInterface(defaultRouteOutput);
+  const names = hardwareNames(hardwareOutput);
+  const routeInterfaces = defaultInterfaces(routesOutput);
   const physicalDefaultId = routeInterfaces.find((id) => names.has(id)) ||
     (names.has(systemDefaultId) ? systemDefaultId : '');
-  const proxy = systemProxy(run('/usr/sbin/scutil', ['--proxy']));
-  const processes = unixProcessTable(run('/bin/ps', ['-axo', 'pid=,comm=,args=']));
-  const owner = mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'darwin' });
+  const proxy = systemProxy(proxyOutput);
+  const processes = unixProcessTable(processOutput);
+  const owner = await mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'darwin' });
   const projected = interfaces.map((item) => ({ ...item,
     name: names.get(item.id) || item.name,
     kind: names.has(item.id) ? 'physical' : item.kind,

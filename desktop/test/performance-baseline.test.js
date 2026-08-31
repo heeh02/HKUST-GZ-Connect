@@ -26,7 +26,9 @@ test('hidden idle baseline has no application enumeration and one bounded timer'
   const result = await measureHiddenTelemetryIdle({ simulatedIdleMs: 60_000 });
   assert.deepEqual(result, {
     simulatedIdleMs: 60_000,
-    pumpRuns: 7,
+    // Detached health completion emits its updated status without delaying the
+    // seven normal telemetry pumps.
+    pumpRuns: 10,
     applicationEnumerationCalls: 0,
     latencySamples: 3,
     healthSamples: 3,

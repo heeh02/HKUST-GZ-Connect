@@ -68,6 +68,8 @@
     let pendingDeleteTimer = null;
     let observer = null;
     let started = false;
+    let renderedContainer = null;
+    let renderSignature = '';
 
     const ruleKey = (rule) => `${rule.host}|${rule.includeSubdomains === true ? '1' : '0'}`;
     const currentRule = () => rules.find((rule) => (
@@ -98,26 +100,46 @@
     function renderStack(stack, index) {
       const esc = shared.escapeHtml;
       const active = stack.find(({ id }) => id === preferredRoute) || stack[0];
+      const panelId = `routing-stack-panel-${index}`;
+      const headingId = `routing-stack-heading-${index}`;
       const tabs = stack.filter(({ id }) => id !== active.id).map((group) => (
-        `<button class="stacked-category-tab" type="button" data-routing-stack-activate="${group.id}" aria-pressed="false">`
+        `<button class="stacked-category-tab" type="button" data-routing-stack-activate="${group.id}" aria-controls="${panelId}">`
         + `<span>${esc(group.name)}</span><small>${group.items.length}</small></button>`
       )).join('');
-      return `<section class="category-stack${stack.length > 1 ? ' layered' : ''}" data-routing-stack-index="${index}">`
+      return `<section class="category-stack${stack.length > 1 ? ' layered' : ''}" data-routing-stack-index="${index}" role="group" aria-labelledby="${headingId}">`
         + `<div class="category-stack-tabs">${tabs}</div>`
-        + `<article class="category-card routing-rule-card" data-routing-group="${active.id}">`
-        + `<header><h3>${esc(active.name)}</h3><span>${active.items.length}</span></header>`
+        + `<article id="${panelId}" class="category-card routing-rule-card" data-routing-group="${active.id}" role="region" aria-labelledby="${headingId}">`
+        + `<header><h3 id="${headingId}" tabindex="-1" data-routing-heading="${active.id}">${esc(active.name)}</h3><span>${active.items.length}</span></header>`
         + `<div class="routing-rule-stack-list">${ruleRows(active.items)}</div></article></section>`;
     }
 
-    function renderStacks() {
+    function focusRoutingHeading(container, routeId) {
+      if (!routeId) return false;
+      const heading = [...container.querySelectorAll('[data-routing-heading]')]
+        .find((candidate) => candidate.dataset.routingHeading === routeId);
+      if (!heading) return false;
+      heading.focus({ preventScroll: true });
+      return true;
+    }
+
+    function renderStacks({ focusRouteId = null } = {}) {
       const container = $('routingRuleStacks');
       const groups = routingGroups(rules, translate);
       const slots = routeStackSlots(container.getBoundingClientRect().width);
+      const markup = stackLayout.balancedPartitions(groups, slots)
+        .map(renderStack).join('');
+      const nextSignature = `${slots}\u0000${busy ? 'busy' : 'ready'}\u0000${markup}`;
       container.style.setProperty('--stack-columns', String(slots));
       container.dataset.stackColumns = String(slots);
       container.setAttribute('aria-busy', String(busy));
-      container.innerHTML = stackLayout.balancedPartitions(groups, slots)
-        .map(renderStack).join('');
+      const changed = renderedContainer !== container || renderSignature !== nextSignature;
+      if (changed) {
+        container.innerHTML = markup;
+        renderedContainer = container;
+        renderSignature = nextSignature;
+      }
+      if (focusRouteId) focusRoutingHeading(container, focusRouteId);
+      return changed;
     }
 
     function updateFormMode() {
@@ -281,7 +303,7 @@
           preferredRoute = tab.dataset.routingStackActivate;
           routePreferenceChosen = true;
           $('routingRuleStacks').classList.add('reordering');
-          renderStacks();
+          renderStacks({ focusRouteId: preferredRoute });
           root.setTimeout(() => $('routingRuleStacks').classList.remove('reordering'), 280);
           return;
         }

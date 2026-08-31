@@ -625,6 +625,9 @@ function createFakeBrowser(extra = {}) {
   function makeSession(name) {
     const routeSession = new EventEmitter();
     routeSession.name = name;
+    routeSession.webRequest = {
+      onBeforeRequest: (_filter, handler) => { routeSession.beforeRequest = handler; },
+    };
     routeSession.setProxy = async () => {};
     routeSession.forceReloadProxyConfig = async () => {};
     routeSession.closeAllConnections = async () => {};
@@ -658,7 +661,7 @@ function createFakeBrowser(extra = {}) {
     isDestroyed() { return false; }
     canGoBack() { return false; }
     canGoForward() { return false; }
-    reload() {}
+    reload() { this.reloadCount = (this.reloadCount || 0) + 1; }
     close() {}
     focus() { this.focused = true; }
     getZoomFactor() { return this.zoom || 1; }
@@ -691,7 +694,17 @@ function createFakeBrowser(extra = {}) {
     constructor() {
       super();
       this.webContents = new FakeWebContents();
-      this.contentView = { addChildView: () => {}, removeChildView: () => {} };
+      const children = [];
+      this.contentView = {
+        children,
+        addChildView: (view) => {
+          if (!children.includes(view)) children.push(view);
+        },
+        removeChildView: (view) => {
+          const index = children.indexOf(view);
+          if (index !== -1) children.splice(index, 1);
+        },
+      };
       this.destroyed = false;
     }
     isDestroyed() { return this.destroyed; }
@@ -751,7 +764,7 @@ test('the plus button opens a genuine blank tab on the non-network direct route'
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
 });
 
-test('a reviewed portal remains Home while the plus button opens the configured page', async () => {
+test('a reviewed portal remains Home while the plus page follows the live PAC policy', async () => {
   const portal = 'https://portal.example.edu/';
   let newTabUrl = 'www.bing.com';
   const { browser } = createFakeBrowser({
@@ -765,7 +778,14 @@ test('a reviewed portal remains Home while the plus button opens the configured 
   assert.equal(browser.tabs.length, 2);
   assert.equal(browser.activeTab().kind, undefined);
   assert.equal(browser.currentUrl(browser.activeTab()), 'https://www.bing.com/');
-  assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS,
+    'an unknown configured homepage uses the same fail-safe default as the PAC');
+  assert.equal(browser.activeTab().routeSource, 'default');
+  browser.activeTab().view.webContents.emit(
+    'did-navigate', {}, browser.activeTab().view.webContents.getURL(), 200,
+  );
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS,
+    'a real navigation commit cannot flip the toolbar from a requested fake route');
   browser.handleToolbarCommand({ command: 'home', value: '' });
   await nextImmediate();
   assert.equal(browser.currentUrl(browser.activeTab()), portal);
@@ -947,6 +967,95 @@ test('resize work is coalesced and only the visible tab is laid out', async () =
   assert.equal(second.view.visible, false);
   assert.equal(first.view.boundsCalls.length, firstLayouts + 1,
     'a hidden tab receives current bounds immediately before it becomes visible');
+});
+
+test('only the selected WebContentsView is attached to the native accessibility tree', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const first = browser.activeTab();
+  const second = browser.createTab('library.example.internal', ROUTE_CAMPUS);
+
+  assert.deepEqual(browser.window.contentView.children, [second.view]);
+  assert.equal(first.view.webContents.isDestroyed(), false,
+    'detaching an inactive tab retains its renderer and browsing state');
+  assert.equal(first.view.webContents.getURL(), 'https://portal.example.internal/');
+
+  assert.equal(browser.switchTab(first.id), true);
+  assert.deepEqual(browser.window.contentView.children, [first.view]);
+  assert.equal(second.view.webContents.isDestroyed(), false);
+  assert.equal(second.view.webContents.getURL(), 'https://library.example.internal/');
+
+  assert.equal(browser.closeTab(first.id), true);
+  assert.deepEqual(browser.window.contentView.children, [second.view]);
+});
+
+test('address navigation and reload resume a suspended fail-closed Session first', async () => {
+  let readyCalls = 0;
+  const { browser } = createFakeBrowser({
+    ensureCampusReady: async () => { readyCalls++; return true; },
+  });
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+
+  await browser.suspendRoutingPolicy();
+  assert.equal(browser.routingSuspended, true);
+  assert.equal(browser.routingRequestsBlocked, true);
+  browser.handleToolbarCommand({ command: 'navigate', value: 'library.example.internal' });
+  for (let index = 0; index < 4; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assert.equal(tab.view.webContents.getURL(), 'https://library.example.internal/');
+
+  await browser.suspendRoutingPolicy();
+  const reloads = tab.view.webContents.reloadCount || 0;
+  browser.handleToolbarCommand({ command: 'reload', value: '' });
+  for (let index = 0; index < 4; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assert.equal(tab.view.webContents.reloadCount, reloads + 1);
+  assert.ok(readyCalls >= 3, 'open, address navigation, and reload establish Campus readiness');
+});
+
+test('a failed readiness check leaves suspended navigation fail closed', async () => {
+  let ready = true;
+  const { browser } = createFakeBrowser({ ensureCampusReady: async () => ready });
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+  const originalUrl = tab.view.webContents.getURL();
+  await browser.suspendRoutingPolicy();
+  ready = false;
+
+  browser.handleToolbarCommand({ command: 'navigate', value: 'library.example.internal' });
+  for (let index = 0; index < 3; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, true);
+  assert.equal(browser.routingRequestsBlocked, true);
+  assert.equal(tab.view.webContents.getURL(), originalUrl);
+});
+
+test('a newer Home action invalidates an older address navigation waiting for readiness', async () => {
+  let releaseDelayedReadiness;
+  let delayNextReadiness = false;
+  const delayedReadiness = new Promise((resolve) => { releaseDelayedReadiness = resolve; });
+  const homeUrl = 'https://home.example.internal/';
+  const { browser } = createFakeBrowser({
+    homeUrl,
+    ensureCampusReady: async () => delayNextReadiness ? delayedReadiness : true,
+  });
+  await browser.open(homeUrl, 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+
+  delayNextReadiness = true;
+  browser.handleToolbarCommand({ command: 'navigate', value: 'older.example.internal' });
+  await nextImmediate();
+  delayNextReadiness = false;
+  browser.handleToolbarCommand({ command: 'home', value: '' });
+  for (let index = 0; index < 3; index += 1) await nextImmediate();
+  assert.equal(tab.view.webContents.getURL(), homeUrl);
+
+  releaseDelayedReadiness(true);
+  for (let index = 0; index < 3; index += 1) await nextImmediate();
+  assert.equal(tab.view.webContents.getURL(), homeUrl,
+    'the older address navigation must not overwrite the newer Home action');
 });
 
 test('toolbar events are coalesced, deduplicated, and cancelled during teardown', async () => {

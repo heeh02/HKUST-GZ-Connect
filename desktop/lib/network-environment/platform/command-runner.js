@@ -1,13 +1,19 @@
 'use strict';
 
-const { execFileSync } = require('node:child_process');
+const { execFile } = require('node:child_process');
 
-function createCommandRunner({ exec = execFileSync } = {}) {
+function createCommandRunner({ exec = execFile } = {}) {
   return function run(command, args = [], { timeout = 1200, maxBuffer = 256 * 1024 } = {}) {
-    try {
-      return exec(command, args, { encoding: 'utf8', timeout, maxBuffer,
-        stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
-    } catch { return ''; }
+    return new Promise((resolve) => {
+      try {
+        exec(command, args, {
+          encoding: 'utf8', timeout, maxBuffer,
+          windowsHide: true,
+        }, (error, stdout) => resolve(error ? '' : String(stdout || '')));
+      } catch {
+        resolve('');
+      }
+    });
   };
 }
 

@@ -58,20 +58,19 @@ Electron `safeStorage` accepts/returns JavaScript strings, so immutable temporar
 The implementation removes references immediately and clears parsed string fields; the persistent and
 longer-lived owner remains Buffer-backed and zeroized.
 
-### Encrypted envelope store
+### Encrypted envelope persistence
 
-`vpn-credential-envelope-store.js` stores only ciphertext below the account path. It uses an owner-only
-same-directory temporary file, file fsync, atomic rename and directory fsync. Windows protects the temporary
-file and verifies the committed DACL. Reads are bounded/no-follow/single-link; observed disappearance fails
-closed. Replacement failure preserves the prior ciphertext. If rename applied but directory fsync failed, the
-store compares the visible ciphertext in constant time and raises an error with `commitApplied = true` so the
-future migration coordinator can recover rather than repeat blindly.
+The active `profile-workspace-credential-store.js` owns the ciphertext below the account path together with
+the Account document and credential transaction. It uses owner-only same-directory temporary files, file
+fsync, atomic rename and directory fsync. Windows protects temporary files and verifies committed DACLs;
+reads are bounded, no-follow and single-link. The earlier standalone envelope-store foundation was retired
+after this transactional store became authoritative, avoiding a second persistence entry point.
 
-## Non-activation boundary
+## Activation note
 
-Production `desktop/main.js` imports none of these P3b modules. This batch does not decrypt the installed legacy
-credential, write a destination envelope, collect receipts from the actual user profile or move/delete any flat
-file. It introduces no Renderer or IPC surface.
+This ADR originally described the pre-activation P3b boundary. The current runtime reaches the transactional
+Profile/Account/Workspace credential store through `DesktopPersistenceRuntime`; Renderer and IPC still receive
+no plaintext credential or direct persistence capability.
 
 ## Deferred work
 

@@ -17,6 +17,7 @@ const I18N = Object.freeze({
     invalidGroupName: '请输入 1–30 个字符的分类名称', invalidSiteName: '请输入 1–40 个字符的网站名称',
     selectPage: '选择本页', selectedCount: '已选择 {count} 项', selectionHint: '选择网站后可加入分类', chooseGroup: '选择分类',
     addToGroup: '加入分类', clearSelection: '取消选择', memberships: '所在分类',
+    mutationFailed: '操作未完成，请重试。', mutationStale: '页面状态已变化，请基于最新内容重试。',
     openedAt: '打开于 {time}', pageRange: '{start}–{end} / {total}', previousPage: '上一页', nextPage: '下一页',
     campus: '校园隧道', direct: '直连',
     newcomer: '新生入学', courses: '课程与考试', research: '科研与计算', labs: '实验与仪器',
@@ -39,6 +40,8 @@ const I18N = Object.freeze({
     invalidGroupName: 'Enter a category name between 1 and 30 characters', invalidSiteName: 'Enter a site name between 1 and 40 characters',
     selectPage: 'Select Page', selectedCount: '{count} selected', selectionHint: 'Select sites to add them to a category', chooseGroup: 'Choose Category',
     addToGroup: 'Add to Category', clearSelection: 'Clear Selection', memberships: 'Categories',
+    mutationFailed: 'The change was not completed. Try again.',
+    mutationStale: 'The workspace changed. Retry from the latest view.',
     openedAt: 'Opened {time}', pageRange: '{start}–{end} / {total}', previousPage: 'Previous page', nextPage: 'Next page',
     campus: 'Campus Tunnel', direct: 'Direct',
     newcomer: 'New Student', courses: 'Courses & Exams', research: 'Research & Computing', labs: 'Labs & Instruments',
@@ -76,12 +79,47 @@ let servicePage = 0;
 let searchPage = 0;
 let managePage = 0;
 let currentManagePageIds = [];
+let groupDialogRevision = 0;
+let mutationSequence = 0;
+let feedbackSequence = 0;
 const selectedResourceIds = new Set();
 
 const $ = (id) => document.getElementById(id);
 const text = () => I18N[state?.locale === 'en' ? 'en' : 'zh'];
 const command = (name, payload = {}) => window.campusWorkspace?.command(name, payload) === true;
 const categoryLabel = (category) => text()[model.TASK_CATEGORIES.find(({ id }) => id === category)?.labelKey || 'custom'];
+
+const workspaceFeedback = document.createElement('p');
+workspaceFeedback.id = 'workspaceMutationFeedback';
+workspaceFeedback.setAttribute('role', 'alert');
+workspaceFeedback.setAttribute('aria-live', 'polite');
+workspaceFeedback.hidden = true;
+document.querySelector('.workspace-shell')?.prepend(workspaceFeedback);
+
+function setMutationFeedback(sequence, message) {
+  if (sequence < feedbackSequence) return;
+  feedbackSequence = sequence;
+  workspaceFeedback.textContent = message || '';
+  workspaceFeedback.hidden = !message;
+}
+
+async function mutate(name, payload = {}) {
+  const sequence = ++mutationSequence;
+  let result;
+  try {
+    result = await window.campusWorkspace?.request(name, payload);
+  } catch {
+    result = null;
+  }
+  if (result?.ok === true) {
+    setMutationFeedback(sequence, '');
+    return result;
+  }
+  const fallback = result?.code === 'WORKSPACE_MUTATION_STALE'
+    ? text().mutationStale : text().mutationFailed;
+  setMutationFeedback(sequence, result?.error || fallback);
+  return result || { ok: false, code: 'WORKSPACE_MUTATION_FAILED', error: fallback };
+}
 
 function routeText(resource) {
   return resource.route === 'direct' ? text().direct : text().campus;
@@ -103,9 +141,11 @@ function openResourceDialog(resource) {
   if (!resource || resource.builtin) return;
   editingGroupId = null;
   editingResourceId = resource.id;
+  groupDialogRevision += 1;
   $('groupDialogTitle').textContent = text().renameSite;
   $('groupName').value = resource.name;
   $('groupError').textContent = '';
+  $('saveGroup').disabled = false;
   $('groupDialog').showModal();
   $('groupName').focus();
   $('groupName').select();
@@ -185,7 +225,10 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
             button.textContent = text().confirmDelete;
             return;
           }
-          command('delete-resource', { resourceId: resource.id });
+          button.disabled = true;
+          void mutate('delete-resource', { resourceId: resource.id }).finally(() => {
+            if (button.isConnected) button.disabled = false;
+          });
         }],
     ]) {
         const button = document.createElement('button');
@@ -203,7 +246,12 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   star.className = `resource-star${resource.favorite ? ' active' : ''}`;
   star.textContent = resource.favorite ? '★' : '☆';
   star.setAttribute('aria-label', resource.favorite ? text().unfavorite : text().favorite);
-  star.addEventListener('click', () => command('toggle-favorite', { resourceId: resource.id }));
+  star.addEventListener('click', () => {
+    star.disabled = true;
+    void mutate('toggle-favorite', { resourceId: resource.id }).finally(() => {
+      if (star.isConnected) star.disabled = false;
+    });
+  });
   item.appendChild(star);
   return item;
 }
@@ -375,7 +423,8 @@ function renderManage() {
         const ids = state.groups.map(({ id: groupId }) => groupId);
         const from = ids.indexOf(group.id); const to = from + offset;
         if (from < 0 || to < 0 || to >= ids.length) return;
-        ids.splice(to, 0, ids.splice(from, 1)[0]); command('reorder-groups', { groupIds: ids });
+        ids.splice(to, 0, ids.splice(from, 1)[0]);
+        void mutate('reorder-groups', { groupIds: ids });
       };
       for (const [labelText, action] of [
         ['↑', () => move(-1)], ['↓', () => move(1)], [text().edit, () => openGroupDialog(group)],
@@ -390,7 +439,10 @@ function renderManage() {
         if (remove.dataset.confirm !== '1') {
           remove.dataset.confirm = '1'; remove.textContent = text().confirmDeleteGroup; return;
         }
-        command('delete-group', { groupId: group.id });
+        remove.disabled = true;
+        void mutate('delete-group', { groupId: group.id }).finally(() => {
+          if (remove.isConnected) remove.disabled = false;
+        });
       });
       actions.appendChild(remove);
       row.appendChild(actions);
@@ -406,13 +458,14 @@ function renderManage() {
       row.addEventListener('drop', (event) => {
         event.preventDefault(); row.classList.remove('drop-target');
         if (!draggedResourceId) return;
+        const resourceId = draggedResourceId;
         const target = state.groups.find(({ id: groupId }) => groupId === dropGroupId);
-        if (target) {
-          command('add-resources-to-group', { resourceIds: [draggedResourceId], groupId: target.id });
-        } else {
-          command('move-resource', { resourceId: draggedResourceId, groupId: null, index: 0 });
-        }
         draggedResourceId = null;
+        if (target) {
+          void mutate('add-resources-to-group', { resourceIds: [resourceId], groupId: target.id });
+        } else {
+          void mutate('move-resource', { resourceId, groupId: null, index: 0 });
+        }
       });
     }
     return row;
@@ -504,11 +557,13 @@ function render() {
 }
 
 function openGroupDialog(group = null) {
+  groupDialogRevision += 1;
   editingGroupId = group?.id || null;
   editingResourceId = null;
   $('groupDialogTitle').textContent = group ? text().renameTitle : text().createTitle;
   $('groupName').value = group?.name || '';
   $('groupError').textContent = '';
+  $('saveGroup').disabled = false;
   $('groupDialog').showModal();
   $('groupName').focus();
 }
@@ -550,15 +605,22 @@ $('bulkGroupSelect').addEventListener('change', renderBulkActions);
 $('bulkClearSelection').addEventListener('click', () => {
   selectedResourceIds.clear(); renderManage();
 });
-$('bulkAddToGroup').addEventListener('click', () => {
+$('bulkAddToGroup').addEventListener('click', async () => {
   const groupId = $('bulkGroupSelect').value;
   if (!groupId || !selectedResourceIds.size) return;
-  if (command('add-resources-to-group', { resourceIds: [...selectedResourceIds], groupId })) {
-    selectedResourceIds.clear(); renderBulkActions();
+  const requestedIds = [...selectedResourceIds];
+  $('bulkAddToGroup').disabled = true;
+  const result = await mutate('add-resources-to-group', { resourceIds: requestedIds, groupId });
+  if (result?.ok) {
+    for (const resourceId of requestedIds) selectedResourceIds.delete(resourceId);
   }
+  renderBulkActions();
 });
-$('groupDialog').addEventListener('close', () => { editingGroupId = null; editingResourceId = null; });
-$('saveGroup').addEventListener('click', (event) => {
+$('groupDialog').addEventListener('close', () => {
+  groupDialogRevision += 1;
+  editingGroupId = null; editingResourceId = null;
+});
+$('saveGroup').addEventListener('click', async (event) => {
   event.preventDefault();
   const name = $('groupName').value.trim();
   const max = editingResourceId ? 40 : 30;
@@ -566,10 +628,18 @@ $('saveGroup').addEventListener('click', (event) => {
     $('groupError').textContent = editingResourceId ? text().invalidSiteName : text().invalidGroupName;
     return;
   }
-  if (editingResourceId) command('rename-resource', { resourceId: editingResourceId, name });
-  else command(editingGroupId ? 'rename-group' : 'create-group', editingGroupId
-    ? { groupId: editingGroupId, name } : { name });
-  $('groupDialog').close();
+  const dialogRevision = groupDialogRevision;
+  const resourceId = editingResourceId;
+  const groupId = editingGroupId;
+  $('saveGroup').disabled = true;
+  const result = resourceId
+    ? await mutate('rename-resource', { resourceId, name })
+    : await mutate(groupId ? 'rename-group' : 'create-group', groupId
+      ? { groupId, name } : { name });
+  if (dialogRevision !== groupDialogRevision || !$('groupDialog').open) return;
+  $('saveGroup').disabled = false;
+  if (result?.ok) $('groupDialog').close();
+  else $('groupError').textContent = result?.error || text().mutationFailed;
 });
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {

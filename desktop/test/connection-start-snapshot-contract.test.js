@@ -19,7 +19,10 @@ test('connect takes its final settings and credential snapshot after the last pr
 
   const snapshotToSpawn = connectOnce.slice(finalSnapshot, spawn);
   assert.match(snapshotToSpawn, /s = loadSettings\(\);/);
-  assert.match(snapshotToSpawn, /const credentialOwner = persistenceRuntime\.openCredential\(\);/);
+  assert.match(snapshotToSpawn,
+    /const credentialOwner = persistenceRuntime\.openCredential\(\) \|\| oneShotVpnCredential\.open\(\{/);
+  assert.match(snapshotToSpawn,
+    /profileId: activeSchoolProfile\.activeContextBinding\(\)\.profileId/);
   assert.match(snapshotToSpawn, /credentialOwner\.withStrings\(\(account, password\)/);
   assert.match(snapshotToSpawn, /finally \{ credentialOwner\.destroy\(\); \}/);
   assert.doesNotMatch(snapshotToSpawn, /\bawait\b/);

@@ -253,6 +253,9 @@ $('lgBtn').addEventListener('click', async () => {
     return;
   }
   if (!saved.ok) { $('lgErr').textContent = saved.error || t('login.passwordSaveFailed'); return; }
+  if (saved.outcome === 'saved_memory_only' && saved.warning) {
+    usabilityFeature?.toast(saved.warning, 'info');
+  }
   loginPending = true;
   $('lgBtn').disabled = true;
   $('lgBtn').textContent = t('connect.connecting');
@@ -433,8 +436,12 @@ function flashSaved(msg, isError = false) {
 $('towerSave').addEventListener('click', async () => {
   const result = await saveTower();
   if (result?.ok) {
+    const reconnectWarning = result.outcome === 'saved_reconnect_failed'
+      ? `${t('tower.saved')} · ${result.warning || ''}`.replace(/\s*·\s*$/u, '')
+      : null;
     flashSaved(
-      result.warning || (result.reconnected ? t('tower.savedApplied') : t('tower.saved')),
+      reconnectWarning || result.warning ||
+        (result.reconnected ? t('tower.savedApplied') : t('tower.saved')),
       !!result.warning,
     );
   }

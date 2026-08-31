@@ -33,14 +33,14 @@ function windowsProxy(output) {
   } catch { return { state: 'unknown', type: 'unknown', endpoint: null, owner: {} }; }
 }
 
-function detectWindows({ interfaces, run }) {
+async function detectWindows({ interfaces, run }) {
   const script = "$a=Get-NetAdapter|Select InterfaceAlias,InterfaceIndex,Status,HardwareInterface;" +
     "$m=@{};Get-NetIPInterface -AddressFamily IPv4|ForEach-Object{$m[$_.InterfaceIndex]=$_.InterfaceMetric};" +
     "$r=Get-NetRoute -DestinationPrefix '0.0.0.0/0'|Select InterfaceIndex,RouteMetric,@{n='InterfaceMetric';e={$m[$_.InterfaceIndex]}};" +
     "$p=Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';" +
     "$x=Get-CimInstance Win32_Process|Where-Object{$_.Name -match 'mihomo|clash' -or $_.CommandLine -match 'mihomo|clash'}|Select ProcessId,Name,CommandLine;" +
     "@{adapters=$a;routes=$r;proxy=@{enabled=[bool]$p.ProxyEnable;server=$p.ProxyServer;autoConfigUrl=$p.AutoConfigURL};processes=$x}|ConvertTo-Json -Depth 5 -Compress";
-  const parsed = parsePowershellSnapshot(run('powershell.exe', ['-NoProfile', '-NonInteractive',
+  const parsed = parsePowershellSnapshot(await run('powershell.exe', ['-NoProfile', '-NonInteractive',
     '-Command', script], { timeout: 2500 }));
   const byIndex = new Map([...parsed.byName.values()].map((adapter) => [Number(adapter.InterfaceIndex), adapter]));
   const systemRoute = parsed.routes[0] || null;
@@ -49,7 +49,7 @@ function detectWindows({ interfaces, run }) {
   )) || null;
   const proxy = windowsProxy(parsed.proxy);
   const processes = windowsProcessTable(JSON.stringify(parsed.processes));
-  const owner = mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'win32' });
+  const owner = await mihomoOwner({ processes, endpoint: proxy.endpoint, run, platform: 'win32' });
   const projected = interfaces.map((item) => {
     const adapter = parsed.byName.get(item.id);
     return { ...item, id: adapter ? `if:${Number(adapter.InterfaceIndex)}` : item.id,

@@ -60,6 +60,13 @@ function clearPasswordReference(value) {
   try { value.password = ''; } catch {}
 }
 
+function reconnectFailureMessage(result, translate) {
+  const fallback = translate('error.reconnectFailed');
+  const value = typeof result?.error === 'string' ? result.error.trim() : '';
+  if (!value || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) return fallback;
+  return value;
+}
+
 function registerSettingsCredentialIpc(dependencies = {}) {
   const {
     register,
@@ -83,6 +90,9 @@ function registerSettingsCredentialIpc(dependencies = {}) {
     reconnect,
     disconnect,
     getActiveProfileId,
+    credentialStorageAvailable,
+    stageOneShotCredential,
+    clearOneShotCredential,
   } = dependencies;
   for (const dependency of [
     register, loadSettings, saveSettings, savePassword, removePassword,
@@ -98,6 +108,13 @@ function registerSettingsCredentialIpc(dependencies = {}) {
   if (typeof credentialJournalPath !== 'string' || !credentialPaths) {
     throw new TypeError('settings credential transaction paths are required');
   }
+  const oneShotDependencies = [
+    credentialStorageAvailable, stageOneShotCredential, clearOneShotCredential,
+  ];
+  const oneShotEnabled = oneShotDependencies.every((dependency) => typeof dependency === 'function');
+  if (!oneShotEnabled && oneShotDependencies.some((dependency) => dependency != null)) {
+    throw new TypeError('one-shot credential IPC dependencies are incomplete');
+  }
 
   register('save', async (_event, rawPatch) => {
     let previous = null;
@@ -106,12 +123,15 @@ function registerSettingsCredentialIpc(dependencies = {}) {
     let portChanged;
     let proxyAuthChanged;
     let underlayChanged;
+    let expectedProfileId = null;
+    let oneShotRevision = null;
+    let credentialStorage = null;
     try {
       try {
         previous = loadSettings();
         patch = settingsPatchFromIpc(rawPatch);
         const credentialPatch = patch.username != null || patch.password != null;
-        const expectedProfileId = patch.expectedProfileId;
+        expectedProfileId = patch.expectedProfileId;
         delete patch.expectedProfileId;
         if (credentialPatch && expectedProfileId !== getActiveProfileId()) {
           const message = translate('error.profileCredentialContextChanged');
@@ -126,6 +146,7 @@ function registerSettingsCredentialIpc(dependencies = {}) {
         };
       }
       const replacingPassword = typeof patch.password === 'string' && patch.password.length > 0;
+      let useOneShotCredential = false;
       const policyTransactionRequired = patch.routeDomains != null || patch.port != null ||
         patch.strictProxyAuth != null || patch.underlaySourceAddress != null;
       if (replacingPassword && policyTransactionRequired) {
@@ -147,20 +168,70 @@ function registerSettingsCredentialIpc(dependencies = {}) {
           return next;
         }
 
-        const transaction = runCredentialMutation({
-          journalPath: credentialJournalPath,
-          paths: credentialPaths,
-          mutate: () => {
-            if (!savePassword(patch.password, next.username)) {
-              throw Object.assign(new Error('protected credential storage unavailable'), {
-                credentialStoreUnavailable: true,
-              });
-            }
-            next = saveSettings(next);
-            return next;
-          },
-        });
+        if (expectedProfileId !== getActiveProfileId()) {
+          const message = translate('error.profileCredentialContextChanged');
+          throw Object.assign(new Error(message), { userMessage: message });
+        }
+        if (oneShotEnabled) {
+          try { useOneShotCredential = credentialStorageAvailable() !== true; }
+          catch { useOneShotCredential = true; }
+        }
+
+        let transaction;
+        try {
+          transaction = runCredentialMutation({
+            journalPath: credentialJournalPath,
+            paths: credentialPaths,
+            mutate: () => {
+              if (useOneShotCredential) {
+                const request = {
+                  profileId: expectedProfileId,
+                  username: next.username,
+                  password: patch.password,
+                };
+                let staged;
+                try { staged = stageOneShotCredential(request); }
+                finally { clearPasswordReference(request); }
+                if (!staged || staged.ok !== true || staged.storage !== 'memory_only' ||
+                    !Number.isSafeInteger(staged.revision) || staged.revision <= 0) {
+                  throw Object.assign(new Error('one-shot credential staging failed'), {
+                    credentialStoreUnavailable: true,
+                  });
+                }
+                oneShotRevision = staged.revision;
+                credentialStorage = 'memory_only';
+                // Retire any older encrypted username/password pair. Leaving
+                // it beside a new username could authenticate the wrong
+                // account after a later relaunch.
+                if (!removePassword()) {
+                  throw new Error('could not durably remove the replaced encrypted credential');
+                }
+              } else {
+                if (!savePassword(patch.password, next.username)) {
+                  throw Object.assign(new Error('protected credential storage unavailable'), {
+                    credentialStoreUnavailable: true,
+                  });
+                }
+                credentialStorage = 'persistent';
+              }
+              next = saveSettings(next);
+              return next;
+            },
+          });
+        } catch (error) {
+          if (oneShotRevision !== null) {
+            try { clearOneShotCredential(oneShotRevision); } catch {}
+            oneShotRevision = null;
+            credentialStorage = null;
+          }
+          throw error;
+        }
         if (!transaction.ok) {
+          if (oneShotRevision !== null) {
+            try { clearOneShotCredential(oneShotRevision); } catch {}
+            oneShotRevision = null;
+            credentialStorage = null;
+          }
           const passwordWasCleared = transaction.recovery?.status === 'credential-cleared';
           applyCredentialRecovery(transaction.recovery, {
             clearedNoticeKey: 'error.settingsSaveFailedPasswordCleared',
@@ -181,6 +252,9 @@ function registerSettingsCredentialIpc(dependencies = {}) {
           { ok: true, status: 'committed' },
           { clearNotice: true },
         );
+        if (credentialStorage === 'persistent' && oneShotEnabled) {
+          try { clearOneShotCredential(); } catch {}
+        }
         return transaction.value;
       };
 
@@ -226,18 +300,41 @@ function registerSettingsCredentialIpc(dependencies = {}) {
       if (next.language !== previous.language) onLanguageChanged(next.language);
       if (typeof patch.startAtLogin === 'boolean') setStartAtLogin(patch.startAtLogin);
       let reconnected = false;
+      let reconnectStatus = 'not_required';
+      let warning = credentialStorage === 'memory_only'
+        ? translate('error.passwordStoreUnavailable')
+        : null;
       if (hasActiveEngine() && (portChanged || proxyAuthChanged || underlayChanged)) {
-        const reconnectResult = await reconnect();
+        reconnectStatus = 'failed';
+        let reconnectResult = null;
+        try { reconnectResult = await reconnect(); }
+        catch (error) { reconnectResult = { ok: false, error: error?.userMessage || error?.message }; }
         reconnected = reconnectResult?.ok === true;
+        reconnectStatus = reconnected ? 'succeeded'
+          : (reconnectResult?.stale === true ? 'stale' : 'failed');
+        if (!reconnected) warning = reconnectFailureMessage(reconnectResult, translate);
       }
+      const outcome = credentialStorage === 'memory_only'
+        ? 'saved_memory_only'
+        : (reconnectStatus === 'succeeded'
+          ? 'saved_reconnected'
+          : (reconnectStatus === 'failed' || reconnectStatus === 'stale'
+            ? 'saved_reconnect_failed'
+            : 'saved'));
       return {
         ok: true,
-        warning: null,
+        outcome,
+        warning,
         settings: next,
         portChanged,
         proxyAuthChanged,
         underlayChanged,
         reconnected,
+        reconnect: Object.freeze({
+          attempted: reconnectStatus !== 'not_required',
+          status: reconnectStatus,
+        }),
+        credentialStorage,
       };
     } finally {
       clearPasswordReference(patch);
@@ -249,6 +346,9 @@ function registerSettingsCredentialIpc(dependencies = {}) {
     commit: async () => {
       const stopped = await disconnect();
       if (!stopped.ok) return { ok: false, error: translate('error.engineStuck') };
+      if (oneShotEnabled) {
+        try { clearOneShotCredential(); } catch {}
+      }
       if (isCredentialBlocked()) {
         const recovery = retryCredentialRecovery();
         if (recovery.status === 'blocked') {

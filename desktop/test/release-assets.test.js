@@ -14,6 +14,7 @@ const localMacRebuild = fs.readFileSync(path.join(desktopRoot, 'scripts', 'rebui
 const engineManifest = fs.readFileSync(path.join(desktopRoot, '..', 'independent', 'Cargo.toml'), 'utf8');
 const packageVerifier = fs.readFileSync(path.join(desktopRoot, 'build', 'verify-package.js'), 'utf8');
 const repositoryAttributes = fs.readFileSync(path.join(desktopRoot, '..', '.gitattributes'), 'utf8');
+const releaseGuide = fs.readFileSync(path.join(desktopRoot, '..', 'RELEASING.md'), 'utf8');
 
 test('cross-platform desktop checks use repository-owned source gates', () => {
   const start = workflow.indexOf('- name: Test desktop shell');
@@ -28,6 +29,17 @@ test('cross-platform desktop checks use repository-owned source gates', () => {
     assert.doesNotMatch(source, /rg --files|done < <\(/u,
       'source gates must not silently depend on runner-provided ripgrep or process substitution');
   }
+});
+
+test('release guidance exposes only maintained macOS entry points', () => {
+  assert.equal(
+    fs.existsSync(path.join(desktopRoot, 'scripts', 'install-mac.sh')),
+    false,
+    'the retired ZIP/checksum installer must not return while releases publish DMGs only',
+  );
+  assert.doesNotMatch(ciWorkflow, /install-mac\.sh/u);
+  assert.doesNotMatch(releaseGuide, /lib\/campus-browser\.js/u);
+  assert.match(releaseGuide, /lib\/browser\/session\/campus-browser\.js/u);
 });
 
 test('cloud release policy publishes only macOS DMGs, Windows EXEs, and Linux AppImages', () => {

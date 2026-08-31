@@ -19,6 +19,8 @@ const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing
 // Chromium blocks port 1 outright (ERR_UNSAFE_PORT), so tabs settle on the
 // local error page immediately instead of hanging the test.
 const DEAD_URL = 'http://route-switch.example.invalid:1/x';
+const CONFIGURED_HOME = 'https://configured-home.test/start';
+const CONFIGURED_NEXT = 'https://configured-home.test/after-resume';
 
 async function waitFor(window, expression, description) {
   const deadline = Date.now() + 5000;
@@ -62,6 +64,14 @@ function toolbarCommand(browser, command, value = '') {
   return browser.window.webContents.executeJavaScript(
     `window.campusToolbar.command(${JSON.stringify(command)}, ${JSON.stringify(value)})`,
   );
+}
+
+function assertOnlyActiveTabAttached(browser) {
+  const tabViews = browser.window.contentView.children.filter((child) => (
+    browser.tabs.some((tab) => tab.view === child)
+  ));
+  assert.deepEqual(tabViews, [browser.activeTab().view],
+    'only the selected page may remain in the native View/accessibility hierarchy');
 }
 
 async function assertDragRegions(browser) {
@@ -138,9 +148,63 @@ async function assertBlankNewTab(browser) {
   assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
   assert.notEqual(browser.activeTab().id, previous.id);
+  assertOnlyActiveTabAttached(browser);
   browser.closeTab(browser.activeTab().id);
   await waitForMain(() => browser.activeTab()?.id === previous.id,
     'closing the blank tab to restore the previous tab');
+  assertOnlyActiveTabAttached(browser);
+}
+
+async function assertConfiguredHomeAndSuspendedRecovery(browser, preference, committedUrls) {
+  const previous = browser.activeTab();
+  preference.url = CONFIGURED_HOME;
+  await browser.window.webContents.executeJavaScript(
+    `document.getElementById('newTab').click()`,
+  );
+  await waitForMain(() => committedUrls.includes(CONFIGURED_HOME),
+    'configured homepage real did-navigate commit');
+  const tab = browser.activeTab();
+  assert.notEqual(tab.id, previous.id);
+  assert.equal(tab.view.webContents.getURL(), CONFIGURED_HOME);
+  assert.equal(tab.route, ROUTE_CAMPUS);
+  assert.equal(tab.routeSource, 'default');
+  assert.match(await browser.campusSession.resolveProxy(CONFIGURED_HOME),
+    /SOCKS5 127\.0\.0\.1:11080/,
+    'toolbar metadata and the live PAC must share the Campus default');
+  await waitFor(browser.window,
+    "document.getElementById('routeSelector').value === 'campus'",
+    'configured homepage route label');
+  assertOnlyActiveTabAttached(browser);
+
+  await browser.suspendRoutingPolicy();
+  assert.equal(browser.routingSuspended, true);
+  assert.equal(browser.routingRequestsBlocked, true);
+  await toolbarCommand(browser, 'navigate', CONFIGURED_NEXT);
+  await waitForMain(() => committedUrls.includes(CONFIGURED_NEXT),
+    'address navigation after Session resume');
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assert.equal(tab.view.webContents.getURL(), CONFIGURED_NEXT);
+
+  let reloadCommits = 0;
+  const onReloadCommit = (_event, url) => {
+    if (url === CONFIGURED_NEXT) reloadCommits += 1;
+  };
+  tab.view.webContents.on('did-navigate', onReloadCommit);
+  await browser.suspendRoutingPolicy();
+  await toolbarCommand(browser, 'reload');
+  await waitForMain(() => reloadCommits > 0, 'reload after Session resume');
+  tab.view.webContents.removeListener('did-navigate', onReloadCommit);
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assertOnlyActiveTabAttached(browser);
+
+  browser.switchTab(previous.id);
+  assertOnlyActiveTabAttached(browser);
+  assert.equal(tab.view.webContents.isDestroyed(), false,
+    'an inactive detached tab retains its WebContents state');
+  browser.closeTab(tab.id);
+  preference.url = BLANK_CAMPUS_HOME;
 }
 
 async function assertSettingsButton(browser, settingsOpens) {
@@ -272,6 +336,18 @@ async function main() {
   const openedResources = [];
   const bookmarkMenus = [];
   const settingsOpens = { count: 0 };
+  const newTabPreference = { url: BLANK_CAMPUS_HOME };
+  const committedUrls = [];
+  const isolatedSession = session.fromPartition(CAMPUS_PARTITION);
+  await isolatedSession.protocol.handle('https', (request) => {
+    const url = new URL(request.url);
+    if (url.hostname !== 'configured-home.test') {
+      return new Response('not found', { status: 404 });
+    }
+    return new Response(`<!doctype html><meta charset="utf-8"><title>${url.pathname}</title>`, {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+  });
   const workspaceResources = [
     { id: 'favorite', name: 'Favorite', description: 'Pinned',
       url: 'http://favorite.example.invalid:1/', route: ROUTE_CAMPUS,
@@ -329,6 +405,8 @@ async function main() {
       id: 'group_abcdefghijkl', name: '学习', resourceIds: ['grouped'],
     }],
     workspaceController,
+    getNewTabUrl: () => newTabPreference.url,
+    onRecordPageOpen: (url) => { committedUrls.push(url); return false; },
     onOpenResource: async (resourceId) => { openedResources.push(resourceId); return { ok: true }; },
     showBookmarkMenu: (entries) => bookmarkMenus.push(entries),
     partition: CAMPUS_PARTITION,
@@ -341,7 +419,9 @@ async function main() {
     browser.window.hide();
     await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
     await assertWorkspaceHome(browser);
+    assertOnlyActiveTabAttached(browser);
     await assertBlankNewTab(browser);
+    await assertConfiguredHomeAndSuspendedRecovery(browser, newTabPreference, committedUrls);
     await assertSettingsButton(browser, settingsOpens);
     const workspaceContents = browser.activeTab().view.webContents;
     await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -362,6 +442,7 @@ async function main() {
     process.stdout.write('campus browser toolbar: PASS\n');
   } finally {
     browser.close();
+    await isolatedSession.protocol.unhandle('https');
   }
 }
 

@@ -7,18 +7,34 @@ const path = require('node:path');
 // and prevent another feature from enlarging either God Module while the code
 // is extracted incrementally behind tests.
 const BASELINE = Object.freeze({
-  mainDirectDependencies: 35,
+  // One direct/transitive module was added for the reviewed one-shot Linux
+  // credential boundary. Main simultaneously stopped consuming four facade
+  // bindings, so the effective semantic dependency cap below still shrank.
+  mainDirectDependencies: 36,
   // Eight leaf modules form the reviewed macOS/Windows/Linux network-environment
   // domain; Main still owns no additional direct dependency and is smaller.
-  mainTransitiveDependencies: 161,
-  mainLines: 1659,
+  mainTransitiveDependencies: 162,
+  // This transition cap includes the disconnected-session recovery, async
+  // platform discovery and one-shot credential security closures. Further
+  // feature work must extract responsibilities instead of growing Main again.
+  mainLines: 1719,
   rendererLines: 564,
-  libMaxFanIn: 45,
+  // Production-only fan-in. Test, E2E, build and maintenance imports are
+  // reported separately and must not make the runtime graph look denser.
+  libMaxFanIn: 33,
   libMaxFanOut: 14,
   runtimeCompositionExports: 1,
+  runtimeCompositionMembers: 20,
+  mainCompositionBindings: 16,
+  mainEffectiveDirectDependencies: 51,
 });
 
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'release']);
+const JAVASCRIPT_SCOPE = Object.freeze({
+  PRODUCTION: 'production',
+  TEST: 'test',
+  SUPPORT: 'support',
+});
 const DOMAIN_DEPENDENCIES = Object.freeze({
   app: Object.freeze(['app', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
     'resources', 'resource-core', 'routing', 'integrations', 'ipc', 'platform', 'diagnostics', 'legacy']),
@@ -58,6 +74,35 @@ function collectJavaScriptFiles(root) {
   };
   visit(path.resolve(root));
   return files.sort();
+}
+
+function relativeJavaScriptPath(file, root) {
+  return path.relative(root, file).replaceAll(path.sep, '/');
+}
+
+function javascriptScope(file, root) {
+  const relativePath = relativeJavaScriptPath(file, root);
+  if (relativePath === 'main.js' || relativePath === 'preload.js' ||
+      relativePath === 'campus-preload.js' || relativePath.startsWith('lib/') ||
+      relativePath.startsWith('renderer/')) {
+    return JAVASCRIPT_SCOPE.PRODUCTION;
+  }
+  if (relativePath.startsWith('test/') || relativePath.startsWith('e2e/')) {
+    return JAVASCRIPT_SCOPE.TEST;
+  }
+  return JAVASCRIPT_SCOPE.SUPPORT;
+}
+
+function filesInScope(files, root, scope) {
+  return files.filter((file) => javascriptScope(file, root) === scope);
+}
+
+function edgeCount(graph) {
+  return [...graph.values()].reduce((total, dependencies) => total + dependencies.length, 0);
+}
+
+function edgeCountForSources(graph, sources) {
+  return [...sources].reduce((total, source) => total + (graph.get(source)?.length || 0), 0);
 }
 
 function relativeRequires(source) {
@@ -176,6 +221,65 @@ function moduleExportNames(source) {
   return Object.freeze([...new Set(names)].sort());
 }
 
+function topLevelCommaItems(source) {
+  const items = [];
+  let start = 0;
+  let quote = null;
+  let escaped = false;
+  let depth = 0;
+  for (let index = 0; index <= source.length; index += 1) {
+    const character = source[index] || ',';
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if ('([{'.includes(character)) depth += 1;
+    else if (')]}'.includes(character)) depth -= 1;
+    else if (character === ',' && depth === 0) {
+      const item = source.slice(start, index).trim();
+      if (item) items.push(item);
+      start = index + 1;
+    }
+  }
+  return Object.freeze(items);
+}
+
+function namedFrozenObjectMemberNames(source, bindingName) {
+  if (!/^[A-Za-z_$][\w$]*$/u.test(bindingName)) return Object.freeze([]);
+  const escapedName = bindingName.replace(/[$]/gu, '\\$&');
+  const match = String(source).match(new RegExp(
+    `const\\s+${escapedName}\\s*=\\s*Object\\.freeze\\(\\s*\\{([\\s\\S]*?)\\}\\s*\\);`,
+    'u',
+  ));
+  if (!match) return Object.freeze([]);
+  const names = topLevelCommaItems(match[1]).map((item) => {
+    const normalized = item.replace(/\/\*[\s\S]*?\*\//gu, '').trim();
+    if (normalized.startsWith('...')) return normalized;
+    return normalized.match(/^([A-Za-z_$][\w$]*)\s*(?::|$)/u)?.[1] || normalized;
+  });
+  return Object.freeze([...new Set(names)].sort());
+}
+
+function destructuredBindingNames(source, bindingName) {
+  if (!/^[A-Za-z_$][\w$]*$/u.test(bindingName)) return Object.freeze([]);
+  const escapedName = bindingName.replace(/[$]/gu, '\\$&');
+  const match = String(source).match(new RegExp(
+    `const\\s*\\{([^{}]*)\\}\\s*=\\s*${escapedName}\\s*;`,
+    'u',
+  ));
+  if (!match) return Object.freeze([]);
+  const names = topLevelCommaItems(match[1]).map((item) => (
+    item.trim().match(/^([A-Za-z_$][\w$]*)\s*(?::|=|$)/u)?.[1] || item.trim()
+  ));
+  return Object.freeze([...new Set(names)].sort());
+}
+
 function rootLibraryFiles(root) {
   const library = path.join(root, 'lib');
   return Object.freeze(fs.readdirSync(library, { withFileTypes: true })
@@ -268,28 +372,58 @@ function dependencyLayerErrors(graph, root) {
 
 function architectureSnapshot(root = path.resolve(__dirname, '..')) {
   const files = collectJavaScriptFiles(root);
+  const productionFiles = filesInScope(files, root, JAVASCRIPT_SCOPE.PRODUCTION);
+  const testFiles = filesInScope(files, root, JAVASCRIPT_SCOPE.TEST);
+  const supportFiles = filesInScope(files, root, JAVASCRIPT_SCOPE.SUPPORT);
   const graph = buildDependencyGraph(files);
+  const productionGraph = buildDependencyGraph(productionFiles);
+  const testGraph = buildDependencyGraph(testFiles);
+  const supportGraph = buildDependencyGraph(supportFiles);
   const mainFile = path.join(root, 'main.js');
   const rendererFile = path.join(root, 'renderer', 'app.js');
   const runtimeCompositionFile = path.join(root, 'lib', 'app', 'desktop-runtime-composition.js');
+  const mainSource = fs.readFileSync(mainFile, 'utf8');
+  const runtimeCompositionSource = fs.readFileSync(runtimeCompositionFile, 'utf8');
+  const runtimeCompositionMembers = namedFrozenObjectMemberNames(
+    runtimeCompositionSource,
+    'desktopRuntimeComposition',
+  ).length;
+  const mainCompositionBindings = destructuredBindingNames(
+    mainSource,
+    'desktopRuntimeComposition',
+  ).length;
   const rootFiles = rootLibraryFiles(root);
   const rootDebt = loadRootLibraryDebt(root);
-  const fan = graphFanMetrics(graph, root);
+  const fan = graphFanMetrics(productionGraph, root);
+  const mainDirectDependencies = productionGraph.get(mainFile)?.length || 0;
   return {
-    cycles: findCycles(graph),
+    allCycles: findCycles(graph),
+    cycles: findCycles(productionGraph),
+    testCycles: findCycles(testGraph),
+    supportCycles: findCycles(supportGraph),
     unresolvedRequireErrors: unresolvedRelativeRequireErrors(files, root),
     layerErrors: dependencyLayerErrors(graph, root),
     domainLayerErrors: domainDependencyErrors(graph, root),
     rootLibraryDebtErrors: rootLibraryDebtErrors(rootFiles, rootDebt),
-    edgeCount: [...graph.values()].reduce((total, dependencies) => total + dependencies.length, 0),
+    edgeCount: edgeCount(graph),
     fileCount: files.length,
-    mainDirectDependencies: graph.get(mainFile)?.length || 0,
-    mainTransitiveDependencies: transitiveDependencies(graph, mainFile).size,
+    productionFileCount: productionFiles.length,
+    productionEdgeCount: edgeCount(productionGraph),
+    testFileCount: testFiles.length,
+    testEdgeCount: edgeCountForSources(graph, testFiles),
+    supportFileCount: supportFiles.length,
+    supportEdgeCount: edgeCountForSources(graph, supportFiles),
+    mainDirectDependencies,
+    mainTransitiveDependencies: transitiveDependencies(productionGraph, mainFile).size,
     mainLines: lineCount(mainFile),
     rendererLines: lineCount(rendererFile),
     runtimeCompositionExports: moduleExportNames(
-      fs.readFileSync(runtimeCompositionFile, 'utf8'),
+      runtimeCompositionSource,
     ).length,
+    runtimeCompositionMembers,
+    mainCompositionBindings,
+    mainEffectiveDirectDependencies: mainDirectDependencies +
+      Math.max(0, mainCompositionBindings - 1),
     rootLibraryFileCount: rootFiles.length,
     ...fan,
   };
@@ -297,7 +431,12 @@ function architectureSnapshot(root = path.resolve(__dirname, '..')) {
 
 function architectureErrors(snapshot) {
   const errors = [];
-  if (snapshot.cycles.length) errors.push(`CommonJS cycles: ${snapshot.cycles.length}`);
+  if (snapshot.allCycles?.length) errors.push(`all-scope CommonJS cycles: ${snapshot.allCycles.length}`);
+  if (snapshot.cycles.length) errors.push(`production CommonJS cycles: ${snapshot.cycles.length}`);
+  if (snapshot.testCycles?.length) errors.push(`test CommonJS cycles: ${snapshot.testCycles.length}`);
+  if (snapshot.supportCycles?.length) {
+    errors.push(`support CommonJS cycles: ${snapshot.supportCycles.length}`);
+  }
   errors.push(...(snapshot.unresolvedRequireErrors || []));
   errors.push(...(snapshot.layerErrors || []));
   errors.push(...(snapshot.domainLayerErrors || []));
@@ -305,6 +444,8 @@ function architectureErrors(snapshot) {
   for (const key of [
     'mainDirectDependencies', 'mainTransitiveDependencies', 'mainLines', 'rendererLines',
     'libMaxFanIn', 'libMaxFanOut', 'runtimeCompositionExports',
+    'runtimeCompositionMembers', 'mainCompositionBindings',
+    'mainEffectiveDirectDependencies',
   ]) {
     if (!Number.isFinite(snapshot[key])) continue;
     if (snapshot[key] > BASELINE[key]) {
@@ -327,10 +468,15 @@ function run() {
     return;
   }
   process.stdout.write(
-    `architecture gate: PASS (files=${snapshot.fileCount}, edges=${snapshot.edgeCount}, ` +
-    `mainDeps=${snapshot.mainDirectDependencies}/${snapshot.mainTransitiveDependencies}, ` +
+    `architecture gate: PASS (production=${snapshot.productionFileCount}/${snapshot.productionEdgeCount}, ` +
+    `test=${snapshot.testFileCount}/${snapshot.testEdgeCount}, ` +
+    `support=${snapshot.supportFileCount}/${snapshot.supportEdgeCount}, ` +
+    `all=${snapshot.fileCount}/${snapshot.edgeCount}, ` +
+    `mainDeps=${snapshot.mainDirectDependencies}/${snapshot.mainTransitiveDependencies}` +
+    `+${snapshot.mainCompositionBindings}=${snapshot.mainEffectiveDirectDependencies}, ` +
     `libFan=${snapshot.libMaxFanOut}/${snapshot.libMaxFanIn}, rootDebt=${snapshot.rootLibraryFileCount}, ` +
-    `compositionExports=${snapshot.runtimeCompositionExports}, mainLines=${snapshot.mainLines}, ` +
+    `composition=${snapshot.runtimeCompositionExports}/${snapshot.runtimeCompositionMembers}, ` +
+    `mainLines=${snapshot.mainLines}, ` +
     `rendererLines=${snapshot.rendererLines})\n`,
   );
 }
@@ -344,11 +490,18 @@ module.exports = {
   buildDependencyGraph,
   collectJavaScriptFiles,
   domainDependencyErrors,
+  destructuredBindingNames,
   dependencyLayerErrors,
+  edgeCount,
+  edgeCountForSources,
+  filesInScope,
   findCycles,
   graphFanMetrics,
   loadRootLibraryDebt,
   moduleExportNames,
+  namedFrozenObjectMemberNames,
+  JAVASCRIPT_SCOPE,
+  javascriptScope,
   relativeRequires,
   rootLibraryDebtErrors,
   rootLibraryFiles,

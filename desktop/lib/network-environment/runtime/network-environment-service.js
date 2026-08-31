@@ -15,24 +15,45 @@ class NetworkEnvironmentService {
     run = createCommandRunner(), environment = process.env, now = Date.now, ttlMs = 10_000 } = {}) {
     this.platform = platform; this.networkInterfaces = networkInterfaces; this.run = run;
     this.environment = environment; this.now = now; this.ttlMs = ttlMs;
-    this.cachedAt = 0; this.cached = null;
+    this.cachedAt = 0; this.cached = null; this.refreshInFlight = null;
   }
 
-  rawSnapshot() {
+  fallbackSnapshot() {
+    return { platform: this.platform, status: 'unknown',
+      interfaces: inventoryFromNode(this.networkInterfaces(), this.platform),
+      systemProxy: { state: 'unknown', type: 'unknown', endpoint: null, owner: {} } };
+  }
+
+  async rawSnapshot({ force = false } = {}) {
     const current = this.now();
-    if (this.cached && current - this.cachedAt < this.ttlMs) return this.cached;
-    const interfaces = inventoryFromNode(this.networkInterfaces(), this.platform);
-    const provider = PROVIDERS[this.platform];
-    this.cached = provider ? provider({ interfaces, run: this.run, environment: this.environment })
-      : { platform: this.platform, status: 'unknown', interfaces,
-        systemProxy: { state: 'unknown', type: 'unknown', endpoint: null, owner: {} } };
-    this.cachedAt = current;
-    return this.cached;
+    if (!force && this.cached && current - this.cachedAt < this.ttlMs) return this.cached;
+    if (this.refreshInFlight) return this.refreshInFlight;
+    const operation = (async () => {
+      const fallback = this.fallbackSnapshot();
+      const provider = PROVIDERS[this.platform];
+      try {
+        this.cached = provider
+          ? await provider({ interfaces: fallback.interfaces, run: this.run, environment: this.environment })
+          : fallback;
+      } catch {
+        this.cached = fallback;
+      }
+      this.cachedAt = this.now();
+      return this.cached;
+    })();
+    this.refreshInFlight = operation;
+    try { return await operation; }
+    finally { if (this.refreshInFlight === operation) this.refreshInFlight = null; }
   }
 
-  snapshot(selection = '') { return projectNetworkEnvironment(this.rawSnapshot(), selection); }
+  async snapshot(selection = '', options = {}) {
+    return projectNetworkEnvironment(await this.rawSnapshot(options), selection);
+  }
+  cachedSnapshot(selection = '') {
+    return projectNetworkEnvironment(this.cached || this.fallbackSnapshot(), selection);
+  }
   resolveSelection(selection = '') {
-    const snapshot = this.snapshot(selection);
+    const snapshot = this.cachedSnapshot(selection);
     if (!snapshot.selection.available || !snapshot.selection.interfaceId) return null;
     const sourceAddress = snapshot.selection.sourceAddress || snapshot.defaultRoute?.sourceAddress || '';
     if (!sourceAddress) return null;
@@ -45,7 +66,7 @@ class NetworkEnvironmentService {
     return Object.freeze(['--source-interface', resolved.interfaceId,
       '--source-address', resolved.sourceAddress]);
   }
-  refresh(selection = '') { this.cached = null; return this.snapshot(selection); }
+  refresh(selection = '') { return this.snapshot(selection, { force: true }); }
 }
 
 module.exports = { NetworkEnvironmentService };
