@@ -28,19 +28,33 @@ test('a card stack exposes layered headers and a distinct drawn front card', () 
   assert.match(css,
     /\.cb-deck\.is-stacked \.cb-card \+ \.cb-card\s*\{[^}]*margin-top:\s*-\d+px/su,
     'stack members are still ordinary vertical rows');
+  assert.match(css, /\.cb-deck\.is-stacked\s*\{[^}]*border:\s*0[^}]*background:\s*transparent[^}]*box-shadow:\s*none/su);
+  assert.match(css, /\.cb-card:not\(\.is-front\)\s*\{[^}]*background:\s*#fff/su);
   assert.match(css, /\.cb-card\.is-front\s*\{[^}]*z-index:\s*\d+/su);
-  assert.match(css, /\.cb-card\[data-stack-depth="5"\]\s*\{[^}]*--cb-stack-inset:\s*10px/su);
+  assert.match(css, /\.cb-card\.is-front\.is-expanded\s*\{[^}]*0 16px 36px rgba\(10,35,75,\.12\)/su);
+  assert.match(css, /\.cb-card\[data-stack-depth="5"\]\s*\{[^}]*--cb-stack-inset:\s*15px/su);
   assert.match(css, /\.cb-card-header\.is-draggable\s*\{[^}]*cursor:\s*grab/su);
   assert.doesNotMatch(css, /\.cb-drag-handle\s*\{/u,
     'the obsolete tiny drag handle is still a first-class visual control');
 });
 
-test('card color is restrained to bounded category tones on white surfaces', () => {
-  for (const tone of ['blue', 'teal', 'gold', 'violet', 'slate']) {
+test('card color is restrained to brand and sparse gold tones on white surfaces', () => {
+  for (const tone of ['brand', 'gold']) {
     assert.match(css, new RegExp(`data-card-tone="${tone}"`, 'u'));
   }
-  assert.match(css, /\.cb-card-header\s*\{[^}]*linear-gradient\([^)]*#fff[^}]*--cb-tone-wash/su);
+  for (const removedTone of ['blue', 'teal', 'violet', 'slate']) {
+    assert.doesNotMatch(css, new RegExp(`data-card-tone="${removedTone}"`, 'u'));
+  }
+  assert.match(css, /\.cb-card-header\s*\{[^}]*background:\s*#fff/su);
+  assert.doesNotMatch(css, /--cb-tone-wash/u);
   assert.match(css, /\.cb-category-icon\s*\{[^}]*color:\s*var\(--cb-tone\)[^}]*background:\s*var\(--cb-tone-soft\)/su);
+  assert.match(css, /\.cb-card\.is-front\s*\{[^}]*inset 3px 0 0 var\(--cb-tone\)/su);
+  assert.match(css, /\.cb-card:not\(\.is-front\) \.cb-category-icon\s*\{[^}]*color:\s*#60758e[^}]*background:\s*#f3f5f8/su);
+});
+
+test('the compact window gets its own card density without changing the shell minimum', () => {
+  assert.match(css, /@media\s*\(max-width:\s*560px\)[\s\S]*?\.cb-card-header,[\s\S]*?min-height:\s*40px/u);
+  assert.match(css, /@media\s*\(max-width:\s*560px\)[\s\S]*?\.cb-category-icon\s*\{[^}]*width:\s*22px[^}]*height:\s*22px/u);
 });
 
 test('compact website rows retain the approved icon and text density', () => {

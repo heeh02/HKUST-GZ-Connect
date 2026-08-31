@@ -137,15 +137,11 @@ test('card and website labels are escaped at the view boundary', () => {
   assert.match(markup, /&lt;img src=x onerror=alert\(1\)&gt;/u);
 });
 
-test('official and personal cards receive bounded stable visual tones', () => {
-  assert.equal(view.cardTone('official-category', 'courses'), 'blue');
-  assert.equal(view.cardTone('official-category', 'research'), 'teal');
-  assert.equal(view.cardTone('official-category', 'expenses'), 'gold');
-  assert.equal(view.cardTone('official-category', 'career'), 'violet');
-  assert.equal(view.cardTone('official-category', 'tools'), 'slate');
-  assert.equal(view.cardTone('user-collection', 'group_abcdefghijkl'),
-    view.cardTone('user-collection', 'group_abcdefghijkl'));
-  assert.match(fixture(), /data-card-tone="(?:blue|teal|gold|violet|slate)"/u);
+test('ordinary cards use one brand tone while system widgets retain the sparse gold accent', () => {
+  assert.equal(view.cardTone('official-category'), 'brand');
+  assert.equal(view.cardTone('user-collection'), 'brand');
+  assert.equal(view.cardTone('system-widget'), 'gold');
+  assert.match(fixture(), /data-card-tone="brand"/u);
 });
 
 test('stack depth uses a bounded data attribute instead of CSP-blocked inline style', () => {

@@ -27,20 +27,8 @@
     return strings?.[key] || fallback;
   }
 
-  function cardTone(kind, id) {
-    const value = String(id || '');
-    if (kind === 'official-category') {
-      if (['research', 'labs'].includes(value)) return 'teal';
-      if (['student-finance', 'expenses'].includes(value)) return 'gold';
-      if (['campus-life', 'career'].includes(value)) return 'violet';
-      if (['tools', 'staff'].includes(value)) return 'slate';
-      return 'blue';
-    }
-    if (kind === 'system-widget') return 'gold';
-    const tones = ['blue', 'teal', 'gold', 'violet', 'slate'];
-    let hash = 0;
-    for (const character of value) hash = (hash * 31 + character.codePointAt(0)) >>> 0;
-    return tones[hash % tones.length];
+  function cardTone(kind) {
+    return kind === 'system-widget' ? 'gold' : 'brand';
   }
 
   function renderSiteRows(items, options) {
@@ -73,7 +61,7 @@
     const bodyId = `card-board-body-${placement.placementId}`.replace(/[^a-zA-Z0-9_-]/g, '-');
     const count = Array.isArray(card?.items) ? card.items.length : 0;
     const kind = placement.card.kind;
-    const tone = cardTone(kind, placement.card.id);
+    const tone = cardTone(kind);
     const pinned = context.pinnedCardKeys?.has(`${kind}:${placement.card.id}`) === true;
     const canPin = placement.boardId !== 'connect' && kind !== 'system-widget' && !pinned;
     const removeLabel = placement.boardId === 'connect'
