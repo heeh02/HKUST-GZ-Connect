@@ -74,12 +74,16 @@ test('board view exposes semantic board, deck, placement, and toggle state', () 
   const research = placementMarkup(markup, 'placement_research');
   assert.match(courses, /data-expanded="true"/u);
   assert.match(courses, /data-card-action="toggle" aria-expanded="true"/u);
+  assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_courses"/u);
+  assert.ok(markup.indexOf('data-card-placement-id="placement_courses"') <
+    markup.indexOf('data-card-placement-id="placement_research"'),
+  'the front card was moved to the bottom instead of expanding at its original position');
   assert.match(research, /data-expanded="false"/u);
   assert.match(research, /data-card-action="toggle" aria-expanded="false"/u);
   assert.match(research, /class="cb-card-body" hidden/u);
 });
 
-test('changing the active card expands it in place and collapses its deck sibling', () => {
+test('changing the active card expands it at the same stack position and collapses its sibling', () => {
   const markup = fixture({
     expandedByDeck: { 'deck-academic': 'placement_research' },
     frontByDeck: { 'deck-academic': 'placement_research' },
@@ -90,9 +94,9 @@ test('changing the active card expands it in place and collapses its deck siblin
   assert.match(courses, /class="cb-card-body" hidden/u);
   assert.match(research, /data-expanded="true"/u);
   assert.doesNotMatch(research, /class="cb-card-body" hidden/u);
-  assert.ok(markup.indexOf('data-card-placement-id="placement_research"') >
-    markup.indexOf('data-card-placement-id="placement_courses"'),
-  'the drawn card was not moved to the visual front of its stack');
+  assert.ok(markup.indexOf('data-card-placement-id="placement_courses"') <
+    markup.indexOf('data-card-placement-id="placement_research"'),
+  'drawing a card changed the persisted visual order');
   assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_research"/u);
 });
 

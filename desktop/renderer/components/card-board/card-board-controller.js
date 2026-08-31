@@ -348,9 +348,6 @@
         frontByDeck = { ...frontByDeck, [deckId]: placementId };
         expandedByDeck = model.toggleExpandedPlacement(expandedByDeck, deckId, placementId);
         render({ animate: true });
-        if (expandedByDeck[deckId] === placementId) {
-          motion.scrollPlacementIntoView(container, placementId);
-        }
         return;
       }
       if (event.target.closest('[data-card-action="expand-all"]') && placementId) {

@@ -96,6 +96,10 @@ async function exerciseCardExpansion(window) {
     const cards = [...deck.querySelectorAll(':scope > [data-card-placement-id]')];
     const targetPlacementId = cards[1].dataset.cardPlacementId;
     const before = deck.getBoundingClientRect();
+    const targetBefore = cards[1].getBoundingClientRect();
+    const orderBefore = cards.map((card) => card.dataset.cardPlacementId);
+    const scrollContainer = document.querySelector('.content');
+    const scrollBefore = scrollContainer.scrollTop;
     cards[1].querySelector('[data-card-action="toggle"]').click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 280))));
     const updatedDeck = document.querySelector('[data-card-deck-id="' + deckId + '"]');
@@ -110,13 +114,14 @@ async function exerciseCardExpansion(window) {
       deckStayedInPlace: Math.abs(before.left - after.left) <= 1 && Math.abs(before.top - after.top) <= 1,
       targetExpanded: target.dataset.expanded,
       targetFront: target.dataset.cardFront,
-      targetIsLast: updatedCards.at(-1)?.dataset.cardPlacementId === targetPlacementId,
+      orderUnchanged: updatedCards.map((card) => card.dataset.cardPlacementId).join('|') === orderBefore.join('|'),
+      targetStayedInPlace: Math.abs(targetBefore.top - target.getBoundingClientRect().top) <= 1,
+      scrollUnchanged: scrollContainer.scrollTop === scrollBefore,
       siblingExpanded: sibling.dataset.expanded,
       expandedInDeck: updatedDeck.querySelectorAll('[data-expanded="true"]').length,
       bodyWidth: body.getBoundingClientRect().width,
       siteColumns: getComputedStyle(sites).gridTemplateColumns.split(' ').filter(Boolean).length,
       bodyOverflowY: getComputedStyle(body).overflowY,
-      targetVisible: target.getBoundingClientRect().bottom <= window.innerHeight + 1,
     };
   })()`);
 }
@@ -378,8 +383,9 @@ async function main() {
     assert.equal(expansion.deckStayedInPlace, true, 'click expansion moved its deck to another slot');
     assert.equal(expansion.targetExpanded, 'true', 'the clicked card did not expand in place');
     assert.equal(expansion.targetFront, 'true', 'the clicked card was not drawn to the front');
-    assert.equal(expansion.targetIsLast, true, 'the clicked card did not move to the visual top of its stack');
-    assert.equal(expansion.targetVisible, true, 'the drawn card remained below the visible workspace');
+    assert.equal(expansion.orderUnchanged, true, 'drawing a card changed the stack order');
+    assert.equal(expansion.targetStayedInPlace, true, 'the drawn card moved away from its original position');
+    assert.equal(expansion.scrollUnchanged, true, 'drawing a card unexpectedly scrolled the page');
     assert.equal(expansion.siblingExpanded, 'false', 'the sibling in the same deck stayed expanded');
     assert.equal(expansion.expandedInDeck, 1, 'a deck exposed more than one expanded card');
     assert.ok(expansion.bodyWidth >= 360, 'wide-card fixture did not reach the two-column threshold');

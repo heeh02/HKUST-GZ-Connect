@@ -103,17 +103,13 @@
       ? requestedFront : unit.placements.at(-1)?.placementId || null;
     const activePlacementId = context.expandedByDeck[deckId]
       || (unit.automatic ? null : unit.deck?.activePlacementId) || null;
-    const orderedPlacements = [
-      ...unit.placements.filter(({ placementId }) => placementId !== frontPlacementId),
-      ...unit.placements.filter(({ placementId }) => placementId === frontPlacementId),
-    ];
-    const placements = orderedPlacements.map((placement, index) => {
+    const placements = unit.placements.map((placement, index) => {
       const card = cardsByKey.get(`${placement.card.kind}:${placement.card.id}`);
       return renderPlacement(placement, card, {
         ...context,
         expandedPlacementId: activePlacementId,
         frontPlacementId,
-        stackDepth: orderedPlacements.length - index - 1,
+        stackDepth: unit.placements.length - index - 1,
       });
     }).join('');
     const size = unit.placements.find(({ placementId }) => placementId === activePlacementId)?.size
