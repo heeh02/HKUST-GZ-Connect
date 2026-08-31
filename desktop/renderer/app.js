@@ -349,7 +349,7 @@ $('quickAddCampus').addEventListener('click', async () => {
     renderConnect(st);
   }
 });
-$('campusResources').addEventListener('click', (event) => {
+function handleCardBoardResourceAction(event) {
   const target = event.target.closest('[data-campus-id]');
   const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
   if (!resource) return;
@@ -367,7 +367,9 @@ $('campusResources').addEventListener('click', (event) => {
     return;
   }
   if (action === 'open') openCampus(resource);
-});
+}
+$('campusResources').addEventListener('click', handleCardBoardResourceAction);
+$('connectCardBoardHost').addEventListener('click', handleCardBoardResourceAction);
 $('campusUrl').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') openCampus();
 });
@@ -545,10 +547,9 @@ resourceEditorManager = window.resourceManager.start({
   setSaved: setResourceSaved,
   launcherId: 'legacyResourceManager',
 });
-$('manageResources').addEventListener('click', () => {
-  window.api.openBookmarkManager().catch(() => {
-    usabilityFeature?.toast(t('quick.browserOpenFailed'), 'error');
-  });
+window.addEventListener('card-board-toast', (event) => {
+  const { message, tone } = event.detail || {};
+  if (message) usabilityFeature?.toast(message, tone);
 });
 window.addWebsiteDialog.start({ api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, setResources: (resources) => { campusResources = resources; renderResources(); }, getGroups: () => resourceGroups, setGroups: (groups) => { resourceGroups = groups; renderResources(); }, toast: (message, tone) => usabilityFeature?.toast(message, tone) });
 resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });

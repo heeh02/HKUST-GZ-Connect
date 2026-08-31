@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('api', {
   openCampusBrowser: (request) => ipcRenderer.invoke('open-campus-browser', request),
   openBookmarkManager: () => ipcRenderer.invoke('open-bookmark-manager'),
   openResource: (resourceId) => ipcRenderer.invoke('open-resource', { resourceId }),
+  getCardBoardLayout: () => ipcRenderer.invoke('get-card-board-layout'),
+  commitCardBoardLayout: (request) => ipcRenderer.invoke('commit-card-board-layout', request),
+  resetCardBoardLayout: (request) => ipcRenderer.invoke('reset-card-board-layout', request),
   checkUpdate: (force) => ipcRenderer.invoke('check-update', force),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveResource: (resource) => ipcRenderer.invoke('save-resource', resource),
@@ -67,6 +70,12 @@ contextBridge.exposeInMainWorld('api', {
     const listener = (_event, snapshot) => cb(snapshot);
     ipcRenderer.on('network-environment', listener);
     return () => ipcRenderer.removeListener('network-environment', listener);
+  },
+  onCardBoardLayoutChanged: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (_event, document) => cb(document);
+    ipcRenderer.on('card-board-layout-changed', listener);
+    return () => ipcRenderer.removeListener('card-board-layout-changed', listener);
   },
   onAuthChallenge: (cb) => {
     if (typeof cb !== 'function') return () => {};

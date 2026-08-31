@@ -61,6 +61,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   gap: 18px;
   border-bottom: 1px solid var(--workspace-line);
 }
+.primary-actions { display: flex; align-items: center; gap: 8px; }
 .primary-tabs { min-width: 0; display: flex; align-items: center; gap: 30px; }
 .primary-tabs button {
   position: relative;
@@ -233,6 +234,15 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .resource-star:hover { color: var(--workspace-gold); background: #fff7e3; }
 .resource-star.active { color: var(--workspace-gold); }
 
+.workspace-card-board { min-width: 0; margin-top: 12px; }
+.workspace-card-board-view, .workspace-card-board-view > .cb-board-host { min-width: 0; }
+.workspace-card-board .cb-edit-toolbar { position: sticky; top: 8px; z-index: 12; }
+.workspace-card-board .cb-card { border-color: var(--workspace-line); }
+.workspace-card-board .cb-card-title,
+.workspace-card-board .cb-site-copy strong { color: var(--workspace-navy); }
+.workspace-card-board .cb-category-icon,
+.workspace-card-board .cb-site-icon { color: var(--workspace-blue); }
+
 .resource-selection { flex: 0 0 28px; display: grid; place-items: center; cursor: pointer; }
 .resource-selection input { width: 15px; height: 15px; accent-color: var(--workspace-blue); }
 .workspace-managing .resource-item, #manageScreen .resource-item { flex-wrap: wrap; }
@@ -347,7 +357,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .primary-navigation { gap: 8px; }
   .primary-tabs { gap: 12px; }
   .primary-tabs button { font-size: 12px; }
-  .primary-navigation > .soft-button { min-width: 56px; padding: 0 8px; }
+  .primary-actions { gap: 5px; }
+  .primary-actions > .soft-button, .primary-actions > .secondary-create { min-width: 56px; padding: 0 8px; }
   .secondary-create { padding: 0 9px; }
   .view-heading { min-height: 46px; }
   .view-heading h1 { font-size: 16px; }

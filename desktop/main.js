@@ -1422,7 +1422,8 @@ async function runAutomaticUpdateCheck() {
 }
 
 // ---------- IPC ----------
-const CONTROL_RENDERER_FILE = path.join(__dirname, 'renderer', 'index.html');
+const CONTROL_RENDERER_FILE = path.join(__dirname, 'renderer', 'index.html'), CAMPUS_WORKSPACE_RENDERER_FILE = path.join(__dirname, 'renderer', 'campus-workspace.html');
+const cardBoard = require('./lib/app/card-board-main-runtime').createCardBoardMainRuntime({ favoritesFile: RESOURCE_FAVORITES, platform: process.platform, ipcMain, allowedFiles: [CONTROL_RENDERER_FILE, CAMPUS_WORKSPACE_RENDERER_FILE], getResources: safeCampusResourceLibrary, getGroups: () => resourceLibraryRuntime.listGroups(), runTransaction: runActiveContextTransaction, onChanged: (document) => { desktopShell?.send('card-board-layout-changed', document); campusBrowserManager?.browser?.refreshCardBoardLayout(document); } });
 function trustedHandle(channel, handler) {
   registerTrustedIpcHandlers({
     ipcMain,
@@ -1463,7 +1464,7 @@ registerControlDataIpc({
     safeResources: safeCampusResourceLibrary,
     routingPolicy: domainRoutePolicy,
     activityStore: resourceLibraryRuntime, onChanged: resourcesChanged,
-  },
+  }, cardBoard,
   schools: { onboarding: schoolProfileOnboarding, getLocale: () => locale,
     isCustomGatewayEnabled: () => customGatewayOnboardingEnabled,
     deleteProfile: (request) => customProfileDeletion.deleteProfile({ ...request, activeProfileId: activeSchoolProfile.activeContextBinding().profileId }),

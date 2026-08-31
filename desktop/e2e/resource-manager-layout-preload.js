@@ -36,6 +36,7 @@ let workspaceOpenCount = 0;
 let bookmarkManagerOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
+let cardBoardRequests = { get: 0, commit: 0, reset: 0, lastOperations: [] };
 let routingRules = [
   { host: 'login.example.com', includeSubdomains: false, route: 'direct', updatedAt: 2 },
 ];
@@ -111,6 +112,54 @@ const state = {
   pacUrl: '',
 };
 
+const officialCategoryIds = [...new Set(resources.filter(({ reviewed }) => reviewed)
+  .map(({ category }) => category))];
+const cloneCardBoardDocument = (document) => JSON.parse(JSON.stringify(document));
+function placement(boardId, kind, id, order) {
+  return {
+    placementId: `fixture-${boardId}-${kind}-${id}`,
+    boardId,
+    card: { kind, id },
+    deckId: null,
+    order,
+    size: 'small',
+    hidden: false,
+  };
+}
+const catalogPlacements = officialCategoryIds.map((id, order) => (
+  placement('browser-catalog', 'official-category', id, order)
+));
+const firstDeck = catalogPlacements.length >= 2 ? {
+  deckId: 'fixture-deck-catalog-primary',
+  boardId: 'browser-catalog',
+  placementIds: catalogPlacements.slice(0, 2).map(({ placementId }) => placementId),
+  activePlacementId: catalogPlacements[0].placementId,
+  order: 0,
+} : null;
+if (firstDeck) {
+  firstDeck.placementIds.forEach((placementId, order) => {
+    const target = catalogPlacements.find((candidate) => candidate.placementId === placementId);
+    target.deckId = firstDeck.deckId;
+    target.order = order;
+  });
+  catalogPlacements.slice(2).forEach((target, index) => { target.order = index + 1; });
+}
+const initialCardBoardDocument = {
+  schemaVersion: 1,
+  revision: 0,
+  placements: [
+    ...catalogPlacements,
+    ...state.resourceGroups.map(({ id }, order) => (
+      placement('browser-personal', 'user-collection', id, order)
+    )),
+    placement('connect', 'system-widget', 'connection-metrics', 0),
+    placement('connect', 'system-widget', 'network-adapter', 1),
+    placement('connect', 'system-widget', 'connection-details', 2),
+  ],
+  decks: firstDeck ? [firstDeck] : [],
+};
+let cardBoardDocument = cloneCardBoardDocument(initialCardBoardDocument);
+
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
   getNetworkEnvironment: async () => state.networkEnvironment,
@@ -149,6 +198,31 @@ contextBridge.exposeInMainWorld('api', {
       resource.id === resourceId ? { ...resource, lastOpenedAt: Date.now() } : resource
     ));
     return { ok: true, resourceId, resources };
+  },
+  getCardBoardLayout: async () => {
+    cardBoardRequests = { ...cardBoardRequests, get: cardBoardRequests.get + 1 };
+    return { ok: true, document: cloneCardBoardDocument(cardBoardDocument) };
+  },
+  commitCardBoardLayout: async ({ baseRevision, operations }) => {
+    if (baseRevision !== cardBoardDocument.revision) {
+      return { ok: false, code: 'CARD_BOARD_REVISION_CONFLICT' };
+    }
+    cardBoardDocument.revision += 1;
+    cardBoardRequests = {
+      ...cardBoardRequests,
+      commit: cardBoardRequests.commit + 1,
+      lastOperations: structuredClone(operations),
+    };
+    return { ok: true, changed: operations.length > 0 };
+  },
+  resetCardBoardLayout: async ({ baseRevision }) => {
+    if (baseRevision !== cardBoardDocument.revision) {
+      return { ok: false, code: 'CARD_BOARD_REVISION_CONFLICT' };
+    }
+    cardBoardDocument = { ...cloneCardBoardDocument(initialCardBoardDocument),
+      revision: cardBoardDocument.revision + 1 };
+    cardBoardRequests = { ...cardBoardRequests, reset: cardBoardRequests.reset + 1 };
+    return { ok: true, document: cloneCardBoardDocument(cardBoardDocument), changed: true };
   },
   saveResource: async (resource) => {
     const saved = {
@@ -275,5 +349,6 @@ contextBridge.exposeInMainWorld('api', {
   onTelemetry: () => {},
   onNetworkEnvironment: () => {},
   testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount,
-    resources, resourceGroups: state.resourceGroups }),
+    resources, resourceGroups: state.resourceGroups, cardBoardRequests,
+    cardBoardDocument: cloneCardBoardDocument(cardBoardDocument) }),
 });

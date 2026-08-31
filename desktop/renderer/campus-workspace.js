@@ -88,6 +88,16 @@ const $ = (id) => document.getElementById(id);
 const text = () => I18N[state?.locale === 'en' ? 'en' : 'zh'];
 const command = (name, payload = {}) => window.campusWorkspace?.command(name, payload) === true;
 const categoryLabel = (category) => text()[model.TASK_CATEGORIES.find(({ id }) => id === category)?.labelKey || 'custom'];
+const workspaceBoardFeature = window.campusWorkspaceCardBoard.create({
+  window,
+  document,
+  workspaceModel: model,
+  getState: () => state,
+  getText: text,
+  categoryLabel,
+  mutate: (name, payload) => mutate(name, payload),
+  command,
+});
 
 const workspaceFeedback = document.createElement('p');
 workspaceFeedback.id = 'workspaceMutationFeedback';
@@ -307,14 +317,15 @@ function renderHome() {
   const recent = [...resources].filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt))
     .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
   const byId = new Map(resources.map((resource) => [resource.id, resource]));
-  const categories = model.catalogProjection(state.resources).categories;
+  const officialResources = state.resources.filter(({ builtin }) => builtin === true);
+  const categories = model.catalogProjection(officialResources).categories;
   const groupViews = state.groups.map((group) => ({
       id: group.id, name: group.name,
       items: group.resourceIds.map((id) => byId.get(id)).filter(Boolean),
     }));
   const categoryViews = categories.map(({ id }) => ({
     id, name: categoryLabel(id),
-    items: model.catalogProjection(state.resources, id).items,
+    items: model.catalogProjection(officialResources, id).items,
   }));
   const primaryLabels = {
     workspace: text().primaryWorkspace,
@@ -327,6 +338,14 @@ function renderHome() {
     control.classList.toggle('active', active);
     control.setAttribute('aria-current', active ? 'page' : 'false');
   }
+
+  const cardMode = workspaceBoardFeature.render(primaryView);
+  $('secondaryNavigation').hidden = cardMode;
+  $('serviceViewGrid').hidden = cardMode;
+  $('servicePager').hidden = cardMode;
+  $('serviceViewTitle').closest('.view-heading').hidden = cardMode;
+  $('openManage').hidden = primaryView === 'recent';
+  if (cardMode) return;
 
   let selected;
   let secondaryViews = [];
@@ -355,7 +374,7 @@ function renderHome() {
     });
     return button;
   };
-  $('secondaryNavigation').hidden = primaryView === 'recent';
+  $('secondaryNavigation').hidden = true;
   $('serviceViewTabs').replaceChildren(...secondaryViews.map(tab));
   $('secondarySelect').replaceChildren(...secondaryViews.map((view) => {
     const option = document.createElement('option'); option.value = view.id;
@@ -580,7 +599,7 @@ $('secondarySelect').addEventListener('change', (event) => {
   servicePage = 0; renderHome();
 });
 $('openManage').addEventListener('click', () => {
-  navigation = model.normalizeNavigation({ screen: 'manage' }); render();
+  workspaceBoardFeature.toggleEdit();
 });
 $('quickCreateGroup').addEventListener('click', () => openGroupDialog());
 $('backToServices').addEventListener('click', () => {
@@ -670,7 +689,11 @@ function scheduleLayoutRender() {
 new ResizeObserver(scheduleLayoutRender).observe(document.querySelector('.workspace-shell'));
 window.addEventListener('resize', scheduleLayoutRender);
 
-window.campusWorkspace?.onState((next) => { state = next; render(); });
+window.campusWorkspace?.onState((next) => {
+  state = next;
+  render();
+  if (!workspaceBoardFeature.isEditing()) void workspaceBoardFeature.reload();
+});
 window.campusWorkspace?.onFocus(({ target, query = '' }) => {
   if (target === 'search') {
     const normalized = query.trim().toLocaleLowerCase();
@@ -680,6 +703,8 @@ window.campusWorkspace?.onFocus(({ target, query = '' }) => {
       primaryView = 'workspace'; workspaceView = group.id; servicePage = 0;
       navigation = model.normalizeNavigation({ screen: 'home' });
       render();
+      $('serviceViewTitle').textContent = group.name;
+      workspaceBoardFeature.focusPersonalCollection(group.id);
     } else if (query) {
       navigation = model.normalizeNavigation({ screen: 'home', query });
       searchPage = 0; render();
@@ -687,8 +712,9 @@ window.campusWorkspace?.onFocus(({ target, query = '' }) => {
       command('focus-address');
     }
   } else if (target === 'manage') {
-    navigation = model.normalizeNavigation({ screen: 'manage' });
+    navigation = model.normalizeNavigation({ screen: 'home' });
     render();
+    workspaceBoardFeature.enterEdit();
   }
 });
 command('ready');

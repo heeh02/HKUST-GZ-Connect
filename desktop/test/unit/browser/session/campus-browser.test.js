@@ -912,6 +912,19 @@ test('local Workspace Home refreshes favorites and recent resources without a ne
   assert.deepEqual(workspaceStates.at(-1), ['recent']);
 });
 
+test('card board layout changes are broadcast only to open Workspace tabs', async () => {
+  const { browser } = createFakeBrowser({ homeUrl: BLANK_CAMPUS_HOME });
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  await nextImmediate();
+  const workspace = browser.activeTab();
+  const messages = [];
+  workspace.view.webContents.send = (channel, payload) => messages.push({ channel, payload });
+  const document = { schemaVersion: 1, revision: 4, placements: [], decks: [] };
+  assert.equal(browser.refreshCardBoardLayout(document), true);
+  assert.deepEqual(messages, [{ channel: 'card-board-layout-changed', payload: document }]);
+  assert.equal(browser.refreshCardBoardLayout(null), false);
+});
+
 test('context switch close waits for the real BrowserWindow closed event', async () => {
   const { browser } = createFakeBrowser();
   await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);

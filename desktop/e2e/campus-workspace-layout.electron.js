@@ -3,11 +3,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { CampusWorkspaceController } = require('../lib/browser/workspace/campus-workspace-controller');
 const {
   parseBuiltinResourceDocument,
 } = require('../lib/resources/schema/campus-resource-contract');
+const { createDefaultCardBoardLayout } = require('../lib/card-board/runtime/card-board-migration');
+const { applyCardBoardOperations } = require('../lib/card-board/runtime/card-board-runtime');
 
 const favoriteTimes = new Map([
   ['canvas', [true, 900]], ['library', [true, 800]], ['outlook', [true, 600]],
@@ -41,28 +43,34 @@ const resources = Object.freeze([
   }),
 ]);
 
+const cardBoardAuthority = Object.freeze({
+  officialCategoryIds: Object.freeze([...new Set(reviewed.map(({ category }) => category))]),
+  userCollectionIds: Object.freeze(['group_abcdefghijkl']),
+  includeUngroupedFavorites: true,
+  connectWidgetIds: Object.freeze([
+    'connection-metrics', 'network-adapter', 'connection-details',
+  ]),
+});
+
 async function inspect(window) {
   return window.webContents.executeJavaScript(`(() => {
     const grid = document.getElementById('serviceViewGrid');
-    const gridRect = grid.getBoundingClientRect();
-    const itemRects = [...grid.querySelectorAll('.resource-item')]
-      .map((item) => item.getBoundingClientRect());
+    const board = document.querySelector('#workspaceCardBoard [data-card-board]');
     return {
       width: innerWidth,
       noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
-      noVerticalPageScroll: document.documentElement.scrollHeight <= innerHeight,
       duplicateHeader: document.querySelectorAll('.workspace-header').length,
       duplicateSearch: document.querySelectorAll('#workspaceSearch').length,
-      gridColumns: getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
-      visibleResources: grid.querySelectorAll('.resource-item').length,
-      everyResourceFits: itemRects.every((rect) =>
-        rect.top >= gridRect.top - 1 && rect.bottom <= gridRect.bottom + 1),
+      boardId: board?.dataset.boardId || null,
+      boardColumns: Number(board?.dataset.boardColumns || 0),
+      cards: board?.querySelectorAll('[data-card-placement-id]').length || 0,
+      dragHandles: board?.querySelectorAll('[data-card-drag-handle]').length || 0,
+      nestedScrollers: [...(board?.querySelectorAll('.cb-card-body, .cb-site-list') || [])]
+        .filter((node) => ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)).length,
       primaryTabs: document.querySelectorAll('[data-primary-view]').length,
-      secondaryTabs: document.querySelectorAll('.secondary-tab').length,
-      secondarySelectVisible: getComputedStyle(document.getElementById('secondarySelect')).display !== 'none',
-      secondaryTabsVisible: getComputedStyle(document.getElementById('serviceViewTabs')).display !== 'none',
-      pagerRange: document.querySelector('.pager-range')?.textContent || '',
-      pagerButtons: document.querySelectorAll('.pager-button').length,
+      secondaryHidden: document.getElementById('secondaryNavigation').hidden,
+      serviceGridHidden: grid.hidden,
+      manageScreenVisible: !document.getElementById('manageScreen').hidden,
     };
   })()`);
 }
@@ -77,6 +85,32 @@ async function capture(window, label) {
 async function main() {
   await app.whenReady();
   const commands = [];
+  const layoutCommits = [];
+  let cardBoardDocument = createDefaultCardBoardLayout(cardBoardAuthority);
+  ipcMain.handle('get-card-board-layout', () => ({ document: cardBoardDocument }));
+  ipcMain.handle('commit-card-board-layout', (_event, request) => {
+    if (request.baseRevision !== cardBoardDocument.revision) {
+      const error = new Error('revision conflict');
+      error.code = 'CARD_BOARD_REVISION_CONFLICT';
+      throw error;
+    }
+    cardBoardDocument = applyCardBoardOperations(
+      cardBoardDocument, request.operations, cardBoardAuthority,
+    );
+    layoutCommits.push(structuredClone(request.operations));
+    cardBoardDocument = { ...cardBoardDocument, revision: cardBoardDocument.revision + 1 };
+    return { document: cardBoardDocument, changed: request.operations.length > 0 };
+  });
+  ipcMain.handle('reset-card-board-layout', (_event, request) => {
+    if (request.baseRevision !== cardBoardDocument.revision) {
+      const error = new Error('revision conflict');
+      error.code = 'CARD_BOARD_REVISION_CONFLICT';
+      throw error;
+    }
+    const next = createDefaultCardBoardLayout(cardBoardAuthority);
+    cardBoardDocument = { ...next, revision: cardBoardDocument.revision + 1 };
+    return { document: cardBoardDocument, changed: true };
+  });
   const window = new BrowserWindow({
     width: 1040, height: 740, show: false, backgroundColor: '#f4f7fb',
     webPreferences: {
@@ -99,37 +133,32 @@ async function main() {
   controller.attach(window.webContents);
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
-  const catalogueSize = resources.filter(({ category }) => category !== 'gateway').length;
-
-  for (const [label, width, height, expectedColumns, expectedItems, usesSelect] of [
-    ['compact', 660, 720, 1, 6, true],
-    ['standard', 1040, 740, 2, 8, false],
-    ['wide', 1400, 900, 3, 12, false],
+  for (const [label, width, height, expectedColumns] of [
+    ['compact', 660, 720, 1],
+    ['standard', 1040, 740, 2],
+    ['wide', 1400, 900, 3],
   ]) {
     window.setContentSize(width, height);
     await new Promise((resolve) => setTimeout(resolve, 220));
     await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
       document.getElementById('primaryCatalog').click();
-      [...document.querySelectorAll('.secondary-tab')]
-        .find((button) => button.textContent.startsWith('全部 ')).click();
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     }))()`);
     await new Promise((resolve) => setTimeout(resolve, 220));
     const home = await inspect(window);
     assert.equal(home.width, width);
     assert.equal(home.noHorizontalOverflow, true, `${label} overflowed horizontally`);
-    assert.equal(home.noVerticalPageScroll, true, `${label} requires whole-page scrolling`);
     assert.equal(home.duplicateHeader, 0, `${label} repeats the browser Profile header`);
     assert.equal(home.duplicateSearch, 0, `${label} repeats the browser address search`);
-    assert.equal(home.gridColumns, expectedColumns, `${label} service grid columns`);
-    assert.equal(home.visibleResources, expectedItems, `${label} page capacity is unstable`);
-    assert.equal(home.everyResourceFits, true, `${label} clips a resource row`);
+    assert.equal(home.boardId, 'browser-catalog', `${label} projected the wrong board`);
+    assert.equal(home.boardColumns, expectedColumns, `${label} card-board columns`);
+    assert.equal(home.cards, 12, `${label} official task categories are incomplete`);
+    assert.equal(home.dragHandles, 0, `${label} browsing exposed edit-only drag handles`);
+    assert.equal(home.nestedScrollers, 0, `${label} card board added an inner scrollbar`);
     assert.equal(home.primaryTabs, 3, `${label} primary product modes are incomplete`);
-    assert.ok(home.secondaryTabs >= 10, `${label} catalogue categories are incomplete`);
-    assert.equal(home.secondarySelectVisible, usesSelect, `${label} secondary navigation mode is wrong`);
-    assert.equal(home.secondaryTabsVisible, !usesSelect, `${label} secondary tabs visibility is wrong`);
-    assert.match(home.pagerRange, new RegExp(`1[–-]${expectedItems} / ${catalogueSize}`, 'u'));
-    assert.equal(home.pagerButtons, 2, `${label} explicit pagination controls are missing`);
+    assert.equal(home.secondaryHidden, true, `${label} duplicated category navigation remains visible`);
+    assert.equal(home.serviceGridHidden, true, `${label} legacy resource grid remains visible`);
+    assert.equal(home.manageScreenVisible, false, `${label} detached organizer is visible`);
     await capture(window, `${label}-home`);
     await capture(window, `${label}-services`);
   }
@@ -139,15 +168,14 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 100));
   const zoomed = await inspect(window);
   assert.equal(zoomed.noHorizontalOverflow, true, '125% zoom overflowed horizontally');
-  assert.equal(zoomed.noVerticalPageScroll, true, '125% zoom requires whole-page scrolling');
-  assert.equal(zoomed.everyResourceFits, true, '125% zoom clips a resource row');
+  assert.equal(zoomed.cards, 12, '125% zoom hid official categories');
   await capture(window, 'zoomed-services');
   window.webContents.setZoomFactor(2);
   await new Promise((resolve) => setTimeout(resolve, 100));
   const zoomed200 = await inspect(window);
   assert.equal(zoomed200.noHorizontalOverflow, true, '200% zoom overflowed horizontally');
   assert.equal(zoomed200.primaryTabs, 3, '200% zoom hides a primary product mode');
-  assert.equal(zoomed200.pagerButtons, 2, '200% zoom hides explicit pagination');
+  assert.equal(zoomed200.cards, 12, '200% zoom hides official category cards');
   window.webContents.setZoomFactor(1);
   await new Promise((resolve) => setTimeout(resolve, 80));
 
@@ -181,11 +209,14 @@ async function main() {
   assert.equal(controller.focus(window.webContents, 'search', '学习'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));
   const groupSearch = await window.webContents.executeJavaScript(`({
-    title: document.getElementById('serviceViewTitle').textContent,
+    title: document.querySelector('#workspacePersonalBoardHost [data-card-ref-id="group_abcdefghijkl"] .cb-card-title')?.textContent,
     homeVisible: !document.getElementById('homeScreen').hidden,
     activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
+    createCategoryVisible: !document.getElementById('quickCreateGroup').hidden,
   })`);
-  assert.deepEqual(groupSearch, { title: '学习', homeVisible: true, activePrimary: 'workspace' });
+  assert.deepEqual(groupSearch, {
+    title: '学习', homeVisible: true, activePrimary: 'workspace', createCategoryVisible: true,
+  });
   const recentView = await window.webContents.executeJavaScript(`(() => {
     document.getElementById('primaryRecent').click();
     return {
@@ -201,15 +232,20 @@ async function main() {
 
   const courses = await window.webContents.executeJavaScript(`(() => {
     document.getElementById('primaryCatalog').click();
-    [...document.querySelectorAll('.secondary-tab')]
-      .find((button) => button.textContent.includes('课程、选课与成绩')).click();
-    const grid = document.getElementById('serviceViewGrid');
-    grid.querySelector('[data-resource-id="sis"] .resource-open').click();
+    const card = document.querySelector(
+      '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
+    );
+    card.querySelector('[data-card-action="toggle"]').click();
+    const updated = document.querySelector(
+      '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
+    );
+    updated.querySelector('[data-card-resource-id="sis"] [data-resource-action="open"]').click();
+    updated.querySelector('[data-card-resource-id="sis"] [data-resource-action="favorite"]').click();
     return {
-      ids: [...grid.querySelectorAll('.resource-item')]
-        .map((item) => item.dataset.resourceId),
+      ids: [...updated.querySelectorAll('[data-card-resource-id]')]
+        .map((item) => item.dataset.cardResourceId),
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
-      selectedCategory: document.querySelector('.secondary-tab.active')?.textContent,
+      selectedCategory: updated.querySelector('.cb-card-title')?.textContent,
     };
   })()`);
   assert.equal(courses.ids.includes('sis'), true);
@@ -228,103 +264,84 @@ async function main() {
   })()`);
   assert.deepEqual(leaveSearch, ['e-form', 'student-request-guide']);
 
-  const managementView = await window.webContents.executeJavaScript(`(() => {
+  window.setContentSize(1400, 900);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const managementView = await window.webContents.executeJavaScript(`(async () => {
+    document.getElementById('primaryCatalog').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const host = document.getElementById('workspaceCatalogBoardHost');
+    const initialBoard = host.querySelector('[data-card-board]');
+    const ordinaryHandles = initialBoard.querySelectorAll('[data-card-drag-handle]').length;
     document.getElementById('openManage').click();
-    document.querySelector('#manageFolderNav [data-folder-id="all"] .manage-folder-select').click();
-    const initialManageGrid = document.getElementById('resourcePool');
-    const initialManageItem = initialManageGrid.querySelector('.resource-item');
-    const initialManageIcon = initialManageGrid.querySelector('.resource-icon');
-    const initialBulk = {
-      hint: document.getElementById('bulkSelectedCount').textContent,
-      groupHidden: document.getElementById('bulkGroupSelect').hidden,
-      addHidden: document.getElementById('bulkAddToGroup').hidden,
-      clearHidden: document.getElementById('bulkClearSelection').hidden,
-    };
-    const compactGeometry = {
-      columns: getComputedStyle(initialManageGrid).gridTemplateColumns.split(' ').filter(Boolean).length,
-      itemHeight: initialManageItem.getBoundingClientRect().height,
-      iconWidth: initialManageIcon.getBoundingClientRect().width,
-    };
-    document.querySelector('#resourcePool .resource-star').click();
-    document.getElementById('createGroup').click();
-    document.getElementById('groupName').value = '科研';
-    document.getElementById('saveGroup').click();
-    document.querySelector('#resourcePool .resource-selection input').click();
-    const selectedBulk = {
-      groupVisible: !document.getElementById('bulkGroupSelect').hidden,
-      addVisible: !document.getElementById('bulkAddToGroup').hidden,
-      clearVisible: !document.getElementById('bulkClearSelection').hidden,
-    };
-    const bulkGroup = document.getElementById('bulkGroupSelect');
-    bulkGroup.value = 'group_abcdefghijkl';
-    bulkGroup.dispatchEvent(new Event('change', { bubbles: true }));
-    document.getElementById('bulkAddToGroup').click();
-    const dragData = new DataTransfer();
-    const discovered = document.querySelector('#resourcePool [data-resource-id="class-schedule"]');
-    const targetGroup = document.querySelector('#manageFolderNav [data-folder-id="group_abcdefghijkl"]');
-    discovered.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dragData }));
-    targetGroup.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dragData }));
-    targetGroup.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dragData }));
-    discovered.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dragData }));
-    while (!document.querySelector('#managePager .pager-button:last-child')?.disabled) {
-      document.querySelector('#managePager .pager-button:last-child').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    let board = host.querySelector('[data-card-board]');
+    const toolbar = document.getElementById('workspaceCatalogEditToolbar');
+    const actions = [...toolbar.querySelectorAll('[data-board-action]')]
+      .map((button) => button.dataset.boardAction).sort();
+    const editing = board.dataset.editing;
+    const handle = board.querySelector('[data-card-drag-handle]');
+    handle.focus();
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    board = host.querySelector('[data-card-board]');
+    const picked = board.querySelector('[data-keyboard-picked="true"] [data-card-drag-handle]') ||
+      board.querySelector('[data-card-drag-handle]');
+    picked.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    const announcement = document.getElementById('cardBoardLiveRegion')?.textContent || '';
+    board = host.querySelector('[data-card-board]');
+    const firstCard = board.querySelector('[data-card-placement-id]');
+    const placementId = firstCard.dataset.cardPlacementId;
+    firstCard.querySelector('[data-card-edit-action="resize"]').click();
+    board = host.querySelector('[data-card-board]');
+    const resized = board.querySelector('[data-card-placement-id="' + placementId + '"]')
+      .dataset.cardSize;
+    toolbar.querySelector('[data-board-action="undo"]').click();
+    board = host.querySelector('[data-card-board]');
+    const undone = board.querySelector('[data-card-placement-id="' + placementId + '"]')
+      .dataset.cardSize;
+    toolbar.querySelector('[data-board-action="redo"]').click();
+    document.getElementById('openManage').click();
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && host.querySelector('[data-card-board]').dataset.editing === 'true') {
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    const custom = document.querySelector('#resourcePool [data-resource-id="hpc"]');
-    custom.querySelector('.resource-rename').click();
-    document.getElementById('groupName').value = '科研服务器';
-    document.getElementById('saveGroup').click();
-    custom.querySelector('.resource-delete').click();
-    custom.querySelector('.resource-delete').click();
     return {
-      visible: !document.getElementById('manageScreen').hidden,
-      bulkVisible: getComputedStyle(document.getElementById('bulkActions')).display !== 'none',
-      rowCheckboxes: document.querySelectorAll('#resourcePool .resource-selection input').length,
-      perRowGroupSelects: document.querySelectorAll('#resourcePool .resource-group-select').length,
-      compactGeometry, initialBulk, selectedBulk,
+      homeVisible: !document.getElementById('homeScreen').hidden,
+      detachedManagerVisible: !document.getElementById('manageScreen').hidden,
+      editing,
+      editingAfterSave: host.querySelector('[data-card-board]').dataset.editing,
+      ordinaryHandles,
+      editHandles: board.querySelectorAll('[data-card-drag-handle]').length,
+      actions,
+      announcement,
+      resized,
+      undone,
+      noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
     };
   })()`);
-  assert.equal(managementView.visible, true, 'organizer stopped being the active workspace screen');
-  assert.equal(managementView.bulkVisible, true, 'batch organizer controls are hidden');
-  assert.ok(managementView.rowCheckboxes > 0, 'organizer rows have no batch selection control');
-  assert.equal(managementView.perRowGroupSelects, 0, 'per-row group dropdowns returned');
-  assert.deepEqual(managementView.initialBulk, {
-    hint: '选择网站后可加入分类', groupHidden: true, addHidden: true, clearHidden: true,
-  }, 'idle organizer exposes low-value batch controls');
-  assert.deepEqual(managementView.selectedBulk, {
-    groupVisible: true, addVisible: true, clearVisible: true,
-  }, 'selecting a site does not reveal batch category controls');
-  assert.equal(managementView.compactGeometry.columns, 3,
-    'organizer does not use the available width at 125% zoom');
-  assert.ok(managementView.compactGeometry.iconWidth <= 28,
-    'organizer icons are oversized for a desktop productivity surface');
-  assert.ok(managementView.compactGeometry.itemHeight <= 64,
-    'organizer rows waste vertical space');
-  await new Promise((resolve) => setTimeout(resolve, 180));
+  assert.equal(managementView.homeVisible, true, 'Organize navigated away from the current board');
+  assert.equal(managementView.detachedManagerVisible, false,
+    'Organize reopened the detached list manager');
+  assert.equal(managementView.editing, 'true', 'Organize did not enter inline editing');
+  assert.equal(managementView.editingAfterSave, 'false', 'Done did not leave inline editing');
+  assert.equal(managementView.ordinaryHandles, 0, 'ordinary browsing exposed drag handles');
+  assert.equal(managementView.editHandles, 12, 'editing did not expose one handle per category');
+  assert.deepEqual(managementView.actions, ['cancel', 'done', 'redo', 'reset', 'undo']);
+  assert.match(managementView.announcement, /取消|移动/u,
+    'keyboard arranging did not announce its result');
+  assert.notEqual(managementView.resized, managementView.undone,
+    'undo did not restore the previous card size');
+  assert.equal(managementView.noHorizontalOverflow, true,
+    'inline organizing introduced horizontal overflow');
+  assert.ok(layoutCommits.flat().some(({ type }) => type === 'resize-placement'),
+    'inline edit did not commit its revision-bound layout operations');
   assert.equal(commands.some(({ command }) => command === 'toggle-favorite'), true);
   assert.equal(commands.some(({ command, resourceId }) =>
     command === 'open-resource' && resourceId === 'sis'), true);
-  assert.equal(commands.some(({ command, name }) => command === 'create-group' && name === '科研'), true);
-  assert.equal(commands.some(({ command, resourceIds, groupId }) =>
-    command === 'add-resources-to-group' && resourceIds.length === 1 &&
-    groupId === 'group_abcdefghijkl'), true);
-  assert.equal(commands.some(({ command, resourceIds, groupId }) =>
-    command === 'add-resources-to-group' && resourceIds.includes('class-schedule') &&
-    groupId === 'group_abcdefghijkl'), true,
-  'dragging into a task workspace must preserve the resource other placements');
-  assert.equal(commands.some(({ command, resourceId, name }) =>
-    command === 'rename-resource' && resourceId === 'hpc' && name === '科研服务器'), true);
-  assert.equal(commands.some(({ command, resourceId }) =>
-    command === 'delete-resource' && resourceId === 'hpc'), true);
-  await window.webContents.executeJavaScript(`(() => new Promise((resolve) => {
-    document.getElementById('openManage').click();
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  }))()`);
   await capture(window, 'manage');
-  const returnedHome = await window.webContents.executeJavaScript(`(() => {
-    document.getElementById('backToServices').click();
-    return !document.getElementById('homeScreen').hidden && document.getElementById('manageScreen').hidden;
-  })()`);
-  assert.equal(returnedHome, true, 'organizer cannot return to Campus Services');
+  for (const channel of [
+    'get-card-board-layout', 'commit-card-board-layout', 'reset-card-board-layout',
+  ]) ipcMain.removeHandler(channel);
   window.destroy();
   process.stdout.write('campus workspace layout: PASS\n');
   app.quit();

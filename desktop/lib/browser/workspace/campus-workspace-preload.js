@@ -134,6 +134,15 @@ function command(name, payload = {}) {
 contextBridge.exposeInMainWorld('campusWorkspace', Object.freeze({
   command,
   request,
+  getLayout: () => ipcRenderer.invoke('get-card-board-layout'),
+  commitLayout: (value) => ipcRenderer.invoke('commit-card-board-layout', value),
+  resetLayout: (value) => ipcRenderer.invoke('reset-card-board-layout', value),
+  onLayoutChanged(callback) {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, document) => callback(document);
+    ipcRenderer.on('card-board-layout-changed', listener);
+    return () => ipcRenderer.removeListener('card-board-layout-changed', listener);
+  },
   onState(callback) {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, state) => callback(state);

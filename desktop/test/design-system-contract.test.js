@@ -10,6 +10,7 @@ const tokens = fs.readFileSync(path.join(renderer, 'design-tokens.css'), 'utf8')
 const controlHtml = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
 const browserHtml = fs.readFileSync(path.join(renderer, 'campus-browser.html'), 'utf8');
 const controlCss = fs.readFileSync(path.join(renderer, 'styles.css'), 'utf8');
+const cardBoardCss = fs.readFileSync(path.join(renderer, 'components', 'card-board', 'card-board.css'), 'utf8');
 const browserCss = fs.readFileSync(path.join(renderer, 'campus-browser.css'), 'utf8');
 const workspaceCss = fs.readFileSync(path.join(renderer, 'campus-workspace.css'), 'utf8');
 
@@ -39,28 +40,29 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
     const surfaceAt = html.indexOf(html === controlHtml ? 'styles.css' : 'campus-browser.css');
     assert.ok(tokensAt > 0 && tokensAt < surfaceAt, 'design tokens must load before surface CSS');
   }
-  assert.equal((controlHtml.match(/<link rel="stylesheet"/gu) || []).length, 2,
-    'the control window must load only design tokens and one canonical surface');
+  assert.equal((controlHtml.match(/<link rel="stylesheet"/gu) || []).length, 3,
+    'the control window must load tokens, its shell, and the shared card-board component only');
+  assert.ok(controlHtml.indexOf('styles.css') < controlHtml.indexOf('components/card-board/card-board.css'),
+    'component CSS must be layered after the canonical shell surface');
   assert.doesNotMatch(controlHtml, /styles\/(?:connection-strip|product-shell)\.css/u);
   assert.doesNotMatch(controlCss, /^:root\s*\{/u, 'control CSS must not redefine shared tokens');
   assert.match(browserCss, /var\(--radius-control\)/u);
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('Campus Browser separates official and personal responsive stacks without website-card nesting', () => {
-  assert.match(controlCss, /\.category-stack-grid\s*\{[^}]*repeat\(var\(--stack-columns/u);
-  assert.match(controlCss, /\.category-stack-grid\s*\{[^}]*min-height:\s*0/u);
-  assert.match(controlCss, /\.stacked-category-tab\s*\{[^}]*height:\s*38px/u);
-  assert.match(controlCss, /\.category-card\s*\{[^}]*border-radius:\s*16px/u);
-  assert.match(controlCss, /\.category-card\s*\{[^}]*min-height:\s*110px/u);
-  assert.match(controlCss, /\.category-site\s*\{[^}]*border-bottom:\s*1px solid/u);
-  assert.match(controlCss, /data-stack-columns="1"[^}]*\.category-site-list\s*\{[^}]*repeat\(2,/u);
-  assert.match(controlCss, /\.category-site-icon\s*\{[^}]*width:\s*30px[^}]*height:\s*30px/u);
+test('Campus Browser separates official and personal responsive card boards without website-card nesting', () => {
+  assert.match(cardBoardCss, /\.cb-board-grid\s*\{[^}]*repeat\(var\(--cb-columns/u);
+  assert.match(cardBoardCss, /\.cb-card-header\s*\{[^}]*min-height:\s*43px/u);
+  assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*14px/u);
+  assert.match(cardBoardCss, /\.cb-site\s*\{[^}]*border-bottom:\s*1px solid/u);
+  assert.match(cardBoardCss, /@container\s+card-content\s*\(min-width:\s*440px\)[\s\S]*repeat\(2,/u);
+  assert.match(cardBoardCss, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/u);
   assert.match(controlHtml, /data-page="browser"/u);
   assert.match(controlHtml, /id="resourceSearch"/u);
   assert.match(controlHtml, /id="categoryModeCatalog"/u);
   assert.match(controlHtml, /id="categoryModePersonal"/u);
-  assert.match(controlHtml, /id="campusResources"[^>]*class="category-stack-grid"/u);
+  assert.match(controlHtml, /id="campusResources"[^>]*class="card-board-mount"/u);
+  assert.match(controlHtml, /id="connectCardBoardHost"[^>]*class="cb-board-host"/u);
   assert.doesNotMatch(controlHtml, /category-kicker/u);
   assert.doesNotMatch(controlHtml, /data-page="connect"[\s\S]*id="resourceShelf"[\s\S]*data-page="browser"/u);
 });

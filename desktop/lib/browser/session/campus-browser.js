@@ -412,6 +412,17 @@ class CampusBrowser {
     }
   }
 
+  refreshCardBoardLayout(document) {
+    if (!document || typeof document !== 'object' || document.schemaVersion !== 1) return false;
+    let sent = false;
+    for (const tab of this.tabs) {
+      if (tab.kind !== 'workspace' || tab.view.webContents.isDestroyed?.()) continue;
+      tab.view.webContents.send?.('card-board-layout-changed', document);
+      sent = true;
+    }
+    return sent;
+  }
+
   focusWorkspace(target = 'search', query = '') {
     if (!this.workspaceController) return false;
     let tab = this.activeTab();

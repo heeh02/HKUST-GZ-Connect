@@ -7,6 +7,7 @@
   <title>HKUST(GZ) Connect</title>
   <link rel="stylesheet" href="design-tokens.css" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="components/card-board/card-board.css" />
 </head>
 <body>
   <div class="titlebar"><span id="titlebarText">HKUST(GZ) Connect</span></div>
@@ -143,6 +144,13 @@
               </div>
             </div>
           </section>
+          <section id="connectCardBoard" class="connect-card-board" aria-labelledby="connectCardBoardTitle" hidden>
+            <div class="connect-card-board-heading">
+              <h2 id="connectCardBoardTitle">我的快捷卡片</h2>
+              <span>在校园浏览器中整理和固定</span>
+            </div>
+            <div id="connectCardBoardHost" class="cb-board-host"></div>
+          </section>
         </div>
         <details class="connection-details">
           <summary data-i18n="section.details">更多连接信息</summary>
@@ -197,7 +205,7 @@
             </select>
             <div id="resourceViewChips" class="resource-view-chips" hidden aria-hidden="true"></div>
           </div>
-          <div id="campusResources" class="category-stack-grid" role="tabpanel" aria-label="网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
+          <div id="campusResources" class="card-board-mount" role="tabpanel" aria-label="网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
           <details class="custom-url-details" hidden aria-hidden="true">
             <summary data-i18n="resources.openOther">打开其他网址</summary>
             <div class="custom-url-body">
@@ -655,6 +663,11 @@
   <script src="connection-overview.js"></script>
   <script src="stacked-card-layout.js"></script>
   <script src="campus-workspace-model.js"></script>
+  <script src="components/card-board/card-board-model.js"></script>
+  <script src="components/card-board/card-board-view.js"></script>
+  <script src="components/card-board/card-board-drag.js"></script>
+  <script src="components/card-board/card-board-adapter.js"></script>
+  <script src="components/card-board/card-board-controller.js"></script>
   <script src="campus-category-stacks.js"></script>
   <script src="browser-data-settings.js"></script>
   <script src="browser-new-tab-settings.js"></script>
@@ -668,5 +681,6 @@
   <script src="integration-center.js"></script>
   <script src="app.js"></script>
   <script src="auth-challenge.js"></script>
+  <p id="cardBoardLiveRegion" class="visually-hidden" aria-live="polite"></p>
 </body>
 </html>

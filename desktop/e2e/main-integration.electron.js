@@ -80,6 +80,35 @@ async function run() {
   const initial = await invoke(control, 'window.api.getState()');
   assert.equal(initial.settings.port, 1080);
   assert.equal(initial.dnsMode, 'unknown');
+  const initialCardBoard = await invoke(control, 'window.api.getCardBoardLayout()');
+  assert.equal(initialCardBoard.document.schemaVersion, 1);
+  const cataloguePlacement = initialCardBoard.document.placements.find(({ boardId, card }) => (
+    boardId === 'browser-catalog' && card.kind === 'official-category'
+  ));
+  assert.ok(cataloguePlacement, 'reviewed categories must receive a default card placement');
+  const pinnedCardBoard = await invoke(control, `window.api.commitCardBoardLayout(${JSON.stringify({
+    baseRevision: 0,
+    operations: [{
+      type: 'pin-to-board',
+      sourcePlacementId: '__SOURCE__',
+      boardId: 'connect',
+      index: 1,
+      size: 'medium',
+    }],
+  }).replace('__SOURCE__', cataloguePlacement.placementId)})`);
+  assert.equal(pinnedCardBoard.changed, true);
+  assert.ok(pinnedCardBoard.document.placements.some(({ boardId, card }) => (
+    boardId === 'browser-catalog' && card.id === cataloguePlacement.card.id
+  )), 'pinning must retain the source card');
+  assert.ok(pinnedCardBoard.document.placements.some(({ boardId, card }) => (
+    boardId === 'connect' && card.id === cataloguePlacement.card.id
+  )), 'pinning must add a connect-board reference');
+  const cardBoardFile = path.join(path.dirname(persistence.paths.resourceFavorites), 'card-board-layout.json');
+  const storedCardBoard = await waitFor(() => {
+    try { return JSON.parse(fs.readFileSync(cardBoardFile, 'utf8')); } catch { return null; }
+  }, 'card board layout was not persisted');
+  assert.equal(storedCardBoard.revision, 1);
+  assert.doesNotMatch(JSON.stringify(storedCardBoard), /https?:|<[^>]+>/u);
 
   const usernameWithoutPassword = await invoke(control, `window.api.save({
     username: 'e2e-user',

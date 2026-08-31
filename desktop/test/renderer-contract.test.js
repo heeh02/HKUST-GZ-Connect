@@ -67,7 +67,10 @@ test('dashboard separates connection, personal Campus Browser, advanced tower, a
   assert.doesNotMatch(html, /data-page="notif"/);
   assert.match(html, /id="openCampusWorkspace"/u);
   assert.match(appJs, /openCampusWorkspace[\s\S]*openCampusBrowser/u);
-  assert.match(appJs, /manageResources[\s\S]*openBookmarkManager/u);
+  assert.doesNotMatch(appJs, /manageResources[\s\S]*openBookmarkManager/u);
+  assert.match(html, /id="manageResources"/u);
+  assert.match(html, /id="connectCardBoardHost"/u);
+  assert.match(categoryStacksJs, /activeController\(\)[\s\S]*toggleEdit/u);
   assert.match(html, /id="notificationDrawer"[^>]*role="dialog"/u);
   assert.match(html, /id="openNotificationDrawer"/u);
   assert.match(html, /class="custom-url-details" hidden/u);
@@ -86,22 +89,20 @@ test('dashboard usability layer keeps status shortcuts feedback and recovery out
     'global shortcuts belong to the usability module');
 });
 
-test('official and personal categories share responsive stacks and ID-only resource actions', () => {
+test('official and personal categories share responsive card boards and ID-only resource actions', () => {
   for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
   }
   assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
   assert.match(appJs, /window\.api\.toggleResourceFavorite\(resource\.id\)/u);
   assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
-  assert.match(css, /\.category-stack-grid/u);
-  assert.match(css, /\.stacked-category-tab/u);
+  assert.match(html, /class="card-board-mount"/u);
   assert.match(categoryStacksJs, /balancedPartitions/u);
   assert.match(categoryStacksJs, /officialCategoryProjection/u);
   assert.match(categoryStacksJs, /personalCategoryProjection/u);
-  assert.match(categoryStacksJs, /data-stack-activate/u);
-  assert.match(categoryStacksJs, /data-campus-id/u);
-  assert.match(layoutControllerJs, /new window\.ResizeObserver/u);
-  assert.match(layoutControllerJs, /window\.requestAnimationFrame/u);
+  assert.match(categoryStacksJs, /cardBoardController\.create/u);
+  assert.match(categoryStacksJs, /getCardBoardLayout/u);
+  assert.match(categoryStacksJs, /commitCardBoardLayout/u);
   assert.doesNotMatch(studentHomeJs, /class="resource-desc"|class="resource-origin"/u);
   const policyScript = html.indexOf('<script src="resource-layout-policy.js"></script>');
   const controllerScript = html.indexOf('<script src="resource-layout-controller.js"></script>');
@@ -109,9 +110,12 @@ test('official and personal categories share responsive stacks and ID-only resou
   assert.ok(policyScript > 0 && policyScript < controllerScript && controllerScript < studentHomeScript,
     'resource layout modules must load before Student Home');
   const workspaceModelScript = html.indexOf('<script src="campus-workspace-model.js"></script>');
+  const cardModelScript = html.indexOf('<script src="components/card-board/card-board-model.js"></script>');
+  const cardControllerScript = html.indexOf('<script src="components/card-board/card-board-controller.js"></script>');
   const categoryStacksScript = html.indexOf('<script src="campus-category-stacks.js"></script>');
-  assert.ok(workspaceModelScript > 0 && workspaceModelScript < categoryStacksScript,
-    'the shared official taxonomy must load before category stacks');
+  assert.ok(workspaceModelScript > 0 && workspaceModelScript < cardModelScript &&
+    cardModelScript < cardControllerScript && cardControllerScript < categoryStacksScript,
+  'taxonomy and shared Card Board must load before category composition');
 });
 
 test('control panel has responsive wide and compact layout rules', () => {
@@ -155,6 +159,10 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
     'serviceViewGrid', 'servicePager', 'manageScreen', 'resourcePool',
     'manageFolderNav', 'managePager', 'createGroup',
   ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  for (const id of [
+    'workspaceCardBoard', 'workspaceCardBoardCatalog', 'workspaceCardBoardPersonal',
+    'workspaceCatalogBoardHost', 'workspacePersonalBoardHost',
+  ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
   assert.doesNotMatch(workspaceHtml, /workspace-header|workspace-command|id="workspaceSearch"|id="manageRules"/u);
   assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*manage/u);
   assert.doesNotMatch(workspaceModel, /SCREENS[^\n]*catalog/u);
@@ -164,6 +172,8 @@ test('Campus Workspace is a real local renderer with ID-only actions and modular
   assert.match(workspaceJs, /campusWorkspace\?\.request\(name, payload\)/u);
   assert.match(workspaceJs, /workspaceMutationFeedback[\s\S]*role', 'alert'/u);
   assert.match(workspaceJs, /command\('focus-address'\)/u);
+  assert.match(workspaceJs, /workspaceBoardFeature\.toggleEdit\(\)/u);
+  assert.doesNotMatch(workspaceJs, /\$\('openManage'\)[\s\S]{0,160}normalizeNavigation\(\{\s*screen:\s*'manage'/u);
   assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
   assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
   assert.match(workspaceCss, /@media\s*\(min-width:\s*1100px\)[\s\S]*repeat\(3/u);

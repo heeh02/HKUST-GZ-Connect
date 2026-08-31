@@ -65,6 +65,11 @@ function fixture() {
         addResourcesToGroup: () => groups,
       },
     },
+    cardBoard: {
+      getLayout: () => ({ schemaVersion: 1, revision: 0, placements: [], decks: [] }),
+      commitLayout: (request) => ({ ok: true, request }),
+      resetLayout: (request) => ({ ok: true, request }),
+    },
     schools: {
       onboarding: {
         list: () => [],
@@ -107,6 +112,9 @@ test('facade registers exact routing certificate resource and school channels', 
     'restore-builtin-resources',
     'reorder-resources',
     'toggle-resource-favorite',
+    'get-card-board-layout',
+    'commit-card-board-layout',
+    'reset-card-board-layout',
     'list-school-profiles',
     'probe-custom-gateway',
     'confirm-custom-gateway',

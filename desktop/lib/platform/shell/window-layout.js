@@ -1,10 +1,10 @@
 'use strict';
 
 const CONTROL_WINDOW = Object.freeze({
-  width: 480,
-  height: 854,
-  minWidth: 440,
-  minHeight: 700,
+  width: 1024,
+  height: 576,
+  minWidth: 820,
+  minHeight: 540,
   maxWidth: 1480,
   maxHeight: 1180,
 });

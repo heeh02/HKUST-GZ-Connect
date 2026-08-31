@@ -13,7 +13,9 @@ const BASELINE = Object.freeze({
   mainDirectDependencies: 36,
   // The cross-platform network-environment domain now owns one additional
   // HTTPS-only public-egress leaf. Main gained no direct dependency or lines.
-  mainTransitiveDependencies: 163,
+  // Card Board adds one isolated App composition and four bounded layout
+  // modules without adding another direct Main binding.
+  mainTransitiveDependencies: 169,
   // This transition cap includes the disconnected-session recovery, async
   // platform discovery and one-shot credential security closures. Further
   // feature work must extract responsibilities instead of growing Main again.
@@ -37,7 +39,7 @@ const JAVASCRIPT_SCOPE = Object.freeze({
 });
 const DOMAIN_DEPENDENCIES = Object.freeze({
   app: Object.freeze(['app', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
-    'resources', 'resource-core', 'routing', 'integrations', 'ipc', 'platform', 'diagnostics', 'legacy']),
+    'resources', 'resource-core', 'card-board', 'routing', 'integrations', 'ipc', 'platform', 'diagnostics', 'legacy']),
   connection: Object.freeze(['connection', 'network-environment', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
   'network-environment': Object.freeze(['network-environment', 'platform', 'diagnostics', 'legacy']),
   'profile-core': Object.freeze(['profile-core', 'resource-core', 'platform', 'diagnostics', 'legacy']),
@@ -52,11 +54,12 @@ const DOMAIN_DEPENDENCIES = Object.freeze({
   'resource-core': Object.freeze(['resource-core', 'routing', 'platform', 'diagnostics', 'legacy']),
   resources: Object.freeze(['resources', 'resource-core', 'routing', 'profiles', 'profile-core',
     'platform', 'diagnostics', 'legacy']),
+  'card-board': Object.freeze(['card-board', 'platform', 'diagnostics', 'legacy']),
   routing: Object.freeze(['routing', 'profiles', 'profile-core', 'platform', 'diagnostics', 'legacy']),
   integrations: Object.freeze(['integrations', 'resources', 'resource-core', 'routing', 'profiles',
     'profile-core', 'connection', 'platform', 'diagnostics', 'legacy']),
   ipc: Object.freeze(['ipc', 'connection', 'profiles', 'profile-core', 'persistence', 'switching', 'browser',
-    'routing', 'integrations', 'platform', 'diagnostics', 'legacy']),
+    'card-board', 'routing', 'integrations', 'platform', 'diagnostics', 'legacy']),
   platform: Object.freeze(['platform', 'diagnostics', 'legacy']),
   diagnostics: Object.freeze(['diagnostics', 'platform', 'legacy']),
 });

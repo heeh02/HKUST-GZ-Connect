@@ -22,16 +22,19 @@ test('official task categories and personal folders remain separate projections'
   const personal = categoryStacks.personalCategoryProjection(resources, [{
     id: 'study', name: 'Study', resourceIds: ['sis'],
   }], translate);
-  assert.deepEqual(personal.map(({ id }) => id), ['ungrouped', 'study']);
+  assert.deepEqual(personal.map(({ id }) => id), ['ungrouped-favorites', 'study']);
+  assert.deepEqual(personal.map(({ kind }) => kind), ['system-widget', 'user-collection']);
   assert.deepEqual(personal[0].items.map(({ id }) => id), ['portal', 'custom']);
 });
 
-test('responsive capacity keeps six categories in three stable stacks before tall expansion', () => {
+test('responsive capacity follows the shared logical card-board grid', () => {
   assert.equal(balancedPartitions, stackedCardLayout.balancedPartitions,
     'Campus Browser and routing rules share one stack partition implementation');
-  assert.deepEqual(getLayoutCapacity(1009, 640), { columns: 3, rows: 1, slotCount: 3 });
-  assert.deepEqual(getLayoutCapacity(1009, 760), { columns: 3, rows: 2, slotCount: 6 });
-  assert.deepEqual(getLayoutCapacity(1009, 800), { columns: 3, rows: 2, slotCount: 6 });
+  assert.deepEqual(getLayoutCapacity(759, 640), { columns: 1, rows: 1, slotCount: 1 });
+  assert.deepEqual(getLayoutCapacity(760, 640), { columns: 2, rows: 1, slotCount: 2 });
+  assert.deepEqual(getLayoutCapacity(1099, 819), { columns: 2, rows: 1, slotCount: 2 });
+  assert.deepEqual(getLayoutCapacity(1100, 820), { columns: 3, rows: 2, slotCount: 6 });
+  assert.deepEqual(getLayoutCapacity(1440, 820), { columns: 4, rows: 2, slotCount: 8 });
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 3), [[1, 2], [3, 4], [5, 6]]);
   assert.deepEqual(balancedPartitions([1, 2, 3, 4, 5, 6], 6), [[1], [2], [3], [4], [5], [6]]);
 });
@@ -44,90 +47,15 @@ test('category partitioning is contiguous, balanced, and deterministic', () => {
   assert.ok(Math.max(...first.map((part) => part.length)) - Math.min(...first.map((part) => part.length)) <= 1);
 });
 
-test('category activation focuses the replacement heading and stable resize does not rebuild it', () => {
-  const originals = {
-    window: global.window,
-    document: global.document,
-    ResizeObserver: global.ResizeObserver,
-    requestAnimationFrame: global.requestAnimationFrame,
-    cancelAnimationFrame: global.cancelAnimationFrame,
-  };
-  let resizeCallback;
-  let clickHandler;
-  let writes = 0;
-  let headings = [];
-  let activeElement = null;
-  const classNames = new Set();
-  const container = {
-    dataset: {},
-    style: { setProperty() {} },
-    classList: {
-      add: (name) => classNames.add(name),
-      remove: (name) => classNames.delete(name),
-    },
-    getBoundingClientRect: () => ({ width: 500, height: 300, top: 100 }),
-    querySelectorAll: (selector) => selector === '[data-category-heading]' ? headings : [],
-    addEventListener: (type, handler) => { if (type === 'click') clickHandler = handler; },
-  };
-  Object.defineProperty(container, 'innerHTML', {
-    set(markup) {
-      writes += 1;
-      headings = [...markup.matchAll(/data-category-heading="([^"]+)"/gu)].map((match) => ({
-        dataset: { categoryHeading: match[1] },
-        focus(options) { activeElement = this; this.focusOptions = options; },
-      }));
-    },
-  });
-  const summary = { textContent: '' };
-  const fakeDocument = {
-    get activeElement() { return activeElement; },
-    getElementById(id) {
-      if (id === 'campusResources') return container;
-      if (id === 'categoryLayoutSummary') return summary;
-      return null;
-    },
-  };
-
-  try {
-    global.window = { innerHeight: 700, innerWidth: 620, setTimeout: (callback) => callback() };
-    global.document = fakeDocument;
-    global.ResizeObserver = class FakeResizeObserver {
-      constructor(callback) { resizeCallback = callback; }
-      observe() {}
-      disconnect() {}
-    };
-    global.requestAnimationFrame = (callback) => { callback(); return 1; };
-    global.cancelAnimationFrame = () => {};
-    const options = {
-      container,
-      resources: [
-        { id: 'alpha', name: 'Alpha', favorite: true, route: 'campus' },
-        { id: 'beta', name: 'Beta', favorite: true, route: 'direct' },
-      ],
-      groups: [
-        { id: 'alpha-group', name: 'Alpha group', resourceIds: ['alpha'] },
-        { id: 'beta-group', name: 'Beta group', resourceIds: ['beta'] },
-      ],
-      query: '',
-      translate: (key) => key,
-      escapeHtml: (value) => String(value),
-    };
-    categoryStacks.selectView('personal');
-    categoryStacks.render(options);
-    categoryStacks.start({ document: fakeDocument });
-    assert.equal(writes, 1);
-    clickHandler({ target: { closest: () => ({ dataset: { stackActivate: 'beta-group' } }) } });
-    assert.equal(writes, 2);
-    assert.equal(fakeDocument.activeElement.dataset.categoryHeading, 'beta-group');
-    assert.deepEqual(fakeDocument.activeElement.focusOptions, { preventScroll: true });
-    const focusedHeading = fakeDocument.activeElement;
-    resizeCallback();
-    assert.equal(writes, 2, 'same-layout ResizeObserver notifications must not replace the DOM');
-    assert.equal(fakeDocument.activeElement, focusedHeading, 'stable resize must preserve heading focus');
-    assert.equal(classNames.has('searching'), false);
-  } finally {
-    for (const [name, value] of Object.entries(originals)) {
-      if (value === undefined) delete global[name]; else global[name] = value;
-    }
-  }
+test('a custom Profile with no reviewed catalogue retains personal categories', () => {
+  const resources = [
+    { id: 'custom', name: 'Custom', reviewed: false, favorite: true },
+  ];
+  assert.deepEqual(categoryStacks.officialCategoryProjection(resources, (key) => key), []);
+  const personal = categoryStacks.personalCategoryProjection(resources, [{
+    id: 'study', name: 'Study', resourceIds: ['custom'],
+  }], (key) => key);
+  assert.deepEqual(personal.map(({ id, kind }) => ({ id, kind })), [{
+    id: 'study', kind: 'user-collection',
+  }]);
 });
