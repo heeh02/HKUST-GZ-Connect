@@ -334,6 +334,7 @@ class CampusBrowser {
     this.lastFindQuery = '';
     this.scheduledLayout = null;
     this.scheduledToolbarUpdate = null;
+    this.routingActivationInFlight = null;
     this.lastToolbarState = null;
   }
 
@@ -493,15 +494,32 @@ class CampusBrowser {
   async ensureRoutingReady(resolution, port = this.configuredPort || 1080) {
     if (!resolution || ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(resolution.route)) return false;
     if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
-    const activated = this.routingSuspended
-      ? await this.resumeRoutingPolicy(port)
-      : !this.configuredPort || this.configuredPort !== port
-        ? await this.configure(port)
-        : this.campusSession;
+    const activated = await this.activateRoutingPolicy(port);
     // A superseding suspend intent makes BrowserSessionManager activation
     // resolve null. Never start a navigation while its fail-closed gate remains
     // authoritative.
     return activated !== null && !this.routingSuspended && !this.routingRequestsBlocked;
+  }
+
+  async activateRoutingPolicy(port) {
+    const value = Number(port);
+    if (!this.routingSuspended && !this.routingRequestsBlocked &&
+        this.configuredPort === value && this.campusSession) return this.campusSession;
+    const current = this.routingActivationInFlight;
+    if (current) {
+      await current.promise;
+      if (!this.routingSuspended && !this.routingRequestsBlocked &&
+          this.configuredPort === value && this.campusSession) return this.campusSession;
+    }
+    const operation = this.routingSuspended
+      ? this.resumeRoutingPolicy(value)
+      : this.configure(value);
+    const record = { port: value, promise: operation };
+    this.routingActivationInFlight = record;
+    try { return await operation; }
+    finally {
+      if (this.routingActivationInFlight === record) this.routingActivationInFlight = null;
+    }
   }
 
   async navigateWhenReady(rawUrl, tab = this.activeTab()) {
@@ -1490,6 +1508,7 @@ class CampusBrowser {
       this.tabManager.clear();
       this.view = null;
       this.attachedView = null;
+      this.routingActivationInFlight = null;
       this.window = null;
       this.findOpen = false;
       this.lastToolbarState = null;
@@ -1583,6 +1602,7 @@ class CampusBrowser {
     this.window = null;
     this.view = null;
     this.attachedView = null;
+    this.routingActivationInFlight = null;
     this.tabManager.clear();
     this.findOpen = false;
     this.lastToolbarState = null;

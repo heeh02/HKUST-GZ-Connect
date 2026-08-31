@@ -1016,6 +1016,30 @@ test('address navigation and reload resume a suspended fail-closed Session first
   assert.ok(readyCalls >= 3, 'open, address navigation, and reload establish Campus readiness');
 });
 
+test('concurrent Browser opens single-flight one routing activation', async () => {
+  const { browser, sessions } = createFakeBrowser();
+  let configureCalls = 0;
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  browser.configure = async (port) => {
+    configureCalls += 1;
+    await pending;
+    browser.browserSessionManager.configuredPort = port;
+    browser.browserSessionManager.campusSession = sessions.get(CAMPUS_PARTITION);
+    browser.browserSessionManager.suspended = false;
+    return browser.browserSessionManager.campusSession;
+  };
+
+  const first = browser.activateRoutingPolicy(1080);
+  const second = browser.activateRoutingPolicy(1080);
+  await nextImmediate();
+  assert.equal(configureCalls, 1);
+  release();
+  const [left, right] = await Promise.all([first, second]);
+  assert.equal(left, right);
+  assert.equal(configureCalls, 1);
+});
+
 test('a failed readiness check leaves suspended navigation fail closed', async () => {
   let ready = true;
   const { browser } = createFakeBrowser({ ensureCampusReady: async () => ready });
