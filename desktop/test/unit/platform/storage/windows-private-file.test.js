@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 const {
   PRIVATE_FILE_ENV,
@@ -99,6 +100,25 @@ test('real Windows upgrade tightens an inherited current-user legacy file', {
   const file = path.join(directory, 'settings.json');
   fs.writeFileSync(file, '{"version":1}');
   assert.equal(protectWindowsFileOwnerOnly(file), true);
+  execFileSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', String.raw`
+$ErrorActionPreference = 'Stop'
+$privatePath = [Environment]::GetEnvironmentVariable('${PRIVATE_FILE_ENV}')
+$acl = [System.IO.File]::GetAccessControl($privatePath)
+$usersSid = New-Object Security.Principal.SecurityIdentifier('S-1-5-32-545')
+$rule = New-Object Security.AccessControl.FileSystemAccessRule(
+  $usersSid,
+  [Security.AccessControl.FileSystemRights]::Read,
+  [Security.AccessControl.AccessControlType]::Allow
+)
+$acl.AddAccessRule($rule)
+[System.IO.File]::SetAccessControl($privatePath, $acl)
+`], {
+    env: { ...process.env, [PRIVATE_FILE_ENV]: file },
+    timeout: POWERSHELL_ACL_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  assert.equal(verifyWindowsFileOwnerOnly(file), false,
+    'the fixture must reproduce a broad legacy DACL');
   assert.equal(ensureOwnerOnly(file), true);
   assert.equal(verifyWindowsFileOwnerOnly(file), true);
 });
