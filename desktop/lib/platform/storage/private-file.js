@@ -93,9 +93,10 @@ function ensureOwnerOnly(file, {
     const noFollow = constants.O_NOFOLLOW || 0;
     descriptor = fileSystem.openSync(file, constants.O_RDONLY | noFollow);
     const opened = fileSystem.fstatSync(descriptor);
-    // The descriptor, rather than the path, owns the permission change. The
-    // inode comparison also catches a path replacement between lstat/open on
-    // platforms where O_NOFOLLOW is unavailable.
+    // The no-follow descriptor owns the POSIX permission change. On Windows it
+    // pins the observed identity while the bounded PowerShell ACL operation
+    // acts on the path. The identity comparison catches replacement between
+    // lstat/open where O_NOFOLLOW is unavailable.
     if (!opened.isFile() || !sameFileIdentity(opened, before) ||
         (Number.isSafeInteger(opened.nlink) && opened.nlink !== 1)) return false;
     if (platform === 'win32') {
