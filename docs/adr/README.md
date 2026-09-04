@@ -1,7 +1,8 @@
 # Architecture decision index
 
 - Current implementation status: [`../2.0-status.md`](../2.0-status.md)
-- Current indexed implementation baseline: `8c1f83cf941e92582e2540d138ae3e264d4d58c5`
+- Current indexed implementation baseline: stable `v2.0.0` at
+  `415a3b5dfb9d11bffa14cde27e924af486823249`
 - Decision owner: project maintainer unless an ADR states otherwise
 
 ADRs record durable or security-relevant decisions. P3/P6 step-level documents are retained as implementation
@@ -22,7 +23,7 @@ records for review and recovery evidence; future procedural notes belong under `
 | 0022 | Credential-free public Gateway probe | Accepted | Security decision | P6 |
 | 0023-0029 | Custom Profile provisioning, startup and switch | Accepted | Implementation records | P6 |
 | 0030 | P3 runtime storage path seam | Accepted | Implementation record; renumbered from duplicate 0016 | P3 |
-| 0031 | P8 WebResource library and on-demand Campus boundary | Accepted | Product/security decision | P8 branch |
+| 0031 | P8 WebResource library and on-demand Campus boundary | Accepted | Product/security decision | Released in 2.0.0 |
 
 No ADR type, fixture or design text promotes an unsupported provider. Current capability truth remains the
 intersection of compiled providers, active Profile policy and runtime evidence.

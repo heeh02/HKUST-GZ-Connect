@@ -156,6 +156,8 @@ jobs:
         run: npm test
       - name: Enforce desktop architecture growth boundaries
         run: npm run check:architecture
+      - name: Enforce repository governance and immutable Actions
+        run: npm run check:governance
       - name: Audit dependencies
         run: npm run audit:ci
       - name: Audit dependency install scripts

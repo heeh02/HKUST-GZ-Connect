@@ -7,6 +7,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "check:architecture": "node scripts/check-architecture.js",
+    "check:governance": "node ../.github/scripts/check-repository-governance.js",
     "audit:ci": "node ../.github/scripts/check-dependency-vulnerabilities.js",
     "check:install-scripts": "node scripts/check-install-scripts.js",
     "check:syntax": "node scripts/check-javascript-syntax.js",

@@ -153,15 +153,17 @@ Control v3、synthetic provider和Campus Browser网页MFA安全只证明架构�
 [`docs/architecture/mfa-architecture.md`](docs/architecture/mfa-architecture.md)。在真实证据
 出现前，1.3保持`Deferred / evidence-triggered`，项目不猜测endpoint、验证码形状或渠道映射。
 
-## Campus Connect 2.0 product roadmap
+## Campus Connect 2.x product roadmap
 
-The 1.x line remains maintenance-only. 2.0 preparation is now an active,
-incremental product program, but the capability rows below remain evidence
-gated and none of the Partial entries is advertised as a working user feature.
+The 1.x line is historical maintenance context. Stable 2.0.0 is published and `main` is the current
+maintenance authority. The capability rows below remain evidence-gated: a Partial or Deferred row
+is not advertised as a working school feature.
 
-2.0准备阶段的证据、clean-room、架构接缝与分阶段PR计划见
-[`docs/plans/2.0-preparation-execution-plan.md`](docs/plans/2.0-preparation-execution-plan.md)。
-该计划当前只授权研究和架构准备，不授权production功能或Release。
+The completed preparation ledger remains under
+[`docs/plans/2.0-preparation-execution-plan.md`](docs/plans/2.0-preparation-execution-plan.md)
+as historical evidence. Current repository-governance and modularization work is controlled by
+[`GOAL.md`](GOAL.md) and
+[`docs/architecture/modularization-plan.md`](docs/architecture/modularization-plan.md).
 
 2.0产品目标是 **Campus Workspace + Secure Access Runtime**：普通用户从资源搜索、收藏、最近
 访问和通知进入，连接按资源需要自动触发；高级用户展开SSH、代理、转发、Underlay和Headless。

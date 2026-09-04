@@ -20,12 +20,18 @@ HKUST(GZ) Connect 2.0 brings the campus connection, myPortal services and person
 - 本版本支持浏览器侧 myPortal 短信 MFA；若学校未来在 VPN Gateway 本身启用新的 MFA 协议，需要单独验证并适配。
 - 升级会保留现有设置、收藏、校园浏览器数据和已安全保存的凭据。
 
+## 安装与签名说明
+
+- macOS DMG 为经过包体校验的 ad-hoc 签名构建，尚未使用 Developer ID 公证；首次启动请在 Finder 中右键应用并选择“打开”。
+- Windows 安装器尚未配置 Authenticode 发布者证书，SmartScreen 可能提示未知发布者。
+- GitHub Release 已为每个附件公布 SHA-256 摘要，可在安装前核对完整性。
+
 ## Downloads
 
 - macOS Apple Silicon: `hkustgzconnect-2.0.0-mac-arm64.dmg`
 - macOS Intel: `hkustgzconnect-2.0.0-mac-x64.dmg`
 - Windows x64: `hkustgzconnect-2.0.0-win-x64.exe`
-- Linux x86_64: `hkustgzconnect-2.0.0-linux-x64.AppImage`
+- Linux x86_64: `hkustgzconnect-2.0.0-linux-x86_64.AppImage`
 
 ## English summary
 

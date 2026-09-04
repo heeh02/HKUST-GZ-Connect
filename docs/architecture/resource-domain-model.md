@@ -1,6 +1,9 @@
 # Web resource model
 
-Status: accepted and implemented on the active P8 branch; merge remains independently reviewed.
+- Status: Accepted and released in 2.0.0
+- Owner: product and architecture maintainers
+- Last verified: 2026-09-04
+- Applies to: the Web-only resource boundary in stable 2.0.0
 
 ## 1. Product boundary
 
