@@ -1,6 +1,6 @@
 # Main branch protection contract
 
-- Status: active and read back from GitHub on 2026-08-24 before the P1 branch was created
+- Status: Active; last read back from GitHub on 2026-09-04
 - Applies to: `main`
 - Owner: project maintainer
 
@@ -94,3 +94,11 @@ enforce_admins=false
 
 This receipt records the P1 admission decision; it is not a timeless claim. Release or governance work that
 depends on protection must query the GitHub API again.
+
+### 2026-09-04 governance readback
+
+The same seven required contexts and all values above were read back unchanged while `main` pointed to
+`15738338ff2a280300b66e98a1823659f24630a4`. The machine-readable pre-transfer audit in
+[`repository-governance-contract.json`](repository-governance-contract.json) also passed. Administrator,
+code-owner and last-push enforcement remain intentionally deferred until an Organization and second trusted
+reviewer exist; Issue #84 owns that transition.

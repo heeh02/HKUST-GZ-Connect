@@ -8,9 +8,9 @@
 
 ## Source baseline
 
-- Stable source: `main@415a3b5dfb9d11bffa14cde27e924af486823249`
-- Governance worktree: `codex/open-source-governance`
-- Runtime behavior changed by this branch: none
+- Current source: `main@15738338ff2a280300b66e98a1823659f24630a4`
+- Governance baseline: merged through PR #59
+- Runtime behavior changed by the governance baseline: none
 
 ## Repository settings applied and read back
 
@@ -31,6 +31,8 @@ dependabot_alerts=true
 dependabot_security_updates=true
 secret_scanning=true
 secret_scanning_push_protection=true
+secret_scanning_non_provider_patterns=false (plan/feature unavailable)
+secret_scanning_validity_checks=false (plan/feature unavailable)
 actions_default_token=read
 actions_allowed_actions=all
 actions_sha_pinning_required=true
@@ -76,13 +78,33 @@ valid release tag.
 - Private vulnerability reporting enabled.
 - Area, risk, type, status and `ai-assisted` labels created.
 - `release` Environment created without required reviewers; the tag release job is being bound to it
-  by the governance branch.
+  by the merged governance baseline.
+- Repository Milestones separate open-source governance, the 2.0.1 repair release and M1–M5
+  architecture modularization. Goal/transfer/release/module work is tracked by linked Issues.
 - Wiki left enabled pending a content inventory.
+
+## Machine-readable readback
+
+The versioned contract is [`repository-governance-contract.json`](repository-governance-contract.json).
+The following read-only command queries only explicit GitHub settings endpoints, emits no secret values and
+returns nonzero on required drift:
+
+```text
+node .github/scripts/audit-live-github-governance.js \
+  --live heeh02/HKUST-GZ-Connect \
+  --phase pre-transfer \
+  --expected-owner heeh02
+```
+
+The 2026-09-04 readback passed every pre-transfer requirement. It explicitly reported three deferred controls:
+the broad Actions allowlist (mitigated by mandatory full-SHA pinning), unavailable non-provider secret patterns
+and unavailable secret validity checks. They are not represented as enabled.
 
 ## Pending Organization migration
 
 The authenticated `heeh02` account currently reports no Organization memberships. Migration cannot
-continue until the maintainer supplies or creates the destination Organization login.
+continue until the maintainer supplies or creates the destination Organization login. Issue #84 owns
+the blocked transfer and its post-transfer receipt.
 
 After transfer, read back and verify:
 
