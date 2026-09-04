@@ -23,6 +23,7 @@ const { createProfileWorkspaceRuntimeStoragePaths } = require('../paths/runtime-
 const { validateSchoolProfileDocument } = require('../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../platform/storage/windows-private-file');
 
@@ -60,6 +61,7 @@ class ProfileWorkspaceStartupRuntime {
     platform = process.platform,
     windowsAcl = {
       protect: protectWindowsFileOwnerOnly,
+      tighten: tightenWindowsFileOwnerOnly,
       verify: verifyWindowsFileOwnerOnly,
     },
     randomBytes,
@@ -68,7 +70,9 @@ class ProfileWorkspaceStartupRuntime {
     if (!safeStorage || !fileSystem || typeof fileSystem.openSync !== 'function' ||
         !['darwin', 'linux', 'win32'].includes(platform) ||
         (platform === 'win32' &&
-          (typeof windowsAcl?.protect !== 'function' || typeof windowsAcl?.verify !== 'function'))) {
+          (typeof windowsAcl?.protect !== 'function' ||
+            typeof windowsAcl?.tighten !== 'function' ||
+            typeof windowsAcl?.verify !== 'function'))) {
       throw new TypeError('Profile Workspace startup dependencies are invalid');
     }
     this.userData = validateUserDataRoot(userData);

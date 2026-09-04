@@ -34,12 +34,7 @@ if (-not $verified.AreAccessRulesProtected -or $ownerSid -ne $currentSid -or -no
 }
 [Console]::Out.Write('owner_only')
 `;
-const PROTECT_SCRIPT = `${COMMON_PREFIX}
-$existing = [System.IO.File]::GetAccessControl($privatePath)
-$existingOwnerSid = $existing.GetOwner([Security.Principal.SecurityIdentifier])
-if ($existingOwnerSid -ne $currentSid) {
-  throw 'private path is not owned by the current user'
-}
+const APPLY_OWNER_ONLY_SUFFIX = String.raw`
 $acl = New-Object Security.AccessControl.FileSecurity
 $acl.SetOwner($currentSid)
 $acl.SetAccessRuleProtection($true, $false)
@@ -50,6 +45,17 @@ $rule = New-Object Security.AccessControl.FileSystemAccessRule(
 )
 $acl.AddAccessRule($rule)
 [System.IO.File]::SetAccessControl($privatePath, $acl)
+`;
+const PROTECT_SCRIPT = `${COMMON_PREFIX}
+${APPLY_OWNER_ONLY_SUFFIX}
+${VERIFY_SUFFIX}`;
+const TIGHTEN_SCRIPT = `${COMMON_PREFIX}
+$existing = [System.IO.File]::GetAccessControl($privatePath)
+$existingOwnerSid = $existing.GetOwner([Security.Principal.SecurityIdentifier])
+if ($existingOwnerSid -ne $currentSid) {
+  throw 'private path is not owned by the current user'
+}
+${APPLY_OWNER_ONLY_SUFFIX}
 ${VERIFY_SUFFIX}`;
 const VERIFY_SCRIPT = `${COMMON_PREFIX}
 ${VERIFY_SUFFIX}`;
@@ -87,6 +93,10 @@ function protectWindowsFileOwnerOnly(filePath, options) {
   return runAclScript(filePath, PROTECT_SCRIPT, options);
 }
 
+function tightenWindowsFileOwnerOnly(filePath, options) {
+  return runAclScript(filePath, TIGHTEN_SCRIPT, options);
+}
+
 function verifyWindowsFileOwnerOnly(filePath, options) {
   return runAclScript(filePath, VERIFY_SCRIPT, options);
 }
@@ -95,5 +105,6 @@ module.exports = {
   PRIVATE_FILE_ENV,
   POWERSHELL_ACL_TIMEOUT_MS,
   protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 };

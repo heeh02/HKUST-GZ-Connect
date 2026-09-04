@@ -41,14 +41,14 @@ test('simulated Windows hardening upgrades a current-user file and fails closed 
   assert.equal(ensureOwnerOnly(file, {
     platform: 'win32',
     windowsAcl: {
-      protect(value) { calls.push(['protect', value]); return true; },
+      tighten(value) { calls.push(['tighten', value]); return true; },
       verify(value) { calls.push(['verify', value]); return true; },
     },
   }), true);
-  assert.deepEqual(calls, [['protect', file], ['verify', file]]);
+  assert.deepEqual(calls, [['tighten', file], ['verify', file]]);
   assert.equal(ensureOwnerOnly(file, {
     platform: 'win32',
-    windowsAcl: { protect: () => false, verify: () => true },
+    windowsAcl: { tighten: () => false, verify: () => true },
   }), false);
 });
 

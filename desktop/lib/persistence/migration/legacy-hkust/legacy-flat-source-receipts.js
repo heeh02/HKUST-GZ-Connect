@@ -8,7 +8,7 @@ const {
 } = require('../../paths/profile-workspace-layout');
 const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
 const {
-  protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../platform/storage/windows-private-file');
 
@@ -51,7 +51,7 @@ function collectPrivateFileReceipt({
   fileSystem = fs,
   platform = process.platform,
   windowsAcl = {
-    protect: protectWindowsFileOwnerOnly,
+    tighten: tightenWindowsFileOwnerOnly,
     verify: verifyWindowsFileOwnerOnly,
   },
   repairWindowsAcl = false,
@@ -62,7 +62,7 @@ function collectPrivateFileReceipt({
       !['darwin', 'linux', 'win32'].includes(platform) ||
       (platform === 'win32' && typeof windowsAcl?.verify !== 'function') ||
       (repairWindowsAcl === true && (platform !== 'win32' ||
-        typeof windowsAcl?.protect !== 'function')) ||
+        typeof windowsAcl?.tighten !== 'function')) ||
       typeof repairWindowsAcl !== 'boolean' ||
       typeof label !== 'string' || !label) {
     throw new TypeError('private receipt dependencies are invalid');
@@ -80,7 +80,7 @@ function collectPrivateFileReceipt({
     throw invalidSource(`${label} is not a bounded owner-only regular file`);
   }
   if (platform === 'win32' && !windowsAcl.verify(file)) {
-    if (!repairWindowsAcl || !windowsAcl.protect(file) || !windowsAcl.verify(file)) {
+    if (!repairWindowsAcl || !windowsAcl.tighten(file) || !windowsAcl.verify(file)) {
       throw invalidSource(`${label} Windows ACL is not current-user-only`);
     }
     let tightened;
@@ -146,7 +146,7 @@ function collectLegacyFlatSourceReceipts({
   fileSystem = fs,
   platform = process.platform,
   windowsAcl = {
-    protect: protectWindowsFileOwnerOnly,
+    tighten: tightenWindowsFileOwnerOnly,
     verify: verifyWindowsFileOwnerOnly,
   },
   repairWindowsAcl = false,
@@ -155,7 +155,7 @@ function collectLegacyFlatSourceReceipts({
       !['darwin', 'linux', 'win32'].includes(platform) ||
       (platform === 'win32' && typeof windowsAcl?.verify !== 'function') ||
       (repairWindowsAcl === true && (platform !== 'win32' ||
-        typeof windowsAcl?.protect !== 'function')) ||
+        typeof windowsAcl?.tighten !== 'function')) ||
       typeof repairWindowsAcl !== 'boolean') {
     throw new TypeError('legacy receipt dependencies are invalid');
   }

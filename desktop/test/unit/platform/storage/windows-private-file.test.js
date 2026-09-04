@@ -9,6 +9,7 @@ const {
   PRIVATE_FILE_ENV,
   POWERSHELL_ACL_TIMEOUT_MS,
   protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../../lib/platform/storage/windows-private-file');
 const { ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
@@ -26,12 +27,17 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     environment: { SystemRoot: String.raw`C:\Windows` },
     platform: 'win32',
   }), true);
+  assert.equal(tightenWindowsFileOwnerOnly(file, {
+    execute,
+    environment: {},
+    platform: 'win32',
+  }), true);
   assert.equal(verifyWindowsFileOwnerOnly(file, {
     execute,
     environment: {},
     platform: 'win32',
   }), true);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   for (const [index, call] of calls.entries()) {
     assert.equal(call.command, 'powershell.exe');
     assert.equal(call.args.includes(file), false, 'the path is not interpolated into PowerShell');
@@ -39,8 +45,10 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     assert.doesNotMatch(script, /\b(?:Get|Set)-Acl\b/u,
       'the ACL boundary must not depend on an autoloadable PowerShell module');
     assert.match(script, /\[System\.IO\.File\]::GetAccessControl\(\$privatePath\)/u);
-    if (index === 0) {
+    if (index <= 1) {
       assert.match(script, /\[System\.IO\.File\]::SetAccessControl\(\$privatePath, \$acl\)/u);
+    }
+    if (index === 1) {
       assert.match(script, /existingOwnerSid -ne \$currentSid/u,
         'ACL hardening must refuse a file owned by another SID');
       assert.ok(
@@ -59,6 +67,9 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     execute: () => 'unexpected', platform: 'win32',
   }), false);
   assert.equal(protectWindowsFileOwnerOnly(file, {
+    execute: () => { throw new Error('synthetic failure'); }, platform: 'win32',
+  }), false);
+  assert.equal(tightenWindowsFileOwnerOnly(file, {
     execute: () => { throw new Error('synthetic failure'); }, platform: 'win32',
   }), false);
   assert.equal(protectWindowsFileOwnerOnly('relative.txt', { execute, platform: 'win32' }), false);
@@ -87,6 +98,7 @@ test('real Windows upgrade tightens an inherited current-user legacy file', {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'settings.json');
   fs.writeFileSync(file, '{"version":1}');
+  assert.equal(protectWindowsFileOwnerOnly(file), true);
   assert.equal(ensureOwnerOnly(file), true);
   assert.equal(verifyWindowsFileOwnerOnly(file), true);
 });

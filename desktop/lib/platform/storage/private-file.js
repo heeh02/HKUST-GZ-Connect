@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const {
-  protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('./windows-private-file');
 
@@ -77,14 +77,14 @@ function ensureOwnerOnly(file, {
   fileSystem = fs,
   platform = process.platform,
   windowsAcl = {
-    protect: protectWindowsFileOwnerOnly,
+    tighten: tightenWindowsFileOwnerOnly,
     verify: verifyWindowsFileOwnerOnly,
   },
 } = {}) {
   let descriptor = null;
   try {
     if (!['darwin', 'linux', 'win32'].includes(platform) ||
-        (platform === 'win32' && (typeof windowsAcl?.protect !== 'function' ||
+        (platform === 'win32' && (typeof windowsAcl?.tighten !== 'function' ||
           typeof windowsAcl?.verify !== 'function'))) return false;
     const before = fileSystem.lstatSync(file);
     if (!before.isFile() || before.isSymbolicLink() ||
@@ -103,7 +103,7 @@ function ensureOwnerOnly(file, {
       // inherited Windows access rules in place. Tightening is allowed only
       // after the PowerShell boundary proves the current SID already owns the
       // exact regular path; it never takes ownership of a foreign file.
-      if (!windowsAcl.protect(file) || !windowsAcl.verify(file)) return false;
+      if (!windowsAcl.tighten(file) || !windowsAcl.verify(file)) return false;
       const after = fileSystem.lstatSync(file);
       return after.isFile() && !after.isSymbolicLink() &&
         sameFileIdentity(after, opened) &&
