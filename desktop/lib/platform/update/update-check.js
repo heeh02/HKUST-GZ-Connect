@@ -8,9 +8,9 @@
 // never surface as an error in the main loop.
 const https = require('https');
 
-const RELEASES_API_URL = 'https://api.github.com/repos/heeh02/HKUST-GZ-Connect/releases/latest';
-const PRERELEASES_API_URL = 'https://api.github.com/repos/heeh02/HKUST-GZ-Connect/releases?per_page=30';
-const RELEASES_URL_PREFIX = 'https://github.com/heeh02/HKUST-GZ-Connect/releases';
+const REPOSITORY_ID = 1279507615;
+const REPOSITORY_NAME = 'HKUST-GZ-Connect';
+const REPOSITORY_API_URL = `https://api.github.com/repositories/${REPOSITORY_ID}`;
 const AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -18,9 +18,31 @@ const USER_AGENT = 'hkustgzconnect-update-check';
 
 // shell.openExternal targets from the renderer are confined to this prefix so
 // a compromised or buggy page cannot hand the OS an arbitrary URL.
-function isAllowedReleaseUrl(url) {
+function isAllowedReleaseUrl(url, releasesUrlPrefix) {
   return typeof url === 'string'
-    && (url === RELEASES_URL_PREFIX || url.startsWith(`${RELEASES_URL_PREFIX}/`));
+    && typeof releasesUrlPrefix === 'string'
+    && (url === releasesUrlPrefix || url.startsWith(`${releasesUrlPrefix}/`));
+}
+
+function repositoryReleaseEndpoints(repository) {
+  if (!repository || repository.id !== REPOSITORY_ID || repository.name !== REPOSITORY_NAME ||
+      typeof repository.owner?.login !== 'string' ||
+      !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u.test(repository.owner.login)) return null;
+
+  const owner = repository.owner.login;
+  const canonicalApi = `https://api.github.com/repos/${owner}/${REPOSITORY_NAME}`;
+  const canonicalWeb = `https://github.com/${owner}/${REPOSITORY_NAME}`;
+  if (repository.full_name !== `${owner}/${REPOSITORY_NAME}` ||
+      repository.private !== false || repository.visibility !== 'public' ||
+      repository.archived !== false || repository.disabled !== false ||
+      repository.url !== canonicalApi || repository.html_url !== canonicalWeb ||
+      repository.releases_url !== `${canonicalApi}/releases{/id}`) return null;
+
+  return Object.freeze({
+    latestApiUrl: `${canonicalApi}/releases/latest`,
+    prereleasesApiUrl: `${canonicalApi}/releases?per_page=30`,
+    releasesUrlPrefix: `${canonicalWeb}/releases`,
+  });
 }
 
 function parseVersion(version) {
@@ -104,13 +126,13 @@ function releaseVersion(release) {
   return parseVersion(version) ? version : null;
 }
 
-function selectPrereleaseUpdate(releases, currentVersion) {
+function selectPrereleaseUpdate(releases, currentVersion, releasesUrlPrefix) {
   if (!Array.isArray(releases)) return null;
   const eligible = releases
     .map((release) => ({ release, version: releaseVersion(release) }))
     .filter(({ version }) => version && isUpdateCandidate(version, currentVersion));
   if (eligible.length === 0) {
-    return { updateAvailable: false, latestVersion: currentVersion, url: RELEASES_URL_PREFIX };
+    return { updateAvailable: false, latestVersion: currentVersion, url: releasesUrlPrefix };
   }
 
   // A stable release wins over a Beta once it is eligible. Otherwise choose
@@ -125,8 +147,8 @@ function selectPrereleaseUpdate(releases, currentVersion) {
   return {
     updateAvailable: true,
     latestVersion: selected.version,
-    url: isAllowedReleaseUrl(selected.release.html_url)
-      ? selected.release.html_url : RELEASES_URL_PREFIX,
+    url: isAllowedReleaseUrl(selected.release.html_url, releasesUrlPrefix)
+      ? selected.release.html_url : releasesUrlPrefix,
   };
 }
 
@@ -164,11 +186,17 @@ async function checkForUpdate(currentVersion, fetchJson = defaultFetchJson) {
   try {
     const current = parseVersion(currentVersion);
     if (!current) return null;
+    const endpoints = repositoryReleaseEndpoints(await fetchJson(REPOSITORY_API_URL));
+    if (!endpoints) return null;
     if (current.prerelease.length > 0) {
-      return selectPrereleaseUpdate(await fetchJson(PRERELEASES_API_URL), current.normalized);
+      return selectPrereleaseUpdate(
+        await fetchJson(endpoints.prereleasesApiUrl),
+        current.normalized,
+        endpoints.releasesUrlPrefix,
+      );
     }
 
-    const release = await fetchJson(RELEASES_API_URL);
+    const release = await fetchJson(endpoints.latestApiUrl);
     if (!release || typeof release.tag_name !== 'string') return null;
     const latestVersion = release.tag_name.trim().replace(/^v/i, '');
     const comparison = compareVersions(latestVersion, currentVersion);
@@ -176,7 +204,8 @@ async function checkForUpdate(currentVersion, fetchJson = defaultFetchJson) {
     return {
       updateAvailable: comparison > 0,
       latestVersion,
-      url: isAllowedReleaseUrl(release.html_url) ? release.html_url : RELEASES_URL_PREFIX,
+      url: isAllowedReleaseUrl(release.html_url, endpoints.releasesUrlPrefix)
+        ? release.html_url : endpoints.releasesUrlPrefix,
     };
   } catch {
     return null;
@@ -194,13 +223,14 @@ function shouldAutoCheck(lastCheckedAt, now = Date.now(), intervalMs = AUTO_CHEC
 
 module.exports = {
   AUTO_CHECK_INTERVAL_MS,
-  PRERELEASES_API_URL,
-  RELEASES_API_URL,
-  RELEASES_URL_PREFIX,
+  REPOSITORY_API_URL,
+  REPOSITORY_ID,
+  REPOSITORY_NAME,
   REQUEST_TIMEOUT_MS,
   checkForUpdate,
   compareVersions,
   isBetaFinalPromotion,
   isAllowedReleaseUrl,
+  repositoryReleaseEndpoints,
   shouldAutoCheck,
 };

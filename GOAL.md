@@ -2,7 +2,7 @@
 
 - Status: Active
 - Authority: project maintainer
-- Baseline: `main@415a3b5dfb9d11bffa14cde27e924af486823249`
+- Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
@@ -32,16 +32,16 @@ high-risk rules. No instruction file is treated as a substitute for review or te
 
 ## Current findings
 
-1. Runtime architecture and CI are mature, but the repository has no contributor or agent
-   operating contract.
+1. PR #59 established the contributor, agent, documentation and machine-governance baseline on
+   `main`; runtime modularization must now consume those boundaries rather than create alternatives.
 2. `desktop/main.js`, `desktop/lib/browser/session/campus-browser.js`, the Renderer bootstrap/CSS,
    and `independent/src/bin/ec-engine.rs` are concurrency hot spots.
 3. Renderer feature files still depend on global `window.*` names and HTML script order that the
    CommonJS architecture graph cannot see.
-4. Current-state, product, roadmap, ADR-index and release documents contain pre-release or
-   worktree-era statements that conflict with the published 2.0.0 release.
-5. The GitHub repository has one administrator, no CODEOWNERS, no Rulesets, no Dependabot alerts,
-   no contribution templates and no protected release-tag policy.
+4. The immutable `v2.0.0` tag exists, but no stable GitHub Release is published for it and
+   `/releases/latest` still resolves to `v1.2.3`; Issue #76 owns the 2.0.1 repair release.
+5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
+   policies are active, but one administrator and no independent reviewer prevent full enforcement.
 6. The `heeh02` account currently has no GitHub Organization membership. Repository transfer is
    blocked until the maintainer chooses or creates the destination organization.
 
@@ -129,13 +129,13 @@ The goal is complete only when:
 
 ## Progress receipt — 2026-09-04
 
-- G0 implemented on `codex/open-source-governance`, pending PR/CI: current release truth is aligned;
-  obsolete tool-specific documents and completed product proposals are removed; original 2.0 vision
-  documents are classified under `docs/archive/`.
-- G1 implemented on the governance branch, pending PR/CI: six-level agent instructions,
-  contribution/security/conduct policies, CODEOWNERS, templates and AI provenance are present.
-- G2 partially implemented: module inventory, repository-governance/link/Action-pin checks and CI
-  wiring are present; enforcing target module dependency/public-entrypoint rules belongs to M1–M4.
+- G0 merged through PR #59: current release truth is aligned; obsolete tool-specific documents and
+  completed product proposals are removed; original 2.0 vision documents are classified under
+  `docs/archive/`.
+- G1 merged through PR #59: six-level agent instructions, contribution/security/conduct policies,
+  CODEOWNERS, templates and AI provenance are present.
+- G2 baseline merged through PR #59: module inventory, repository-governance/link/Action-pin checks
+  and CI wiring are present; target module dependency/public-entrypoint enforcement belongs to M1–M4.
 - G3 planned but intentionally not mixed into this governance PR. Runtime modularization begins only
   after the governance baseline merges.
 - G4 partially activated on the current personal repository: squash-only, branch auto-delete,
@@ -144,6 +144,11 @@ The goal is complete only when:
 - Organization transfer, team CODEOWNERS, release-tag creation restriction, protected release
   reviewers and administrator enforcement remain blocked on the destination Organization login and
   a second trusted reviewer.
+- Windows/Profile upgrade repair merged through PR #75. Issue #76 records that the missing stable
+  2.0 channel must be repaired with a verified 2.0.1 rather than republishing the known-buggy 2.0.0
+  Windows artifact.
+- PR #78 provides the repository-ID-based 2.0.1 transition patch so update discovery remains bound
+  to the same public, enabled repository across owner transfer without trusting arbitrary redirects.
 
 ## Current external blocker
 

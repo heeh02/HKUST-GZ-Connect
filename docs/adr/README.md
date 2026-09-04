@@ -24,6 +24,7 @@ records for review and recovery evidence; future procedural notes belong under `
 | 0023-0029 | Custom Profile provisioning, startup and switch | Accepted | Implementation records | P6 |
 | 0030 | P3 runtime storage path seam | Accepted | Implementation record; renumbered from duplicate 0016 | P3 |
 | 0031 | P8 WebResource library and on-demand Campus boundary | Accepted | Product/security decision | Released in 2.0.0 |
+| 0032 | Repository-ID-bound update discovery | Accepted | Security/ownership decision | 2.0.1 transfer bridge |
 
 No ADR type, fixture or design text promotes an unsupported provider. Current capability truth remains the
 intersection of compiled providers, active Profile policy and runtime evidence.
