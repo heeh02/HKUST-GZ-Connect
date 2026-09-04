@@ -56,7 +56,7 @@ path = "src/bin/ec-auth-fixture.rs"
 base64 = "0.22"
 flate2 = "1.1"
 hex = "0.4"
-hmac = "0.12"
+hmac = "0.13"
 iced-x86 = { version = "1.21", default-features = false, features = ["decoder", "std"] }
 libc = "0.2"
 md-5 = "0.10"
