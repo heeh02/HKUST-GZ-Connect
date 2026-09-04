@@ -1,0 +1,190 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+const MAX_TRACKED_FILE_BYTES = 5 * 1024 * 1024;
+const ROOT_TEST_DEBT_CAP = 59;
+const REQUIRED_FILES = Object.freeze([
+  '.github/AGENTS.md',
+  '.github/CODEOWNERS',
+  '.github/ISSUE_TEMPLATE/bug.yml',
+  '.github/ISSUE_TEMPLATE/config.yml',
+  '.github/ISSUE_TEMPLATE/feature.yml',
+  '.github/dependabot.yml',
+  '.github/pull_request_template.md',
+  'AGENTS.md',
+  'ARCHITECTURE.md',
+  'CODE_OF_CONDUCT.md',
+  'CONTRIBUTING.md',
+  'GOAL.md',
+  'SECURITY.md',
+  'desktop/AGENTS.md',
+  'desktop/renderer/AGENTS.md',
+  'docs/AGENTS.md',
+  'docs/README.md',
+  'docs/architecture/modularization-plan.md',
+  'docs/architecture/module-map.yml',
+  'docs/governance/collaboration-model.md',
+  'docs/security/data-classification.md',
+  'independent/AGENTS.md',
+]);
+
+const FORBIDDEN_TRACKED_PATTERNS = Object.freeze([
+  { pattern: /(^|\/)\.DS_Store$/u, reason: 'operating-system metadata' },
+  { pattern: /(^|\/)node_modules\//u, reason: 'Node dependency output' },
+  { pattern: /(^|\/)target\//u, reason: 'Cargo build output' },
+  { pattern: /(^|\/)release\//u, reason: 'packaged release output' },
+  { pattern: /^docs\/superpowers\//u, reason: 'tool-specific historical documentation' },
+  { pattern: /^config\.toml$/u, reason: 'local runtime configuration' },
+  { pattern: /\.(?:pcap|pcapng|har|key|pem|p12|mobileprovision)$/iu, reason: 'private capture or key material' },
+  { pattern: /\.(?:dmg|exe|AppImage|apk|blockmap|zip)$/u, reason: 'generated package artifact' },
+]);
+
+function normalizePath(value) {
+  return String(value).replaceAll(path.sep, '/');
+}
+
+function trackedFiles(repositoryRoot) {
+  try {
+    return execFileSync('git', ['ls-files', '-z'], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).split('\0').filter(Boolean).map(normalizePath).sort();
+  } catch (error) {
+    throw new Error(`cannot enumerate the exact Git index: ${error.message}`);
+  }
+}
+
+function actionPinErrors(source, workflow) {
+  const errors = [];
+  for (const [index, line] of String(source).split('\n').entries()) {
+    const match = line.match(/^\s*-?\s*uses:\s*([^\s#]+)/u);
+    if (!match) continue;
+    const target = match[1];
+    if (target.startsWith('./')) continue;
+    if (!/@[0-9a-f]{40}$/u.test(target)) {
+      errors.push(`${workflow}:${index + 1} action is not pinned to a full commit SHA: ${target}`);
+    }
+  }
+  if (/\bpull_request_target\s*:/u.test(source)) {
+    errors.push(`${workflow} uses forbidden pull_request_target`);
+  }
+  return errors;
+}
+
+function moduleMapErrors(source) {
+  const ids = [...String(source).matchAll(/^  - id:\s*([a-z0-9-]+)\s*$/gmu)]
+    .map((match) => match[1]);
+  const errors = [];
+  if (ids.length < 10) errors.push(`module map has only ${ids.length} modules`);
+  const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+  for (const id of [...new Set(duplicates)]) errors.push(`duplicate module id: ${id}`);
+  for (const field of ['paths:', 'publicEntrypoints:', 'allowedDependencies:', 'risk:', 'requiredChecks:']) {
+    const count = String(source).split(field).length - 1;
+    if (count < ids.length) errors.push(`module map is missing ${field} for one or more modules`);
+  }
+  return errors;
+}
+
+function relativeMarkdownTargets(source) {
+  const targets = [];
+  for (const match of String(source).matchAll(/\]\(([^)]+)\)/gu)) {
+    let target = match[1].trim().replace(/^<|>$/gu, '').split('#')[0];
+    if (!target || target.startsWith('/') || /^[a-z][a-z0-9+.-]*:/iu.test(target)) continue;
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      targets.push({ target, invalidEncoding: true });
+      continue;
+    }
+    targets.push({ target, invalidEncoding: false });
+  }
+  return targets;
+}
+
+function markdownLinkErrors(repositoryRoot, tracked) {
+  const errors = [];
+  for (const file of tracked.filter((entry) => entry.endsWith('.md'))) {
+    const source = fs.readFileSync(path.join(repositoryRoot, file), 'utf8');
+    for (const { target, invalidEncoding } of relativeMarkdownTargets(source)) {
+      if (invalidEncoding) {
+        errors.push(`invalid encoded Markdown link in ${file}: ${target}`);
+        continue;
+      }
+      const resolved = path.resolve(repositoryRoot, path.dirname(file), target);
+      if (!fs.existsSync(resolved)) errors.push(`broken relative Markdown link in ${file}: ${target}`);
+    }
+  }
+  return errors;
+}
+
+function governanceErrors(repositoryRoot) {
+  const errors = [];
+  const tracked = trackedFiles(repositoryRoot);
+  const trackedSet = new Set(tracked);
+
+  for (const file of REQUIRED_FILES) {
+    if (!trackedSet.has(file) && !fs.existsSync(path.join(repositoryRoot, file))) {
+      errors.push(`required governance file is missing: ${file}`);
+    }
+  }
+
+  for (const file of tracked) {
+    for (const { pattern, reason } of FORBIDDEN_TRACKED_PATTERNS) {
+      if (pattern.test(file)) errors.push(`forbidden tracked ${reason}: ${file}`);
+    }
+    const absolute = path.join(repositoryRoot, file);
+    const stat = fs.lstatSync(absolute);
+    if (stat.isSymbolicLink()) {
+      errors.push(`tracked symlink requires an explicit governance exception: ${file}`);
+    } else if (stat.isFile() && stat.size > MAX_TRACKED_FILE_BYTES) {
+      errors.push(`tracked file exceeds 5 MiB; use a reviewed artifact/LFS policy: ${file}`);
+    }
+  }
+
+  const rootTests = tracked.filter((file) => /^desktop\/test\/[^/]+\.test\.js$/u.test(file));
+  if (rootTests.length > ROOT_TEST_DEBT_CAP) {
+    errors.push(`root Desktop test debt grew from ${ROOT_TEST_DEBT_CAP} to ${rootTests.length}`);
+  }
+
+  const workflows = tracked.filter((file) => /^\.github\/workflows\/[^/]+\.ya?ml$/u.test(file));
+  for (const workflow of workflows) {
+    errors.push(...actionPinErrors(fs.readFileSync(path.join(repositoryRoot, workflow), 'utf8'), workflow));
+  }
+
+  const moduleMap = path.join(repositoryRoot, 'docs', 'architecture', 'module-map.yml');
+  if (fs.existsSync(moduleMap)) errors.push(...moduleMapErrors(fs.readFileSync(moduleMap, 'utf8')));
+  errors.push(...markdownLinkErrors(repositoryRoot, tracked));
+
+  return errors.sort();
+}
+
+function run() {
+  const repositoryRoot = path.resolve(__dirname, '..', '..');
+  const errors = governanceErrors(repositoryRoot);
+  if (errors.length) {
+    for (const error of errors) process.stderr.write(`repository governance: ${error}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write('repository governance: PASS\n');
+}
+
+if (require.main === module) run();
+
+module.exports = {
+  FORBIDDEN_TRACKED_PATTERNS,
+  MAX_TRACKED_FILE_BYTES,
+  REQUIRED_FILES,
+  ROOT_TEST_DEBT_CAP,
+  actionPinErrors,
+  governanceErrors,
+  markdownLinkErrors,
+  moduleMapErrors,
+  normalizePath,
+  relativeMarkdownTargets,
+  trackedFiles,
+};

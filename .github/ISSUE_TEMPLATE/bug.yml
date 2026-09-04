@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible problem without including credentials or private data
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include passwords, OTPs, cookies, tokens, browser profiles, private captures or personal data.
+        Report security vulnerabilities through the private process in SECURITY.md.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop connection
+        - Campus Browser or myPortal
+        - Campus workspace or GUI
+        - Profiles, settings or migration
+        - Rust Engine or protocol
+        - Packaging, update or installation
+        - Documentation or governance
+        - Unsure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and platform
+      placeholder: "2.0.0, macOS 15 arm64"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Actual behavior
+      description: What happened? Use sanitized values.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include exact steps and whether the result is repeatable.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Screenshots or logs with accounts, URLs containing tokens and personal data removed.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, OTPs, cookies, tokens and personal data.
+          required: true
+        - label: This is not a private security vulnerability report.
+          required: true

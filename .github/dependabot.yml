@@ -1,0 +1,42 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /desktop
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels: ["type:dependency", "area:desktop"]
+    groups:
+      desktop-development:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: /independent
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:45"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels: ["type:dependency", "area:engine"]
+    groups:
+      rust-compatible:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    labels: ["type:dependency", "area:ci"]
+    groups:
+      actions-compatible:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

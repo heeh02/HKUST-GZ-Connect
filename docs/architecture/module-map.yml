@@ -1,0 +1,169 @@
+schemaVersion: 1
+status: proposed
+owner: maintainers
+lastVerified: 2026-09-04
+enforcement: inventory-only until G2 path and dependency validation lands
+
+modules:
+  - id: desktop-app
+    paths:
+      - desktop/main.js
+      - desktop/lib/app/**
+    publicEntrypoints:
+      - desktop/lib/app/desktop-runtime-composition.js
+    allowedDependencies:
+      - desktop-connection
+      - desktop-browser
+      - desktop-persistence
+      - desktop-profiles
+      - desktop-resources
+      - desktop-routing
+      - desktop-integrations
+      - desktop-platform
+    risk: high
+    requiredChecks: [desktop, desktop-electron, architecture, secret-scan]
+
+  - id: desktop-connection
+    paths: [desktop/lib/connection/**]
+    publicEntrypoints:
+      - desktop/lib/connection/engine/engine-connection-runtime.js
+      - desktop/lib/connection/state/connection-state-machine.js
+    allowedDependencies: [desktop-profiles, desktop-platform, desktop-diagnostics]
+    risk: high
+    requiredChecks: [desktop, desktop-electron, engine, architecture]
+
+  - id: desktop-browser
+    paths:
+      - desktop/campus-preload.js
+      - desktop/lib/browser/**
+    publicEntrypoints:
+      - desktop/lib/browser/session/campus-browser-manager.js
+      - desktop/lib/browser/session/browser-session-manager.js
+    allowedDependencies: [desktop-resources, desktop-routing, desktop-profiles, desktop-platform]
+    risk: critical
+    requiredChecks: [desktop, desktop-electron, browser-e2e, mfa-e2e, secret-scan]
+
+  - id: desktop-persistence
+    paths: [desktop/lib/persistence/**]
+    publicEntrypoints:
+      - desktop/lib/persistence/runtime/desktop-persistence-runtime.js
+    allowedDependencies: [desktop-profiles, desktop-routing, desktop-platform]
+    risk: critical
+    requiredChecks: [desktop, migration-e2e, upgrade-compatibility, windows-private-file]
+
+  - id: desktop-profiles
+    paths: [desktop/lib/profiles/**, desktop/lib/switching/**]
+    publicEntrypoints:
+      - desktop/lib/profiles/runtime/school-profile-runtime.js
+      - desktop/lib/switching/runtime/profile-switch-runtime.js
+    allowedDependencies: [desktop-persistence, desktop-connection, desktop-browser, desktop-routing]
+    risk: high
+    requiredChecks: [desktop, profile-e2e, migration-e2e, architecture]
+
+  - id: desktop-resources
+    paths: [desktop/lib/resources/**, desktop/lib/card-board/**]
+    publicEntrypoints:
+      - desktop/lib/resources/runtime/resource-library-runtime.js
+      - desktop/lib/card-board/runtime/card-board-runtime.js
+    allowedDependencies: [desktop-routing, desktop-profiles, desktop-platform]
+    risk: medium
+    requiredChecks: [desktop, renderer-layout, upgrade-compatibility]
+
+  - id: desktop-routing
+    paths: [desktop/lib/routing/**]
+    publicEntrypoints:
+      - desktop/lib/routing/policy/domain-route-policy.js
+      - desktop/lib/routing/rules/routing-policy-transaction.js
+    allowedDependencies: [desktop-profiles, desktop-platform]
+    risk: critical
+    requiredChecks: [desktop, routing-restart, strict-proxy-auth, architecture]
+
+  - id: desktop-integrations
+    paths: [desktop/lib/integrations/**]
+    publicEntrypoints:
+      - desktop/lib/integrations/integration-center-runtime.js
+    allowedDependencies: [desktop-resources, desktop-routing, desktop-profiles, desktop-connection]
+    risk: high
+    requiredChecks: [desktop, integration-contract, windows-private-file]
+
+  - id: desktop-renderer
+    paths: [desktop/renderer/**, desktop/preload.js]
+    publicEntrypoints:
+      - desktop/renderer/app.js
+      - desktop/preload.js
+    allowedDependencies: [desktop-renderer]
+    risk: high
+    requiredChecks: [desktop, renderer-layout, workspace-layout, desktop-electron]
+
+  - id: desktop-platform
+    paths: [desktop/lib/platform/**, desktop/lib/network-environment/**]
+    publicEntrypoints:
+      - desktop/lib/platform/shell/desktop-shell.js
+      - desktop/lib/network-environment/runtime/network-environment-service.js
+    allowedDependencies: [desktop-diagnostics]
+    risk: high
+    requiredChecks: [desktop, desktop-electron, windows-private-file]
+
+  - id: desktop-diagnostics
+    paths: [desktop/lib/diagnostics/**]
+    publicEntrypoints:
+      - desktop/lib/diagnostics/logging/log-writer.js
+    allowedDependencies: [desktop-platform]
+    risk: medium
+    requiredChecks: [desktop, secret-scan]
+
+  - id: engine-production
+    paths:
+      - independent/src/engine/**
+      - independent/src/bin/ec-engine.rs
+      - independent/src/gateway_auth.rs
+      - independent/src/gateway_connector.rs
+      - independent/src/gateway_http.rs
+      - independent/src/modern.rs
+      - independent/src/special_tls11.rs
+    publicEntrypoints:
+      - independent/src/engine/mod.rs
+      - independent/src/bin/ec-engine.rs
+    allowedDependencies: [engine-protocol]
+    risk: critical
+    requiredChecks: [engine, offline-tests, package-verifier, secret-scan]
+
+  - id: engine-protocol
+    paths: [independent/spec/**, independent/src/auth.rs, independent/src/config.rs]
+    publicEntrypoints: [independent/src/lib.rs]
+    allowedDependencies: []
+    risk: high
+    requiredChecks: [engine, offline-tests]
+
+  - id: compatibility-lab
+    paths:
+      - independent/src/watch.rs
+      - independent/src/probe.rs
+      - independent/src/adapter.rs
+      - independent/src/protocol_map.rs
+      - independent/src/binary_watch.rs
+      - independent/src/bin/ec-watch.rs
+      - independent/src/bin/ec-probe.rs
+      - independent/src/bin/ec-adapter-check.rs
+      - independent/src/bin/ec-protocol-map.rs
+      - independent/src/bin/ec-binary-watch.rs
+      - independent/cleanroom/**
+      - independent/baselines/**
+    publicEntrypoints: []
+    allowedDependencies: [engine-protocol]
+    risk: restricted-evidence
+    requiredChecks: [offline-tests, secret-scan]
+
+  - id: build-release
+    paths: [.github/**, desktop/build/**, desktop/scripts/**, RELEASING.md]
+    publicEntrypoints: [.github/workflows/ci.yml, .github/workflows/build.yml]
+    allowedDependencies: []
+    risk: critical
+    requiredChecks: [all-required-checks, package-verifier, secret-scan]
+
+  - id: documentation
+    paths: [docs/**, README.md, CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md]
+    publicEntrypoints: [docs/README.md]
+    allowedDependencies: []
+    risk: low
+    requiredChecks: [governance, link-check]

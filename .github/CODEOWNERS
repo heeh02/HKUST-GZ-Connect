@@ -1,0 +1,26 @@
+# The repository currently has one administrator. These entries establish review routing now and
+# must be replaced with Organization teams before code-owner approval becomes mandatory.
+
+* @heeh02
+
+/.github/ @heeh02
+/AGENTS.md @heeh02
+/GOAL.md @heeh02
+/ARCHITECTURE.md @heeh02
+/SECURITY.md @heeh02
+/RELEASING.md @heeh02
+
+/desktop/preload.js @heeh02
+/desktop/campus-preload.js @heeh02
+/desktop/lib/persistence/ @heeh02
+/desktop/lib/browser/credentials/ @heeh02
+/desktop/lib/browser/certificates/ @heeh02
+/desktop/renderer/ @heeh02
+
+/independent/src/engine/ @heeh02
+/independent/src/gateway_auth.rs @heeh02
+/independent/src/gateway_connector.rs @heeh02
+/independent/src/gateway_http.rs @heeh02
+/independent/src/modern.rs @heeh02
+/independent/src/special_tls11.rs @heeh02
+/independent/spec/ @heeh02

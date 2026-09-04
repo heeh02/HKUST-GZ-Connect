@@ -1,4 +1,28 @@
+* text=auto
+
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.sh text eol=lf
+hkustgzconnect text eol=lf
+
+# Byte-bound profile and reviewed configuration assets are release contracts.
 desktop/assets/profiles/manifest.json text eol=lf
 desktop/assets/profiles/**/*.json text eol=lf
 desktop/assets/logo.svg text eol=lf
 independent/config/*.json text eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.dmg binary
+*.exe binary
+*.AppImage binary

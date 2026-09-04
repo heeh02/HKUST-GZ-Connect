@@ -49,7 +49,7 @@ HKUST(GZ) Connect 用于在校外访问香港科技大学（广州）的校内�
 | macOS Apple Silicon | `hkustgzconnect-<版本>-mac-arm64.dmg` | M1/M2/M3/M4 等 |
 | macOS Intel | `hkustgzconnect-<版本>-mac-x64.dmg` | Intel Mac |
 | Windows | `hkustgzconnect-<版本>-win-x64.exe` | Windows 10/11 x64 |
-| Linux | `hkustgzconnect-<版本>-linux-x64.AppImage` | 主流 x86_64 桌面发行版 |
+| Linux | `hkustgzconnect-<版本>-linux-x86_64.AppImage` | 主流 x86_64 桌面发行版 |
 
 ### macOS 安装
 
@@ -66,14 +66,14 @@ HKUST(GZ) Connect 用于在校外访问香港科技大学（广州）的校内�
 ### Linux 使用
 
 ```bash
-chmod +x hkustgzconnect-<版本>-linux-x64.AppImage
-./hkustgzconnect-<版本>-linux-x64.AppImage
+chmod +x hkustgzconnect-<版本>-linux-x86_64.AppImage
+./hkustgzconnect-<版本>-linux-x86_64.AppImage
 ```
 
 如果系统没有启用 FUSE，可以使用：
 
 ```bash
-./hkustgzconnect-<版本>-linux-x64.AppImage --appimage-extract-and-run
+./hkustgzconnect-<版本>-linux-x86_64.AppImage --appimage-extract-and-run
 ```
 
 Linux 只有在系统提供 Secret Service/密钥环时才会保存密码；没有安全密钥环时，
@@ -231,6 +231,12 @@ Host hkustgz-hpc
 - SOCKS 端口始终只绑定 `127.0.0.1`；
 - 应用不会修改系统 DNS、系统代理、默认路由或其他浏览器配置。
 
+## 参与贡献与安全报告
+
+参与开发前请阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和适用目录中的
+[`AGENTS.md`](AGENTS.md)。安全漏洞请按 [`SECURITY.md`](SECURITY.md) 私下报告，
+不要在公开 Issue 中提交账号、密码、验证码、Cookie、token 或个人信息。
+
 ---
 
 # English
@@ -259,7 +265,7 @@ Download the latest build from
 | macOS Apple Silicon | `hkustgzconnect-<version>-mac-arm64.dmg` | M1/M2/M3/M4 |
 | macOS Intel | `hkustgzconnect-<version>-mac-x64.dmg` | Intel Macs |
 | Windows | `hkustgzconnect-<version>-win-x64.exe` | Windows 10/11 x64 |
-| Linux | `hkustgzconnect-<version>-linux-x64.AppImage` | Mainstream x86_64 desktops |
+| Linux | `hkustgzconnect-<version>-linux-x86_64.AppImage` | Mainstream x86_64 desktops |
 
 ### macOS
 
@@ -277,8 +283,8 @@ anyway**.
 ### Linux
 
 ```bash
-chmod +x hkustgzconnect-<version>-linux-x64.AppImage
-./hkustgzconnect-<version>-linux-x64.AppImage
+chmod +x hkustgzconnect-<version>-linux-x86_64.AppImage
+./hkustgzconnect-<version>-linux-x86_64.AppImage
 ```
 
 Without FUSE, use `--appimage-extract-and-run`. Linux saves passwords only when
@@ -457,6 +463,12 @@ edits `~/.ssh/config`, installs extensions, or launches VS Code automatically.
 - the SOCKS endpoint binds only to `127.0.0.1`;
 - the app does not modify system DNS, the global proxy, the default route, or
   other browser settings.
+
+## Contributing and security reports
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the applicable [`AGENTS.md`](AGENTS.md)
+before contributing. Report vulnerabilities privately through [`SECURITY.md`](SECURITY.md);
+never put accounts, passwords, OTPs, cookies, tokens or personal data in a public issue.
 
 ## License
 

@@ -1,0 +1,54 @@
+name: Feature proposal
+description: Propose one user outcome with explicit scope and evidence needs
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      options:
+        - Desktop connection
+        - Campus Browser or myPortal
+        - Campus workspace or GUI
+        - Profiles, settings or migration
+        - Rust Engine or protocol
+        - Packaging or update
+        - Documentation or governance
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the problem before proposing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Acceptance criteria
+      description: List observable outcomes that can be tested.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this work explicitly avoid changing?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and compatibility
+      description: Note real-school evidence needs, migration, protocol, security and platform constraints.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Boundary confirmation
+      options:
+        - label: This proposal does not require sharing credentials, OTPs, cookies or private captures.
+          required: true
+        - label: I understand that a mock, UI placeholder or type does not prove school support.
+          required: true
