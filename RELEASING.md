@@ -30,11 +30,11 @@ bash desktop/scripts/rebuild-mac.sh    # macOS：打包、校验并安装到 /Ap
 把 `desktop/engine/` 放进应用包。
 
 `rebuild-mac.sh` 依次完成：构建引擎 → `electron-builder --mac dir --arm64`
-（`CSC_IDENTITY_AUTO_DISCOVERY=false`，ad-hoc 签名）→
+（`CSC_IDENTITY_AUTO_DISCOVERY=false`，由仓库 `afterPack` 选择本机签名）→
 `node build/verify-package.js` 校验包内容 → `codesign --verify` →
 原子替换 `/Applications/hkustgzconnect.app`（全机只保留一份）。
-用户数据和已保存密码不受影响。本机构建是 ad-hoc 签名，首次打开需右键 →
-“打开”，Keychain 授权一次即可。
+用户数据和已保存密码不受影响。`afterPack` 优先选择 Developer ID，其次 Apple Development，
+没有可用身份时才回退为 ad-hoc；只有 ad-hoc 构建通常需要首次右键 →“打开”。
 
 ## 测试
 
@@ -150,11 +150,12 @@ via `extraResources`.
 
 `rebuild-mac.sh` builds the engine, packages with
 `electron-builder --mac dir --arm64` (`CSC_IDENTITY_AUTO_DISCOVERY=false`,
-ad-hoc signing), verifies the package with `node build/verify-package.js`,
+with repository-owned `afterPack` signing), verifies the package with `node build/verify-package.js`,
 runs `codesign --verify`, and atomically swaps
 `/Applications/hkustgzconnect.app` so exactly one copy exists on disk. User
-data and saved passwords are untouched. The local build is ad-hoc signed:
-open it once via right-click → **Open** and approve the Keychain prompt.
+data and saved passwords are untouched. `afterPack` prefers Developer ID, then Apple Development,
+and falls back to ad-hoc only when no suitable local identity exists. Only the ad-hoc fallback
+normally requires the first right-click → **Open** flow.
 
 ## Tests
 
@@ -243,7 +244,8 @@ ever staged accidentally.
   in the README "Installation" section.
 - **Windows**: signed when `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` are set;
   otherwise the installer is unsigned and SmartScreen may appear.
-- Local `rebuild-mac.sh` builds are always ad-hoc signed.
+- Local `rebuild-mac.sh` builds use the repository-owned identity selection above and record the
+  resulting Developer ID, Apple Development or ad-hoc classification.
 
 ## Release notes
 

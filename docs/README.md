@@ -71,5 +71,6 @@ durable contract. Release receipts may use exact tags, commits, workflow runs an
 - Collaboration model: `governance/collaboration-model.md`
 - Main protection: `governance/main-branch-protection.md`
 - Current governance activation: `governance/2026-09-04-governance-activation.md`
+- Machine-readable GitHub settings: `governance/repository-governance-contract.json`
 - Data classification: `security/data-classification.md`
 - ADR index: `adr/README.md`

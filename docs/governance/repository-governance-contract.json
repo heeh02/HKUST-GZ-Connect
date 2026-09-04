@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "repository": {
+    "id": 1279507615,
+    "name": "HKUST-GZ-Connect",
+    "visibility": "public",
+    "defaultBranch": "main"
+  },
+  "merge": {
+    "allowSquash": true,
+    "allowMergeCommit": false,
+    "allowRebase": false,
+    "deleteBranchOnMerge": true,
+    "linearHistory": true,
+    "conversationResolution": true,
+    "forcePush": false,
+    "branchDeletion": false
+  },
+  "actions": {
+    "enabled": true,
+    "defaultWorkflowPermissions": "read",
+    "canApproveReviews": false,
+    "shaPinningRequired": true
+  },
+  "requiredChecks": [
+    "desktop",
+    "desktop-electron",
+    "engine",
+    "offline-tests",
+    "package-verifier",
+    "secret-scan",
+    "windows-private-file"
+  ],
+  "releaseTagRuleset": {
+    "name": "release-tag-immutability",
+    "enforcement": "active",
+    "include": ["refs/tags/v*"],
+    "immutableRules": ["deletion", "non_fast_forward", "update"]
+  },
+  "releaseEnvironment": "release",
+  "security": {
+    "privateVulnerabilityReporting": true,
+    "dependabotSecurityUpdates": "enabled",
+    "secretScanning": "enabled",
+    "pushProtection": "enabled"
+  },
+  "preTransfer": {
+    "owner": "heeh02",
+    "ownerType": "User",
+    "approvals": 1,
+    "enforceAdmins": false,
+    "codeOwnerReviews": false,
+    "lastPushApproval": false,
+    "releaseReviewers": 0,
+    "tagCreationRestricted": false
+  },
+  "postTransfer": {
+    "ownerType": "Organization",
+    "minimumApprovals": 1,
+    "enforceAdmins": true,
+    "codeOwnerReviews": true,
+    "lastPushApproval": true,
+    "minimumReleaseReviewers": 1,
+    "tagCreationRestricted": true,
+    "releaseTeamBypassRequired": true
+  }
+}
