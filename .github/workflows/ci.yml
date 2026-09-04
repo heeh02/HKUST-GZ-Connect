@@ -157,7 +157,21 @@ jobs:
       - name: Enforce desktop architecture growth boundaries
         run: npm run check:architecture
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        shell: bash
+        run: |
+          audit_ok=0
+          for audit_attempt in 1 2 3; do
+            if npm_config_fetch_timeout=60000 npm_config_fetch_retries=0 \
+              npm audit --audit-level=high; then
+              audit_ok=1
+              break
+            fi
+            if [ "$audit_attempt" -lt 3 ]; then
+              echo "npm audit attempt ${audit_attempt} failed; retrying the mandatory gate"
+              sleep $((audit_attempt * 10))
+            fi
+          done
+          test "$audit_ok" = 1
       - name: Audit dependency install scripts
         run: npm run check:install-scripts
       - name: Check syntax of every entry point
