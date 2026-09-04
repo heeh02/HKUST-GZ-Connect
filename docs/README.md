@@ -72,5 +72,6 @@ durable contract. Release receipts may use exact tags, commits, workflow runs an
 - Main protection: `governance/main-branch-protection.md`
 - Current governance activation: `governance/2026-09-04-governance-activation.md`
 - Machine-readable GitHub settings: `governance/repository-governance-contract.json`
+- Organization transfer procedure: `governance/repository-transfer-playbook.md`
 - Data classification: `security/data-classification.md`
 - ADR index: `adr/README.md`
