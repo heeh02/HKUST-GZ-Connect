@@ -7,7 +7,7 @@
 
   const BOARD_IDS = Object.freeze(['browser-catalog', 'browser-personal', 'connect']);
   const CARD_SIZES = Object.freeze(['small', 'medium', 'large']);
-  const MAX_AUTO_STACK_DEPTH = 3;
+  const MAX_DECK_DEPTH = 3;
 
   function boundedString(value, max = 96) {
     return String(value || '').trim().slice(0, max);
@@ -27,56 +27,6 @@
 
   function resourceColumnsForWidth(width) {
     return Math.max(0, Number(width) || 0) >= 360 ? 2 : 1;
-  }
-
-  function layoutCapacity(columns, availableHeight) {
-    const safeColumns = Math.max(1, Math.min(4, Number(columns) || 1));
-    const rows = Math.max(0, Number(availableHeight) || 0) >= 700 ? 2 : 1;
-    return Object.freeze({ columns: safeColumns, rows, slotCount: safeColumns * rows });
-  }
-
-  function balancedPartitions(values, count) {
-    const items = Array.isArray(values) ? values : [];
-    const partitions = Math.max(1, Math.min(items.length || 1, Number(count) || 1));
-    const base = Math.floor(items.length / partitions);
-    const extra = items.length % partitions;
-    const result = [];
-    let offset = 0;
-    for (let index = 0; index < partitions; index += 1) {
-      const size = base + (index < extra ? 1 : 0);
-      result.push(items.slice(offset, offset + size));
-      offset += size;
-    }
-    return result;
-  }
-
-  function weightedPartitions(units, count, maxWeight = MAX_AUTO_STACK_DEPTH) {
-    const source = Array.isArray(units) ? units : [];
-    const groupCount = Math.max(1, Math.min(source.length || 1, Number(count) || 1));
-    const weights = source.map((unit) => Math.max(1, unit?.placements?.length || 1));
-    const result = [];
-    let offset = 0;
-    let remainingWeight = weights.reduce((sum, weight) => sum + weight, 0);
-    for (let group = 0; group < groupCount && offset < source.length; group += 1) {
-      const groupsLeft = groupCount - group;
-      const target = Math.ceil(remainingWeight / groupsLeft);
-      const partition = [];
-      let weight = 0;
-      while (offset < source.length) {
-        const nextWeight = weights[offset];
-        const unitsAfter = source.length - (offset + 1);
-        const mustLeave = groupsLeft - 1;
-        if (partition.length && (weight >= target || weight + nextWeight > maxWeight || unitsAfter < mustLeave)) break;
-        partition.push(source[offset]);
-        weight += nextWeight;
-        offset += 1;
-        if (weight >= maxWeight || source.length - offset === mustLeave) break;
-      }
-      result.push(partition);
-      remainingWeight -= weight;
-    }
-    while (offset < source.length) result.at(-1).push(source[offset++]);
-    return result;
   }
 
   function cloneDocument(document) {
@@ -227,69 +177,45 @@
       .sort((left, right) => left.order - right.order || left.unitId.localeCompare(right.unitId));
   }
 
-  function dealUnits(units, { columns = 1, availableHeight = 0 } = {}) {
-    const source = Array.isArray(units) ? units : [];
-    const capacity = layoutCapacity(columns, availableHeight);
-    if (source.length <= capacity.slotCount) {
-      return Object.freeze({
-        capacity,
-        units: Object.freeze(source.map((unit) => Object.freeze({
-          ...unit,
-          automatic: false,
-          sourceUnitIds: Object.freeze([unit.unitId]),
-        }))),
+  function autoStackBoard(document, boardId, depth = MAX_DECK_DEPTH) {
+    if (!BOARD_IDS.includes(boardId)) return repairDocument(document);
+    const stackDepth = Math.max(2, Math.min(MAX_DECK_DEPTH, Number(depth) || MAX_DECK_DEPTH));
+    const next = repairDocument(document);
+    const autoPrefix = `auto_${boardId}_`;
+    const existingIds = new Set(next.decks.map(({ deckId }) => deckId));
+    const automatic = next.decks.filter((deck) => (
+      deck.boardId === boardId && deck.deckId.startsWith(autoPrefix) &&
+      deck.placementIds.length < stackDepth
+    )).sort((left, right) => left.order - right.order);
+    const standalone = next.placements.filter((placement) => (
+      placement.boardId === boardId && placement.deckId === null && !placement.hidden
+    )).sort((left, right) => left.order - right.order ||
+      left.placementId.localeCompare(right.placementId));
+
+    while (standalone.length && automatic.length) {
+      const deck = automatic[0];
+      const placement = standalone.shift();
+      placement.deckId = deck.deckId;
+      deck.placementIds.push(placement.placementId);
+      deck.activePlacementId = placement.placementId;
+      if (deck.placementIds.length >= stackDepth) automatic.shift();
+    }
+    let sequence = next.decks.filter(({ deckId }) => deckId.startsWith(autoPrefix)).length;
+    while (standalone.length >= 2) {
+      const placements = standalone.splice(0, stackDepth);
+      let deckId;
+      do { deckId = `${autoPrefix}${sequence++}`; } while (existingIds.has(deckId));
+      existingIds.add(deckId);
+      placements.forEach((placement) => { placement.deckId = deckId; });
+      next.decks.push({
+        deckId,
+        boardId,
+        placementIds: placements.map(({ placementId }) => placementId),
+        activePlacementId: placements.at(-1).placementId,
+        order: Math.min(...placements.map(({ order }) => order)),
       });
     }
-    const cardCount = source.reduce((sum, unit) => sum + Math.max(1, unit?.placements?.length || 1), 0);
-    const deckCount = Math.min(source.length, Math.max(
-      capacity.slotCount,
-      Math.ceil(cardCount / MAX_AUTO_STACK_DEPTH),
-    ));
-    const partitions = weightedPartitions(source, deckCount);
-    const projected = partitions.map((partition, order) => {
-      if (partition.length === 1) {
-        return Object.freeze({
-          ...partition[0], order, automatic: false,
-          sourceUnitIds: Object.freeze([partition[0].unitId]),
-        });
-      }
-      const placements = partition.flatMap(({ placements }) => placements);
-      const unitId = `auto-deck-${order}`;
-      return Object.freeze({
-        kind: 'deck',
-        unitId,
-        order,
-        automatic: true,
-        sourceUnitIds: Object.freeze(partition.map(({ unitId: id }) => id)),
-        deck: Object.freeze({
-          deckId: unitId,
-          boardId: placements[0]?.boardId || 'browser-catalog',
-          placementIds: Object.freeze(placements.map(({ placementId }) => placementId)),
-          activePlacementId: placements.at(-1)?.placementId || '',
-          order,
-          automatic: true,
-        }),
-        placements: Object.freeze(placements),
-      });
-    });
-    return Object.freeze({ capacity, units: Object.freeze(projected) });
-  }
-
-  function presentationUnits(document, boardId, options = {}) {
-    return dealUnits(boardUnits(document, boardId), options);
-  }
-
-  function toggleExpandedPlacement(expandedByDeck, deckId, placementId) {
-    const next = { ...(expandedByDeck || {}) };
-    if (next[deckId] === placementId) delete next[deckId];
-    else next[deckId] = placementId;
-    return Object.freeze(next);
-  }
-
-  function toggleExclusiveExpandedPlacement(expandedByDeck, deckId, placementId) {
-    return Object.freeze(expandedByDeck?.[deckId] === placementId
-      ? {}
-      : { [deckId]: placementId });
+    return repairDocument(next);
   }
 
   function findPlacement(document, placementId) {
@@ -433,21 +359,17 @@
   return Object.freeze({
     BOARD_IDS,
     CARD_SIZES,
-    MAX_AUTO_STACK_DEPTH,
+    MAX_DECK_DEPTH,
     applyDraftOperation,
     applyDraftOperations,
+    autoStackBoard,
     boardUnits,
     cardKey,
     cloneDocument,
     columnsForWidth,
     defaultDocument,
-    dealUnits,
-    layoutCapacity,
-    presentationUnits,
     reconcileBoard,
     repairDocument,
     resourceColumnsForWidth,
-    toggleExclusiveExpandedPlacement,
-    toggleExpandedPlacement,
   });
 });

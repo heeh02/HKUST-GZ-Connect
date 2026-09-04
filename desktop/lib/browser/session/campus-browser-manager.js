@@ -68,6 +68,7 @@ class CampusBrowserManager {
     onOpenResource,
     onWorkspaceMutation,
     onRecordPageOpen,
+    getSharedPortalCredential = null,
     showItemInFolder,
     showSettings,
     showRoutingRules,
@@ -104,11 +105,14 @@ class CampusBrowserManager {
       onTogglePageFavorite: typeof onTogglePageFavorite === 'function'
         ? onTogglePageFavorite : async () => ({ ok: false }),
       onRecordPageOpen: typeof onRecordPageOpen === 'function' ? onRecordPageOpen : () => false,
+      getSharedPortalCredential: typeof getSharedPortalCredential === 'function'
+        ? getSharedPortalCredential : () => null,
       showRoutingRules, reportError,
       showSettings,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
+    this.lastPortalSessionUrl = '';
   }
 
   get routingSuspended() { return this.browser?.routingSuspended === true; }
@@ -159,6 +163,8 @@ class CampusBrowserManager {
       onTogglePageFavorite: (candidate) => this.onTogglePageFavorite(candidate),
       workspaceController,
       onRecordPageOpen: (url) => this.onRecordPageOpen(url),
+      getSharedPortalCredential: (origin) => this.getSharedPortalCredential(origin),
+      onPortalSessionUrl: (url) => this.capturePortalSessionUrl(url),
       showItemInFolder: this.showItemInFolder,
       getNewTabUrl: this.getNewTabUrl,
       onOpenSettings: this.showSettings,
@@ -254,15 +260,39 @@ class CampusBrowserManager {
   close() {
     const browser = this.browser;
     this.browser = null;
+    this.lastPortalSessionUrl = '';
     return browser?.close() ?? null;
+  }
+
+  capturePortalSessionUrl(value) {
+    try {
+      const candidate = new URL(value);
+      const portal = new URL(this.homeUrl);
+      if (candidate.protocol !== 'https:' || candidate.origin !== portal.origin ||
+          candidate.username || candidate.password || candidate.href.length > 2_048) return false;
+      const currentNonce = new URL(this.lastPortalSessionUrl || portal.href).searchParams.get('tt');
+      if (currentNonce && !candidate.searchParams.get('tt')) return true;
+      this.lastPortalSessionUrl = candidate.href;
+      return true;
+    } catch { return false; }
+  }
+
+  portalSessionUrl(portalUrl = this.homeUrl) {
+    try {
+      const expected = new URL(portalUrl);
+      const stored = new URL(this.lastPortalSessionUrl);
+      return expected.protocol === 'https:' && stored.origin === expected.origin
+        ? stored.href : null;
+    } catch { return null; }
   }
 
   async closeForContextSwitch() {
     const browser = this.browser;
-    if (!browser) return true;
+    if (!browser) { this.lastPortalSessionUrl = ''; return true; }
     if (typeof browser.closeForContextSwitch !== 'function') return false;
     if (await browser.closeForContextSwitch() !== true) return false;
     if (this.browser === browser) this.browser = null;
+    this.lastPortalSessionUrl = '';
     return this.browser === null;
   }
 

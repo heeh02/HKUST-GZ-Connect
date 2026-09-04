@@ -1,12 +1,41 @@
 (function (root, factory) {
-  const shared = typeof module !== 'undefined' && module.exports
-    ? require('./manager-view')
-    : root.managerView;
-  const api = factory(root, shared);
+  const api = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.certificateManager = api;
-})(typeof self !== 'undefined' ? self : globalThis, function (root, shared) {
+})(typeof self !== 'undefined' ? self : globalThis, function (root) {
   'use strict';
+
+  // Shared view helpers, local to this manager (the legacy shared module is gone).
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"]/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+    }[character]));
+  }
+
+  function operationError(result, fallback) {
+    const message = typeof result?.error === 'string' ? result.error.trim() : '';
+    return message ? message.slice(0, 300) : fallback;
+  }
+
+  function collectionFromResult(result, key) {
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result?.[key]) ? result[key] : null;
+  }
+
+  function formatManagerTime(value, translate, doc) {
+    const numeric = value === null || value === undefined || value === ''
+      ? Number.NaN
+      : Number(value);
+    const instant = Number.isFinite(numeric) ? new Date(numeric) : new Date(String(value || ''));
+    if (!Number.isFinite(instant.getTime())) return translate('common.unknownTime');
+    try {
+      return new Intl.DateTimeFormat(doc.documentElement.lang || 'zh-CN', {
+        dateStyle: 'medium', timeStyle: 'short',
+      }).format(instant);
+    } catch {
+      return instant.toLocaleString();
+    }
+  }
 
   function certificatePinsForView(input) {
     return (Array.isArray(input) ? input : []).filter((pin) => (
@@ -26,7 +55,7 @@
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
   } = {}) {
-    if (!api || !doc || !i18n || !shared) {
+    if (!api || !doc || !i18n) {
       throw new TypeError('certificate manager dependencies are required');
     }
     const $ = (id) => doc.getElementById(id);
@@ -47,7 +76,7 @@
     };
 
     function renderList() {
-      const esc = shared.escapeHtml;
+      const esc = escapeHtml;
       $('certificatePinList').innerHTML = pins.map((pin, index) => {
         const pending = pendingOrigin === pin.origin;
         const disabled = busy ? ' disabled' : '';
@@ -58,7 +87,7 @@
         return `<div class="manager-item certificate-pin-item" role="listitem">`
           + `<div class="manager-item-main"><div class="manager-item-title">${esc(pin.origin)}</div>`
           + `<code class="certificate-fingerprint">${esc(pin.fingerprint)}</code>`
-          + `<span class="manager-time">${esc(translate('certificates.updated', { time: shared.formatManagerTime(pin.updatedAt, translate, doc) }))}</span></div>`
+          + `<span class="manager-time">${esc(translate('certificates.updated', { time: formatManagerTime(pin.updatedAt, translate, doc) }))}</span></div>`
           + `<div class="manager-item-actions">${actions}</div></div>`;
       }).join('');
       $('certificatePinStatus').textContent = pins.length ? '' : translate('certificates.empty');
@@ -78,9 +107,9 @@
       try {
         const result = await api.listCertificatePins();
         if (result?.ok === false) {
-          throw new Error(shared.operationError(result, translate('certificates.loadFailed')));
+          throw new Error(operationError(result, translate('certificates.loadFailed')));
         }
-        const next = shared.collectionFromResult(result, 'pins');
+        const next = collectionFromResult(result, 'pins');
         if (!next) throw new Error(translate('certificates.loadFailed'));
         pins = certificatePinsForView(next);
         renderList();
@@ -144,9 +173,9 @@
             fingerprint: pin.fingerprint,
           });
           if (result?.ok === false) {
-            throw new Error(shared.operationError(result, translate('certificates.deleteFailed')));
+            throw new Error(operationError(result, translate('certificates.deleteFailed')));
           }
-          const next = shared.collectionFromResult(result, 'pins');
+          const next = collectionFromResult(result, 'pins');
           if (next) {
             pins = certificatePinsForView(next);
             renderList();

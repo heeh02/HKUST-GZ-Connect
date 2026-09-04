@@ -17,9 +17,11 @@ test('official task categories use distinct local semantic icons', () => {
 });
 
 test('personal collections and system widgets have separate bounded icons', () => {
-  const folder = icons.categoryIcon('user-collection', 'local');
+  const collection = icons.categoryIcon('user-collection', 'local');
   const widget = icons.categoryIcon('system-widget', 'ungrouped-favorites');
-  assert.notEqual(folder, widget);
-  assert.match(folder, /<svg/u);
+  assert.notEqual(collection, widget);
+  assert.match(collection, /<svg/u);
   assert.match(widget, /<svg/u);
+  assert.doesNotMatch(collection, /M3\.5 7\.5h6l1\.7 2H20\.5v9\.5h-17z/u,
+    'personal categories must not look like folders (DESIGN.md §1.2)');
 });

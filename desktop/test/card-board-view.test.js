@@ -26,7 +26,7 @@ function resource(index) {
   };
 }
 
-function fixture({ editing = false, expandedByDeck = {}, frontByDeck = {}, courseSize = 'medium' } = {}) {
+function fixture({ editing = false, frontByDeck = {}, courseSize = 'medium', items = 13 } = {}) {
   const placements = [
     {
       placementId: 'placement_courses', boardId: 'browser-catalog',
@@ -49,106 +49,86 @@ function fixture({ editing = false, expandedByDeck = {}, frontByDeck = {}, cours
     placements,
   };
   const cardsByKey = new Map([
-    ['official-category:courses', { name: '课程、选课与成绩', items: Array.from({ length: 13 }, (_, index) => resource(index)) }],
+    ['official-category:courses', {
+      name: '课程、选课与成绩',
+      items: Array.from({ length: items }, (_, index) => resource(index)),
+    }],
     ['official-category:research', { name: '科研、进度与计算', items: [resource(20)] }],
   ]);
   return view.renderBoard({
     boardId: 'browser-catalog', units: [unit], cardsByKey,
-    expandedByDeck, frontByDeck, editing, escapeHtml, translate, columns: 2,
+    frontByDeck, editing, escapeHtml, translate, columns: 2,
   });
 }
 
-function placementMarkup(markup, placementId) {
-  const start = markup.indexOf(`data-card-placement-id="${placementId}"`);
-  const next = markup.indexOf('data-card-placement-id="', start + 1);
+function cardMarkup(markup, placementId) {
+  const marker = `data-card-placement-id="${placementId}"`;
+  const start = markup.lastIndexOf('<article', markup.indexOf(marker));
+  const next = markup.indexOf('<article', markup.indexOf(marker));
   return markup.slice(start, next < 0 ? markup.length : next);
 }
 
-test('board view exposes semantic board, deck, placement, and toggle state', () => {
+test('a deck renders same-size physical cards with one front tab and peeking backs', () => {
   const markup = fixture();
-  assert.match(markup, /role="list"[^>]*data-card-board[^>]*data-board-id="browser-catalog"/u);
-  assert.equal((markup.match(/role="listitem"/gu) || []).length, 1);
+  assert.match(markup, /class="cb-board-grid"[^>]*data-card-board[^>]*data-board-id="browser-catalog"/u);
+  assert.match(markup, /role="tablist"[^>]*data-card-deck-id="deck-academic"/u);
   assert.equal((markup.match(/data-card-placement-id=/gu) || []).length, 2);
-  assert.match(markup, /data-card-ref-kind="official-category"/u);
-  const courses = placementMarkup(markup, 'placement_courses');
-  const research = placementMarkup(markup, 'placement_research');
-  assert.match(courses, /data-expanded="true"/u);
-  assert.match(courses, /data-card-action="toggle" aria-expanded="true"/u);
-  assert.match(courses, /class="cb-card-chevron"/u);
-  assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_courses"/u);
-  assert.ok(markup.indexOf('data-card-placement-id="placement_courses"') <
-    markup.indexOf('data-card-placement-id="placement_research"'),
-  'the front card was moved to the bottom instead of expanding at its original position');
-  assert.match(research, /data-expanded="false"/u);
-  assert.match(research, /data-card-action="toggle" aria-expanded="false"/u);
-  assert.match(research, /class="cb-card-body" hidden/u);
+  const courses = cardMarkup(markup, 'placement_courses');
+  const research = cardMarkup(markup, 'placement_research');
+  // The persisted deck order stays put; the active card is simply in front.
+  assert.ok(markup.indexOf('data-card-placement-id="placement_courses') >
+    markup.indexOf('data-card-placement-id="placement_research'),
+    'the front card renders last so it owns the highest layer without layout moves');
+  assert.match(research, /class="cb-card is-back"[^>]*data-card-front="false"/u);
+  assert.match(research, /role="tab"[^>]*aria-selected="false"/u);
+  assert.match(research, /aria-label="科研、进度与计算，1 个网站，第 1 张，共 2 张"/u);
+  assert.match(research, /class="cb-card-body" inert/u);
+  assert.match(courses, /class="cb-card is-front"[^>]*data-card-front="true"/u);
+  assert.match(courses, /role="tab"[^>]*aria-selected="true"/u);
+  assert.match(courses, /aria-label="课程、选课与成绩，13 个网站，第 2 张，共 2 张，当前在正面"/u);
+  assert.doesNotMatch(courses, /class="cb-card-body" inert/u);
+  assert.match(courses, /data-card-action="draw"/u);
+  // No chevron, no expand/collapse semantics anywhere.
+  assert.doesNotMatch(markup, /chevron|aria-expanded|data-expanded/u);
+  assert.doesNotMatch(markup, /\sstyle=/u, 'geometry is applied by the controller, not inline markup');
 });
 
-test('changing the active card expands it at the same stack position and collapses its sibling', () => {
-  const markup = fixture({
-    expandedByDeck: { 'deck-academic': 'placement_research' },
-    frontByDeck: { 'deck-academic': 'placement_research' },
-  });
-  const courses = placementMarkup(markup, 'placement_courses');
-  const research = placementMarkup(markup, 'placement_research');
-  assert.match(courses, /data-expanded="false"/u);
-  assert.match(courses, /class="cb-card-body" hidden/u);
-  assert.match(research, /data-expanded="true"/u);
-  assert.doesNotMatch(research, /class="cb-card-body" hidden/u);
-  assert.ok(markup.indexOf('data-card-placement-id="placement_courses"') <
-    markup.indexOf('data-card-placement-id="placement_research"'),
-  'drawing a card changed the persisted visual order');
-  assert.match(markup, /class="cb-card is-expanded is-front"[^>]*data-card-placement-id="placement_research"/u);
+test('frontByDeck moves the front layer without changing deck order', () => {
+  const markup = fixture({ frontByDeck: { 'deck-academic': 'placement_research' } });
+  assert.match(cardMarkup(markup, 'placement_research'), /data-card-front="true"/u);
+  assert.match(cardMarkup(markup, 'placement_courses'), /data-card-front="false"/u);
+  assert.ok(markup.indexOf('data-card-placement-id="placement_research') >
+    markup.indexOf('data-card-placement-id="placement_courses'));
 });
 
-test('editing adds drag/menu/drop affordances while browsing leaves no draggable target', () => {
-  const browsing = fixture({ editing: false });
-  assert.doesNotMatch(browsing, /data-card-drag-handle|data-card-drop=/u);
-  const editing = fixture({ editing: true });
-  assert.equal((editing.match(/data-card-drag-handle/gu) || []).length, 2);
-  assert.doesNotMatch(editing, />⠿<\/button>/u,
-    'editing still requires a tiny drag-handle button instead of dragging the card');
-  assert.equal((editing.match(/class="cb-card-header is-draggable"/gu) || []).length, 2);
-  assert.equal((editing.match(/data-card-drop="before"/gu) || []).length, 2);
-  assert.equal((editing.match(/data-card-drop="stack"/gu) || []).length, 2);
-  assert.equal((editing.match(/data-card-drop="after"/gu) || []).length, 2);
-  assert.match(editing, /data-card-edit-action="pin"/u);
-});
-
-test('small medium and large cards preview four six and eight sites before explicit expansion', () => {
+test('small medium and large decks preview four six and eight sites with a show-all entry', () => {
   for (const [courseSize, expected] of [['small', 4], ['medium', 6], ['large', 8]]) {
     const markup = fixture({ courseSize });
-    const courses = placementMarkup(markup, 'placement_courses');
+    const courses = cardMarkup(markup, 'placement_courses');
     assert.equal((courses.match(/data-card-resource-id=/gu) || []).length, expected, courseSize);
-    assert.match(courses, /data-card-action="expand-all"/u);
+    assert.match(courses, /data-card-action="show-all"/u);
+    assert.match(courses, />查看全部（13）</u);
     assert.doesNotMatch(courses, /https?:\/\//u);
   }
+  const few = fixture({ courseSize: 'small', items: 3 });
+  assert.doesNotMatch(cardMarkup(few, 'placement_courses'), /data-card-action="show-all"/u,
+    'the show-all entry appears only when the preview truncates');
+});
 
-  const expanded = view.renderSiteRows(Array.from({ length: 13 }, (_, index) => resource(index)), {
-    escapeHtml, translate, expandedAll: true,
-  });
-  assert.equal((expanded.match(/data-card-resource-id=/gu) || []).length, 13);
-  assert.doesNotMatch(expanded, /data-card-action="expand-all"/u);
+test('an empty category shows the honest empty state with an add-site action', () => {
+  const markup = fixture({ items: 0 });
+  const courses = cardMarkup(markup, 'placement_courses');
+  assert.match(courses, /这个分类还没有网站|此分类暂无网站/u);
+  assert.match(courses, /data-card-action="add-site"/u);
 });
 
 test('card and website labels are escaped at the view boundary', () => {
   const markup = view.renderSiteRows([{
     id: 'unsafe', name: '<img src=x onerror=alert(1)>', category: 'custom',
     route: 'direct', favorite: false,
-  }], { escapeHtml, translate, expandedAll: true });
+  }], { escapeHtml, translate, previewLimit: 4 });
   assert.doesNotMatch(markup, /<img/u);
   assert.match(markup, /&lt;img src=x onerror=alert\(1\)&gt;/u);
-});
-
-test('search projection shows the reviewed purpose instead of an ambiguous generic description', () => {
-  const markup = view.renderSearch([{
-    id: 'expenses', name: '经费、采购与报销', items: [{
-      id: 'pbms', name: '项目资金管理系统 PBMS', description: '科研项目经费、预算与报销管理',
-      keywords: ['报销'], route: 'campus', favorite: false,
-    }],
-  }], '报销', { escapeHtml, translate, strings: {} });
-  assert.match(markup, /科研项目经费<mark>报销<\/mark>/u);
-  assert.match(markup, /科研项目负责人 \/ 项目成员/u);
 });
 
 test('ordinary cards use one brand tone while system widgets retain the sparse gold accent', () => {
@@ -158,20 +138,49 @@ test('ordinary cards use one brand tone while system widgets retain the sparse g
   assert.match(fixture(), /data-card-tone="brand"/u);
 });
 
-test('official category icons are semantic instead of one repeated grid glyph', () => {
+test('official category icons are semantic instead of one repeated glyph', () => {
   const markup = fixture();
-  const courses = placementMarkup(markup, 'placement_courses');
-  const research = placementMarkup(markup, 'placement_research');
+  const courses = cardMarkup(markup, 'placement_courses');
+  const research = cardMarkup(markup, 'placement_research');
   assert.notEqual(
     courses.match(/<span class="cb-category-icon">([\s\S]*?)<\/span>/u)?.[1],
     research.match(/<span class="cb-category-icon">([\s\S]*?)<\/span>/u)?.[1],
   );
 });
 
-test('stack depth uses a bounded data attribute instead of CSP-blocked inline style', () => {
-  const markup = fixture();
-  assert.match(markup, /data-stack-depth="[01]"/u);
-  assert.doesNotMatch(markup, /\sstyle=/u);
+test('editing adds drag/menu/drop affordances while browsing leaves no draggable target', () => {
+  const browsing = fixture({ editing: false });
+  assert.doesNotMatch(browsing, /data-card-drag-handle|data-card-drop=/u);
+  const editing = fixture({ editing: true });
+  assert.equal((editing.match(/data-card-drag-handle/gu) || []).length, 2);
+  assert.doesNotMatch(editing, />⠿<\/button>/u,
+    'editing still requires a tiny drag-handle button instead of dragging the card');
+  assert.equal((editing.match(/class="cb-card-head is-draggable"/gu) || []).length, 2);
+  assert.equal((editing.match(/data-card-drop="before"/gu) || []).length, 2);
+  assert.equal((editing.match(/data-card-drop="stack"/gu) || []).length, 2);
+  assert.equal((editing.match(/data-card-drop="after"/gu) || []).length, 2);
+  assert.match(editing, /data-card-edit-action="pin"/u);
+});
+
+test('the rename affordance is opt-in and scoped to user collections', () => {
+  const official = fixture({ editing: true });
+  assert.doesNotMatch(official, /data-card-edit-action="rename"/u);
+  const withRename = fixture({ editing: true });
+  void withRename;
+  const markup = view.renderBoard({
+    boardId: 'browser-personal',
+    units: [{
+      kind: 'placement', unitId: 'placement_group', deck: null, order: 0,
+      placements: [{
+        placementId: 'placement_group', boardId: 'browser-personal',
+        card: { kind: 'user-collection', id: 'group_abc' }, deckId: null,
+        order: 0, size: 'small', hidden: false,
+      }],
+    }],
+    cardsByKey: new Map([['user-collection:group_abc', { name: '学习', items: [resource(1)] }]]),
+    editing: true, renameCards: true, escapeHtml, translate, columns: 1,
+  });
+  assert.match(markup, /data-card-edit-action="rename"/u);
 });
 
 test('45 reviewed sites across 12 categories stay within the projection budget', () => {
@@ -198,9 +207,7 @@ test('45 reviewed sites across 12 categories stay within the projection budget',
     },
   ]));
   // Warm the renderer factory so the assertion measures the steady-state local projection.
-  view.renderBoard({
-    boardId: 'browser-catalog', units, cardsByKey, escapeHtml, translate, columns: 3,
-  });
+  view.renderBoard({ boardId: 'browser-catalog', units, cardsByKey, escapeHtml, translate, columns: 3 });
   const started = performance.now();
   const markup = view.renderBoard({
     boardId: 'browser-catalog', units, cardsByKey, escapeHtml, translate, columns: 3,
@@ -208,4 +215,12 @@ test('45 reviewed sites across 12 categories stay within the projection budget',
   const elapsed = performance.now() - started;
   assert.equal((markup.match(/data-card-resource-id=/gu) || []).length, 45);
   assert.ok(elapsed < 50, `card-board projection took ${elapsed.toFixed(2)}ms (budget: 50ms)`);
+});
+
+test('layer offsets cap the visible depth at three cards', () => {
+  assert.equal(view.MAX_VISIBLE_DEPTH, 3);
+  assert.equal(view.layerOffset(0, 1), 0);
+  assert.deepEqual([0, 1, 2].map((i) => view.layerOffset(i, 3)), [0, 36, 72]);
+  assert.deepEqual([0, 1, 2, 3, 4].map((i) => view.layerOffset(i, 5)), [0, 0, 0, 36, 72],
+    'legacy deeper decks clamp instead of growing the slot');
 });

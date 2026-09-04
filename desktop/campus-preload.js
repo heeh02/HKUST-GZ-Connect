@@ -275,12 +275,14 @@ function createSpaCredentialMonitor({
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRenderer) {
+  const automaticSubmissions = new WeakSet();
   window.addEventListener('DOMContentLoaded', () => {
     const spaCredentialMonitor = createSpaCredentialMonitor({
       onState: (state) => ipcRenderer.send('campus-credential-page-state', state),
     });
     document.addEventListener('submit', (event) => {
       if (!(event.target instanceof HTMLFormElement)) return;
+      if (automaticSubmissions.delete(event.target)) return;
       const credential = credentialFromForm(event.target, globalThis.location, document);
       if (credential) {
         ipcRenderer.send('campus-credential-candidate', credential);
@@ -322,6 +324,12 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && ipcRende
       passwordInput.value = String(credential.password || '');
       passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
       passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+      if (credential.source === 'connection-credential' && credential.autoSubmit === true &&
+          typeof form.requestSubmit === 'function') {
+        automaticSubmissions.add(form);
+        form.requestSubmit();
+      }
+      try { credential.username = ''; credential.password = ''; } catch {}
       break;
     }
   });

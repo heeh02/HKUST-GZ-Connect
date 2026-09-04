@@ -15,12 +15,14 @@ let settings = {};
 let connectedAt = null;
 let durTimer = null;
 let campusActionBusy = false;
-let campusResources = [], resourceGroups = [], resourceQuery = '', resourceLayoutFeature = null;
+let campusResources = [], resourceGroups = [], serviceDeskData = null, portalServiceDeskData = null;
+let serviceDeskProfileId = null;
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
-let resourceEditorManager = null, usabilityFeature = null;
+let usabilityFeature = null, serviceWorkspace = null, groupDialogFeature = null, favoriteDialogFeature = null, campusDataFeature = null;
 let proxyAuthFeature = null, browserNewTabSettings = null;
+let addWebsiteFeature = null;
 
 function activeLoginProfileId() {
   return window.schoolProfileSelectorFeature?.credentialProfileId?.() || null;
@@ -47,7 +49,10 @@ function setPage(page) {
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
   const content = document.querySelector('.content');
   if (content) { content.classList.toggle('tower-scroll', page === 'tower'); content.classList.remove('user-scrolling'); content.scrollTop = 0; }
-  if (page === 'browser') renderResources();
+  if (page === 'browser') {
+    renderResources();
+    void campusDataFeature?.ensureLoaded();
+  }
   if (page === 'settings') runUpdateCheck(false);
   if (page === 'connect') window.connectionOverview.refreshEnvironment(st.loggedIn === true);
 }
@@ -100,11 +105,6 @@ function renderConnect(s) {
   $('settingsNotice').hidden = !s.notice;
   $('settingsNotice').textContent = s.notice || ''; window.notificationView.render({ card: $('notificationCard'), title: $('notificationTitle'), summary: $('notificationSummary'), action: $('notificationAction'), state: s, translate: t });
   window.connectionOverview.renderStatus(s, t);
-  $('quickCampus').disabled = campusActionBusy;
-  $('quickAddCampus').disabled = campusActionBusy;
-  $('quickCampus').textContent = campusActionBusy
-    ? (s.connected ? t('quick.opening') : t('quick.connectThenOpen'))
-    : (s.connected ? t('quick.open') : t('quick.connectOpen'));
   $('statGrid').hidden = false;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
@@ -131,23 +131,18 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
-  const presentation = resourceLayoutFeature?.snapshot() || { layout: window.resourceLayoutPolicy.layoutForWidth(0) };
-  $('resourceShelf').dataset.resourceLayout = presentation.layout.mode;
-  window.campusCategoryStacks.render({ container: $('campusResources'), resources: campusResources, groups: resourceGroups, query: resourceQuery, translate: t, escapeHtml: esc });
-  resourceLayoutFeature?.syncControls();
+  window.campusCategoryStacks.render({
+    resources: campusResources, groups: resourceGroups, translate: t, escapeHtml: esc,
+  });
+  serviceWorkspace?.render();
 }
 
-function setResourceSaved(message) {
-  $('resourceSaved').textContent = message || '';
-}
-
-async function saveCampusResource(payload) {
-  const result = await window.api.saveResource(payload);
-  if (!result?.ok) return { ok: false, error: result?.error || t('dialog.saveFailed') };
-  campusResources = result.resources || campusResources;
-  renderResources();
-  resourceEditorManager?.renderList();
-  return { ok: true, resource: result.resource };
+async function openDeepLink(resourceId, fallbackUrl) {
+  if (resourceId && campusResources.some((resource) => resource.id === resourceId)) {
+    await openCampus({ id: resourceId });
+    return;
+  }
+  if (fallbackUrl) await openCampus(fallbackUrl);
 }
 
 function populateTowerForm() {
@@ -174,6 +169,10 @@ async function refreshState({ preserveTower = false } = {}) {
   settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
   resourceGroups = Array.isArray(s.resourceGroups) ? s.resourceGroups : [];
+  const nextProfileId = s.schoolProfile?.profileId || null;
+  if (serviceDeskProfileId !== nextProfileId) portalServiceDeskData = null;
+  serviceDeskProfileId = nextProfileId;
+  serviceDeskData = s.serviceDesk || null;
   renderConnect(s);
   renderResources();
   $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
@@ -301,59 +300,19 @@ document.querySelectorAll('[data-toggle-section]').forEach((button) => {
 async function openCampus(selected) {
   if (campusActionBusy) return;
   campusActionBusy = true;
-  $('quickErr').textContent = '';
-  renderConnect(st);
   try {
     const result = selected && typeof selected === 'object' && selected.id
       ? await window.api.openResource(selected.id)
-      : await window.api.openCampusBrowser({
-        url: typeof selected === 'string' ? selected : $('campusUrl').value,
-      });
+      : await window.api.openCampusBrowser({ url: String(selected || '') });
     if (Array.isArray(result?.resources)) {
       campusResources = result.resources;
       renderResources();
     }
-    if (!result || !result.ok) $('quickErr').textContent = result?.error || t('quick.browserOpenFailed');
+    if (!result || !result.ok) usabilityFeature?.toast(result?.error || t('quick.browserOpenFailed'), 'error');
   } finally {
     campusActionBusy = false;
-    renderConnect(st);
   }
 }
-$('quickCampus').addEventListener('click', openCampus);
-$('quickAddCampus').addEventListener('click', async () => {
-  if (campusActionBusy) return;
-  const url = $('campusUrl').value.trim();
-  $('quickAddErr').textContent = '';
-  setResourceSaved('');
-  if (!url) {
-    $('quickAddErr').textContent = t('quick.needUrl');
-    $('campusUrl').focus();
-    return;
-  }
-
-  campusActionBusy = true;
-  renderConnect(st);
-  try {
-    const name = window.resourceManager.suggestedResourceName(url);
-    const saved = await saveCampusResource({ name, url, description: '' });
-    if (!saved.ok) {
-      $('quickAddErr').textContent = saved.error;
-      return;
-    }
-    setResourceSaved(t('resources.saved'));
-    const result = await window.api.openResource(saved.resource.id);
-    if (Array.isArray(result?.resources)) {
-      campusResources = result.resources;
-      renderResources();
-    }
-    if (!result?.ok) $('quickAddErr').textContent = result?.error || t('quick.browserOpenFailed');
-  } catch (error) {
-    $('quickAddErr').textContent = error?.message || t('quick.addFailed');
-  } finally {
-    campusActionBusy = false;
-    renderConnect(st);
-  }
-});
 function handleCardBoardResourceAction(event) {
   const target = event.target.closest('[data-campus-id]');
   const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
@@ -362,28 +321,19 @@ function handleCardBoardResourceAction(event) {
   if (action === 'favorite') {
     window.api.toggleResourceFavorite(resource.id).then((result) => {
       if (!result?.ok) {
-        $('quickErr').textContent = result?.error || t('resources.favoriteFailed');
+        usabilityFeature?.toast(result?.error || t('resources.favoriteFailed'), 'error');
         return;
       }
       campusResources = result.resources || campusResources;
       renderResources();
       usabilityFeature?.toast(t(resource.favorite ? 'resources.unfavoriteSaved' : 'resources.favoriteSaved'));
-    }).catch(() => { $('quickErr').textContent = t('resources.favoriteFailed'); });
+    }).catch(() => usabilityFeature?.toast(t('resources.favoriteFailed'), 'error'));
     return;
   }
   if (action === 'open') openCampus(resource);
 }
 $('campusResources').addEventListener('click', handleCardBoardResourceAction);
 $('connectCardBoardHost').addEventListener('click', handleCardBoardResourceAction);
-$('campusUrl').addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') openCampus();
-});
-
-$('resourceSearch').addEventListener('input', (event) => {
-  resourceQuery = event.target.value.trim();
-  renderResources();
-});
-
 // control tower
 async function saveTower() {
   if (towerSaving || proxyAuthFeature?.isBusy()) return { ok: false, busy: true };
@@ -475,6 +425,11 @@ $('language').addEventListener('change', async () => {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) refreshState({ preserveTower: true }).then(() => window.connectionOverview.refreshEnvironment(st.loggedIn === true));
 });
+window.addEventListener('focus', () => {
+  if (document.querySelector('.page.active')?.dataset.page === 'browser') {
+    void campusDataFeature?.ensureLoaded();
+  }
+});
 
 // copy + tools
 document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
@@ -545,20 +500,64 @@ window.routingManager.start({
   openTower: () => { show('dash'); setPage('tower'); },
 });
 window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) }); browserNewTabSettings = window.browserNewTabSettings.start({ api: window.api, document, translate: (key) => t(key), getSettings: () => settings, setSettings: (next) => { settings = next; } });
-resourceEditorManager = window.resourceManager.start({
-  getResources: () => campusResources,
-  setResources: (resources) => { campusResources = resources; renderResources(); },
-  saveResource: saveCampusResource,
-  setSaved: setResourceSaved,
-  launcherId: 'legacyResourceManager',
-});
 window.addEventListener('card-board-toast', (event) => {
   const { message, tone } = event.detail || {};
   if (message) usabilityFeature?.toast(message, tone);
 });
-window.addWebsiteDialog.start({ api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, setResources: (resources) => { campusResources = resources; renderResources(); }, getGroups: () => resourceGroups, setGroups: (groups) => { resourceGroups = groups; renderResources(); }, toast: (message, tone) => usabilityFeature?.toast(message, tone) });
-resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
-resourceLayoutFeature.start();
-window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }), getEnvironment: () => window.api.getNetworkEnvironment(), subscribeEnvironment: (callback) => window.api.onNetworkEnvironment?.(callback) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
-usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
+addWebsiteFeature = window.addWebsiteDialog.start({ api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, setResources: (resources) => { campusResources = resources; renderResources(); }, getGroups: () => resourceGroups, setGroups: (groups) => { resourceGroups = groups; renderResources(); }, toast: (message, tone) => usabilityFeature?.toast(message, tone) });
+groupDialogFeature = window.categoryGroupDialog.start({
+  api: window.api, document, translate: (key, vars) => t(key, vars),
+  onChanged: (groups) => { const known = new Set(resourceGroups.map(({ id }) => id)); resourceGroups = groups; renderResources(); const created = groups.find(({ id }) => !known.has(id)); if (created) requestAnimationFrame(() => window.campusCategoryStacks.focusCard('user-collection', created.id)); },
+  toast: (message, tone) => usabilityFeature?.toast(message, tone),
+});
+favoriteDialogFeature = window.officialFavoriteDialog.create({
+  api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, getGroups: () => resourceGroups,
+  setResources: (resources) => { campusResources = resources; renderResources(); }, setGroups: (groups) => { resourceGroups = groups; renderResources(); },
+  onSaved: ({ groupId }) => { serviceWorkspace?.setTab('personal', { focus: false }); requestAnimationFrame(() => window.campusCategoryStacks.focusCard(groupId ? 'user-collection' : 'system-widget', groupId || 'ungrouped-favorites')); },
+  toast: (message, tone) => usabilityFeature?.toast(message, tone),
+});
+favoriteDialogFeature.start();
+serviceWorkspace = window.campusServiceWorkspace.create({
+  document,
+  translate: (key, vars) => t(key, vars),
+  escapeHtml: esc,
+  getServiceDesk: () => portalServiceDeskData || serviceDeskData,
+  getPersonalCategories: () => window.campusCategoryStacks.personalCategoryProjection(campusResources, resourceGroups, t),
+  openEntryUrl: (url) => openCampus(url),
+  openDeepLink,
+  isEntryFavorite: (entry) => favoriteDialogFeature.isFavorite(entry),
+  onFavoriteEntry: (entry) => favoriteDialogFeature.open(entry),
+  onCreateCategory: () => groupDialogFeature.open(),
+  onToggleOrganize: () => window.campusCategoryStacks.toggleEdit(),
+  focusPersonalCard: (groupId) => window.campusCategoryStacks.focusCard('user-collection', groupId),
+});
+serviceWorkspace.start();
+campusDataFeature = window.campusDataModules.create({
+  document,
+  api: window.api,
+  translate: (key, vars) => t(key, vars),
+  escapeHtml: esc,
+  openDeepLink,
+  onCatalog: (catalog) => {
+    if (catalog?.state !== 'ready') return;
+    portalServiceDeskData = {
+      schemaVersion: 1,
+      applicationGroups: catalog.applicationGroups,
+      applications: catalog.applications,
+      serviceGroups: catalog.serviceGroups,
+      serviceItems: catalog.serviceItems,
+    };
+    serviceWorkspace?.render();
+  },
+});
+campusDataFeature.start();
+window.campusCategoryStacks.start({
+  document,
+  onAddSite: () => addWebsiteFeature.open(),
+  onRenameCard: ({ card }) => { if (card?.id) groupDialogFeature.open({ id: card.id, name: card.name }); },
+}); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }), getEnvironment: () => window.api.getNetworkEnvironment(), subscribeEnvironment: (callback) => window.api.onNetworkEnvironment?.(callback) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
+usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => {
+  if (window.campusCategoryStacks.isEditing()) { window.campusCategoryStacks.cancelEdit(); return; }
+  serviceWorkspace?.clearSearch();
+}, openResourceManager: () => { setPage('browser'); serviceWorkspace?.setTab('personal', { focus: false }); window.campusCategoryStacks.toggleEdit(); }, openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

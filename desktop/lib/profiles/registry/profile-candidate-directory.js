@@ -149,6 +149,7 @@ class ProfileCandidateDirectory {
         ...custom,
         kind: 'custom-local',
         builtInResources: Object.freeze([]),
+        serviceDesk: null,
         view: createSchoolProfileView(custom.sourceDocument, {
           locale: 'en', compatibility: 'candidate',
         }),
@@ -179,6 +180,8 @@ class ProfileCandidateDirectory {
       authority,
       engineConfig,
       builtInResources: this.packagedRegistry.getBuiltinResources(profile.profileId),
+      serviceDesk: typeof this.packagedRegistry.getServiceDesk === 'function'
+        ? this.packagedRegistry.getServiceDesk(profile.profileId) : null,
       context: Object.freeze({
         profileId: profile.profileId,
         profileKey: authority.layout.identity.profileKey,

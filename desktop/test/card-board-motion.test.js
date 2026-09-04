@@ -7,11 +7,15 @@ const motion = require('../renderer/components/card-board/card-board-motion');
 
 function fixture({ reduced = false } = {}) {
   const animations = [];
-  const card = {
-    dataset: { cardPlacementId: 'placement-a' },
+  const makeCard = (placementId) => ({
+    dataset: { cardPlacementId: placementId },
     getBoundingClientRect: () => ({ left: 80, top: 120, width: 200, height: 44 }),
-    animate: (frames, options) => animations.push({ frames, options }),
-  };
+    animate: (frames, options) => {
+      animations.push({ frames, options, placementId });
+      return { finished: Promise.resolve(), cancel() {} };
+    },
+    querySelector: () => null,
+  });
   const ownerWindow = {
     innerHeight: 900,
     matchMedia: () => ({ matches: reduced }),
@@ -20,39 +24,69 @@ function fixture({ reduced = false } = {}) {
   const container = {
     ownerDocument: { defaultView: ownerWindow },
     getBoundingClientRect: () => ({ top: 180 }),
-    querySelectorAll: () => [card],
+    querySelectorAll: () => [],
   };
-  return { animations, card, container };
+  return { animations, makeCard, container };
 }
 
-test('available card-board height is measured below the board instead of from its content height', () => {
-  const { container } = fixture();
-  assert.equal(motion.availableHeight(container), 692);
+test('the draw animation stays within the approved 240ms transform-only window', async () => {
+  const { animations, makeCard, container } = fixture();
+  const target = makeCard('target');
+  const oldFront = makeCard('front');
+  const between = [makeCard('middle')];
+  await motion.animateDraw(container, { target, oldFront, between, deltaPx: 72 });
+  const [drawn] = animations;
+  assert.equal(drawn.placementId, 'target');
+  assert.equal(drawn.options.duration, 240);
+  assert.ok(drawn.options.duration >= 220 && drawn.options.duration <= 260);
+  assert.equal(drawn.options.easing, 'cubic-bezier(.2,.7,.2,1)');
+  assert.equal(drawn.options.fill, 'forwards');
+  assert.ok(drawn.frames.every((frame) => (
+    Object.keys(frame).every((key) => ['transform', 'opacity', 'offset'].includes(key))
+  )), 'only transform/opacity/offset may animate');
+  assert.match(drawn.frames[1].transform, /translate\(0px, -14px\) scale\(1\.015\)/u);
+  assert.match(drawn.frames.at(-1).transform, /translate\(0px, 72px\) scale\(1\)/u);
+  const retired = animations.find(({ placementId }) => placementId === 'front');
+  assert.match(retired.frames.at(-1).transform, /translateY\(-36px\) scale\(1\)/u);
+  const follower = animations.find(({ placementId }) => placementId === 'middle');
+  assert.equal(follower.options.duration, 180);
+  assert.equal(follower.options.delay, 60);
 });
 
 test('FLIP draws an existing card from its prior position with the approved timing', () => {
-  const { animations, container } = fixture();
+  const { container } = fixture();
+  const card = {
+    dataset: { cardPlacementId: 'placement-a' },
+    getBoundingClientRect: () => ({ left: 80, top: 120, width: 200, height: 44 }),
+    animate: (frames, options) => {
+      container.captured = { frames, options };
+      return { finished: Promise.resolve(), cancel() {} };
+    },
+  };
+  container.querySelectorAll = () => [card];
   const previous = new Map([['placement-a', { left: 20, top: 40, width: 200, height: 44 }]]);
   assert.equal(motion.animateFrom(container, previous), true);
-  assert.equal(animations.length, 1);
-  assert.deepEqual(animations[0].frames[0], {
+  assert.deepEqual(container.captured.frames[0], {
     transform: 'translate(-60px, -80px)', opacity: .82,
   });
-  assert.equal(animations[0].options.duration, 250);
+  assert.equal(container.captured.options.duration, 250);
 });
 
 test('Reduced Motion skips positional card animation', () => {
-  const { animations, container } = fixture({ reduced: true });
+  const { container } = fixture({ reduced: true });
+  assert.equal(motion.isReducedMotion(container), true);
   const previous = new Map([['placement-a', { left: 20, top: 40 }]]);
   assert.equal(motion.animateFrom(container, previous), false);
-  assert.equal(animations.length, 0);
 });
 
 test('a drawn card scrolls into the nearest visible area and respects Reduced Motion', () => {
-  const { card, container } = fixture({ reduced: true });
-  let options = null;
-  card.scrollIntoView = (value) => { options = value; };
+  const { container } = fixture({ reduced: true });
+  const card = {
+    dataset: { cardPlacementId: 'placement-a' },
+    scrollIntoView(value) { this.options = value; },
+  };
+  container.querySelectorAll = () => [card];
   assert.equal(motion.scrollPlacementIntoView(container, 'placement-a'), true);
-  assert.deepEqual(options, { block: 'nearest', behavior: 'auto' });
+  assert.deepEqual(card.options, { block: 'nearest', behavior: 'auto' });
   assert.equal(motion.scrollPlacementIntoView(container, 'missing'), false);
 });

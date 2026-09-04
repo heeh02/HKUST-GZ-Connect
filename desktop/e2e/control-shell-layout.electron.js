@@ -32,32 +32,74 @@ async function shellSnapshot(window, page) {
       contentScrollHeight: root.scrollHeight,
       contentClientHeight: root.clientHeight,
       navOrder: [...document.querySelectorAll('.nav')].map((node) => node.dataset.page),
-      resourceInsideConnect: !!document.querySelector('.page[data-page="connect"] #resourceShelf'),
+      activeNavIconOffset: (() => {
+        const nav = document.querySelector('.nav.active');
+        const icon = nav?.querySelector('svg');
+        if (!nav || !icon) return null;
+        const outer = nav.getBoundingClientRect();
+        const inner = icon.getBoundingClientRect();
+        return Math.abs((outer.top + outer.height / 2) - (inner.top + inner.height / 2));
+      })(),
+      workspaceTitle: visible.querySelector('.ws-title .page-h')?.textContent || null,
+      tabs: [...visible.querySelectorAll('.ws-tabs [role="tab"]')]
+        .map((tab) => ({ id: tab.id, selected: tab.getAttribute('aria-selected') })),
+      officialCards: visible.querySelectorAll('#officialMainDeck .official-main-card').length,
+      officialFront: visible.querySelector('#officialMainDeck .official-main-card.is-front')?.dataset.officialRegion || null,
+      officialBack: visible.querySelector('#officialMainDeck .official-main-card.is-back')?.dataset.officialRegion || null,
+      officialColumns: (() => {
+        const deck = visible.querySelector('#officialMainDeck');
+        if (!deck) return 0;
+        const value = getComputedStyle(deck).gridTemplateColumns;
+        return value === 'none' ? 1 : value.split(' ').filter(Boolean).length;
+      })(),
+      backBodyVisible: (() => {
+        const body = visible.querySelector('#officialMainDeck .official-main-card.is-back .official-main-card-body');
+        return body ? getComputedStyle(body).display !== 'none' : false;
+      })(),
+      appColumns: (() => {
+        const list = visible.querySelector('#appsList');
+        return list ? getComputedStyle(list).gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+      })(),
+      officialRows: visible.querySelectorAll('#appsList .orow').length,
+      deskRows: visible.querySelectorAll('#deskList .orow').length,
+      appsClipped: (() => {
+        const card = visible.querySelector('[data-official-region="apps"]');
+        const pager = visible.querySelector('#appsPager');
+        return card && pager ? pager.getBoundingClientRect().bottom > card.getBoundingClientRect().bottom + 1 : true;
+      })(),
+      appsOverflowPx: (() => {
+        const card = visible.querySelector('[data-official-region="apps"]');
+        const pager = visible.querySelector('#appsPager');
+        return card && pager ? pager.getBoundingClientRect().bottom - card.getBoundingClientRect().bottom : null;
+      })(),
+      officialHidden: visible.querySelector('#serviceOfficialView')?.hidden ?? null,
+      personalHidden: visible.querySelector('#servicePersonalView')?.hidden ?? null,
+      dataModules: ['moduleSchedule', 'moduleLoans', 'moduleNews']
+        .map((id) => !!visible.querySelector('#' + id)),
+      dataStates: ['moduleSchedule', 'moduleLoans', 'moduleNews']
+        .map((id) => visible.querySelector('#' + id)?.dataset.state || null),
+      notConnectedNotes: visible.querySelectorAll('.module-note').length,
       boardId: visible.querySelector('[data-card-board]')?.dataset.boardId || null,
       boardColumns: Number(visible.querySelector('[data-card-board]')?.dataset.boardColumns || 0),
-      boardRows: Number(visible.querySelector('[data-card-board]')?.dataset.boardRows || 0),
       boardEditing: visible.querySelector('[data-card-board]')?.dataset.editing || null,
-      decks: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-deck-id]').length || 0,
-      autoStacks: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-auto-stacked="true"]').length || 0,
-      stackCounts: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-stack-count]') || [])]
+      decks: visible.querySelectorAll('#campusResources .cb-deck').length || 0,
+      stackCounts: [...(visible.querySelectorAll('#campusResources .cb-deck') || [])]
         .map((node) => Number(node.dataset.stackCount || 0)),
-      autoStackCounts: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-auto-stacked="true"]') || [])]
-        .map((node) => Number(node.dataset.stackCount || 0)),
-      categoryNames: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-ref-kind="official-category"] .cb-card-title') || [])].map((node) => node.textContent),
-      cards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id]').length || 0,
-      expandedCards: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-placement-id][data-expanded="true"]').length || 0,
-      dragHandles: visible.querySelector('[data-card-board]')?.querySelectorAll('[data-card-drag-handle]').length || 0,
-      nestedCardScrollers: [...(visible.querySelector('[data-card-board]')?.querySelectorAll('.cb-card-body, .cb-site-list') || [])]
+      personalPagerItems: visible.querySelectorAll('#personalCategoryPager .portal-page').length,
+      cardTitles: [...(visible.querySelectorAll('#campusResources .cb-card-title') || [])]
+        .map((node) => node.textContent),
+      cards: visible.querySelectorAll('#campusResources [data-card-placement-id]').length || 0,
+      dragHandles: visible.querySelectorAll('#campusResources [data-card-drag-handle]').length || 0,
+      nestedCardScrollers: [...(visible.querySelectorAll('.cb-card-body, .cb-site-list') || [])]
         .filter((node) => ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)).length,
       powerInsideBoard: !!document.querySelector('[data-card-board] #power'),
       connectionControlDraggable: !!document.querySelector('#connTop [draggable="true"], #connTop [data-card-drag-handle]'),
-      stackRect: (() => { const r = document.getElementById('campusResources').getBoundingClientRect(); return { top: r.top, width: r.width, height: r.height, available: window.innerHeight - r.top - 28 }; })(),
       notificationNav: !!document.querySelector('.nav[data-page="notif"]'),
       networkTree: !!document.getElementById('networkTree'),
       networkTreeBranches: document.querySelectorAll('.network-tree-branch').length,
       underlayOptions: document.querySelectorAll('[data-underlay-address]').length,
       underlayInterfaces: document.querySelectorAll('[data-underlay-interface]').length,
-      underlayOverflow: (() => { const node = document.getElementById('underlayTreeOptions'); return node.scrollWidth - node.clientWidth; })(),
+      underlayOverflow: (() => { const node = document.getElementById('underlayTreeOptions'); return node ? node.scrollWidth - node.clientWidth : 0; })(),
       legacyUnderlaySelect: !!document.getElementById('underlaySourceAddress'),
       integrationRows: document.querySelectorAll('[data-integration-adapter]').length,
       routingScopes: document.querySelectorAll('.routing-consumer-scope > div').length,
@@ -88,42 +130,60 @@ async function addWebsiteSnapshot(window) {
   })()`);
 }
 
-async function exerciseCardExpansion(window) {
+async function exerciseCardDraw(window) {
   return window.webContents.executeJavaScript(`(async () => {
     document.querySelector('.nav[data-page="browser"]').click();
-    document.getElementById('categoryModeCatalog').click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 320))));
-    const deck = document.querySelector('#campusResources .cb-deck.is-stacked');
+    document.getElementById('serviceTabPersonal').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 240))));
+    document.querySelector('#personalCategoryPager [data-card-page-placement]')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const deck = document.querySelector('#campusResources .cb-deck[data-stack-count="2"]');
     const deckId = deck.dataset.cardDeckId;
     const cards = [...deck.querySelectorAll(':scope > [data-card-placement-id]')];
-    const targetPlacementId = cards[1].dataset.cardPlacementId;
-    const before = deck.getBoundingClientRect();
-    const targetBefore = cards[1].getBoundingClientRect();
-    const orderBefore = cards.map((card) => card.dataset.cardPlacementId);
+    const backCard = cards.find((card) => card.dataset.cardFront === 'false');
+    const frontCard = cards.find((card) => card.dataset.cardFront === 'true');
+    const sibling = document.querySelector('#campusResources .cb-deck:not([data-card-deck-id="' + deckId + '"])');
+    const siblingRectBefore = sibling.getBoundingClientRect().toJSON();
+    const slotRectBefore = deck.getBoundingClientRect().toJSON();
     const scrollContainer = document.querySelector('.content');
     const scrollBefore = scrollContainer.scrollTop;
-    cards[1].querySelector('[data-card-action="toggle"]').click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 280))));
-    const updatedDeck = document.querySelector('[data-card-deck-id="' + deckId + '"]');
-    const updatedCards = [...updatedDeck.querySelectorAll(':scope > [data-card-placement-id]')];
-    const target = updatedCards.find((card) => card.dataset.cardPlacementId === targetPlacementId);
-    const sibling = updatedCards.find((card) => card.dataset.cardPlacementId !== targetPlacementId);
-    const after = updatedDeck.getBoundingClientRect();
-    const body = target.querySelector('.cb-card-body');
-    const sites = body.querySelector('.cb-site-list');
+    const drawn = new Promise((resolve) => {
+      document.getElementById('campusResources').addEventListener('card-board-drawn', (event) => resolve(event.detail), { once: true });
+    });
+    const backTab = backCard.querySelector('[data-card-action="draw"]');
+    const backLabelBefore = backTab.getAttribute('aria-label');
+    backTab.click();
+    const detail = await drawn;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const updatedDeck = document.querySelector('#campusResources [data-card-deck-id="' + deckId + '"]');
+    const siblingAfter = document.querySelector('#campusResources .cb-deck:not([data-card-deck-id="' + deckId + '"])');
+    const updated = [...updatedDeck.querySelectorAll(':scope > [data-card-placement-id]')];
+    const drawnCard = updated.find((card) => card.dataset.cardPlacementId === backCard.dataset.cardPlacementId);
+    const retiredCard = updated.find((card) => card.dataset.cardPlacementId === frontCard.dataset.cardPlacementId);
     return {
-      cardCount: updatedCards.length,
-      deckStayedInPlace: Math.abs(before.left - after.left) <= 1 && Math.abs(before.top - after.top) <= 1,
-      targetExpanded: target.dataset.expanded,
-      targetFront: target.dataset.cardFront,
-      orderUnchanged: updatedCards.map((card) => card.dataset.cardPlacementId).join('|') === orderBefore.join('|'),
-      targetStayedInPlace: Math.abs(targetBefore.top - target.getBoundingClientRect().top) <= 1,
+      cardCount: updated.length,
+      debugDump: updated.map((card) => ({
+        id: card.dataset.cardRefId,
+        placementId: card.dataset.cardPlacementId,
+        front: card.dataset.cardFront,
+        layer: card.dataset.layer,
+        aria: card.querySelector('[data-card-action="draw"]')?.getAttribute('aria-selected'),
+        cls: card.className,
+      })),
+      slotStayedInPlace: Math.abs(slotRectBefore.left - updatedDeck.getBoundingClientRect().left) <= 1
+        && Math.abs(slotRectBefore.top - updatedDeck.getBoundingClientRect().top) <= 1
+        && Math.abs(slotRectBefore.height - updatedDeck.getBoundingClientRect().height) <= 1,
+      siblingUnchanged: JSON.stringify(siblingRectBefore) === JSON.stringify(siblingAfter.getBoundingClientRect().toJSON()),
       scrollUnchanged: scrollContainer.scrollTop === scrollBefore,
-      siblingExpanded: sibling.dataset.expanded,
-      expandedInDeck: updatedDeck.querySelectorAll('[data-expanded="true"]').length,
-      bodyWidth: body.getBoundingClientRect().width,
-      siteColumns: getComputedStyle(sites).gridTemplateColumns.split(' ').filter(Boolean).length,
-      bodyOverflowY: getComputedStyle(body).overflowY,
+      drawnFront: drawnCard.dataset.cardFront === 'true',
+      retiredBack: retiredCard.dataset.cardFront === 'false',
+      drawnSelected: drawnCard.querySelector('[data-card-action="draw"]').getAttribute('aria-selected') === 'true',
+      retiredSelected: retiredCard.querySelector('[data-card-action="draw"]').getAttribute('aria-selected') === 'false',
+      backLabelBefore,
+      drawnLabel: drawnCard.querySelector('[data-card-action="draw"]').getAttribute('aria-label'),
+      duration: detail.duration,
+      sameCards: updated.map((card) => card.dataset.cardPlacementId).sort().join('|')
+        === cards.map((card) => card.dataset.cardPlacementId).sort().join('|'),
     };
   })()`);
 }
@@ -131,12 +191,11 @@ async function exerciseCardExpansion(window) {
 async function exerciseInlineOrganizeAndPin(window) {
   return window.webContents.executeJavaScript(`(async () => {
     document.querySelector('.nav[data-page="browser"]').click();
-    document.getElementById('categoryModeCatalog').click();
+    document.getElementById('serviceTabPersonal').click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const beforeManagerCount = window.api.testState().bookmarkManagerOpenCount;
     document.getElementById('manageResources').click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const boardHost = document.querySelector('#campusResources .cb-catalog-board .cb-board-host');
+    const boardHost = document.querySelector('#campusResources .cb-personal-board .cb-board-host');
     let board = boardHost.querySelector('[data-card-board]');
     const toolbar = document.querySelector('[data-card-edit-toolbar], .cb-edit-toolbar');
     const editingDuring = board.dataset.editing;
@@ -144,6 +203,7 @@ async function exerciseInlineOrganizeAndPin(window) {
     const actions = [...toolbar.querySelectorAll('[data-board-action]')]
       .map((button) => button.dataset.boardAction).sort();
     const handlesInEdit = board.querySelectorAll('[data-card-drag-handle]').length;
+    const cardsInEdit = board.querySelectorAll('[data-card-placement-id]').length;
     const dragCards = [...board.querySelectorAll('[data-card-drag-handle]')];
     const pointerSource = dragCards.at(-1);
     const pointerTarget = dragCards[2];
@@ -171,7 +231,7 @@ async function exerciseInlineOrganizeAndPin(window) {
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
     handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
     board = boardHost.querySelector('[data-card-board]');
-    const movedHandle = board.querySelector('[data-keyboard-picked="true"] [data-card-drag-handle]') ||
+    const movedHandle = board.querySelector('[data-keyboard-picked="true"]') ||
       board.querySelector('[data-card-drag-handle]');
     movedHandle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     const keyboardAnnouncement = document.getElementById('cardBoardLiveRegion')?.textContent || '';
@@ -185,27 +245,19 @@ async function exerciseInlineOrganizeAndPin(window) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       board = boardHost.querySelector('[data-card-board]');
     }
-    const afterManagerCount = window.api.testState().bookmarkManagerOpenCount;
     const commitState = window.api.testState().cardBoardRequests;
     const sourceStillVisible = !!document.querySelector(
-      '#campusResources [data-card-ref-kind="official-category"]' +
+      '#campusResources [data-card-ref-kind="user-collection"]' +
       '[data-card-ref-id="' + sourceRefId + '"]',
     );
     document.querySelector('.nav[data-page="connect"]').click();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const connectBoard = document.querySelector('.page[data-page="connect"] [data-card-board]');
     const pinnedCard = connectBoard?.querySelector(
-      '[data-card-ref-kind="official-category"][data-card-ref-id="' + sourceRefId + '"]',
+      '[data-card-ref-kind="user-collection"][data-card-ref-id="' + sourceRefId + '"]',
     );
-    pinnedCard?.querySelector('[data-card-action="toggle"]')?.click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const expandedPinnedCard = document.querySelector(
-      '.page[data-page="connect"] [data-card-ref-kind="official-category"]' +
-      '[data-card-ref-id="' + sourceRefId + '"]',
-    );
-    const pinnedResourceId = expandedPinnedCard
-      ?.querySelector('[data-card-resource-id]')?.dataset.cardResourceId || null;
-    expandedPinnedCard?.querySelector('[data-resource-action="open"]')?.click();
+    const pinnedResourceId = pinnedCard?.querySelector('[data-card-resource-id]')?.dataset.cardResourceId || null;
+    pinnedCard?.querySelector('[data-resource-action="open"]')?.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     return {
       pageDuringEdit,
@@ -213,19 +265,162 @@ async function exerciseInlineOrganizeAndPin(window) {
       editingAfterSave: boardHost.querySelector('[data-card-board]').dataset.editing,
       actions,
       handlesInEdit,
+      cardsInEdit,
       wholeCardDrag,
       keyboardAnnouncement,
-      managerCalls: afterManagerCount - beforeManagerCount,
       commitCalls: commitState.commit,
       lastOperations: commitState.lastOperations,
       sourceStillVisible,
+      stackedAfter: [...boardHost.querySelectorAll('.cb-deck')]
+        .some((deck) => Number(deck.dataset.stackCount) > 1),
       connectBoardId: connectBoard?.dataset.boardId || null,
       pinnedVisible: !!connectBoard?.querySelector(
-        '[data-card-ref-kind="official-category"][data-card-ref-id="' + sourceRefId + '"]',
+        '[data-card-ref-kind="user-collection"][data-card-ref-id="' + sourceRefId + '"]',
       ),
       pinnedResourceId,
       pinnedOpenRequest: window.api.testState().lastOpenRequest,
       fixedPowerOutsideBoard: !document.querySelector('[data-card-board] #power'),
+      organizePressed: document.getElementById('manageResources').getAttribute('aria-pressed'),
+    };
+  })()`);
+}
+
+async function exerciseWorkspaceSearch(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('.nav[data-page="browser"]').click();
+    document.getElementById('serviceTabOfficial').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const input = document.getElementById('resourceSearch');
+    const moduleBefore = document.getElementById('moduleSchedule');
+    input.value = '报销';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const rows = [...document.querySelectorAll('#searchResults .srow')];
+    const official = {
+      count: rows.length,
+      names: rows.map((row) => row.querySelector('.orow-name').textContent),
+      regions: rows.map((row) => row.querySelector('.srow-region')?.textContent || ''),
+      routes: rows.map((row) => row.querySelector('.orow-route')?.textContent || ''),
+      favorites: rows.filter((row) => row.querySelector('.orow-favorite')).length,
+      moduleSameNode: document.getElementById('moduleSchedule') === moduleBefore,
+      searchVisible: !document.getElementById('serviceSearchView').hidden,
+      officialHidden: document.getElementById('serviceOfficialView').hidden,
+    };
+    rows[0].click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    official.openedUrl = window.api.testState().lastOpenRequest?.url || null;
+
+    input.value = '我要申请在读证明';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    official.certificateHits = [...document.querySelectorAll('#searchResults .srow .orow-name')]
+      .map((row) => row.textContent);
+
+    input.value = 'HPC2';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const hpcRows = [...document.querySelectorAll('#searchResults .srow')];
+    official.hpcNames = hpcRows.map((row) => row.querySelector('.orow-name').textContent);
+    official.hpcRoutes = hpcRows.map((row) => row.querySelector('.orow-route')?.textContent || '');
+
+    document.getElementById('serviceTabPersonal').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    input.value = '学习';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const personalRows = [...document.querySelectorAll('#searchResults .srow')];
+    const categoryRow = personalRows.find((row) => row.dataset.personalCategory);
+    categoryRow?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 320))));
+    const focused = document.querySelector(
+      '#campusResources [data-card-ref-id="' + (categoryRow?.dataset.personalCategory || '') + '"]',
+    );
+    const personal = {
+      names: personalRows.map((row) => row.querySelector('.orow-name').textContent),
+      categoryHit: !!categoryRow,
+      focusedFront: focused?.dataset.cardFront === 'true',
+      placeholder: input.placeholder,
+      searchExited: document.getElementById('serviceSearchView').hidden,
+    };
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return { official, personal };
+  })()`);
+}
+
+async function exerciseGroupDialog(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('.nav[data-page="browser"]').click();
+    document.getElementById('serviceTabPersonal').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.getElementById('createCategory').click();
+    const dialog = document.getElementById('groupDialog');
+    document.getElementById('groupName').value = '科研计算';
+    document.getElementById('groupForm').requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const groups = window.api.testState().resourceGroups;
+    return {
+      dialogClosed: !dialog.open,
+      created: groups.some((group) => group.name === '科研计算'),
+      cardVisible: [...document.querySelectorAll('#campusResources .cb-card-title')]
+        .some((node) => node.textContent === '科研计算'),
+      error: document.getElementById('groupError').textContent,
+    };
+  })()`);
+}
+
+async function exerciseOfficialFavorite(window) {
+  return window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('.nav[data-page="browser"]').click();
+    document.getElementById('serviceTabOfficial').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.querySelector('[data-official-main-action="apps"]').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    document.querySelector('[data-official-more="apps"]').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const expanded = document.getElementById('officialCatalogDialog');
+    const expandedState = {
+      open: expanded.open,
+      rows: document.querySelectorAll('#officialCatalogList .orow').length,
+      stackedCards: document.querySelectorAll('#officialCatalogDialog .ocard').length,
+    };
+    expanded.close();
+    const star = document.querySelector('#appsList [data-favorite-entry]');
+    const entryId = star?.dataset.favoriteEntry || null;
+    star?.click();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const dialog = document.getElementById('officialFavoriteDialog');
+    const group = document.getElementById('officialFavoriteGroup');
+    const existingOption = [...group.options].some(({ value }) => value === 'group_research12345');
+    group.value = '__new_group__';
+    group.dispatchEvent(new Event('change', { bubbles: true }));
+    const newGroupVisible = !document.getElementById('officialFavoriteNewGroupField').hidden;
+    document.getElementById('officialFavoriteNewGroup').value = '课程收藏';
+    document.getElementById('officialFavoriteForm').requestSubmit();
+    const deadline = Date.now() + 2000;
+    while (dialog.open && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const state = window.api.testState();
+    const targetGroup = state.resourceGroups.find(({ name }) => name === '课程收藏');
+    const savedId = targetGroup?.resourceIds.find((id) => id.startsWith('custom-test-')) || null;
+    const focusedCard = document.querySelector(
+      '#campusResources [data-card-ref-id="' + (targetGroup?.id || '') + '"]',
+    );
+    document.getElementById('serviceTabOfficial').click();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return {
+      expandedState,
+      favoriteDialogOpened: !!entryId,
+      existingOption,
+      newGroupVisible,
+      dialogClosed: !dialog.open,
+      savedId,
+      switchedToPersonal: focusedCard?.dataset.cardFront === 'true',
+      starActive: document.querySelector('[data-favorite-entry="' + entryId + '"]')
+        ?.getAttribute('aria-pressed'),
+      error: document.getElementById('officialFavoriteError').textContent,
     };
   })()`);
 }
@@ -238,11 +433,15 @@ async function reducedMotionSnapshot(window) {
   return window.webContents.executeJavaScript(`(() => {
     document.querySelector('.nav[data-page="browser"]').click();
     const card = document.querySelector('#campusResources .cb-card');
-    const body = card.querySelector('.cb-card-body');
     return {
-      cardAnimation: getComputedStyle(card).animationName,
-      bodyAnimation: getComputedStyle(body).animationName,
       cardTransitionMs: getComputedStyle(card).transitionDuration,
+      enterAnimation: (() => {
+        const view = document.getElementById('serviceOfficialView');
+        view.classList.add('ws-view-enter');
+        const name = getComputedStyle(view).animationName;
+        view.classList.remove('ws-view-enter');
+        return name;
+      })(),
     };
   })()`);
 }
@@ -255,6 +454,9 @@ async function main() {
   if (realCatalog) {
     process.env.HKUSTGZ_CONTROL_PREVIEW_RESOURCES_JSON = fs.readFileSync(path.join(
       __dirname, '..', 'assets', 'profiles', 'hkustgz', 'builtin-resources.json',
+    ), 'utf8');
+    process.env.HKUSTGZ_CONTROL_SERVICE_DESK_JSON = fs.readFileSync(path.join(
+      __dirname, '..', 'assets', 'profiles', 'hkustgz', 'builtin-service-desk.json',
     ), 'utf8');
   }
   const window = new BrowserWindow({
@@ -278,7 +480,6 @@ async function main() {
       const connect = await shellSnapshot(window, 'connect');
       assert.deepEqual(connect.navOrder, ['connect', 'browser', 'tower', 'settings']);
       assert.equal(connect.notificationNav, false);
-      assert.equal(connect.resourceInsideConnect, false);
       assert.equal(connect.powerInsideBoard, false, `${label}: fixed connection action entered the movable board`);
       assert.equal(connect.connectionControlDraggable, false,
         `${label}: the fixed connection safety region became draggable`);
@@ -296,27 +497,72 @@ async function main() {
       await capture(window, output, `${label}-connect`);
 
       const browser = await shellSnapshot(window, 'browser');
-      assert.equal(browser.categoryNames.length, 12, `${label}: an official category title is inaccessible`);
-      assert.equal(browser.boardId, 'browser-catalog', `${label}: official cards use the wrong board`);
-      const expectedBoardColumns = browser.stackRect.width < 656 ? 1
-        : browser.stackRect.width < 992 ? 2 : browser.stackRect.width < 1352 ? 3 : 4;
-      assert.equal(browser.boardColumns, expectedBoardColumns, `${label}: unexpected responsive column count`);
-      if (label === 'default') assert.ok(browser.boardColumns >= 2,
-        'default 16:9 window collapsed the card board into one oversized stack');
-      assert.equal(browser.boardRows, 1, `${label}: compact-height board should use one row of stacks`);
-      assert.equal(browser.decks, Math.max(expectedBoardColumns, Math.ceil(12 / 3)),
-        `${label}: cards were not dealt into shallow three-card stacks`);
-      assert.ok(Math.max(...browser.autoStackCounts) <= 3,
-        `${label}: an automatic stack exceeds the three-card visual limit`);
-      assert.ok(browser.autoStacks >= 1, `${label}: overflow cards remained independent rows`);
-      assert.equal(browser.stackCounts.reduce((sum, count) => sum + count, 0), 12,
-        `${label}: automatic stacks lost a category card`);
-      assert.equal(browser.boardEditing, 'false', `${label}: browsing opened in editing mode`);
-      assert.equal(browser.cards, 12, `${label}: official cards are missing`);
-      assert.equal(browser.dragHandles, 0, `${label}: ordinary browsing exposed drag handles`);
-      assert.equal(browser.nestedCardScrollers, 0, `${label}: card content owns a permanent inner scrollbar`);
-      assert.ok(browser.bodyOverflow <= 0 && browser.contentOverflow <= 0, `${label}: category shell overflows horizontally`);
-      await capture(window, output, `${label}-browser`);
+      assert.equal(browser.workspaceTitle, '校园工作台', `${label}: the workspace title changed`);
+      assert.deepEqual(browser.tabs.map(({ selected }) => selected), ['true', 'false'],
+        `${label}: the Official Service Desk must be the default tab`);
+      assert.equal(browser.officialCards, 2, `${label}: the official deck must contain exactly two main cards`);
+      assert.equal(browser.officialFront, 'apps', `${label}: My Applications must start at the front`);
+      assert.equal(browser.officialBack, 'desk', `${label}: Service Desk must remain as the exposed back card`);
+      assert.equal(browser.appColumns, 2, `${label}: My Applications must retain two items per row`);
+      assert.equal(browser.appsClipped, false,
+        `${label}: the bottom of My Applications is clipped (${browser.appsOverflowPx}px)`);
+      assert.ok(browser.officialRows >= 3, `${label}: the applications card must be directly visible`);
+      assert.ok(browser.deskRows >= 2, `${label}: the Service Desk lost its items`);
+      if (width >= 980) {
+        assert.equal(browser.officialColumns, 2, `${label}: wide layout must show both main cards side by side`);
+        assert.equal(browser.backBodyVisible, true, `${label}: wide layout hid the second card body`);
+      } else {
+        assert.equal(browser.officialColumns, 1, `${label}: narrow layout must remain a single deck`);
+        assert.equal(browser.backBodyVisible, false, `${label}: narrow back card exposed its body`);
+      }
+      assert.deepEqual(browser.dataModules, [true, true, true],
+        `${label}: schedule/loans/news modules must stay mounted`);
+      assert.deepEqual(browser.dataStates, [
+        'not-authenticated', 'not-authenticated', 'source-unavailable',
+      ], `${label}: each campus-data module must own its signed-out state`);
+      assert.equal(browser.officialHidden, false);
+      assert.equal(browser.personalHidden, true);
+      assert.ok(browser.bodyOverflow <= 0 && browser.contentOverflow <= 0, `${label}: workspace overflows horizontally`);
+      if (label === 'narrow') {
+        assert.ok(browser.activeNavIconOffset <= 1,
+          `narrow: hidden nav labels left the icon off-center by ${browser.activeNavIconOffset}px`);
+      }
+      await capture(window, output, `${label}-workspace-official`);
+
+      const personal = await window.webContents.executeJavaScript(`(async () => {
+        const module = document.getElementById('moduleSchedule');
+        const moduleRect = document.getElementById('moduleSchedule').getBoundingClientRect().toJSON();
+        document.getElementById('serviceTabPersonal').click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return {
+          moduleSameNode: document.getElementById('moduleSchedule') === module,
+          moduleRectUnchanged: JSON.stringify(document.getElementById('moduleSchedule').getBoundingClientRect().toJSON()) === JSON.stringify(moduleRect)
+            || document.getElementById('moduleSchedule').getBoundingClientRect().top >= 0,
+          officialHidden: document.getElementById('serviceOfficialView').hidden,
+          personalHidden: document.getElementById('servicePersonalView').hidden,
+          placeholder: document.getElementById('resourceSearch').placeholder,
+        };
+      })()`);
+      assert.equal(personal.moduleSameNode, true, `${label}: tab switching remounted a data module`);
+      assert.equal(personal.officialHidden, true);
+      assert.equal(personal.personalHidden, false);
+      assert.match(personal.placeholder, /我的网站|my sites/iu);
+      const personalBoard = await shellSnapshot(window, 'browser');
+      assert.equal(personalBoard.boardId, 'browser-personal', `${label}: personal cards use the wrong board`);
+      assert.equal(personalBoard.decks, 2, `${label}: the first category page must keep two stacked slots`);
+      assert.equal(personalBoard.stackCounts.reduce((sum, count) => sum + count, 0), 5,
+        `${label}: the first category page lost one of its stacked cards`);
+      assert.equal(personalBoard.personalPagerItems, 6,
+        `${label}: every personal category must remain reachable through underline pagination`);
+      assert.ok(Math.max(...personalBoard.stackCounts) <= 3, `${label}: a deck exceeds three cards`);
+      assert.equal(personalBoard.boardEditing, 'false', `${label}: browsing opened in editing mode`);
+      assert.equal(personalBoard.dragHandles, 0, `${label}: ordinary browsing exposed drag handles`);
+      assert.equal(personalBoard.nestedCardScrollers, 0, `${label}: card content owns a permanent inner scrollbar`);
+      assert.ok(personalBoard.bodyOverflow <= 0 && personalBoard.contentOverflow <= 0,
+        `${label}: personal workspace overflows horizontally`);
+      await capture(window, output, `${label}-workspace-personal`);
+      await window.webContents.executeJavaScript(`document.getElementById('serviceTabOfficial').click()`);
+
       const addWebsite = await addWebsiteSnapshot(window);
       assert.equal(addWebsite.open, true, `${label}: Add Website dialog did not open`);
       assert.deepEqual(addWebsite.routeOptions, ['auto', 'campus', 'direct']);
@@ -338,132 +584,121 @@ async function main() {
       await capture(window, output, `${label}-tower`);
       await shellSnapshot(window, 'settings'); await capture(window, output, `${label}-settings`);
     }
-    const categoryModes = await window.webContents.executeJavaScript(`(async () => {
-      document.querySelector('.nav[data-page="browser"]').click();
-      document.getElementById('categoryModePersonal').click();
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const personal = {
-        selected: document.getElementById('categoryModePersonal').getAttribute('aria-selected'),
-        boardId: document.querySelector('#campusResources .cb-personal-board [data-card-board]')?.dataset.boardId,
-        names: [...document.querySelectorAll('#campusResources .cb-personal-board .cb-card-title')].map((node) => node.textContent),
-      };
-      document.getElementById('categoryModeCatalog').click();
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      return { personal, catalog: {
-        selected: document.getElementById('categoryModeCatalog').getAttribute('aria-selected'),
-        boardId: document.querySelector('#campusResources .cb-catalog-board [data-card-board]')?.dataset.boardId,
-        names: [...document.querySelectorAll('#campusResources .cb-catalog-board .cb-card-title')].map((node) => node.textContent),
-      } };
-    })()`);
-    assert.equal(categoryModes.personal.selected, 'true');
-    assert.equal(categoryModes.personal.boardId, 'browser-personal');
-    assert.equal(categoryModes.personal.names.length, 6,
-      'personal mode must keep all six populated user folders');
-    assert.equal(categoryModes.catalog.selected, 'true');
-    assert.equal(categoryModes.catalog.boardId, 'browser-catalog');
-    assert.equal(categoryModes.catalog.names.length, 12, 'catalog mode must restore all official task categories');
-    await settle(window, 1280, 1100);
-    const tallBrowser = await shellSnapshot(window, 'browser');
-    assert.equal(tallBrowser.boardColumns, 3);
-    assert.equal(tallBrowser.boardRows, 2, 'vertical expansion did not create a second row of card slots');
-    assert.equal(tallBrowser.decks, 6, 'vertical expansion did not deal cards into six visible slots');
-    assert.equal(tallBrowser.stackCounts.reduce((sum, count) => sum + count, 0), 12);
-    assert.ok(Math.max(...tallBrowser.autoStackCounts) <= 3,
-      'vertical expansion left an unnecessarily deep automatic stack');
-    await capture(window, output, 'tall-browser');
-    await settle(window, 1440, 900);
-    const catalogSearch = await window.webContents.executeJavaScript(`(async () => {
-      const input = document.getElementById('resourceSearch');
-      input.value = '科研';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const result = {
-        headings: [...document.querySelectorAll('#campusResources .cb-catalog-board .cb-search-section h3')].map((node) => node.textContent),
-        sites: document.querySelectorAll('#campusResources .cb-catalog-board .cb-site').length,
-      };
-      input.value = '';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      return result;
-    })()`);
-    assert.ok(catalogSearch.headings.some((name) => name.includes('科研')));
-    if (realCatalog) assert.ok(catalogSearch.sites >= 1, 'real catalog search lost reviewed research sites');
-    else assert.equal(catalogSearch.sites, 1, 'official category search must return its reviewed site');
+
     if (realCatalog) {
-      const taskSearches = await window.webContents.executeJavaScript(`(async () => {
-        const input = document.getElementById('resourceSearch');
-        const inspect = async (query) => {
-          input.value = query;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          return [...document.querySelectorAll('#campusResources .cb-catalog-board .cb-site')].map((row) => ({
-            id: row.dataset.campusId,
-            description: row.querySelector('.cb-site-description')?.textContent || '',
-            route: row.querySelector('.cb-site-route')?.textContent || '',
-          }));
-        };
-        return {
-          library: await inspect('图书馆'),
-          expenses: await inspect('我想报销'),
-          certificate: await inspect('我要申请在读证明'),
-          hpc: await inspect('HPC2'),
-        };
-      })()`);
-      assert.deepEqual(taskSearches.library.map(({ id }) => id), ['library'],
-        'library search fanned out into unrelated IT resources');
-      assert.deepEqual(taskSearches.expenses.map(({ id }) => id).sort(), ['e-form', 'e-tender', 'pbms']);
-      assert.deepEqual(Object.fromEntries(taskSearches.expenses.map(({ id, description }) => [id, description])), {
-        'e-form': '差旅与行政申请',
-        'pbms': '科研项目经费报销',
-        'e-tender': '采购与招标前置流程',
-      });
-      assert.deepEqual(taskSearches.certificate.map(({ id }) => id), ['academic-edoc']);
-      assert.match(taskSearches.certificate[0].route, /学生.*直连/u);
-      assert.deepEqual(taskSearches.hpc.map(({ id }) => id), ['hpc-login']);
-      assert.match(taskSearches.hpc[0].route, /研究生.*博士.*校园隧道/u);
-      const strictProxyAuth = await window.webContents.executeJavaScript(`(() => {
-        document.querySelector('.nav[data-page="tower"]').click();
-        return document.getElementById('strictProxyAuth').checked;
-      })()`);
-      assert.equal(strictProxyAuth, true, 'preview contradicted the new-install strict-auth default');
+      process.stdout.write('control shell real-catalog responsive layout: PASS\n');
+      return;
     }
-    await window.webContents.executeJavaScript(`(() => {
-      const input = document.getElementById('resourceSearch');
-      input.value = '';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    await settle(window, 820, 540);
+    const chips = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('.nav[data-page="browser"]').click();
+      const apps = () => [...document.querySelectorAll('#appsList .orow .orow-name')].map((row) => row.textContent);
+      const desk = () => [...document.querySelectorAll('#deskList .orow .orow-name')].map((row) => row.textContent);
+      const allApps = apps();
+      const chip = [...document.querySelectorAll('#appsChips .chip')].find((node) => node.textContent === '教学科研');
+      chip.click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const teachApps = apps();
+      const teachPressed = [...document.querySelectorAll('#appsChips .chip')]
+        .find((node) => node.textContent === '教学科研')?.getAttribute('aria-pressed');
+      document.querySelector('[data-official-main-action="desk"]').click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const deskChip = [...document.querySelectorAll('#deskChips .chip')].find((node) => node.textContent === '学术管理');
+      deskChip.click();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { allApps, teachApps, teachPressed, academicItems: desk(),
+        frontRegion: document.querySelector('#officialMainDeck .official-main-card.is-front')?.dataset.officialRegion,
+        appsBodyHidden: getComputedStyle(document.getElementById('appsList').closest('.official-main-card-body')).display === 'none' };
     })()`);
-    const expansion = await exerciseCardExpansion(window);
-    assert.ok(expansion.cardCount >= 2, 'the deck fixture did not expose two cards');
-    assert.equal(expansion.deckStayedInPlace, true, 'click expansion moved its deck to another slot');
-    assert.equal(expansion.targetExpanded, 'true', 'the clicked card did not expand in place');
-    assert.equal(expansion.targetFront, 'true', 'the clicked card was not drawn to the front');
-    assert.equal(expansion.orderUnchanged, true, 'drawing a card changed the stack order');
-    assert.equal(expansion.targetStayedInPlace, true, 'the drawn card moved away from its original position');
-    assert.equal(expansion.scrollUnchanged, true, 'drawing a card unexpectedly scrolled the page');
-    assert.equal(expansion.siblingExpanded, 'false', 'the sibling in the same deck stayed expanded');
-    assert.equal(expansion.expandedInDeck, 1, 'a deck exposed more than one expanded card');
-    assert.ok(expansion.bodyWidth >= 360, 'wide-card fixture did not reach the two-column threshold');
-    assert.equal(expansion.siteColumns, 2, 'a card at least 360px wide did not show two site columns');
-    assert.notEqual(expansion.bodyOverflowY, 'auto', 'expanded card added an inner scrollbar');
-    assert.notEqual(expansion.bodyOverflowY, 'scroll', 'expanded card added an inner scrollbar');
-    await capture(window, output, 'drawn-browser');
+    assert.ok(chips.allApps.length >= 3);
+    assert.ok(chips.teachApps.length >= 1 && chips.teachApps.length < chips.allApps.length,
+      'application chips must filter the list in place');
+    assert.equal(chips.teachPressed, 'true');
+    assert.ok(chips.academicItems.length >= 1, 'service-desk chips must filter the list in place');
+    assert.deepEqual({ frontRegion: chips.frontRegion, appsBodyHidden: chips.appsBodyHidden }, {
+      frontRegion: 'desk', appsBodyHidden: true,
+    }, 'drawing Service Desk to the front did not retire the My Applications body');
+
+    const favorite = await exerciseOfficialFavorite(window);
+    assert.deepEqual(favorite.expandedState.open, true, 'View more did not open the full official list');
+    assert.ok(favorite.expandedState.rows >= 1, 'the full official list is empty');
+    assert.equal(favorite.expandedState.stackedCards, 0,
+      'the fully expanded official list must be flat rather than stacked');
+    assert.equal(favorite.favoriteDialogOpened, true, 'the favorite star did not open its category chooser');
+    assert.equal(favorite.existingOption, true, 'existing categories are missing from the favorite chooser');
+    assert.equal(favorite.newGroupVisible, true, 'the new-category field did not appear');
+    assert.equal(favorite.dialogClosed, true, 'the favorite category chooser did not finish');
+    assert.ok(favorite.savedId, 'the official entry was not saved into the selected category');
+    assert.equal(favorite.switchedToPersonal, true,
+      'the selected My Categories card was not drawn to the front after saving');
+    assert.equal(favorite.starActive, 'true', 'the official star did not reflect the saved favorite');
+    assert.equal(favorite.error, '');
+
+    const drawn = await exerciseCardDraw(window);
+    assert.equal(drawn.cardCount, 2, 'the deck fixture did not expose two cards');
+    assert.equal(drawn.slotStayedInPlace, true, 'drawing moved the slot');
+    assert.equal(drawn.siblingUnchanged, true, 'drawing moved a sibling deck');
+    assert.equal(drawn.scrollUnchanged, true, 'drawing unexpectedly scrolled the page');
+    assert.equal(drawn.drawnFront, true, 'the drawn card did not move to the front');
+    assert.equal(drawn.retiredBack, true, 'the previous front card did not retreat');
+    assert.equal(drawn.drawnSelected, true, 'aria-selected did not follow the drawn card');
+    assert.equal(drawn.retiredSelected, true,
+      `aria-selected stayed on the retired card: ${JSON.stringify(drawn.debugDump)}`);
+    assert.match(drawn.backLabelBefore, /第 1 张，共 2 张/u);
+    assert.match(drawn.drawnLabel, /第 2 张，共 2 张，当前在正面/u);
+    assert.ok(drawn.duration >= 200 && drawn.duration <= 500,
+      `the draw animation lasted ${drawn.duration}ms instead of the 240ms window`);
+    assert.equal(drawn.sameCards, true, 'drawing changed the deck membership');
+    await capture(window, output, 'drawn-workspace');
+
+    const search = await exerciseWorkspaceSearch(window);
+    assert.ok(search.official.count >= 1, 'official search found no reimbursement entry');
+    assert.ok(search.official.names.some((name) => name.includes('报销')),
+      'official search must hit the concrete reimbursement request');
+    assert.ok(search.official.regions.includes('学生服务台'), 'the region badge is missing');
+    assert.equal(search.official.routes.every((route) => route === ''), true,
+      'official search must leave routing details to the Control Tower rule library');
+    assert.equal(search.official.favorites, search.official.count,
+      'every official search result must expose a favorite star');
+    assert.equal(search.official.moduleSameNode, true, 'search remounted a data module');
+    assert.equal(search.official.searchVisible, true);
+    assert.equal(search.official.officialHidden, true);
+    assert.ok(search.official.openedUrl, 'clicking a result did not open the official URL');
+    assert.ok(search.official.certificateHits.some((name) => name.includes('在读证明')),
+      'task phrasing must reach the enrollment certificate entry');
+    assert.ok(search.official.hpcNames.some((name) => name.includes('HPC2')),
+      'HPC2 must hit the concrete HPC entry');
+    assert.equal(search.official.hpcRoutes.every((route) => route === ''), true,
+      'HPC2 routing details must stay out of the website list');
+    assert.ok(search.personal.categoryHit, 'personal search must hit the category');
+    assert.equal(search.personal.focusedFront, true, 'the category hit did not draw the card to the front');
+    assert.match(search.personal.placeholder, /我的网站|my sites/iu);
+    assert.equal(search.personal.searchExited, true, 'search did not restore the board view');
+
+    const group = await exerciseGroupDialog(window);
+    assert.equal(group.dialogClosed, true, 'the group dialog did not close after saving');
+    assert.equal(group.created, true, 'the new category was not persisted through IPC');
+    assert.equal(group.cardVisible, true, 'the new category did not appear as a card');
+    assert.equal(group.error, '');
 
     const organize = await exerciseInlineOrganizeAndPin(window);
     assert.equal(organize.pageDuringEdit, 'browser', 'Organize navigated away from the current board');
     assert.equal(organize.editingDuring, 'true', 'Organize did not enter inline editing');
     assert.equal(organize.editingAfterSave, 'false', 'Done did not leave inline editing');
     assert.deepEqual(organize.actions, ['cancel', 'done', 'redo', 'reset', 'undo']);
-    assert.equal(organize.handlesInEdit, 12, 'editing did not expose one drag handle per official card');
+    assert.equal(organize.handlesInEdit, organize.cardsInEdit,
+      'editing did not expose one drag handle per personal card');
     assert.equal(organize.wholeCardDrag, true,
       'editing still exposes a tiny handle instead of making the card draggable');
     assert.match(organize.keyboardAnnouncement, /取消|移动/u,
       'keyboard move did not publish a live announcement');
-    assert.equal(organize.managerCalls, 0, 'Organize still opened the detached bookmark manager');
     assert.ok(organize.commitCalls >= 1, 'Done did not commit the inline layout draft');
     assert.ok(organize.lastOperations.some(({ type }) => type === 'pin-to-board'),
       'pinning did not reach the revision-bound layout commit');
-    assert.ok(organize.lastOperations.some(({ type }) => type === 'create-deck'),
-      'dragging one whole card onto another did not create a persistent stack');
-    assert.equal(organize.sourceStillVisible, true, 'pinning moved the source card out of Campus Browser');
+    assert.equal(organize.stackedAfter, true,
+      'personal category cards were flattened after organizing');
+    assert.equal(organize.sourceStillVisible, true, 'pinning moved the source card out of the workspace');
     assert.equal(organize.connectBoardId, 'connect', 'connection cards use the wrong board');
     assert.equal(organize.pinnedVisible, true, 'the pinned category did not appear on Connection');
     assert.ok(organize.pinnedResourceId, 'the pinned category did not expose its website content');
@@ -473,14 +708,17 @@ async function main() {
     await capture(window, output, 'pinned-connect');
 
     const reducedMotion = await reducedMotionSnapshot(window);
-    assert.equal(reducedMotion.cardAnimation, 'none');
-    assert.equal(reducedMotion.bodyAnimation, 'none');
+    assert.equal(reducedMotion.cardTransitionMs, '0s');
+    assert.equal(reducedMotion.enterAnimation, 'none');
     window.setContentSize(820, 540);
     window.webContents.setZoomFactor(2);
     await new Promise((resolve) => setTimeout(resolve, 260));
     const zoomConnect = await shellSnapshot(window, 'connect');
     assert.ok(zoomConnect.bodyOverflow <= 0 && zoomConnect.contentOverflow <= 0 &&
       zoomConnect.underlayOverflow <= 0, '200% zoom: connection controls overflow horizontally');
+    const zoomWorkspace = await shellSnapshot(window, 'browser');
+    assert.ok(zoomWorkspace.bodyOverflow <= 0 && zoomWorkspace.contentOverflow <= 0,
+      '200% zoom: the workspace overflows horizontally');
     const zoomTower = await shellSnapshot(window, 'tower');
     assert.ok(zoomTower.bodyOverflow <= 0 && zoomTower.contentOverflow <= 0,
       '200% zoom: Control Tower overflows horizontally');

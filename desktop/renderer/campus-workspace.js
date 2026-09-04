@@ -69,20 +69,12 @@ const model = window.campusWorkspaceModel;
 let state = null;
 let navigation = model.normalizeNavigation({ screen: 'home' });
 let editingGroupId = null;
-let editingResourceId = null;
-let draggedResourceId = null;
-let selectedManageFolder = 'favorites';
 let primaryView = 'workspace';
-let workspaceView = 'favorites';
-let catalogView = 'all';
 let servicePage = 0;
 let searchPage = 0;
-let managePage = 0;
-let currentManagePageIds = [];
 let groupDialogRevision = 0;
 let mutationSequence = 0;
 let feedbackSequence = 0;
-const selectedResourceIds = new Set();
 
 const $ = (id) => document.getElementById(id);
 const text = () => I18N[state?.locale === 'en' ? 'en' : 'zh'];
@@ -147,49 +139,10 @@ function resourceIcon(resource) {
   return span;
 }
 
-function openResourceDialog(resource) {
-  if (!resource || resource.builtin) return;
-  editingGroupId = null;
-  editingResourceId = resource.id;
-  groupDialogRevision += 1;
-  $('groupDialogTitle').textContent = text().renameSite;
-  $('groupName').value = resource.name;
-  $('groupError').textContent = '';
-  $('saveGroup').disabled = false;
-  $('groupDialog').showModal();
-  $('groupName').focus();
-  $('groupName').select();
-}
-
-function resourceItem(resource, { management = false, showLastOpened = false } = {}) {
+function resourceItem(resource, { showLastOpened = false } = {}) {
   const item = document.createElement('div');
   item.className = 'resource-item';
   item.dataset.resourceId = resource.id;
-  item.draggable = management;
-  if (management) {
-    const selection = document.createElement('label');
-    selection.className = 'resource-selection';
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
-    checkbox.checked = selectedResourceIds.has(resource.id);
-    checkbox.setAttribute('aria-label', `${text().favorite}: ${resource.name}`);
-    checkbox.addEventListener('change', () => {
-      if (checkbox.checked) selectedResourceIds.add(resource.id);
-      else selectedResourceIds.delete(resource.id);
-      renderBulkActions();
-    });
-    selection.appendChild(checkbox); item.appendChild(selection);
-    item.addEventListener('dragstart', (event) => {
-      draggedResourceId = resource.id;
-      event.dataTransfer.effectAllowed = 'copyMove';
-      event.dataTransfer.setData('text/plain', resource.id);
-      item.classList.add('resource-dragging');
-    });
-    item.addEventListener('dragend', () => {
-      draggedResourceId = null;
-      item.classList.remove('resource-dragging');
-      document.querySelectorAll('.manage-folder.drop-target').forEach((target) => target.classList.remove('drop-target'));
-    });
-  }
 
   const open = document.createElement('button');
   open.type = 'button';
@@ -205,13 +158,6 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   route.className = `resource-route${resource.route === 'direct' ? ' direct' : ''}`;
   route.textContent = routeText(resource);
   copy.append(name, route);
-  if (management) {
-    const membership = document.createElement('span'); membership.className = 'resource-memberships';
-    const names = state.groups.filter(({ resourceIds }) => resourceIds.includes(resource.id))
-      .map(({ name: groupName }) => groupName);
-    membership.textContent = `${text().memberships}: ${names.join(' · ') || text().ungrouped}`;
-    copy.appendChild(membership);
-  }
   if (showLastOpened && Number.isSafeInteger(resource.lastOpenedAt)) {
     const opened = document.createElement('span'); opened.className = 'resource-last-opened';
     const formatted = new Intl.DateTimeFormat(state.locale === 'en' ? 'en' : 'zh-CN', {
@@ -223,33 +169,6 @@ function resourceItem(resource, { management = false, showLastOpened = false } =
   open.appendChild(copy);
   open.addEventListener('click', () => command('open-resource', { resourceId: resource.id }));
   item.appendChild(open);
-
-  if (management && !resource.builtin) {
-    const manageRow = document.createElement('div');
-    manageRow.className = 'resource-manage-row';
-    for (const [label, className, action] of [
-        [text().edit, 'resource-rename', () => openResourceDialog(resource)],
-        [text().remove, 'resource-delete danger', (button) => {
-          if (button.dataset.confirm !== '1') {
-            button.dataset.confirm = '1';
-            button.textContent = text().confirmDelete;
-            return;
-          }
-          button.disabled = true;
-          void mutate('delete-resource', { resourceId: resource.id }).finally(() => {
-            if (button.isConnected) button.disabled = false;
-          });
-        }],
-    ]) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = `resource-manage-action ${className}`;
-        button.textContent = label;
-        button.addEventListener('click', () => action(button));
-        manageRow.appendChild(button);
-    }
-    item.appendChild(manageRow);
-  }
 
   const star = document.createElement('button');
   star.type = 'button';
@@ -313,20 +232,8 @@ function renderPager(target, page, selectPage) {
 
 function renderHome() {
   const resources = state.resources.filter(({ category }) => category !== 'gateway');
-  const favorites = resources.filter(({ favorite }) => favorite);
   const recent = [...resources].filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt))
     .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
-  const byId = new Map(resources.map((resource) => [resource.id, resource]));
-  const officialResources = state.resources.filter(({ builtin }) => builtin === true);
-  const categories = model.catalogProjection(officialResources).categories;
-  const groupViews = state.groups.map((group) => ({
-      id: group.id, name: group.name,
-      items: group.resourceIds.map((id) => byId.get(id)).filter(Boolean),
-    }));
-  const categoryViews = categories.map(({ id }) => ({
-    id, name: categoryLabel(id),
-    items: model.catalogProjection(officialResources, id).items,
-  }));
   const primaryLabels = {
     workspace: text().primaryWorkspace,
     recent: text().primaryRecent,
@@ -340,49 +247,18 @@ function renderHome() {
   }
 
   const cardMode = workspaceBoardFeature.render(primaryView);
-  $('secondaryNavigation').hidden = cardMode;
   $('serviceViewGrid').hidden = cardMode;
   $('servicePager').hidden = cardMode;
   $('serviceViewTitle').closest('.view-heading').hidden = cardMode;
   $('openManage').hidden = primaryView === 'recent';
-  if (cardMode) return;
-
-  let selected;
-  let secondaryViews = [];
-  if (primaryView === 'workspace') {
-    secondaryViews = [{ id: 'favorites', name: text().allFavorites, items: favorites }, ...groupViews];
-    selected = secondaryViews.find(({ id }) => id === workspaceView) || secondaryViews[0];
-    workspaceView = selected.id;
-  } else if (primaryView === 'recent') {
-    selected = { id: 'recent', name: text().recent, items: recent };
-  } else {
-    secondaryViews = [{ id: 'all', name: text().allSites, items: resources }, ...categoryViews];
-    selected = secondaryViews.find(({ id }) => id === catalogView) || secondaryViews[0];
-    catalogView = selected.id;
+  if (cardMode) {
+    $('quickCreateGroup').hidden = primaryView !== 'workspace';
+    $('quickCreateGroup').textContent = text().createGroup;
+    return;
   }
 
-  const tab = (view) => {
-    const button = document.createElement('button'); button.type = 'button';
-    button.className = `secondary-tab${view.id === selected.id ? ' active' : ''}`;
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-selected', String(view.id === selected.id));
-    button.textContent = `${view.name} ${view.items.length}`;
-    button.addEventListener('click', () => {
-      if (primaryView === 'workspace') workspaceView = view.id;
-      else if (primaryView === 'catalog') catalogView = view.id;
-      servicePage = 0; renderHome();
-    });
-    return button;
-  };
-  $('secondaryNavigation').hidden = true;
-  $('serviceViewTabs').replaceChildren(...secondaryViews.map(tab));
-  $('secondarySelect').replaceChildren(...secondaryViews.map((view) => {
-    const option = document.createElement('option'); option.value = view.id;
-    option.textContent = `${view.name} ${view.items.length}`; return option;
-  }));
-  $('secondarySelect').value = selected.id;
-  $('quickCreateGroup').hidden = primaryView !== 'workspace';
-  $('quickCreateGroup').textContent = text().createGroup;
+  const selected = { id: 'recent', name: text().recent, items: recent };
+  $('quickCreateGroup').hidden = true;
   $('serviceViewTitle').textContent = selected.name;
   $('serviceViewCount').textContent = String(selected.items.length);
   const page = paged(selected.items, servicePage); servicePage = page.current;
@@ -390,145 +266,6 @@ function renderHome() {
   renderPager($('servicePager'), page, (index) => {
     servicePage = index; renderHome();
   });
-}
-
-function renderManage() {
-  const resources = state.resources.filter(({ category }) => category !== 'gateway');
-  const favorites = resources.filter(({ favorite }) => favorite);
-  const byId = new Map(favorites.map((resource) => [resource.id, resource]));
-  const assigned = new Set(state.groups.flatMap(({ resourceIds }) => resourceIds));
-  if (!['all', 'favorites', 'ungrouped'].includes(selectedManageFolder) &&
-      !state.groups.some(({ id }) => id === selectedManageFolder)) {
-    selectedManageFolder = 'favorites';
-  }
-  let pool;
-  let title;
-  if (selectedManageFolder === 'all') { pool = resources; title = text().allSites; }
-  else if (selectedManageFolder === 'ungrouped') {
-    pool = favorites.filter(({ id }) => !assigned.has(id)); title = text().ungrouped;
-  } else if (selectedManageFolder === 'favorites') {
-    pool = favorites; title = text().allFavorites;
-  } else {
-    const group = state.groups.find(({ id }) => id === selectedManageFolder);
-    pool = group.resourceIds.map((id) => byId.get(id)).filter(Boolean); title = group.name;
-  }
-  if (navigation.query) pool = model.searchResources(pool, navigation.query);
-  const validIds = new Set(resources.map(({ id }) => id));
-  for (const id of selectedResourceIds) if (!validIds.has(id)) selectedResourceIds.delete(id);
-  $('resourcePoolTitle').textContent = title;
-  const page = paged(pool, managePage); managePage = page.current;
-  currentManagePageIds = page.items.map(({ id }) => id);
-  renderGrid($('resourcePool'), page.items, { management: true });
-  renderBulkActions();
-  $('resourcePoolCount').textContent = String(pool.length);
-  renderPager($('managePager'), page, (index) => {
-    managePage = index; renderManage();
-  });
-  const folderEntry = ({ id, name, count, group = null, dropGroupId = undefined }) => {
-    const row = document.createElement('div');
-    row.className = `manage-folder${selectedManageFolder === id ? ' active' : ''}`;
-    row.dataset.folderId = id;
-    const select = document.createElement('button'); select.type = 'button'; select.className = 'manage-folder-select';
-    const label = document.createElement('span'); label.textContent = name;
-    const badge = document.createElement('span'); badge.className = 'group-count'; badge.textContent = String(count);
-    select.append(label, badge);
-    select.addEventListener('click', () => {
-      selectedManageFolder = id; managePage = 0; renderManage();
-    });
-    row.appendChild(select);
-    if (group) {
-      const actions = document.createElement('div'); actions.className = 'manage-folder-actions';
-      const move = (offset) => {
-        const ids = state.groups.map(({ id: groupId }) => groupId);
-        const from = ids.indexOf(group.id); const to = from + offset;
-        if (from < 0 || to < 0 || to >= ids.length) return;
-        ids.splice(to, 0, ids.splice(from, 1)[0]);
-        void mutate('reorder-groups', { groupIds: ids });
-      };
-      for (const [labelText, action] of [
-        ['↑', () => move(-1)], ['↓', () => move(1)], [text().edit, () => openGroupDialog(group)],
-      ]) {
-        const button = document.createElement('button'); button.type = 'button';
-        button.className = 'manage-folder-action'; button.textContent = labelText;
-        button.addEventListener('click', action); actions.appendChild(button);
-      }
-      const remove = document.createElement('button'); remove.type = 'button';
-      remove.className = 'manage-folder-action'; remove.textContent = text().remove;
-      remove.addEventListener('click', () => {
-        if (remove.dataset.confirm !== '1') {
-          remove.dataset.confirm = '1'; remove.textContent = text().confirmDeleteGroup; return;
-        }
-        remove.disabled = true;
-        void mutate('delete-group', { groupId: group.id }).finally(() => {
-          if (remove.isConnected) remove.disabled = false;
-        });
-      });
-      actions.appendChild(remove);
-      row.appendChild(actions);
-    }
-    if (dropGroupId !== undefined) {
-      row.addEventListener('dragover', (event) => {
-        if (!draggedResourceId) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = dropGroupId === null ? 'move' : 'copy';
-        row.classList.add('drop-target');
-      });
-      row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
-      row.addEventListener('drop', (event) => {
-        event.preventDefault(); row.classList.remove('drop-target');
-        if (!draggedResourceId) return;
-        const resourceId = draggedResourceId;
-        const target = state.groups.find(({ id: groupId }) => groupId === dropGroupId);
-        draggedResourceId = null;
-        if (target) {
-          void mutate('add-resources-to-group', { resourceIds: [resourceId], groupId: target.id });
-        } else {
-          void mutate('move-resource', { resourceId, groupId: null, index: 0 });
-        }
-      });
-    }
-    return row;
-  };
-  const folders = [
-    folderEntry({ id: 'favorites', name: text().allFavorites, count: favorites.length }),
-    folderEntry({ id: 'ungrouped', name: text().ungrouped,
-      count: favorites.filter(({ id }) => !assigned.has(id)).length, dropGroupId: null }),
-    ...state.groups.map((group) => folderEntry({
-      id: group.id, name: group.name,
-      count: group.resourceIds.filter((id) => byId.has(id)).length, group, dropGroupId: group.id,
-    })),
-    folderEntry({ id: 'all', name: text().allSites, count: resources.length }),
-  ];
-  $('manageFolderNav').replaceChildren(...folders);
-}
-
-function renderBulkActions() {
-  if (!state) return;
-  const hasSelection = selectedResourceIds.size > 0;
-  $('selectPageLabel').textContent = text().selectPage;
-  $('bulkSelectedCount').textContent = hasSelection
-    ? text().selectedCount.replace('{count}', selectedResourceIds.size) : text().selectionHint;
-  $('bulkAddToGroup').textContent = text().addToGroup;
-  $('bulkClearSelection').textContent = text().clearSelection;
-  const allPage = currentManagePageIds.length > 0 &&
-    currentManagePageIds.every((id) => selectedResourceIds.has(id));
-  const somePage = currentManagePageIds.some((id) => selectedResourceIds.has(id));
-  $('selectPageResources').checked = allPage;
-  $('selectPageResources').indeterminate = somePage && !allPage;
-  const selectedGroup = $('bulkGroupSelect').value;
-  const empty = document.createElement('option'); empty.value = ''; empty.textContent = text().chooseGroup;
-  $('bulkGroupSelect').replaceChildren(empty, ...state.groups.map((group) => {
-    const option = document.createElement('option'); option.value = group.id; option.textContent = group.name;
-    return option;
-  }));
-  if (state.groups.some(({ id }) => id === selectedGroup)) $('bulkGroupSelect').value = selectedGroup;
-  $('bulkActions').classList.toggle('has-selection', hasSelection);
-  $('bulkGroupSelect').hidden = !hasSelection;
-  $('bulkAddToGroup').hidden = !hasSelection;
-  $('bulkClearSelection').hidden = !hasSelection;
-  const canApply = hasSelection && !!$('bulkGroupSelect').value;
-  $('bulkAddToGroup').disabled = !canApply;
-  $('bulkClearSelection').disabled = selectedResourceIds.size === 0;
 }
 
 function renderSearch() {
@@ -547,12 +284,6 @@ function syncText() {
   document.documentElement.lang = state.locale === 'en' ? 'en' : 'zh-CN';
   document.title = `${strings.title} · ${state.schoolName}`;
   $('clearWorkspaceSearch').textContent = strings.clear;
-  $('manageTitle').textContent = strings.manageTitle;
-  $('backToServices').textContent = strings.backToServices;
-  $('resourcePoolTitle').textContent = strings.resourcePool;
-  $('manageGroupsTitle').textContent = strings.groups;
-  $('manageSidebar').setAttribute('aria-label', strings.groups);
-  $('createGroup').textContent = strings.createGroup;
   $('emptyTitle').textContent = strings.noMatch;
   $('emptyHint').textContent = strings.noMatchHint;
   $('clearWorkspaceFilter').textContent = strings.clearSearch;
@@ -564,21 +295,18 @@ function syncText() {
 function render() {
   if (!state) return;
   syncText();
-  const searchMode = navigation.query && navigation.screen !== 'manage';
+  const searchMode = Boolean(navigation.query);
   $('searchScreen').hidden = !searchMode;
-  $('homeScreen').hidden = searchMode || navigation.screen !== 'home';
-  $('manageScreen').hidden = searchMode || navigation.screen !== 'manage';
+  $('homeScreen').hidden = searchMode;
   $('workspaceEmpty').hidden = true;
   $('clearWorkspaceSearch').hidden = !navigation.query;
   if (searchMode) renderSearch();
-  else if (navigation.screen === 'home') renderHome();
-  else renderManage();
+  else renderHome();
 }
 
 function openGroupDialog(group = null) {
   groupDialogRevision += 1;
   editingGroupId = group?.id || null;
-  editingResourceId = null;
   $('groupDialogTitle').textContent = group ? text().renameTitle : text().createTitle;
   $('groupName').value = group?.name || '';
   $('groupError').textContent = '';
@@ -593,68 +321,32 @@ $('primaryTabs').addEventListener('click', (event) => {
   primaryView = control.dataset.primaryView;
   servicePage = 0; renderHome();
 });
-$('secondarySelect').addEventListener('change', (event) => {
-  if (primaryView === 'workspace') workspaceView = event.target.value;
-  else if (primaryView === 'catalog') catalogView = event.target.value;
-  servicePage = 0; renderHome();
-});
 $('openManage').addEventListener('click', () => {
   workspaceBoardFeature.toggleEdit();
 });
 $('quickCreateGroup').addEventListener('click', () => openGroupDialog());
-$('backToServices').addEventListener('click', () => {
-  navigation = model.normalizeNavigation({ screen: 'home' });
-  render();
-});
 function clearSearch() {
-  searchPage = 0; managePage = 0;
+  searchPage = 0;
   navigation = model.normalizeNavigation({ screen: 'home' }); render();
 }
 $('clearWorkspaceSearch').addEventListener('click', clearSearch);
 $('clearWorkspaceFilter').addEventListener('click', clearSearch);
-$('createGroup').addEventListener('click', () => openGroupDialog());
-$('selectPageResources').addEventListener('change', (event) => {
-  for (const id of currentManagePageIds) {
-    if (event.target.checked) selectedResourceIds.add(id);
-    else selectedResourceIds.delete(id);
-  }
-  renderManage();
-});
-$('bulkGroupSelect').addEventListener('change', renderBulkActions);
-$('bulkClearSelection').addEventListener('click', () => {
-  selectedResourceIds.clear(); renderManage();
-});
-$('bulkAddToGroup').addEventListener('click', async () => {
-  const groupId = $('bulkGroupSelect').value;
-  if (!groupId || !selectedResourceIds.size) return;
-  const requestedIds = [...selectedResourceIds];
-  $('bulkAddToGroup').disabled = true;
-  const result = await mutate('add-resources-to-group', { resourceIds: requestedIds, groupId });
-  if (result?.ok) {
-    for (const resourceId of requestedIds) selectedResourceIds.delete(resourceId);
-  }
-  renderBulkActions();
-});
 $('groupDialog').addEventListener('close', () => {
   groupDialogRevision += 1;
-  editingGroupId = null; editingResourceId = null;
+  editingGroupId = null;
 });
 $('saveGroup').addEventListener('click', async (event) => {
   event.preventDefault();
   const name = $('groupName').value.trim();
-  const max = editingResourceId ? 40 : 30;
-  if (!name || name.length > max) {
-    $('groupError').textContent = editingResourceId ? text().invalidSiteName : text().invalidGroupName;
+  if (!name || name.length > 30) {
+    $('groupError').textContent = text().invalidGroupName;
     return;
   }
   const dialogRevision = groupDialogRevision;
-  const resourceId = editingResourceId;
   const groupId = editingGroupId;
   $('saveGroup').disabled = true;
-  const result = resourceId
-    ? await mutate('rename-resource', { resourceId, name })
-    : await mutate(groupId ? 'rename-group' : 'create-group', groupId
-      ? { groupId, name } : { name });
+  const result = await mutate(groupId ? 'rename-group' : 'create-group', groupId
+    ? { groupId, name } : { name });
   if (dialogRevision !== groupDialogRevision || !$('groupDialog').open) return;
   $('saveGroup').disabled = false;
   if (result?.ok) $('groupDialog').close();
@@ -664,8 +356,7 @@ document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault(); command('focus-address'); return;
   }
-  if ((event.target instanceof Element && event.target.closest('input, select, button, dialog')) ||
-      navigation.screen !== 'home') return;
+  if (event.target instanceof Element && event.target.closest('input, select, button, dialog')) return;
   if (event.key === 'ArrowLeft' && servicePage > 0) {
     event.preventDefault(); servicePage -= 1; renderHome();
   } else if (event.key === 'ArrowRight') {
@@ -700,10 +391,9 @@ window.campusWorkspace?.onFocus(({ target, query = '' }) => {
     const group = normalized && state.groups.find(({ name }) =>
       name.toLocaleLowerCase().includes(normalized));
     if (group) {
-      primaryView = 'workspace'; workspaceView = group.id; servicePage = 0;
+      primaryView = 'workspace'; servicePage = 0;
       navigation = model.normalizeNavigation({ screen: 'home' });
       render();
-      $('serviceViewTitle').textContent = group.name;
       workspaceBoardFeature.focusPersonalCollection(group.id);
     } else if (query) {
       navigation = model.normalizeNavigation({ screen: 'home', query });

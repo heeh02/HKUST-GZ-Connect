@@ -42,6 +42,7 @@
       "instructuremedia.com"
     ],
     "builtinResourcesRef": "hkustgz-builtin-resources",
+    "serviceDeskRef": "hkustgz-service-desk",
     "healthTargets": [
       {
         "host": "www.hkust-gz.edu.cn",

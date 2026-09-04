@@ -43,10 +43,6 @@
             <button id="openManage" class="soft-button" type="button">整理收藏</button>
           </div>
         </div>
-        <div id="secondaryNavigation" class="secondary-navigation">
-          <select id="secondarySelect" class="secondary-select" aria-label="当前视图选项"></select>
-          <div id="serviceViewTabs" class="secondary-tabs" role="tablist" aria-label="当前视图选项"></div>
-        </div>
         <div class="view-heading">
           <h1><span id="serviceViewTitle">我的收藏</span><span id="serviceViewCount" class="view-count"></span></h1>
           <div id="servicePager" class="workspace-pager" aria-label="服务页码"></div>
@@ -61,38 +57,6 @@
             <div id="workspacePersonalEditToolbar" class="cb-edit-toolbar" data-card-edit-toolbar hidden></div>
             <div id="workspacePersonalBoardHost" class="cb-board-host"></div>
           </div>
-        </div>
-      </section>
-    </section>
-
-    <section id="manageScreen" class="workspace-screen" hidden>
-      <section class="workspace-panel surface">
-        <div class="view-heading manage-heading">
-          <h1 id="manageTitle">整理收藏</h1>
-          <div class="module-actions">
-            <button id="backToServices" class="text-button" type="button">返回校园服务</button>
-            <button id="createGroup" class="soft-button" type="button">＋ 新建分类</button>
-          </div>
-        </div>
-        <div class="manage-layout">
-          <aside id="manageSidebar" class="manage-sidebar" aria-label="我的分类">
-            <div class="group-heading"><h3 id="manageGroupsTitle">我的分类</h3></div>
-            <nav id="manageFolderNav" class="manage-folder-nav"></nav>
-          </aside>
-          <section class="manage-panel manage-content">
-            <div class="group-heading">
-              <h3 id="resourcePoolTitle">收藏</h3><span id="resourcePoolCount" class="group-count"></span>
-              <div id="managePager" class="workspace-pager" aria-label="管理页码"></div>
-            </div>
-            <div id="bulkActions" class="bulk-actions">
-              <label class="bulk-select-page"><input id="selectPageResources" type="checkbox" /><span id="selectPageLabel">选择本页</span></label>
-              <span id="bulkSelectedCount" class="bulk-selected-count">已选择 0 项</span>
-              <select id="bulkGroupSelect" aria-label="目标分类" hidden></select>
-              <button id="bulkAddToGroup" class="soft-button" type="button" disabled hidden>加入分类</button>
-              <button id="bulkClearSelection" class="text-button" type="button" disabled hidden>取消选择</button>
-            </div>
-            <div id="resourcePool" class="resource-grid"></div>
-          </section>
         </div>
       </section>
     </section>
@@ -114,7 +78,6 @@
   <p id="cardBoardLiveRegion" class="visually-hidden" aria-live="polite"></p>
 
   <script src="campus-workspace-model.js"></script>
-  <script src="campus-search-presenter.js"></script>
   <script src="components/card-board/card-board-model.js"></script>
   <script src="components/card-board/card-board-icons.js"></script>
   <script src="components/card-board/card-board-view.js"></script>

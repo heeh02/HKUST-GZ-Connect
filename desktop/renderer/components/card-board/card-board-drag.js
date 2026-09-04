@@ -156,6 +156,9 @@
       }
       if (event.key === 'Escape' && keyboardPlacementId) {
         event.preventDefault();
+        // Keep the page-level Escape (exit organize mode) from also firing:
+        // during a keyboard pick, Escape only puts the card down.
+        event.stopPropagation?.();
         setKeyboardPicked(null);
         announce?.('已取消移动');
         return;

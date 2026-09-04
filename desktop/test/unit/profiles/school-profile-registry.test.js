@@ -26,6 +26,13 @@ const sourceResources = fs.readFileSync(path.join(
   'hkustgz',
   'builtin-resources.json',
 ));
+const sourceServiceDesk = fs.readFileSync(path.join(
+  desktopRoot,
+  'assets',
+  'profiles',
+  'hkustgz',
+  'builtin-service-desk.json',
+));
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -61,6 +68,7 @@ function fixture(t, {
   writeFile(root, 'assets/profiles/hkustgz/engine-config.json', sourceEngineConfig);
   writeFile(root, 'assets/logo.svg', sourceLogo);
   writeFile(root, 'assets/profiles/hkustgz/builtin-resources.json', resourceData);
+  writeFile(root, 'assets/profiles/hkustgz/builtin-service-desk.json', sourceServiceDesk);
   const manifest = {
     schemaVersion: 1,
     profiles: [{
@@ -89,6 +97,12 @@ function fixture(t, {
           path: 'assets/profiles/hkustgz/builtin-resources.json',
           sha256: digest(resourceData),
         },
+        {
+          key: 'hkustgz-service-desk',
+          kind: 'service-desk',
+          path: 'assets/profiles/hkustgz/builtin-service-desk.json',
+          sha256: digest(sourceServiceDesk),
+        },
       ],
     }],
   };
@@ -109,6 +123,7 @@ function appendReviewedProfile(target, { makeDefault = false } = {}) {
   profile.browser.campusDomains = ['example.edu'];
   profile.browser.directPartnerDomains = [];
   profile.browser.builtinResourcesRef = 'example-university-builtin-resources';
+  delete profile.browser.serviceDeskRef;
   profile.browser.officialPortalResourceId = 'example-service-1';
   profile.browser.healthTargets = [
     { host: 'www.example.edu', port: 443 },
@@ -185,6 +200,12 @@ test('loads the reviewed HKUST packaged registry and bounded views', () => {
   assert.equal(profile.browser.homeUrl, 'https://myportal.hkust-gz.edu.cn/');
   assert.equal(profile.browser.officialPortalResourceId, 'official-portal');
   assert.equal(registry.getBuiltinResources('hkustgz').length, 45);
+  const serviceDesk = registry.getServiceDesk('hkustgz');
+  assert.equal(serviceDesk.applications.length >= 12, true);
+  assert.equal(serviceDesk.serviceItems.length >= 12, true);
+  assert.equal(serviceDesk.applications.every(
+    ({ url }) => registry.getBuiltinResources('hkustgz').some((resource) => resource.url === url),
+  ), true, 'service desk must only reference reviewed official URLs');
   assert.equal(registry.getBuiltinResources('hkustgz').find(
     ({ id }) => id === profile.browser.officialPortalResourceId,
   )?.url, 'https://myportal.hkust-gz.edu.cn/');

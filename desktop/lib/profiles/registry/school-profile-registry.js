@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseBuiltinResourceDocument } = require('../../resources/schema/campus-resource-contract');
+const { parseBuiltinResourceDocument, parseServiceDeskDocument } = require('../../resources/schema/campus-resource-contract');
 const {
   createSchoolProfileView,
   validateSchoolProfileDocument,
@@ -23,6 +23,7 @@ const ASSET_KINDS = Object.freeze([
   'engine-config',
   'branding',
   'builtin-resources',
+  'service-desk',
 ]);
 
 function plainObject(value, name) {
@@ -379,7 +380,15 @@ class SchoolProfileRegistry {
       )) {
         throw new Error(`profile official portal resource is not declared: ${entry.profileId}`);
       }
-      if (assets.size !== 3) {
+      let serviceDesk = null;
+      if (profile.browser.serviceDeskRef) {
+        const deskAsset = assets.get(profile.browser.serviceDeskRef);
+        if (!deskAsset || deskAsset.kind !== 'service-desk') {
+          throw new Error(`profile service desk reference is not declared: ${entry.profileId}`);
+        }
+        serviceDesk = parseServiceDeskDocument(deskAsset.data);
+      }
+      if (assets.size !== 3 + (serviceDesk ? 1 : 0)) {
         throw new Error(`profile contains an unbound packaged asset: ${entry.profileId}`);
       }
       records.set(entry.profileId, Object.freeze({
@@ -388,6 +397,7 @@ class SchoolProfileRegistry {
         document: Object.freeze({ ...entry.document }),
         assets,
         builtinResources,
+        serviceDesk,
       }));
       if (entry.default) defaultProfileId = entry.profileId;
     }
@@ -435,6 +445,13 @@ class SchoolProfileRegistry {
     const record = this.records.get(String(profileId || ''));
     if (!record) throw new Error('school profile is not present in the packaged manifest');
     return record.builtinResources;
+  }
+
+  getServiceDesk(profileId) {
+    this.ensureLoaded();
+    const record = this.records.get(String(profileId || ''));
+    if (!record) throw new Error('school profile is not present in the packaged manifest');
+    return record.serviceDesk;
   }
 
   createView(profileId, options) {

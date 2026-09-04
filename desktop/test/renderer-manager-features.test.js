@@ -2,7 +2,6 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const managerView = require('../renderer/manager-view');
 const {
   normalizeRoutingHostInput,
   routeStackSlots,
@@ -13,12 +12,19 @@ const { certificatePinsForView } = require('../renderer/certificate-manager');
 
 const translate = (key) => key;
 
-test('shared manager view escapes dynamic values and bounds operation errors', () => {
-  assert.equal(managerView.escapeHtml('<script>&"'), '&lt;script&gt;&amp;&quot;');
-  assert.equal(managerView.operationError({ error: ` ${'x'.repeat(400)} ` }, 'fallback').length, 300);
-  assert.equal(managerView.operationError({}, 'fallback'), 'fallback');
-  assert.deepEqual(managerView.collectionFromResult({ rules: [1] }, 'rules'), [1]);
-  assert.equal(managerView.collectionFromResult({ rules: 'invalid' }, 'rules'), null);
+test('routing and certificate managers carry their own bounded view helpers', () => {
+  const routing = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'renderer', 'routing-manager.js'), 'utf8');
+  const certificates = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'renderer', 'certificate-manager.js'), 'utf8');
+  for (const source of [routing, certificates]) {
+    assert.match(source, /function escapeHtml\(/u);
+    assert.match(source, /function operationError\(/u);
+    assert.match(source, /function collectionFromResult\(/u);
+  }
+  assert.match(certificates, /function formatManagerTime\(/u);
+  assert.doesNotMatch(routing + certificates, /manager-view/u,
+    'the legacy shared manager view is retired (DESIGN.md §2)');
 });
 
 test('routing manager accepts full web URLs and drops untrusted view fields', () => {

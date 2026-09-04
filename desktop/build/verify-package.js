@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const asar = require('@electron/asar');
 const { classifyMacSignature } = require('./macos-signing');
-const { parseBuiltinResourceDocument } = require('../lib/resources/schema/campus-resource-contract');
+const { parseBuiltinResourceDocument, parseServiceDeskDocument } = require('../lib/resources/schema/campus-resource-contract');
 const {
   normalizeGatewayOrigin,
   validateSchoolProfileDocument,
@@ -86,11 +86,14 @@ function assertPackagedSchoolProfiles(archive, externalEngineDirectory) {
     const engineAsset = assets.get(profile.gateway.engineConfigRef);
     const brandingAsset = assets.get(profile.branding.bundledAssetKey);
     const resourceAsset = assets.get(profile.browser.builtinResourcesRef);
-    if (assets.size !== 3 || engineAsset?.kind !== 'engine-config' ||
-        brandingAsset?.kind !== 'branding' || resourceAsset?.kind !== 'builtin-resources') {
+    const serviceDeskAsset = assets.get(profile.browser.serviceDeskRef);
+    if (assets.size !== 4 || engineAsset?.kind !== 'engine-config' ||
+        brandingAsset?.kind !== 'branding' || resourceAsset?.kind !== 'builtin-resources' ||
+        serviceDeskAsset?.kind !== 'service-desk') {
       throw new Error(`packaged school profile asset binding is incomplete: ${entry.profileId}`);
     }
     parseBuiltinResourceDocument(resourceAsset.data);
+    parseServiceDeskDocument(serviceDeskAsset.data);
 
     const externalEngineConfig = path.join(externalEngineDirectory, `${profile.profileId}.json`);
     const externalConfigData = fs.readFileSync(externalEngineConfig);
@@ -261,29 +264,27 @@ function assertCustomResourceManager({
   main,
   controlDataIpc = '',
   resourceIpc = '',
-  resourceRenderer = '',
 }) {
   const missing = [];
   if (!String(html).includes('id="manageResources"')) missing.push('manage button');
-  if (!String(html).includes('id="resourceDialog"')) missing.push('resource dialog');
-  if (!String(html).includes('id="saveResource"')) missing.push('save website button');
-  if (!String(html).includes('id="quickAddCampus"')) missing.push('add and open button');
-  if (!String(html).includes('id="resourceSaved"')) missing.push('save confirmation');
-  if (!String(renderer).includes('window.api.saveResource')) missing.push('renderer save action');
-  const composedResourceRenderer = String(renderer).includes('resourceManager.start(')
-    && String(resourceRenderer).includes('function suggestedResourceName');
-  if (!String(renderer).includes('function suggestedResourceName') && !composedResourceRenderer) {
-    missing.push('URL naming helper');
+  if (!String(html).includes('id="addWebsiteDialog"')) missing.push('add website dialog');
+  if (!String(html).includes('id="groupDialog"')) missing.push('category dialog');
+  if (!String(renderer).includes('window.addWebsiteDialog.start(')) {
+    missing.push('renderer add-website feature');
   }
-  if (!String(preload).includes("saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)")) {
-    missing.push('preload bridge');
+  if (!String(renderer).includes('window.categoryGroupDialog.start(')) {
+    missing.push('renderer category dialog feature');
   }
-  const mainSource = String(main);
-  const directHandler = mainSource.includes("ipcMain.handle('save-resource'")
-    || mainSource.includes("trustedHandle('save-resource'");
-  const composedHandler = mainSource.includes('registerControlDataIpc(')
+  if (!String(preload).includes(
+    "createFavoriteResource: (resource) => ipcRenderer.invoke('create-favorite-resource', resource)",
+  )) missing.push('preload bridge');
+  const directHandler = String(main).includes("ipcMain.handle('save-resource'")
+    || String(main).includes("trustedHandle('save-resource'");
+  const composedHandler = String(main).includes('registerControlDataIpc(')
     && String(controlDataIpc).includes('registerCampusResourceIpc(')
-    && String(resourceIpc).includes("register('save-resource'");
+    && String(resourceIpc).includes("register('save-resource'")
+    && String(resourceIpc).includes("register('create-favorite-resource'")
+    && String(resourceIpc).includes("register('create-favorite-group'");
   if (!directHandler && !composedHandler) {
     missing.push('save handler');
   }
@@ -416,11 +417,10 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/lib/platform/update/update-check.js',
     '/renderer/app.js',
     '/renderer/auth-challenge.js',
-    '/renderer/manager-view.js',
     '/renderer/routing-manager.js',
     '/renderer/certificate-manager.js',
-    '/renderer/resource-manager.js',
-    '/renderer/student-home.js',
+    '/renderer/group-dialog.js',
+    '/renderer/campus-service-workspace.js',
     '/renderer/notification-view.js',
     '/renderer/browser-data-settings.js',
     '/renderer/proxy-auth-migration.js',
@@ -433,7 +433,6 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/renderer/campus-workspace.js',
     '/renderer/campus-workspace-model.js',
     '/renderer/campus-workspace.css',
-    '/renderer/stacked-card-layout.js',
     '/renderer/campus-category-stacks.js',
     '/renderer/connection-overview.js',
     '/renderer/notification-drawer.js',
@@ -444,6 +443,7 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     '/assets/profiles/hkustgz/school-profile.json',
     '/assets/profiles/hkustgz/engine-config.json',
     '/assets/profiles/hkustgz/builtin-resources.json',
+    '/assets/profiles/hkustgz/builtin-service-desk.json',
   ];
   for (const entry of requiredEntries) {
     if (!entries.has(entry)) throw new Error(`missing required packaged file: ${entry}`);
@@ -475,11 +475,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     .toString('utf8');
   const packagedResourceIpc = extractArchiveFile(archive, 'lib/ipc/campus-resource-ipc.js')
     .toString('utf8');
-  const packagedResourceManager = extractArchiveFile(archive, 'renderer/resource-manager.js')
-    .toString('utf8');
-  const packagedStudentHome = extractArchiveFile(archive, 'renderer/student-home.js')
-    .toString('utf8');
   const packagedCategoryStacks = extractArchiveFile(archive, 'renderer/campus-category-stacks.js')
+    .toString('utf8');
+  const packagedServiceWorkspace = extractArchiveFile(archive, 'renderer/campus-service-workspace.js')
     .toString('utf8');
   if (!packagedMain.includes("'--profile-binding-v1-stdin'") ||
       packagedMain.includes("'--config-sha256'")) {
@@ -506,9 +504,9 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     }
   }
   for (const feature of [
-    'manager-view', 'routing-manager', 'certificate-manager', 'resource-manager',
-    'proxy-auth-migration', 'student-home', 'notification-view', 'notification-drawer',
-    'connection-overview', 'stacked-card-layout', 'campus-category-stacks',
+    'routing-manager', 'certificate-manager', 'group-dialog',
+    'proxy-auth-migration', 'notification-view', 'notification-drawer',
+    'connection-overview', 'campus-category-stacks', 'campus-service-workspace',
     'browser-data-settings',
   ]) {
     const featureScript = packagedIndex.indexOf(`src="${feature}.js"`);
@@ -524,8 +522,8 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
   }
   if (!packagedRenderer.includes('window.loginFlow') ||
       !packagedRenderer.includes('window.campusCategoryStacks') ||
-      !packagedStudentHome.includes('root.resourceView') ||
-      !packagedCategoryStacks.includes('balancedPartitions')) {
+      !packagedCategoryStacks.includes('personalCategoryProjection') ||
+      !packagedServiceWorkspace.includes('campusSearchPresenter')) {
     throw new Error('renderer does not consume the packaged shared helper APIs');
   }
   assertCustomResourceManager({
@@ -535,7 +533,6 @@ function verifyPackage({ resourcesArgument, platform = process.platform, archite
     main: packagedMain,
     controlDataIpc: packagedControlDataIpc,
     resourceIpc: packagedResourceIpc,
-    resourceRenderer: packagedResourceManager,
   });
 
   const platformName = platform === 'win32' ? 'windows' : platform === 'darwin' ? 'darwin' : 'linux';

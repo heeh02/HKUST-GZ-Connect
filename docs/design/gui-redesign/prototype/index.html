@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>校园工作台 · 高保真原型</title>
+<style>
+:root{
+  --navy:#0b2a5b; --gold:#a8842c; --success:#1aa568;
+  --bg:#f6f8fc; --panel:#eef2f8; --surface:#ffffff; --field:#f2f5fa;
+  --text:#1b2536; --muted:#5f6f86; --border:#e5eaf2;
+  --danger:#d9534f; --warning:#c26a1b;
+  --shadow-front:0 1px 2px rgba(10,35,75,.04),0 10px 28px rgba(10,35,75,.08);
+  --shadow-back:0 1px 2px rgba(10,35,75,.05);
+  --ease:cubic-bezier(.2,.7,.2,1);
+  --r-card:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background:#dbe2ee; color:var(--text); font-size:14px; -webkit-font-smoothing:antialiased;
+}
+:focus-visible{outline:2px solid var(--navy);outline-offset:2px;border-radius:5px}
+button{font-family:inherit}
+.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* ============ 原型调试工具条（非产品 UI） ============ */
+#debugbar{
+  position:fixed;top:0;left:0;right:0;height:34px;z-index:1000;
+  background:#131c2e;color:#c7d2e6;display:flex;align-items:center;gap:8px;
+  padding:0 12px;font-size:11.5px;overflow-x:auto;white-space:nowrap;
+}
+#debugbar .db-label{color:#8a97b6;font-weight:700;letter-spacing:.08em;margin-right:2px}
+#debugbar .db-sep{width:1px;height:16px;background:#2c3a58;flex:0 0 auto}
+#debugbar button,#debugbar select{
+  background:#22304c;color:#dbe4f4;border:1px solid #334360;border-radius:6px;
+  font-size:11.5px;padding:2px 8px;cursor:pointer;font-family:inherit;
+}
+#debugbar button:hover,#debugbar select:hover{background:#2c3e63}
+#debugbar button[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:#fff}
+#debugbar label{display:flex;align-items:center;gap:4px;color:#8a97b6}
+
+/* ============ 舞台（container query 容器，模拟视口） ============ */
+.stage{
+  container-type:inline-size;
+  margin:34px auto 0;max-width:100%;min-height:calc(100vh - 34px);
+  background:var(--bg);box-shadow:0 0 0 1px rgba(10,35,75,.05);
+}
+.page{padding:14px 20px 48px;margin:0 auto}
+@container (min-width:1200px){.page{max-width:1360px}}
+
+/* ============ 页头 ============ */
+.ws-header{display:flex;flex-direction:column;gap:12px;margin:4px 0 16px}
+.ws-title h1{font-size:24px;font-weight:600;color:var(--navy);letter-spacing:.01em}
+.ws-title .sub{font-size:13px;color:var(--muted);margin-top:3px}
+.ws-search{
+  display:flex;align-items:center;gap:8px;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px;padding:0 12px;height:38px;color:var(--muted);
+}
+.ws-search input{flex:1;min-width:0;border:0;outline:0;font-size:13.5px;background:transparent;color:var(--text);font-family:inherit}
+.ws-search input::placeholder{color:#8a98ad}
+.ws-search kbd{font:11px/1.4 inherit;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 6px;background:var(--field);flex:0 0 auto}
+@container (min-width:560px){
+  .ws-header{flex-direction:row;align-items:center;justify-content:space-between}
+  .ws-search{width:400px;flex:0 0 auto}
+}
+
+/* ============ 标签（§5） ============ */
+.tabs{display:flex;gap:32px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs [role=tab]{
+  position:relative;border:0;background:none;font-size:15px;font-weight:600;
+  color:var(--muted);padding:6px 0 10px;cursor:pointer;
+}
+.tabs [role=tab]:hover{color:var(--navy)}
+.tabs [role=tab][aria-selected="true"]{color:var(--navy)}
+.tabs [role=tab][aria-selected="true"]::after{
+  content:"";position:absolute;left:0;right:0;bottom:-1.5px;height:2.5px;border-radius:2px;background:var(--navy);
+}
+
+/* ============ 视图切换 ============ */
+.view-enter{animation:vin .16s var(--ease)}
+@keyframes vin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.rm .view-enter{animation:none}
+
+/* ============ 官方服务台两卡（§6/§7） ============ */
+.official-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@container (min-width:900px){.official-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.ocard{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow-front);padding:14px 14px 8px}
+.ocard-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;padding:0 2px}
+.ocard-head h2{font-size:16px;font-weight:600}
+.more{border:0;background:none;color:var(--muted);font-size:12.5px;cursor:pointer;padding:2px 4px}
+.more:hover{color:var(--navy)}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:6px;padding:2px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;border:0;background:var(--panel);color:var(--muted);
+  font-size:12px;padding:4px 11px;border-radius:8px;cursor:pointer;
+}
+.chip:hover{color:var(--navy)}
+.chip[aria-pressed="true"]{background:#dfe8f6;color:var(--navy);font-weight:600}
+.app-list{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 12px}
+.desk-list{display:grid;grid-template-columns:1fr}
+.row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px;cursor:pointer;min-height:48px}
+.row:hover{background:var(--field)}
+.row:hover .row-name{color:var(--navy)}
+.row-icon{
+  flex:0 0 32px;width:32px;height:32px;border-radius:9px;background:#e9eff8;color:var(--navy);
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;
+}
+.row-main{flex:1;min-width:0}
+.row-name{
+  font-size:14px;font-weight:500;line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.row-sub{font-size:12.5px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.route{flex:0 0 auto;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--panel);color:var(--muted);white-space:nowrap}
+.route.tunnel{color:#83600f;background:#f6efdb}
+.list-foot{display:flex;justify-content:center;padding-top:4px}
+.list-foot button{border:0;background:none;color:var(--muted);font-size:12.5px;cursor:pointer;padding:5px 10px;border-radius:7px}
+.list-foot button:hover{color:var(--navy);background:var(--field)}
+.empty-line{color:var(--muted);font-size:13px;padding:14px 8px}
+
+/* ============ 我的分类（§9/§10） ============ */
+.ptoolbar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.pbtn{
+  display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);
+  border-radius:9px;padding:7px 12px;font-size:13px;color:var(--text);cursor:pointer;
+}
+.pbtn:hover{border-color:#c9d4e6;color:var(--navy)}
+.pbtn .ic{width:15px;height:15px}
+#viewPersonal.organizing .pbtn-org{background:var(--navy);color:#fff;border-color:var(--navy)}
+#viewPersonal.organizing .deck-grid{transform:translateY(-2px)}
+#viewPersonal.organizing .card{outline:1.5px solid var(--gold);outline-offset:2px}
+.deck-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:22px 16px;align-items:start}
+.deck-slot{position:relative}
+.deck-slot.hl .card.is-front{outline:2px solid var(--gold);outline-offset:2px}
+.card{
+  position:absolute;left:0;right:0;border-radius:14px;background:var(--panel);
+  box-shadow:var(--shadow-back);overflow:hidden;display:flex;flex-direction:column;
+  transition:transform .12s var(--ease);
+}
+.card.is-front{background:var(--surface);box-shadow:var(--shadow-front)}
+.deck-slot.drawing .card{pointer-events:none}
+.deck-slot:not(.drawing) .card.is-back:hover{transform:translateY(-4px);box-shadow:0 2px 5px rgba(10,35,75,.09);cursor:pointer}
+.card-head{flex:0 0 56px;height:56px;display:flex;align-items:center;gap:9px;padding:0 16px;cursor:pointer;border-radius:14px 14px 0 0}
+.card-head .cicon{width:22px;height:22px;flex:0 0 22px;color:var(--navy);display:flex;align-items:center;justify-content:center}
+.card-head .cicon .ic{width:20px;height:20px}
+.card-name{font-size:14.5px;font-weight:600}
+.card-count{margin-left:auto;font-size:11.5px;color:var(--muted);background:rgba(255,255,255,.75);border-radius:8px;padding:2px 8px;flex:0 0 auto}
+.is-front .card-count{background:var(--panel)}
+.card-body{flex:0 0 140px;height:140px;padding:4px 10px;display:grid;grid-template-columns:1fr 1fr;gap:0 6px;align-content:start}
+.mode-narrow .card-body{flex-basis:184px;height:184px;grid-template-columns:1fr}
+.mode-narrow .site-item:nth-child(n+5){display:none}
+.site-item{display:flex;align-items:center;gap:9px;height:44px;padding:0 8px;border-radius:8px;cursor:pointer}
+.site-item:hover{background:var(--field)}
+.site-item .sicon{
+  flex:0 0 22px;width:22px;height:22px;border-radius:6px;background:#e9eff8;color:var(--navy);
+  font-size:10.5px;font-weight:600;display:flex;align-items:center;justify-content:center;
+}
+.site-item .sname{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.site-item:hover .sname{color:var(--navy)}
+.card-foot{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center}
+.card-foot button{border:0;background:none;color:var(--muted);font-size:12.5px;cursor:pointer;padding:4px 10px;border-radius:7px}
+.card-foot button:hover{color:var(--navy);background:var(--field)}
+
+/* ============ 搜索结果（§13） ============ */
+.search-meta{color:var(--muted);font-size:12.5px;margin:2px 0 8px}
+.sr-region{flex:0 0 auto;font-size:11px;padding:2px 7px;border-radius:6px;background:#dfe8f6;color:var(--navy);white-space:nowrap}
+.sr-aud{flex:0 0 auto;font-size:11.5px;color:var(--muted);white-space:nowrap}
+
+/* ============ 数据模块（§14–16，灰底直落，不套白卡） ============ */
+.data-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:18px}
+@container (min-width:900px){
+  .data-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .module-news{grid-column:1/-1}
+  .module.expanded{grid-column:1/-1}
+}
+.module{min-width:0}
+.module-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.module-head h2{font-size:16px;font-weight:600}
+.module-head .acts{display:flex;gap:4px;align-items:center}
+.act{border:0;background:none;color:var(--muted);font-size:12.5px;cursor:pointer;padding:3px 6px;border-radius:6px}
+.act:hover{color:var(--navy);background:var(--field)}
+.m-sub{font-size:13px;color:var(--muted)}
+.m-sub b{color:var(--text);font-weight:600}
+.warn-t{color:var(--warning)}
+
+/* 日程摘要 */
+.sched-item{display:flex;gap:12px;padding:5px 2px;font-size:13.5px;align-items:baseline}
+.sched-item time{color:var(--muted);flex:0 0 96px;font-variant-numeric:tabular-nums;font-size:12.5px}
+
+/* 日程周视图（§14.2） */
+.week{overflow:hidden;max-height:0;transition:max-height .2s var(--ease)}
+.module.expanded .week{max-height:620px}
+.rm .week{transition:none}
+.week-toolbar{display:flex;align-items:center;gap:8px;margin:8px 0 10px;font-size:13px;flex-wrap:wrap}
+.week-toolbar .wrange{font-weight:600;margin:0 2px}
+.wbtn{
+  border:1px solid var(--border);background:var(--surface);border-radius:7px;min-width:26px;height:26px;
+  cursor:pointer;color:var(--text);display:inline-flex;align-items:center;justify-content:center;padding:0 6px;font-size:12.5px;
+}
+.wbtn:hover{border-color:#c9d4e6;color:var(--navy)}
+.week-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.week-inner{display:grid;grid-template-columns:52px minmax(760px,1fr);grid-template-rows:30px repeat(7,44px)}
+.wk-corner{grid-column:1;grid-row:1;position:sticky;left:0;z-index:3;background:var(--surface);border-bottom:1px solid var(--border)}
+.wk-hours{grid-column:2;grid-row:1;position:relative;border-bottom:1px solid var(--border)}
+.wk-hours span{position:absolute;top:8px;font-size:11px;color:var(--muted);transform:translateX(-50%);font-variant-numeric:tabular-nums}
+.wk-day{
+  grid-column:1;position:sticky;left:0;z-index:2;background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--muted);
+  border-bottom:1px solid var(--field);
+}
+.wk-day.today{color:var(--navy);font-weight:600;background:var(--field)}
+.wk-track{grid-column:2;position:relative;border-bottom:1px solid var(--field)}
+.wk-track.today{background:var(--field)}
+.ev{
+  position:absolute;top:5px;height:34px;border-radius:7px;font-size:11.5px;line-height:1.2;
+  padding:4px 8px;overflow:hidden;cursor:pointer;color:#fff;min-width:34px;
+  display:flex;align-items:center;white-space:nowrap;text-overflow:ellipsis;
+}
+.ev.course{background:var(--navy)}
+.ev.meeting{background:#3d639e}
+.ev.activity{background:#8fb0dd;color:var(--navy)}
+.now-wrap{grid-column:2;grid-row:2/span 7;position:relative;pointer-events:none;z-index:1}
+.now-line{position:absolute;top:0;bottom:0;width:1.5px;background:var(--gold)}
+
+/* 借阅 */
+.loan-first{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 2px 2px;color:var(--text)}
+.loan-list{margin-top:6px}
+.loan-item{padding:8px 2px;border-top:1px solid var(--border)}
+.loan-top{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:500;align-items:baseline}
+.loan-top .lt-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loan-meta{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:12px;flex-wrap:wrap}
+.st{flex:0 0 auto;font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.st.ok{background:var(--panel);color:var(--muted)}
+.st.soon{background:#f9efe2;color:var(--warning)}
+.st.over{background:#fbe7e6;color:var(--danger)}
+.loan-entry{display:inline-flex;align-items:center;gap:5px;margin-top:8px;border:0;background:none;color:var(--navy);font-size:13px;cursor:pointer;padding:4px 2px}
+.loan-entry:hover{text-decoration:underline}
+
+/* 资讯 */
+.news-item{display:flex;align-items:center;gap:9px;padding:7px 2px;font-size:13.5px;cursor:pointer;border-radius:8px}
+.news-item:hover{background:var(--field)}
+.news-dot{flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
+.news-dot.read{visibility:hidden}
+.news-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.news-d{color:var(--muted);font-size:12px;flex:0 0 auto}
+
+/* 模块状态（§24） */
+.sk{border-radius:6px;height:13px;margin:10px 2px;background:linear-gradient(90deg,#e8edf5 25%,#f4f7fc 50%,#e8edf5 75%);background-size:200% 100%;animation:breath 1.2s linear infinite}
+.sk.w60{width:60%}.sk.w80{width:80%}.sk.w40{width:40%}
+@keyframes breath{from{background-position:200% 0}to{background-position:0 0}}
+.module-error{
+  border:1px solid #f0d8d7;background:#fdf3f2;color:var(--danger);border-radius:10px;
+  padding:10px 14px;font-size:13px;display:flex;gap:10px;align-items:center;max-height:120px;overflow:hidden;
+}
+.module-error button{border:1px solid #ecc;background:var(--surface);color:var(--danger);border-radius:7px;padding:3px 12px;font-size:12.5px;cursor:pointer}
+.empty-note{color:var(--muted);font-size:13px;padding:8px 2px}
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M8 6h8"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v5.5L4.8 17.5A2 2 0 0 0 6.6 20.5h10.8a2 2 0 0 0 1.8-3L14 8.5V3"/><path d="M7.5 14h9"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 9 3.5 3.5L15.5 9M12 12.5V17M9.5 14.5h5"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14s1.2 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5h.01M15 9.5h.01"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4 10 14"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+</svg>
+
+<div id="debugbar" aria-label="原型调试工具条">
+  <span class="db-label">原型调试</span>
+  <span class="db-sep"></span>
+  <span style="color:#8a97b6">视口</span>
+  <button data-vp="440">440</button>
+  <button data-vp="820">820</button>
+  <button data-vp="1024">1024</button>
+  <button data-vp="1280">1280</button>
+  <button data-vp="1440">1440</button>
+  <button data-vp="" aria-pressed="true" id="vpAuto">自动</button>
+  <span class="db-sep"></span>
+  <button id="rmToggle" aria-pressed="false">Reduced Motion</button>
+  <span class="db-sep"></span>
+  <label>日程 <select data-mod="schedule"><option value="ok">正常</option><option value="loading">加载中</option><option value="empty">空</option><option value="error">失败</option></select></label>
+  <label>借阅 <select data-mod="loans"><option value="ok">正常</option><option value="loading">加载中</option><option value="empty">空</option><option value="error">失败</option></select></label>
+  <label>资讯 <select data-mod="news"><option value="ok">正常</option><option value="loading">加载中</option><option value="empty">空</option><option value="error">失败</option></select></label>
+</div>
+
+<div class="stage" id="stage">
+  <div class="page">
+
+    <header class="ws-header">
+      <div class="ws-title">
+        <h1>校园工作台</h1>
+        <p class="sub">常用网站、校园事务和个人信息</p>
+      </div>
+      <div class="ws-search" role="search">
+        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="搜索应用或办事事项，如：报销、在读证明、HPC2" aria-label="搜索网站、服务或我的分类">
+        <kbd>⌘K</kbd>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="网站与服务">
+      <button role="tab" id="tab-official" aria-selected="true" aria-controls="viewOfficial">官方服务台</button>
+      <button role="tab" id="tab-personal" aria-selected="false" aria-controls="viewPersonal">我的分类</button>
+    </div>
+
+    <section class="service-module" aria-label="网站与服务">
+      <div id="viewOfficial" role="tabpanel" aria-labelledby="tab-official">
+        <div class="official-grid">
+          <div class="ocard" id="appsCard">
+            <div class="ocard-head"><h2>我的应用</h2><button class="more" type="button">查看更多</button></div>
+            <div class="chips" id="appsChips" role="group" aria-label="应用分类过滤"></div>
+            <div class="app-list" id="appsList"></div>
+          </div>
+          <div class="ocard" id="deskCard">
+            <div class="ocard-head"><h2>学生服务台</h2><button class="more" type="button">查看更多</button></div>
+            <div class="chips" id="deskChips" role="group" aria-label="事项分类过滤"></div>
+            <div class="desk-list" id="deskList"></div>
+            <div class="list-foot" id="deskFoot" hidden><button type="button" id="deskMore"></button></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="viewPersonal" role="tabpanel" aria-labelledby="tab-personal" hidden>
+        <div class="ptoolbar">
+          <button class="pbtn" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>新建分类</button>
+          <button class="pbtn" type="button"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>添加网站</button>
+          <button class="pbtn pbtn-org" type="button" id="orgBtn"><svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span id="orgBtnText">整理分类与网站</span></button>
+        </div>
+        <div class="deck-grid" id="deckGrid"></div>
+      </div>
+
+      <div id="viewSearch" hidden aria-live="polite">
+        <div class="search-meta" id="searchMeta"></div>
+        <div id="searchResults"></div>
+      </div>
+    </section>
+
+    <section class="data-grid" aria-label="我的数据">
+      <div class="module" id="modSchedule"><div class="mod-body" id="bodySchedule"></div></div>
+      <div class="module" id="modLoans"><div class="mod-body" id="bodyLoans"></div></div>
+      <div class="module module-news" id="modNews"><div class="mod-body" id="bodyNews"></div></div>
+    </section>
+
+  </div>
+</div>
+<script>
+'use strict';
+/* ==================================================================
+   校园工作台 · 第一阶段高保真原型
+   纯静态模拟数据，零外部依赖，零网络请求。
+   ================================================================== */
+
+/* ---------------- 模拟数据 ---------------- */
+// route: direct=直连 tunnel=校园隧道
+const APPS = [
+  {n:'myPortal',     c:'my', use:'校园门户与通知',   aud:'全体',       r:'direct', cats:['collab'],        alias:['门户','portal','myportal']},
+  {n:'SIS',          c:'S',  use:'选课、成绩与学籍', aud:'全体学生',   r:'direct', cats:['teach'],         alias:['成绩','选课','学籍','sis','查成绩']},
+  {n:'Canvas',       c:'C',  use:'课程、作业与测验', aud:'全体',       r:'direct', cats:['teach'],         alias:['作业','课程','canvas','测验']},
+  {n:'KLMS',         c:'K',  use:'模块化课程学习',   aud:'全体',       r:'direct', cats:['teach'],         alias:['klms','网课']},
+  {n:'Outlook',      c:'O',  use:'校园邮箱与日历',   aud:'全体',       r:'direct', cats:['collab'],        alias:['邮箱','邮件','日历','outlook']},
+  {n:'图书馆',       c:'图', use:'馆藏检索与借阅',   aud:'全体',       r:'direct', cats:['teach'],         alias:['借书','library','馆藏','书']},
+  {n:'E-Form',       c:'E',  use:'电子表单与审批',   aud:'全体',       r:'direct', cats:['collab'],        alias:['表单','审批','eform']},
+  {n:'HPC2',         c:'H',  use:'高性能计算集群',   aud:'科研人员',   r:'tunnel', cats:['teach'],         alias:['hpc','hpc2','算力','超算','ssh']},
+  {n:'一站式办事大厅', c:'一', use:'校内事务一网通办', aud:'全体',       r:'tunnel', cats:['collab','life'], alias:['一站式','办事','大厅']},
+  {n:'学生财务 SFS',  c:'财', use:'学费缴纳与查询',   aud:'全体学生',   r:'direct', cats:['life'],          alias:['学费','缴费','sfs','财务']},
+  {n:'考试安排',      c:'考', use:'考试时间地点查询', aud:'全体学生',   r:'direct', cats:['teach'],         alias:['考试','考场']},
+  {n:'校历',          c:'历', use:'教学日历与假期',   aud:'全体',       r:'direct', cats:['life'],          alias:['日历','假期','校历']},
+  {n:'AI 智能体广场', c:'AI', use:'校园 AI 助手集市', aud:'全体',       r:'direct', cats:['ai'],            alias:['ai','智能体','agent']},
+];
+const APP_CATS = [['all','全部'],['collab','协同办公'],['teach','教学科研'],['life','校园生活'],['ai','AI 智能体广场']];
+
+const ITEMS = [
+  {n:'采购与报销申请',     use:'经费报销与采购申请', aud:'全体',           r:'tunnel', cats:['research'], alias:['报销','采购','pbms','财务','经费']},
+  {n:'在读证明',           use:'开具在读身份证明',   aud:'本科生/研究生', r:'direct', cats:['academic'], alias:['在读','证明','在读证明']},
+  {n:'请假申请',           use:'课程请假与审批',     aud:'全体',           r:'direct', cats:['life'],     alias:['请假','销假']},
+  {n:'导师变更申请',       use:'更换指导教师',       aud:'研究生',         r:'direct', cats:['academic'], alias:['导师','换导师','转导师']},
+  {n:'宿舍申请',           use:'住宿申请与调整',     aud:'全体',           r:'direct', cats:['life'],     alias:['宿舍','住宿','换宿舍']},
+  {n:'奖助学金申请',       use:'奖助学金评审申请',   aud:'本科生/研究生', r:'direct', cats:['life'],     alias:['奖学金','助学金','奖助']},
+  {n:'校外科研申请',       use:'校外科研活动备案',   aud:'研究生',         r:'tunnel', cats:['research'], alias:['校外科研','科研备案']},
+  {n:'出差与科研旅行申请', use:'出差审批与差旅申请', aud:'研究生/教职工', r:'tunnel', cats:['research'], alias:['出差','差旅','旅行','科研旅行']},
+  {n:'成绩单',             use:'官方成绩单开具',     aud:'全体学生',       r:'direct', cats:['academic'], alias:['成绩','成绩单','transcript']},
+  {n:'毕业申请',           use:'毕业资格审核申请',   aud:'应届毕业生',     r:'direct', cats:['academic'], alias:['毕业','结业']},
+  {n:'跨校区学习申请',     use:'跨校区修课申请',     aud:'全体学生',       r:'direct', cats:['academic'], alias:['跨校区','清水湾']},
+  {n:'银行账户信息更新',   use:'奖助发放账户维护',   aud:'全体',           r:'tunnel', cats:['life'],     alias:['银行卡','账户','银行']},
+];
+const DESK_CATS = [['all','全部'],['academic','学术管理'],['research','科研管理'],['life','校园生活']];
+
+// 个人分类：牌堆 A 3 张 / 牌堆 B 2 张 / 两张单卡
+const CATS = {
+  course:  {name:'课程平台', icon:'i-book',  sites:[['Canvas','direct'],['KLMS','direct'],['SIS','direct'],['雨课堂','direct'],['Zoom','direct'],['课程表','direct']]},
+  research:{name:'科研计算', icon:'i-flask', sites:[['HPC2','tunnel'],['JupyterHub','tunnel'],['超算使用指南','direct'],['Overleaf','direct'],['GitHub','direct']]},
+  tool:    {name:'常用工具', icon:'i-tool',  sites:[['Outlook','direct'],['腾讯会议','direct'],['问卷星','direct'],['校园网盘','direct']]},
+  finance: {name:'报销申请', icon:'i-coin',  sites:[['PBMS','tunnel'],['E-Form','direct'],['E-Tender','tunnel'],['一站式办事大厅','tunnel']]},
+  fun:     {name:'娱乐生活', icon:'i-smile', sites:[['哔哩哔哩','direct'],['网易云音乐','direct'],['知乎','direct']]},
+  doc:     {name:'文档资料', icon:'i-file',  sites:[['图书馆','direct'],['语雀','direct'],['Notion','direct'],['Google Drive','direct']]},
+  note:    {name:'学习笔记', icon:'i-edit',  sites:[['Obsidian','direct'],['幕布','direct'],['Anki','direct']]},
+};
+const DECKS = [
+  {id:'deckA', order:['tool','research','course']},
+  {id:'deckB', order:['fun','finance']},
+];
+const SINGLES = ['doc','note'];
+
+const NEWS = [
+  {t:'关于开展 2026 年秋季学期研究生培养工作的通知', ago:0, unread:true},
+  {t:'图书馆数据库系统维护通知', ago:1, unread:true},
+  {t:'校园网络计划维护公告', ago:2, unread:false},
+];
+
+// 本周日程（周一为一周起点，d=周几偏移，s/e=分钟）
+const EV_DEF = [
+  {d:0, s:9*60,      e:10*60+30, t:'COMP5201 高等机器学习', k:'course'},
+  {d:0, s:16*60,     e:17*60,    t:'系统组 Seminar',        k:'meeting'},
+  {d:1, s:10*60,     e:11*60,    t:'课题组周会',            k:'meeting'},
+  {d:1, s:14*60,     e:15*60+30, t:'COMP5201 高等机器学习', k:'course'},
+  {d:1, s:19*60,     e:20*60,    t:'研究生会招新活动',      k:'activity'},
+  {d:2, s:9*60,      e:10*60+30, t:'MATH5003 最优化方法',   k:'course'},
+  {d:2, s:11*60,     e:12*60,    t:'实验室机时预约',        k:'activity'},
+  {d:3, s:15*60,     e:16*60,    t:'导师一对一会议',        k:'meeting'},
+  {d:4, s:10*60,     e:11*60+30, t:'MATH5003 最优化方法',   k:'course'},
+];
+
+/* ---------------- 全局状态 ---------------- */
+const state = {
+  tab: 'official',
+  searching: false,
+  savedScroll: 0,
+  expanded: null,          // 'schedule' | 'loans' | null（页面级仲裁，唯一共享状态）
+  weekOffset: 0,
+  deskShowAll: false,
+  mod: {schedule:'ok', loans:'ok', news:'ok'},
+  rm: false,
+};
+window.__lastDraw = null;
+
+const $ = s => document.querySelector(s);
+const stage = $('#stage');
+const searchInput = $('#searchInput');
+const viewOfficial = $('#viewOfficial'), viewPersonal = $('#viewPersonal'), viewSearch = $('#viewSearch');
+const PH_OFFICIAL = '搜索应用或办事事项，如：报销、在读证明、HPC2';
+const PH_PERSONAL = '搜索我的网站或分类';
+const isReduced = () => state.rm || matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------------- 工具 ---------------- */
+const esc = s => s.replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const pad2 = n => String(n).padStart(2,'0');
+const fmtTime = m => pad2(Math.floor(m/60)) + ':' + pad2(m%60);
+const fmtDate = d => (d.getMonth()+1) + '月' + d.getDate() + '日';
+const routeBadge = r => `<span class="route ${r==='tunnel'?'tunnel':''}">${r==='tunnel'?'校园隧道':'直连'}</span>`;
+const norm = s => s.toLowerCase().replace(/我要|我想|我要申请|我想申请|申请|请问|怎么|如何|一下|办理/g,'').replace(/\s+/g,'').trim();
+
+function mondayOf(offset){
+  const d = new Date();
+  const dow = (d.getDay()+6)%7;
+  d.setDate(d.getDate() - dow + offset*7);
+  d.setHours(0,0,0,0);
+  return d;
+}
+const todayDow = () => (new Date().getDay()+6)%7;
+
+/* ---------------- 官方服务台 ---------------- */
+let appsFilter = 'all', deskFilter = 'all';
+
+function rowHtml(it, region){
+  return `<div class="row" role="button" tabindex="0" aria-label="${esc(it.n)}，${esc(it.use)}">
+    <span class="row-icon" aria-hidden="true">${esc(it.c || it.n.slice(0,1))}</span>
+    <span class="row-main">
+      <div class="row-name">${esc(it.n)}</div>
+      <div class="row-sub">${esc(it.use)}</div>
+    </span>
+    ${routeBadge(it.r)}
+  </div>`;
+}
+function renderChips(el, defs, active, onPick){
+  el.innerHTML = defs.map(([k,label]) =>
+    `<button type="button" class="chip" aria-pressed="${k===active}" data-k="${k}">${label}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => onPick(b.dataset.k)));
+}
+function renderApps(){
+  renderChips($('#appsChips'), APP_CATS, appsFilter, k => { appsFilter = k; renderApps(); });
+  const list = APPS.filter(a => appsFilter==='all' || a.cats.includes(appsFilter));
+  const show = appsFilter==='all' ? list.slice(0,12) : list;
+  $('#appsList').innerHTML = show.length ? show.map(a => rowHtml(a)).join('')
+    : `<div class="empty-line">该分类暂无应用</div>`;
+}
+function renderDesk(){
+  renderChips($('#deskChips'), DESK_CATS, deskFilter, k => { deskFilter = k; state.deskShowAll = false; renderDesk(); });
+  const list = ITEMS.filter(a => deskFilter==='all' || a.cats.includes(deskFilter));
+  const collapsed = deskFilter==='all' && !state.deskShowAll;
+  const show = collapsed ? list.slice(0,6) : list;
+  $('#deskList').innerHTML = show.map(a => rowHtml(a)).join('');
+  const foot = $('#deskFoot');
+  foot.hidden = !(deskFilter==='all' && list.length > 6);
+  if(!foot.hidden) $('#deskMore').textContent = collapsed ? `查看全部（${list.length}）→` : '收起 ↑';
+}
+$('#deskMore').addEventListener('click', () => { state.deskShowAll = !state.deskShowAll; renderDesk(); });
+
+/* ---------------- 我的分类 · 真正扑克牌堆（§10/§11） ---------------- */
+const deckState = {};   // id -> {order:[], els:{id:cardEl}, animating:bool}
+const LAYER = 36;       // 每层偏移 px
+const CARD_H_WIDE = 236, CARD_H_NARROW = 280;
+
+function siteRowsHtml(catId){
+  return CATS[catId].sites.map(([name]) =>
+    `<div class="site-item" role="button" tabindex="0" aria-label="打开 ${esc(name)}">
+      <span class="sicon" aria-hidden="true">${esc(name.slice(0,1))}</span>
+      <span class="sname">${esc(name)}</span>
+    </div>`).join('');
+}
+function cardHtml(deckId, catId){
+  const cat = CATS[catId];
+  return `<section class="card" data-card="${catId}" data-deck="${deckId}">
+    <div class="card-head" role="tab" tabindex="0">
+      <span class="cicon" aria-hidden="true"><svg class="ic"><use href="#${cat.icon}"/></svg></span>
+      <span class="card-name">${esc(cat.name)}</span>
+      <span class="card-count">${cat.sites.length}</span>
+    </div>
+    <div class="card-body">${siteRowsHtml(catId)}</div>
+    <div class="card-foot"><button type="button" aria-label="查看 ${esc(cat.name)} 全部网站">查看全部（${cat.sites.length}）</button></div>
+  </section>`;
+}
+function renderDecks(){
+  const grid = $('#deckGrid');
+  const all = DECKS.map(d => ({id:d.id, order:d.order.slice()}))
+    .concat(SINGLES.map(c => ({id:'solo-'+c, order:[c]})));
+  grid.innerHTML = all.map(d =>
+    `<div class="deck-slot" data-deck="${d.id}" role="tablist" aria-label="分类牌堆">
+      ${d.order.map(c => cardHtml(d.id, c)).join('')}
+    </div>`).join('');
+  all.forEach(d => {
+    const slotEl = grid.querySelector(`[data-deck="${d.id}"]`);
+    const els = {};
+    slotEl.querySelectorAll('.card').forEach(el => els[el.dataset.card] = el);
+    deckState[d.id] = {order: d.order.slice(), els, animating:false, slotEl};
+    bindDeck(slotEl, d.id);
+    syncDeck(d.id, false);
+  });
+  layoutDecks();
+}
+function syncDeck(deckId, focusFront){
+  const ds = deckState[deckId];
+  const n = ds.order.length;
+  ds.order.forEach((cid, i) => {
+    const el = ds.els[cid];
+    const front = i === n-1;
+    el.style.top = (i*LAYER) + 'px';
+    el.style.zIndex = i+1;
+    el.classList.toggle('is-front', front);
+    el.classList.toggle('is-back', !front);
+    const head = el.querySelector('.card-head');
+    head.setAttribute('aria-selected', String(front));
+    head.setAttribute('aria-label',
+      `${CATS[cid].name}，${CATS[cid].sites.length} 个网站，第 ${i+1} 张，共 ${n} 张${front?'，当前在正面':''}`);
+  });
+  if(focusFront){
+    const frontEl = ds.els[ds.order[n-1]];
+    frontEl.querySelector('.card-head').focus({preventScroll:true});
+  }
+}
+function layoutDecks(){
+  Object.keys(deckState).forEach(id => {
+    const ds = deckState[id];
+    if(!ds || ds.animating) return;
+    const w = ds.slotEl.clientWidth;
+    const narrow = w > 0 && w < 400;
+    ds.slotEl.classList.toggle('mode-narrow', narrow);
+    const cardH = narrow ? CARD_H_NARROW : CARD_H_WIDE;
+    const n = ds.order.length;
+    ds.slotEl.style.height = (cardH + (n-1)*LAYER) + 'px';
+    ds.order.forEach((cid, i) => {
+      ds.els[cid].style.height = cardH + 'px';
+      ds.els[cid].style.top = (i*LAYER) + 'px';
+    });
+  });
+}
+let rszT = null;
+addEventListener('resize', () => { clearTimeout(rszT); rszT = setTimeout(layoutDecks, 80); });
+
+/* 抽卡：240ms，transform+opacity only，z-index 首帧置换（§11） */
+function drawCard(deckId, catId){
+  const ds = deckState[deckId];
+  if(!ds || ds.animating) return;
+  const order = ds.order;
+  const k = order.indexOf(catId);
+  const n = order.length;
+  if(k < 0 || k === n-1) return;          // 已在正面 → 无操作（无折叠概念）
+  ds.animating = true;
+  ds.slotEl.classList.add('drawing');
+  const t0 = performance.now();
+
+  const newOrder = order.filter(c => c !== catId).concat(catId);
+  const target = ds.els[catId];
+  const oldFront = ds.els[order[n-1]];
+  const finish = (anims) => {
+    ds.order = newOrder;
+    syncDeck(deckId, true);
+    (anims||[]).forEach(a => { try{ a.cancel(); }catch(e){} });
+    ds.slotEl.classList.remove('drawing');
+    ds.animating = false;
+    window.__lastDraw = {t0, t1: performance.now(), deck: deckId, card: catId};
+  };
+
+  if(isReduced()){
+    // Reduced Motion：无位移，仅 100ms 交叉淡入
+    ds.order = newOrder;
+    syncDeck(deckId, false);
+    const a = target.animate([{opacity:0},{opacity:1}], {duration:100, fill:'forwards'});
+    a.finished.then(() => finish([a])).catch(() => finish([a]));
+    return;
+  }
+
+  // z-index 与正/后层样式：动画首帧即置换（top 暂保持，位移全走 transform）
+  newOrder.forEach((cid, i) => { ds.els[cid].style.zIndex = i+1; });
+  ds.order = newOrder;
+  ds.order.forEach((cid, i) => {
+    const el = ds.els[cid];
+    const front = i === n-1;
+    el.classList.toggle('is-front', front);
+    el.classList.toggle('is-back', !front);
+    const head = el.querySelector('.card-head');
+    head.setAttribute('aria-selected', String(front));
+    head.setAttribute('aria-label',
+      `${CATS[cid].name}，${CATS[cid].sites.length} 个网站，第 ${i+1} 张，共 ${n} 张${front?'，当前在正面':''}`);
+  });
+
+  const anims = [];
+  const finalDelta = (n-1-k) * LAYER;    // 目标卡：后层 → 正面（向下落位）
+  anims.push(target.animate([
+    {transform:'translate(0px, 0px) scale(1)', offset:0},
+    {transform:`translate(0px, ${-14}px) scale(1.015)`, offset:0.25},
+    {transform:`translate(10px, ${finalDelta*0.55 - 8}px) scale(1.008)`, offset:0.66},
+    {transform:`translate(0px, ${finalDelta}px) scale(1)`, offset:1},
+  ], {duration:240, easing:'cubic-bezier(.2,.7,.2,1)', fill:'forwards'}));
+  // 卡内容 160ms 起 80ms 淡入
+  ['.card-body','.card-foot'].forEach(sel => {
+    anims.push(target.querySelector(sel).animate(
+      [{opacity:0},{opacity:1}], {duration:80, delay:160, fill:'backwards'}));
+  });
+  // 原正面卡：保持 60ms → 下沉 +8 / scale .985 → 退入后层目标层（-36）
+  anims.push(oldFront.animate([
+    {transform:'translateY(0px) scale(1)', offset:0},
+    {transform:'translateY(0px) scale(1)', offset:0.25},
+    {transform:'translateY(8px) scale(.985)', offset:0.66},
+    {transform:`translateY(${-LAYER}px) scale(1)`, offset:1},
+  ], {duration:240, easing:'cubic-bezier(.2,.7,.2,1)', fill:'forwards'}));
+  // 其余后层卡：同步上移递补一层（-36，180ms）
+  for(let i = k+1; i < n-1; i++){
+    anims.push(ds.els[order[i]].animate(
+      [{transform:'translateY(0px)'},{transform:`translateY(${-LAYER}px)`}],
+      {duration:180, delay:60, easing:'cubic-bezier(.2,.7,.2,1)', fill:'forwards'}));
+  }
+  Promise.all(anims.map(a => a.finished.catch(()=>{}))).then(() => finish(anims));
+}
+
+function bindDeck(slotEl, deckId){
+  slotEl.addEventListener('click', e => {
+    const ds = deckState[deckId];
+    if(ds.animating) return;
+    const head = e.target.closest('.card-head');
+    if(head){
+      const card = head.closest('.card');
+      if(card.classList.contains('is-back')) drawCard(deckId, card.dataset.card);
+      return; // 正面标题点击不折叠（牌堆没有"收起"概念）
+    }
+  });
+  slotEl.addEventListener('keydown', e => {
+    const ds = deckState[deckId];
+    const heads = ds.order.map(c => ds.els[c].querySelector('.card-head'));
+    const idx = heads.indexOf(document.activeElement);
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+      if(idx < 0) return;
+      e.preventDefault();
+      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      heads[(idx + dir + heads.length) % heads.length].focus();
+    }else if((e.key === 'Enter' || e.key === ' ') && idx >= 0){
+      e.preventDefault();
+      const cid = ds.order[idx];
+      if(idx !== ds.order.length-1 && !ds.animating) drawCard(deckId, cid);
+    }
+  });
+}
+
+/* ---------------- 标签切换（§5） ---------------- */
+const tabs = {official: $('#tab-official'), personal: $('#tab-personal')};
+function setTab(tab, opts = {}){
+  if(state.searching) exitSearch(false);
+  state.tab = tab;
+  Object.entries(tabs).forEach(([k, el]) => el.setAttribute('aria-selected', String(k===tab)));
+  const showEl = tab === 'official' ? viewOfficial : viewPersonal;
+  const hideEl = tab === 'official' ? viewPersonal : viewOfficial;
+  hideEl.hidden = true;
+  showEl.hidden = false;
+  if(!isReduced()){
+    showEl.classList.remove('view-enter');
+    void showEl.offsetWidth;
+    showEl.classList.add('view-enter');
+  }
+  searchInput.placeholder = tab === 'official' ? PH_OFFICIAL : PH_PERSONAL;
+  if(opts.focus !== false){
+    const f = showEl.querySelector(tab==='official' ? '.chip' : '.pbtn');
+    if(f) f.focus({preventScroll:true});
+  }
+}
+Object.entries(tabs).forEach(([k, el]) => {
+  el.addEventListener('click', () => setTab(k));
+  el.addEventListener('keydown', e => {
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+      e.preventDefault();
+      setTab(k === 'official' ? 'personal' : 'official');
+    }
+  });
+});
+
+/* ---------------- 整理模式（视觉态，§9.2） ---------------- */
+let organizing = false;
+function setOrganizing(on){
+  organizing = on;
+  viewPersonal.classList.toggle('organizing', on);
+  $('#orgBtnText').textContent = on ? '完成' : '整理分类与网站';
+  $('#orgBtn').setAttribute('aria-pressed', String(on));
+}
+$('#orgBtn').addEventListener('click', () => setOrganizing(!organizing));
+
+/* ---------------- 搜索（§13） ---------------- */
+function scoreItem(it, q){
+  const nq = norm(q);
+  if(!nq) return 0;
+  const nn = norm(it.n);
+  if(nn === nq) return 100;
+  if(nn.includes(nq) || nq.includes(nn)) return 90;
+  for(const a of (it.alias||[])){
+    const na = norm(a);
+    if(!na) continue;
+    if(na === nq) return 85;
+    if(na.includes(nq) || nq.includes(na)) return 75;
+  }
+  if(norm(it.use).includes(nq)) return 60;
+  if(norm(it.aud).includes(nq)) return 40;
+  return 0;
+}
+function srRow(html){ return html; }
+function runSearch(q){
+  if(!state.searching){
+    state.searching = true;
+    state.savedScroll = document.scrollingElement.scrollTop;
+    viewOfficial.hidden = true;
+    viewPersonal.hidden = true;
+    viewSearch.hidden = false;
+  }
+  const res = [];
+  if(state.tab === 'official'){
+    APPS.forEach(a => { const s = scoreItem(a, q); if(s) res.push({s, it:a, region:'我的应用'}); });
+    ITEMS.forEach(a => { const s = scoreItem(a, q); if(s) res.push({s, it:a, region:'学生服务台'}); });
+  }else{
+    Object.entries(CATS).forEach(([cid, cat]) => {
+      const cs = scoreItem({n:cat.name, use:'', aud:'', alias:[]}, q);
+      if(cs) res.push({s:cs-5, cat:cid, region:'我的分类'});
+      cat.sites.forEach(([name, r]) => {
+        const ss = scoreItem({n:name, use:'', aud:'', alias:[]}, q);
+        if(ss) res.push({s:ss, site:{name, r, cat:cid}, region:'我的分类'});
+      });
+    });
+  }
+  res.sort((a,b) => b.s - a.s);
+  $('#searchMeta').textContent = res.length ? `「${q}」· ${res.length} 个结果（Esc 返回）` : '';
+  const box = $('#searchResults');
+  if(!res.length){
+    box.innerHTML = `<div class="empty-line">没有找到「${esc(q)}」· 试试 myPortal 搜索 →</div>`;
+    return;
+  }
+  box.innerHTML = res.slice(0,10).map(r => {
+    if(r.cat){
+      const cat = CATS[r.cat];
+      return srRow(`<div class="row" role="button" tabindex="0" data-cat="${r.cat}">
+        <span class="row-icon" aria-hidden="true">${esc(cat.name.slice(0,1))}</span>
+        <span class="row-main"><div class="row-name">${esc(cat.name)}</div>
+        <div class="row-sub">分类 · ${cat.sites.length} 个网站</div></span>
+        <span class="sr-region">我的分类</span></div>`);
+    }
+    if(r.site){
+      return srRow(`<div class="row" role="button" tabindex="0">
+        <span class="row-icon" aria-hidden="true">${esc(r.site.name.slice(0,1))}</span>
+        <span class="row-main"><div class="row-name">${esc(r.site.name)}</div>
+        <div class="row-sub">${esc(CATS[r.site.cat].name)}</div></span>
+        <span class="sr-region">我的分类</span>${routeBadge(r.site.r)}</div>`);
+    }
+    return srRow(`<div class="row" role="button" tabindex="0">
+      <span class="row-icon" aria-hidden="true">${esc(r.it.c || r.it.n.slice(0,1))}</span>
+      <span class="row-main"><div class="row-name">${esc(r.it.n)}</div>
+      <div class="row-sub">${esc(r.it.use)}</div></span>
+      <span class="sr-aud">${esc(r.it.aud)}</span>
+      <span class="sr-region">${r.region}</span>${routeBadge(r.it.r)}</div>`);
+  }).join('');
+}
+function exitSearch(restoreView = true){
+  if(!state.searching) return;
+  state.searching = false;
+  searchInput.value = '';
+  viewSearch.hidden = true;
+  (state.tab === 'official' ? viewOfficial : viewPersonal).hidden = false;
+  if(restoreView) document.scrollingElement.scrollTop = state.savedScroll;
+}
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  if(!q){ exitSearch(); return; }
+  runSearch(q);
+});
+searchInput.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){ e.preventDefault(); exitSearch(); searchInput.blur(); }
+});
+$('#searchResults').addEventListener('click', e => {
+  const row = e.target.closest('[data-cat]');
+  if(row){
+    const cid = row.dataset.cat;
+    exitSearch();
+    const deckId = Object.keys(deckState).find(id => deckState[id].order.includes(cid));
+    if(deckId){
+      drawCard(deckId, cid);
+      const slot = deckState[deckId].slotEl;
+      slot.classList.add('hl');
+      setTimeout(() => slot.classList.remove('hl'), 1200);
+    }
+  }
+});
+document.addEventListener('keydown', e => {
+  if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'){
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+  }else if(e.key === 'Escape' && !state.searching && organizing){
+    setOrganizing(false);
+    $('#orgBtn').focus({preventScroll:true});
+  }
+});
+
+/* ---------------- 我的日程（§14） ---------------- */
+function weekEvents(){
+  const mon = mondayOf(state.weekOffset);
+  return EV_DEF.map(ev => {
+    const d = new Date(mon); d.setDate(d.getDate() + ev.d);
+    return {...ev, date: d};
+  });
+}
+function todayEvents(){
+  if(state.weekOffset !== 0) return [];
+  return weekEvents().filter(ev => ev.d === todayDow()).sort((a,b) => a.s - b.s);
+}
+function renderSchedule(){
+  const body = $('#bodySchedule');
+  const st = state.mod.schedule;
+  const expanded = state.expanded === 'schedule';
+  $('#modSchedule').classList.toggle('expanded', expanded);
+  const head = `<div class="module-head"><h2>我的日程</h2>
+    <div class="acts">${st==='ok' ? `<button class="act" data-act="toggle">${expanded?'收起':'展开'}</button>` : ''}</div></div>`;
+  if(st === 'loading'){
+    body.innerHTML = head + `<div class="sk w60"></div><div class="sk w80"></div><div class="sk w40"></div>`;
+    return;
+  }
+  if(st === 'empty'){
+    body.innerHTML = head + `<div class="empty-note">今天没有日程</div>`;
+    return;
+  }
+  if(st === 'error'){
+    body.innerHTML = head + `<div class="module-error"><span>日程加载失败</span><button type="button" data-act="retry">重试</button></div>`;
+    return;
+  }
+  const evs = todayEvents();
+  const summary = evs.length
+    ? `<div class="m-sub">今天 <b>${evs.length}</b> 项</div>` +
+      evs.slice(0,3).map(ev =>
+        `<div class="sched-item"><time>${fmtTime(ev.s)}–${fmtTime(ev.e)}</time><span>${esc(ev.t)}</span></div>`).join('')
+    : `<div class="empty-note">今天没有日程</div>`;
+  body.innerHTML = head + (expanded ? weekHtml() : summary + '<div class="week"></div>');
+  if(expanded) requestAnimationFrame(() => { const w = body.querySelector('.week'); if(w) w.style.maxHeight = '620px'; });
+}
+function weekHtml(){
+  const mon = mondayOf(state.weekOffset);
+  const sun = new Date(mon); sun.setDate(sun.getDate()+6);
+  const evs = weekEvents();
+  const H0 = 8*60, H1 = 20*60, SPAN = H1-H0;
+  const dayNames = ['周一','周二','周三','周四','周五','周六','周日'];
+  const isCurWeek = state.weekOffset === 0;
+  const tDow = todayDow();
+  let hours = '';
+  for(let h = 8; h <= 20; h += 2){
+    const pct = (h*60-H0)/SPAN*100;
+    const tf = h === 8 ? 'none' : (h === 20 ? 'translateX(-100%)' : 'translateX(-50%)');
+    hours += `<span style="left:${pct.toFixed(2)}%;transform:${tf}">${pad2(h)}:00</span>`;
+  }
+  let rows = '';
+  for(let d = 0; d < 7; d++){
+    const todayCls = (isCurWeek && d === tDow) ? ' today' : '';
+    rows += `<div class="wk-day${todayCls}" style="grid-row:${d+2}">${dayNames[d]}</div>`;
+    rows += `<div class="wk-track${todayCls}" style="grid-row:${d+2}">` +
+      evs.filter(ev => ev.d === d).map(ev =>
+        `<div class="ev ${ev.k}" role="button" tabindex="0" title="${esc(ev.t)} ${fmtTime(ev.s)}–${fmtTime(ev.e)}"
+           style="left:${((ev.s-H0)/SPAN*100).toFixed(2)}%;width:${((ev.e-ev.s)/SPAN*100).toFixed(2)}%">${esc(ev.t)}</div>`).join('') +
+      `</div>`;
+  }
+  let nowLine = '';
+  if(isCurWeek){
+    const now = new Date();
+    const mins = now.getHours()*60 + now.getMinutes();
+    if(mins >= H0 && mins <= H1){
+      nowLine = `<div class="now-wrap"><div class="now-line" style="left:${((mins-H0)/SPAN*100).toFixed(2)}%"></div></div>`;
+    }
+  }
+  return `<div class="week" role="region" aria-label="周日程视图">
+    <div class="week-toolbar">
+      <button class="wbtn" data-act="prev" aria-label="上一周"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+      <span class="wrange">${fmtDate(mon)} — ${fmtDate(sun)}</span>
+      <button class="wbtn" data-act="next" aria-label="下一周"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      <button class="wbtn today" data-act="today" ${isCurWeek?'disabled style="opacity:.4"':''}>今天</button>
+    </div>
+    <div class="week-scroll">
+      <div class="week-inner">
+        <div class="wk-corner"></div>
+        <div class="wk-hours">${hours}</div>
+        ${rows}
+        ${nowLine}
+      </div>
+    </div>
+  </div>`;
+}
+$('#modSchedule').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  const act = btn.dataset.act;
+  if(act === 'toggle'){
+    state.expanded = state.expanded === 'schedule' ? null : 'schedule';
+    renderSchedule(); renderLoans();
+  }else if(act === 'prev'){ state.weekOffset--; renderSchedule(); }
+  else if(act === 'next'){ state.weekOffset++; renderSchedule(); }
+  else if(act === 'today'){ state.weekOffset = 0; renderSchedule(); }
+  else if(act === 'retry'){ state.mod.schedule = 'ok'; $('#debugbar select[data-mod="schedule"]').value = 'ok'; renderSchedule(); }
+});
+
+/* ---------------- 图书借阅（§15） ---------------- */
+function loansData(){
+  const t = new Date(); t.setHours(0,0,0,0);
+  const add = n => { const d = new Date(t); d.setDate(d.getDate()+n); return d; };
+  return [
+    {t:'Deep Learning',          by:'Ian Goodfellow',     borrow:add(-25), due:add(3),  renewable:false},
+    {t:'统计学习方法（第 2 版）', by:'李航',               borrow:add(-18), due:add(17), renewable:true},
+    {t:'Clean Architecture',     by:'Robert C. Martin',   borrow:add(-11), due:add(24), renewable:true},
+    {t:'人类简史：从动物到上帝', by:'尤瓦尔·赫拉利',       borrow:add(-4),  due:add(31), renewable:true},
+  ];
+}
+function loanStatus(due){
+  const t = new Date(); t.setHours(0,0,0,0);
+  const days = Math.round((due - t) / 86400000);
+  if(days < 0)  return {cls:'over', txt:'已逾期',      meta:`逾期 ${-days} 天`};
+  if(days <= 3) return {cls:'soon', txt:'临期',        meta:`${days} 天后到期`};
+  return {cls:'ok', txt:'正常', meta:`${days} 天后到期`};
+}
+function renderLoans(){
+  const body = $('#bodyLoans');
+  const st = state.mod.loans;
+  const expanded = state.expanded === 'loans';
+  $('#modLoans').classList.toggle('expanded', expanded);
+  const head = `<div class="module-head"><h2>图书借阅</h2>
+    <div class="acts">${st==='ok' ? `<button class="act" data-act="toggle">${expanded?'收起':'查看详情'}</button>` : ''}</div></div>`;
+  if(st === 'loading'){
+    body.innerHTML = head + `<div class="sk w40"></div><div class="sk w80"></div>`;
+    return;
+  }
+  if(st === 'empty'){
+    body.innerHTML = head + `<div class="empty-note">没有在借图书</div>`;
+    return;
+  }
+  if(st === 'error'){
+    body.innerHTML = head + `<div class="module-error"><span>借阅信息加载失败</span><button type="button" data-act="retry">重试</button></div>`;
+    return;
+  }
+  const loans = loansData();
+  const soonCount = loans.filter(l => loanStatus(l.due).cls === 'soon').length;
+  const first = loans.slice().sort((a,b) => a.due - b.due)[0];
+  let html = head +
+    `<div class="m-sub">在借 <b>${loans.length}</b> 本${soonCount ? ` · <span class="warn-t">${soonCount} 本 3 天内到期</span>` : ''}</div>
+     <div class="loan-first"><span>${esc(first.t)}</span><span class="warn-t">${fmtDate(first.due)}到期</span></div>`;
+  if(expanded){
+    html += `<div class="loan-list">` + loans.map(l => {
+      const s = loanStatus(l.due);
+      return `<div class="loan-item">
+        <div class="loan-top"><span class="lt-title">${esc(l.t)}</span><span class="st ${s.cls}">${s.txt}</span></div>
+        <div class="loan-meta">
+          <span>${esc(l.by)}</span><span>借出 ${fmtDate(l.borrow)}</span>
+          <span>${fmtDate(l.due)} 到期（${s.meta}）</span><span>${l.renewable ? '可续借' : '不可续借（已被预约）'}</span>
+        </div>
+      </div>`;
+    }).join('') + `</div>
+    <button class="loan-entry" type="button">进入图书馆账户<svg class="ic" style="width:14px;height:14px"><use href="#i-ext"/></svg></button>`;
+  }
+  body.innerHTML = html;
+}
+$('#modLoans').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  if(btn.dataset.act === 'toggle'){
+    state.expanded = state.expanded === 'loans' ? null : 'loans';
+    renderSchedule(); renderLoans();
+  }else if(btn.dataset.act === 'retry'){
+    state.mod.loans = 'ok'; $('#debugbar select[data-mod="loans"]').value = 'ok'; renderLoans();
+  }
+});
+
+/* ---------------- 校园资讯（§16） ---------------- */
+function renderNews(){
+  const body = $('#bodyNews');
+  const st = state.mod.news;
+  const head = `<div class="module-head"><h2>校园资讯</h2>
+    <div class="acts">${st==='ok' ? '<button class="act" type="button">查看更多</button>' : ''}</div></div>`;
+  if(st === 'loading'){
+    body.innerHTML = head + `<div class="sk w80"></div><div class="sk w60"></div><div class="sk w40"></div>`;
+    return;
+  }
+  if(st === 'empty'){
+    body.innerHTML = head + `<div class="empty-note">暂无新资讯 · 查看官方资讯 →</div>`;
+    return;
+  }
+  if(st === 'error'){
+    body.innerHTML = head + `<div class="module-error"><span>资讯加载失败</span><button type="button" data-act="retry">重试</button></div>`;
+    return;
+  }
+  const t = new Date();
+  body.innerHTML = head + NEWS.slice(0,3).map(n => {
+    const d = new Date(t); d.setDate(d.getDate() - n.ago);
+    return `<div class="news-item" role="button" tabindex="0">
+      <span class="news-dot ${n.unread?'':'read'}" ${n.unread?'role="img" aria-label="未读"':'aria-hidden="true"'}></span>
+      <span class="news-t">${esc(n.t)}</span>
+      <span class="news-d">${fmtDate(d)}</span>
+    </div>`;
+  }).join('');
+}
+$('#modNews').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act="retry"]');
+  if(btn){ state.mod.news = 'ok'; $('#debugbar select[data-mod="news"]').value = 'ok'; renderNews(); }
+});
+
+/* ---------------- 原型调试工具条 ---------------- */
+document.querySelectorAll('#debugbar [data-vp]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const w = btn.dataset.vp;
+    stage.style.maxWidth = w ? w + 'px' : '100%';
+    document.querySelectorAll('#debugbar [data-vp]').forEach(b =>
+      b.setAttribute('aria-pressed', String(b === btn)));
+    setTimeout(layoutDecks, 60);
+  });
+});
+$('#rmToggle').addEventListener('click', () => {
+  state.rm = !state.rm;
+  document.documentElement.classList.toggle('rm', state.rm);
+  $('#rmToggle').setAttribute('aria-pressed', String(state.rm));
+});
+document.querySelectorAll('#debugbar select[data-mod]').forEach(sel => {
+  sel.addEventListener('change', () => {
+    state.mod[sel.dataset.mod] = sel.value;
+    ({schedule: renderSchedule, loans: renderLoans, news: renderNews})[sel.dataset.mod]();
+  });
+});
+
+/* ---------------- 初始化 ---------------- */
+renderApps();
+renderDesk();
+renderDecks();
+renderSchedule();
+renderLoans();
+renderNews();
+requestAnimationFrame(layoutDecks);
+</script>
+</body>
+</html>

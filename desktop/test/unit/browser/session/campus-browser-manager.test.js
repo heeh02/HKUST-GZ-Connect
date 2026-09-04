@@ -70,6 +70,7 @@ function fixture(overrides = {}) {
     getWorkspaceGroups: () => [],
     onOpenResource: async () => ({ ok: true }),
     onWorkspaceMutation: async () => ({ ok: true }),
+    getSharedPortalCredential: () => null,
     showItemInFolder: () => {},
     showRoutingRules: () => {},
     showSettings: () => {},
@@ -98,6 +99,7 @@ test('manager creates one browser with Engine-neutral injected policies', async 
   assert.equal(browser.options.getWorkspaceResources()[0].id, 'library');
   assert.equal(browser.options.getNewTabUrl(), 'https://www.bing.com/');
   assert.equal(typeof browser.options.onOpenSettings, 'function');
+  assert.equal(typeof browser.options.getSharedPortalCredential, 'function');
   assert.equal(Object.hasOwn(browser.options, 'gatewayToken'), false);
   assert.deepEqual(await browser.options.workspaceController.onCommand({ command: 'focus-address' }), { ok: true });
   assert.equal(browser.addressFocused, true);
@@ -183,6 +185,21 @@ test('a reviewed Profile opens its Main-resolved official portal as the browser 
   assert.deepEqual(f.manager.browser.opens, [['https://portal.example.edu/', 6180, 'campus']]);
   assert.equal(f.manager.browser.options.getWorkspaceResources()[0].url,
     'https://library.example.edu/');
+});
+
+test('portal session routing hints stay Main-owned and are cleared at a context switch', async () => {
+  const f = fixture({ homeUrl: 'https://portal.example.edu/' });
+  const browser = f.manager.getOrCreate();
+  assert.equal(browser.options.onPortalSessionUrl(
+    'https://portal.example.edu/?tt=short-lived-routing-nonce',
+  ), true);
+  assert.equal(browser.options.onPortalSessionUrl('https://portal.example.edu/'), true);
+  assert.equal(f.manager.portalSessionUrl('https://portal.example.edu/'),
+    'https://portal.example.edu/?tt=short-lived-routing-nonce');
+  assert.equal(browser.options.onPortalSessionUrl('https://evil.example/'), false);
+  assert.equal(f.manager.portalSessionUrl('https://other.example.edu/'), null);
+  assert.equal(await f.manager.closeForContextSwitch(), true);
+  assert.equal(f.manager.portalSessionUrl('https://portal.example.edu/'), null);
 });
 
 test('bookmark organization opens the local Workspace without loading the portal first', async () => {

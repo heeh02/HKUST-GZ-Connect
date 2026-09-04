@@ -70,6 +70,7 @@ function createSchoolProfileControllerFromCandidate({ directory, profileId, ...o
   const context = {
     profile,
     builtinResources: record.builtInResources || Object.freeze([]),
+    serviceDesk: record.serviceDesk || null,
     gatewayHost: profile.gateway.origin.hostname.replace(/^\[|\]$/gu, ''),
     gatewayPort: profile.gateway.origin.port,
     engineConfigPath: record.engineConfig.path,
@@ -198,6 +199,7 @@ function createController(context, options) {
     healthTargets: profile.browser.healthTargets,
     browserPartition: context.browserPartition,
     builtInResourceCount: builtInResources.length,
+    serviceDesk: context.serviceDesk || null,
     activeContextBinding: () => Object.freeze({
       profileId: profile.profileId,
       profileRevision: profile.profileRevision,

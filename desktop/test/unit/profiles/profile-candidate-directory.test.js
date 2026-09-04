@@ -265,6 +265,9 @@ test('reviewed anchor and custom index form one restart-safe candidate directory
   });
   assert.equal(reviewedController.browserPartition, 'persist:hkustgz-campus-browser');
   assert.equal(reviewedController.builtInResourceCount > 0, true);
+  assert.equal(reviewedController.serviceDesk.applications.length >= 12, true);
+  assert.equal(reviewedController.serviceDesk.serviceItems.length >= 12, true);
+  assert.equal(customController.serviceDesk, null);
 
   const restarted = directory(userData);
   assert.deepEqual(restarted.listViews({ locale: 'en' }).map((view) => view.profileId),
