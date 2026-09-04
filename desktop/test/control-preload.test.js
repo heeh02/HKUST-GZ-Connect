@@ -72,6 +72,16 @@ test('raw account identity is available only through an explicit login-flow IPC'
   }]);
 });
 
+test('memory-only VPN credential ownership is never exposed to Renderer', () => {
+  const { api } = loadPreload();
+  for (const forbidden of [
+    'stageOneShotCredential', 'takeOneShotCredential', 'clearOneShotCredential',
+    'getOneShotCredential',
+  ]) {
+    assert.equal(typeof api[forbidden], 'undefined');
+  }
+});
+
 test('browser-data clearing is a value-free workspace operation', async () => {
   const { api, invocations } = loadPreload();
   await api.clearBrowserData();

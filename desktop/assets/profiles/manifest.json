@@ -6,7 +6,7 @@
       "default": true,
       "document": {
         "path": "assets/profiles/hkustgz/school-profile.json",
-        "sha256": "17b15b4b6e7f2e03b7bb733f21c53714b2f7c7f3924d07905fd4518f5dd6397d"
+        "sha256": "ec6f3c18ca72bb5cfa383c5ed05c33df57c2f0c52dc82299d0c5d111cb1900d8"
       },
       "assets": [
         {
@@ -25,7 +25,7 @@
           "key": "hkustgz-builtin-resources",
           "kind": "builtin-resources",
           "path": "assets/profiles/hkustgz/builtin-resources.json",
-          "sha256": "b1af84b84d0d5012aad0033c2de969240dbf7a50cef715d5208195d08acb63b7"
+          "sha256": "e13ff334ce2376bc9f0d1980f767aced87d7ed76cd0fc6ed449283b752027dd7"
         }
       ]
     }

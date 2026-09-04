@@ -47,7 +47,7 @@ fields to the NDJSON event schema.
 {"type":"state_changed","state":"connecting","generation":7}
 {"type":"state_changed","state":"authenticating","generation":7}
 {"type":"state_changed","state":"preparing_tunnel","generation":7}
-{"type":"client_ip_assigned","family":4}
+{"type":"client_ip_assigned","family":4,"address":"10.20.30.40"}
 {"type":"dns_mode","mode":"gateway"}
 {"type":"listener_ready","port":6180}
 {"type":"state_changed","state":"connected","generation":7}

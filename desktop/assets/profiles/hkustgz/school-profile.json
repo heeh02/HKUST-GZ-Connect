@@ -18,7 +18,8 @@
     "engineConfigRef": "hkustgz-engine-config"
   },
   "browser": {
-    "homeUrl": "https://www.hkust-gz.edu.cn/",
+    "homeUrl": "https://myportal.hkust-gz.edu.cn/",
+    "officialPortalResourceId": "official-portal",
     "campusDomains": [
       "hkust-gz.edu.cn",
       "hkust.edu.hk"
@@ -29,8 +30,13 @@
       "microsoftonline-p.com",
       "msauth.net",
       "msftauth.net",
+      "cloud.microsoft",
       "office.com",
       "office.net",
+      "sharepoint.com",
+      "teams.microsoft.com",
+      "sso.hkust-gz.edu.cn",
+      "gzcas.hkust-gz.edu.cn",
       "hkust-gz.instructure.com",
       "instructure.com",
       "instructuremedia.com"

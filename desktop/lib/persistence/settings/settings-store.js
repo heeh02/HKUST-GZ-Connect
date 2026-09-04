@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const net = require('node:net');
 const path = require('path');
 const { ensureOwnerOnly, readPrivateFileBounded } = require('../../platform/storage/private-file');
 const { DEFAULT_ROUTE_DOMAINS, normalizeRouteDomains } = require('../../routing/pac/pac');
@@ -15,6 +16,8 @@ const COMPATIBILITY_DEFAULT_PROXY_SECURITY_VERSION = 2;
 const BROKEN_STRICT_MIGRATION_VERSION = 1;
 const MAX_SETTINGS_DOCUMENT_BYTES = 512 * 1024;
 const MAX_HIDDEN_BUILTIN_RESOURCES = 64;
+const DEFAULT_BROWSER_NEW_TAB_URL = 'https://www.bing.com/';
+const MAX_BROWSER_NEW_TAB_URL_LENGTH = 2048;
 let temporarySequence = 0;
 
 const DEFAULTS = Object.freeze({
@@ -33,6 +36,8 @@ const DEFAULTS = Object.freeze({
   proxyAuthMigrationPending: false,
   closeAction: 'ask',
   language: 'auto',
+  browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL,
+  underlaySourceAddress: '',
   updateCheckedAt: 0,
   routeDomains: DEFAULT_ROUTE_DOMAINS,
   customResources: [],
@@ -50,6 +55,28 @@ function normalizeHiddenBuiltinResourceIds(input) {
 
 function isValidPort(port) {
   return Number.isInteger(port) && port >= 1025 && port <= 65535;
+}
+
+function parseBrowserNewTabUrl(value) {
+  const input = typeof value === 'string' ? value.trim() : '';
+  if (!input) return DEFAULT_BROWSER_NEW_TAB_URL;
+  if (input === 'about:blank') return input;
+  if (input.length > MAX_BROWSER_NEW_TAB_URL_LENGTH) {
+    throw new TypeError('新标签页地址过长');
+  }
+  let parsed;
+  try { parsed = new URL(/^[a-z][a-z0-9+.-]*:/iu.test(input) ? input : `https://${input}`); }
+  catch { throw new TypeError('新标签页地址无效'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+      parsed.username || parsed.password) {
+    throw new TypeError('新标签页地址必须是 HTTP(S) 网页或 about:blank');
+  }
+  return parsed.href;
+}
+
+function normalizeBrowserNewTabUrl(value) {
+  try { return parseBrowserNewTabUrl(value); }
+  catch { return DEFAULT_BROWSER_NEW_TAB_URL; }
 }
 
 function normalizeStrictProxyAuth(saved = {}) {
@@ -106,6 +133,9 @@ function normalizeSettings(saved = {}, { defaultRouteDomains = DEFAULT_ROUTE_DOM
     language: ['auto', 'zh', 'en'].includes(saved.language)
       ? saved.language
       : DEFAULTS.language,
+    browserNewTabUrl: normalizeBrowserNewTabUrl(saved.browserNewTabUrl),
+    underlaySourceAddress: typeof saved.underlaySourceAddress === 'string' &&
+      net.isIP(saved.underlaySourceAddress) ? saved.underlaySourceAddress : '',
     updateCheckedAt: Number.isFinite(Number(saved.updateCheckedAt)) && Number(saved.updateCheckedAt) > 0
       ? Number(saved.updateCheckedAt)
       : DEFAULTS.updateCheckedAt,
@@ -297,15 +327,18 @@ function saveSettings(file, settings, { defaultRouteDomains = DEFAULT_ROUTE_DOMA
 
 module.exports = {
   BACKUP_SUFFIX,
+  DEFAULT_BROWSER_NEW_TAB_URL,
   DEFAULTS,
   MAX_SETTINGS_DOCUMENT_BYTES,
   PROXY_SECURITY_VERSION,
   isolateCorruptSettings,
   isValidPort,
   loadSettings,
+  normalizeBrowserNewTabUrl,
   normalizeSettings,
   normalizeProxyAuthMigrationPending,
   normalizeHiddenBuiltinResourceIds,
   normalizeStrictProxyAuth,
+  parseBrowserNewTabUrl,
   saveSettings,
 };

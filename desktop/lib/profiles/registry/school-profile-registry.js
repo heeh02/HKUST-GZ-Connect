@@ -374,6 +374,11 @@ class SchoolProfileRegistry {
         throw new Error(`profile builtin resource reference is not declared: ${entry.profileId}`);
       }
       const builtinResources = parseBuiltinResourceDocument(resourceAsset.data);
+      if (profile.browser.officialPortalResourceId && !builtinResources.some(
+        ({ id }) => id === profile.browser.officialPortalResourceId,
+      )) {
+        throw new Error(`profile official portal resource is not declared: ${entry.profileId}`);
+      }
       if (assets.size !== 3) {
         throw new Error(`profile contains an unbound packaged asset: ${entry.profileId}`);
       }

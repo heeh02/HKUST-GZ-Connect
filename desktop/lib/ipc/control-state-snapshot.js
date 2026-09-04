@@ -12,6 +12,30 @@ function maskedAccountLabel(value) {
   return `${visible}${'*'.repeat(Math.max(3, Math.min(8, text.length - visible.length)))}`;
 }
 
+function projectResourceGroups(value) {
+  if (!Array.isArray(value) || value.length > 16) return Object.freeze([]);
+  const seen = new Set();
+  const groups = [];
+  for (const group of value) {
+    if (!group || typeof group !== 'object' || Array.isArray(group) ||
+        typeof group.id !== 'string' || !/^group_[a-z0-9_-]{12,64}$/u.test(group.id) ||
+        seen.has(group.id) || typeof group.name !== 'string' || !group.name.trim() ||
+        group.name.length > 30 || /[\u0000-\u001f\u007f<>]/u.test(group.name) ||
+        !Array.isArray(group.resourceIds) || group.resourceIds.length > 64 ||
+        new Set(group.resourceIds).size !== group.resourceIds.length ||
+        group.resourceIds.some((id) => typeof id !== 'string' || !/^[a-z0-9-]{1,40}$/u.test(id))) {
+      return Object.freeze([]);
+    }
+    seen.add(group.id);
+    groups.push(Object.freeze({
+      id: group.id,
+      name: group.name.trim(),
+      resourceIds: Object.freeze([...group.resourceIds]),
+    }));
+  }
+  return Object.freeze(groups);
+}
+
 function createControlStateSnapshot({
   getStatus,
   loadSettings,
@@ -23,10 +47,11 @@ function createControlStateSnapshot({
   getVersion,
   getUpdate,
   getResources,
+  getResourceGroups,
   getFallbackResources,
   getProfilePresentation,
   getAuthChallenge,
-  getCapabilitySnapshot,
+  getNetworkEnvironment,
 } = {}) {
   const dependencies = {
     getStatus: requiredFunction(getStatus, 'getStatus'),
@@ -38,14 +63,15 @@ function createControlStateSnapshot({
     getVersion: requiredFunction(getVersion, 'getVersion'),
     getUpdate: requiredFunction(getUpdate, 'getUpdate'),
     getResources: requiredFunction(getResources, 'getResources'),
+    getResourceGroups: requiredFunction(getResourceGroups, 'getResourceGroups'),
     getFallbackResources: requiredFunction(getFallbackResources, 'getFallbackResources'),
     getProfilePresentation: requiredFunction(getProfilePresentation, 'getProfilePresentation'),
     getAuthChallenge: requiredFunction(getAuthChallenge, 'getAuthChallenge'),
-    getCapabilitySnapshot: requiredFunction(getCapabilitySnapshot, 'getCapabilitySnapshot'),
+    getNetworkEnvironment: requiredFunction(getNetworkEnvironment, 'getNetworkEnvironment'),
   };
   if (typeof platform !== 'string' || !platform) throw new TypeError('platform is required');
 
-  const common = () => ({
+  const common = async () => ({
     ...dependencies.getStatus(),
     pacUrl: dependencies.getPacUrl(),
     locale: dependencies.getLocale(),
@@ -53,21 +79,22 @@ function createControlStateSnapshot({
     version: dependencies.getVersion(),
     update: dependencies.getUpdate(),
     authChallenge: dependencies.getAuthChallenge(),
-    capabilitySnapshot: dependencies.getCapabilitySnapshot(),
+    networkEnvironment: await dependencies.getNetworkEnvironment(),
   });
 
-  return function controlStateSnapshot() {
+  return async function controlStateSnapshot() {
     let settings;
     try {
       settings = dependencies.loadSettings();
     } catch {
       const resources = dependencies.getFallbackResources();
       return {
-        ...common(),
+        ...await common(),
         settings: null,
         hasPassword: false,
         loggedIn: false,
         campusResources: resources,
+        resourceGroups: [],
         ...dependencies.getProfilePresentation({ locale: dependencies.getLocale() }),
       };
     }
@@ -80,11 +107,12 @@ function createControlStateSnapshot({
     const favoriteCount = resources.filter(({ favorite }) => favorite === true).length;
     const recentCount = resources.filter(({ lastOpenedAt }) => Number.isSafeInteger(lastOpenedAt)).length;
     return {
-      ...common(),
+      ...await common(),
       settings: publicSettings,
       hasPassword: passwordPresent,
       loggedIn: passwordPresent && dependencies.hasAccountIdentity(settings),
       campusResources: resources,
+      resourceGroups: projectResourceGroups(dependencies.getResourceGroups()),
       ...dependencies.getProfilePresentation({
         locale: dependencies.getLocale(),
         hasCredential: passwordPresent,
@@ -96,4 +124,4 @@ function createControlStateSnapshot({
   };
 }
 
-module.exports = { createControlStateSnapshot, maskedAccountLabel };
+module.exports = { createControlStateSnapshot, maskedAccountLabel, projectResourceGroups };

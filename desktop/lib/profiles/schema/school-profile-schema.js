@@ -252,10 +252,18 @@ function normalizeGateway(value) {
 
 function normalizeBrowser(value) {
   const browser = exactKeys(value,
-    ['homeUrl', 'campusDomains', 'directPartnerDomains', 'builtinResourcesRef', 'healthTargets'],
+    ['homeUrl', 'officialPortalResourceId', 'campusDomains', 'directPartnerDomains',
+      'builtinResourcesRef', 'healthTargets'],
     ['campusDomains', 'directPartnerDomains', 'healthTargets'], 'browser');
+  const officialPortalResourceId = browser.officialPortalResourceId == null
+    ? null
+    : boundedText(browser.officialPortalResourceId, 40, 'officialPortalResourceId');
+  if (officialPortalResourceId !== null && !SAFE_ID.test(officialPortalResourceId)) {
+    throw new TypeError('officialPortalResourceId is invalid');
+  }
   return Object.freeze({
     homeUrl: normalizeHttpsUrl(browser.homeUrl, 'homeUrl'),
+    officialPortalResourceId,
     campusDomains: normalizeDomains(browser.campusDomains, 'campusDomains'),
     directPartnerDomains: normalizeDomains(browser.directPartnerDomains, 'directPartnerDomains'),
     builtinResourcesRef: browser.builtinResourcesRef == null
@@ -321,7 +329,8 @@ function validateSchoolProfileDocument(value) {
   if (normalized.evidenceClass === 'custom-local' && (
     normalized.gateway.engineConfigRef || normalized.branding.bundledAssetKey ||
     normalized.policy.reviewedPrivateGatewayAllowed || normalized.policy.reviewedDnsFallback.length ||
-    normalized.browser.homeUrl || normalized.browser.campusDomains.length ||
+    normalized.browser.homeUrl || normalized.browser.officialPortalResourceId ||
+    normalized.browser.campusDomains.length ||
     normalized.browser.directPartnerDomains.length || normalized.browser.builtinResourcesRef ||
     normalized.browser.healthTargets.length)) {
     throw new TypeError('custom-local profiles must start with minimal unreviewed policy');
@@ -347,6 +356,7 @@ function createSchoolProfileView(value, { locale = 'en', compatibility = 'unknow
     shortName: profile.branding.shortName,
     bundledAssetKey: profile.branding.bundledAssetKey,
     normalizedGatewayOrigin: profile.gateway.origin.origin,
+    officialPortalResourceId: profile.browser.officialPortalResourceId,
     sanitizedCompatibility: compatibility,
     unverified: profile.evidenceClass === 'custom-local',
   });

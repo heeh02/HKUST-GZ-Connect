@@ -3,7 +3,7 @@
 const { ROUTE_CAMPUS, ROUTE_DIRECT, routeForUrl } = require('../../routing/policy/campus-route');
 const { isIsolatedNetworkHost } = require('../../routing/policy/host-safety');
 
-const MAX_BUILTIN_RESOURCES = 32;
+const MAX_BUILTIN_RESOURCES = 64;
 const MAX_CUSTOM_RESOURCES = 32;
 // P1 retains the 1.x visible shelf limit. Builtin and custom source documents
 // remain independently lossless up to their own limits; projection decides
@@ -19,11 +19,32 @@ const MAX_RESOURCE_KEYWORD_LENGTH = 40;
 const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|id_token|relaystate|samlresponse|session|state|ticket|token)$/iu;
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
+const ROUTE_PREFERENCES = Object.freeze(['auto', ROUTE_CAMPUS, ROUTE_DIRECT]);
 const RESOURCE_CATEGORIES = Object.freeze([
+  'gateway',
+  'newcomer',
+  'courses',
+  'research',
+  'labs',
+  'student-finance',
+  'expenses',
+  'career',
+  'campus-life',
+  'documents',
+  'tools',
+  'staff',
+  'custom',
+  // Transitional categories produced by the first 2.0.1 taxonomy draft.
+  'getting-started',
+  'learning',
+  'finance',
+  'applications',
+  'services',
+  // Compatibility aliases retained for reviewed Profiles produced before the
+  // student-task taxonomy was introduced.
   'common',
   'academic',
   'campus-service',
-  'custom',
 ]);
 const SAFE_RESOURCE_ID = /^[a-z0-9-]+$/u;
 const SAFE_RESOURCE_REF = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u;
@@ -92,14 +113,43 @@ function sanitizeCustomResourceUrl(value, { rejectSensitive = false } = {}) {
   return parsed.href;
 }
 
+function normalizePageFavoriteCandidate(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(value.route)) {
+    throw new TypeError('page favorite candidate is invalid');
+  }
+  let url;
+  try {
+    const parsed = new URL(String(value.url || '').trim());
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname ||
+        parsed.username || parsed.password) throw new TypeError('unsafe URL');
+    parsed.search = '';
+    parsed.hash = '';
+    url = sanitizeCustomResourceUrl(parsed.href);
+  } catch {
+    throw new TypeError('page favorite URL must use HTTP or HTTPS');
+  }
+  const rawTitle = String(value.title || '').replace(/[\u0000-\u001f\u007f<>]/gu, ' ')
+    .trim().replace(/\s+/gu, ' ');
+  const title = rawTitle
+    ? [...rawTitle].slice(0, MAX_RESOURCE_NAME_LENGTH).join('')
+    : new URL(url).hostname.slice(0, MAX_RESOURCE_NAME_LENGTH);
+  return Object.freeze({ url, title, route: value.route });
+}
+
 function normalizedResource(value, {
   builtin,
   reviewed,
   exact,
   defaultRoute = ROUTE_CAMPUS,
 } = {}) {
+  const allowedKeys = [
+    'id', 'name', 'description', 'localizedName', 'localizedDescription',
+    'url', 'route', 'category', 'keywords',
+  ];
+  if (builtin !== true) allowedKeys.push('favoriteOnly', 'routePreference');
   const source = exact
-    ? exactKeys(value, ['id', 'name', 'description', 'localizedName', 'localizedDescription', 'url', 'route', 'category', 'keywords'],
+    ? exactKeys(value, allowedKeys,
       ['id', 'name', 'description', 'url'], 'WebResource')
     : plainObject(value, 'WebResource');
   const id = boundedText(source.id, MAX_RESOURCE_ID_LENGTH, 'resource id');
@@ -107,6 +157,10 @@ function normalizedResource(value, {
   const route = source.route == null ? defaultRoute : source.route;
   if (route !== ROUTE_CAMPUS && route !== ROUTE_DIRECT) {
     throw new TypeError('resource route is unsupported');
+  }
+  const routePreference = builtin === true ? route : (source.routePreference || route);
+  if (!ROUTE_PREFERENCES.includes(routePreference)) {
+    throw new TypeError('resource route preference is unsupported');
   }
   const category = source.category == null
     ? (builtin === true ? 'common' : 'custom')
@@ -153,7 +207,10 @@ function normalizedResource(value, {
   if (builtin === true && (localizedName.zh !== name || localizedDescription.zh !== description)) {
     throw new TypeError('reviewed resource Chinese compatibility text drifted');
   }
-  return deepFreeze({
+  if (source.favoriteOnly != null && typeof source.favoriteOnly !== 'boolean') {
+    throw new TypeError('resource favorite lifecycle is invalid');
+  }
+  const resource = {
     schemaVersion: WEB_RESOURCE_SCHEMA_VERSION,
     id,
     localizedName,
@@ -167,7 +224,10 @@ function normalizedResource(value, {
     iconKey: null,
     reviewed: reviewed === true,
     builtin: builtin === true,
-  });
+  };
+  if (builtin !== true && source.routePreference === 'auto') resource.routePreference = 'auto';
+  if (builtin !== true && source.favoriteOnly === true) resource.favoriteOnly = true;
+  return deepFreeze(resource);
 }
 
 function validateUniqueResources(resources, name) {
@@ -302,6 +362,8 @@ function normalizeResource(value) {
     route,
     category: value.category,
     keywords: value.keywords,
+    favoriteOnly: value.favoriteOnly,
+    routePreference: value.routePreference,
   }, route);
 }
 
@@ -336,6 +398,7 @@ module.exports = {
   MAX_MERGED_RESOURCES,
   MAX_RESOURCE_DESCRIPTION_LENGTH,
   MAX_RESOURCE_DOCUMENT_BYTES,
+  ROUTE_PREFERENCES,
   MAX_RESOURCE_ID_LENGTH,
   MAX_RESOURCE_NAME_LENGTH,
   MAX_RESOURCE_URL_LENGTH,
@@ -345,6 +408,7 @@ module.exports = {
   WEB_RESOURCE_SCHEMA_VERSION,
   normalizeCustomResources,
   normalizeLegacyCustomResource,
+  normalizePageFavoriteCandidate,
   normalizeResource,
   sanitizeCustomResourceUrl,
   parseBuiltinResourceDocument,

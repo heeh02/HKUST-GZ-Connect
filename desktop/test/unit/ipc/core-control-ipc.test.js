@@ -18,6 +18,7 @@ function fixture() {
   registerCoreControlIpc({
     register: (channel, handler) => handlers.set(channel, handler),
     getState: operation('state'),
+    getNetworkEnvironment: operation('network-environment'),
     getLoginAccount: operation('login-account'),
     connect: operation('connect'),
     disconnect: operation('disconnect'),
@@ -26,6 +27,7 @@ function fixture() {
     openLog: operation('open-log'),
     copyText: operation('copy'),
     openCampusBrowser: operation('browser'),
+    openBookmarkManager: operation('bookmark-manager'),
     openResource: operation('resource'),
     checkUpdate: operation('update'),
     openExternal: operation('external'),
@@ -37,10 +39,21 @@ function fixture() {
 test('core facade registers the exact narrow control channels', () => {
   const f = fixture();
   assert.deepEqual([...f.handlers.keys()], [
-    'get-state', 'get-login-account', 'connect', 'disconnect', 'reconnect',
-    'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-resource',
+    'get-state', 'get-network-environment', 'get-login-account', 'connect', 'disconnect', 'reconnect',
+    'get-logs', 'open-log', 'copy', 'open-campus-browser', 'open-bookmark-manager', 'open-resource',
     'check-update', 'open-external', 'resize',
   ]);
+});
+
+test('network environment refresh accepts no renderer-selected endpoint or source address', () => {
+  const f = fixture();
+  f.handlers.get('get-network-environment')({});
+  assert.deepEqual(f.calls.find(([name]) => name === 'network-environment'), [
+    'network-environment',
+  ]);
+  assert.throws(() => f.handlers.get('get-network-environment')({}, {
+    sourceAddress: '192.0.2.10', endpoint: 'https://attacker.invalid',
+  }), /takes no arguments/u);
 });
 
 test('WebResource open accepts only one bounded opaque ID', () => {
@@ -57,6 +70,7 @@ test('WebResource open accepts only one bounded opaque ID', () => {
 });
 
 test('Campus Browser URL IPC leaves route authority in Main', () => {
+  assert.deepEqual(campusOpenRequestFromIpc(), { url: '' });
   assert.deepEqual(campusOpenRequestFromIpc({ url: 'https://x.test' }), {
     url: 'https://x.test',
   });
@@ -72,8 +86,10 @@ test('copy, update, external and resize reject malformed renderer values', () =>
   assert.throws(() => f.handlers.get('resize')({}, Number.NaN), /尺寸/);
   f.handlers.get('copy')({}, 'safe');
   f.handlers.get('open-campus-browser')({}, { url: '' });
+  f.handlers.get('open-bookmark-manager')({});
   assert.deepEqual(f.calls.filter(([name]) => name === 'copy' || name === 'browser'), [
     ['copy', 'safe'],
     ['browser', { url: '' }],
   ]);
+  assert.deepEqual(f.calls.find(([name]) => name === 'bookmark-manager'), ['bookmark-manager']);
 });

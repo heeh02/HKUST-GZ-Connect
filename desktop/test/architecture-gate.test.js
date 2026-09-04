@@ -7,12 +7,16 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   BASELINE,
+  JAVASCRIPT_SCOPE,
   architectureErrors,
   architectureSnapshot,
+  destructuredBindingNames,
   domainDependencyErrors,
   dependencyLayerErrors,
   findCycles,
   moduleExportNames,
+  namedFrozenObjectMemberNames,
+  javascriptScope,
   relativeRequires,
   rootLibraryDebtErrors,
   transitiveDependencies,
@@ -42,6 +46,42 @@ test('transitive dependency and barrel metrics expose hidden facade complexity',
       second,
     };
   `), ['first', 'second']);
+  assert.deepEqual(namedFrozenObjectMemberNames(`
+    const desktopRuntimeComposition = Object.freeze({
+      first,
+      second: implementation,
+    });
+  `, 'desktopRuntimeComposition'), ['first', 'second']);
+  assert.deepEqual(destructuredBindingNames(`
+    const { first, second: localSecond } = desktopRuntimeComposition;
+  `, 'desktopRuntimeComposition'), ['first', 'second']);
+});
+
+test('production, test and support JavaScript have separate graph scopes', () => {
+  const root = path.resolve('/fixture/desktop');
+  for (const relativePath of [
+    'main.js', 'preload.js', 'campus-preload.js', 'lib/service.js', 'renderer/app.js',
+  ]) {
+    assert.equal(
+      javascriptScope(path.join(root, relativePath), root),
+      JAVASCRIPT_SCOPE.PRODUCTION,
+      relativePath,
+    );
+  }
+  for (const relativePath of ['test/service.test.js', 'e2e/main.electron.js']) {
+    assert.equal(
+      javascriptScope(path.join(root, relativePath), root),
+      JAVASCRIPT_SCOPE.TEST,
+      relativePath,
+    );
+  }
+  for (const relativePath of ['build/verify-package.js', 'scripts/check-architecture.js']) {
+    assert.equal(
+      javascriptScope(path.join(root, relativePath), root),
+      JAVASCRIPT_SCOPE.SUPPORT,
+      relativePath,
+    );
+  }
 });
 
 test('domain rules reject reverse dependencies while root legacy remains migration-compatible', () => {
@@ -72,6 +112,21 @@ test('cycle detection reports a closed dependency path', () => {
     ['c', ['a']],
   ]);
   assert.deepEqual(findCycles(graph), [['a', 'b', 'c', 'a']]);
+});
+
+test('full graph cycle detection catches cycles crossing test and support scopes', () => {
+  const testFile = '/fixture/desktop/test/helper.test.js';
+  const supportFile = '/fixture/desktop/scripts/helper.js';
+  const fullGraph = new Map([
+    [testFile, [supportFile]],
+    [supportFile, [testFile]],
+  ]);
+  // Scope-only graphs intentionally omit edges whose targets live outside the
+  // scope. The authoritative full graph must therefore retain its own cycle
+  // gate in addition to the per-scope diagnostics.
+  assert.deepEqual(findCycles(new Map([[testFile, []]])), []);
+  assert.deepEqual(findCycles(new Map([[supportFile, []]])), []);
+  assert.deepEqual(findCycles(fullGraph), [[testFile, supportFile, testFile]]);
 });
 
 test('unresolved static relative imports fail the architecture gate', () => {
@@ -105,8 +160,21 @@ test('current production graph has no cycle and stays within debt growth caps', 
   const snapshot = architectureSnapshot(path.join(__dirname, '..'));
   assert.deepEqual(architectureErrors(snapshot), []);
   assert.equal(snapshot.cycles.length, 0);
+  assert.equal(snapshot.allCycles.length, 0);
   assert.deepEqual(snapshot.layerErrors, []);
   assert.deepEqual(snapshot.unresolvedRequireErrors, []);
+  assert.equal(
+    snapshot.productionFileCount + snapshot.testFileCount + snapshot.supportFileCount,
+    snapshot.fileCount,
+  );
+  assert.ok(snapshot.productionFileCount > 0);
+  assert.ok(snapshot.productionEdgeCount > 0);
+  assert.ok(snapshot.testFileCount > 0);
+  assert.ok(snapshot.testEdgeCount > 0);
+  assert.ok(snapshot.supportFileCount > 0);
+  assert.ok(snapshot.supportEdgeCount > 0);
+  assert.equal(snapshot.testCycles.length, 0);
+  assert.equal(snapshot.supportCycles.length, 0);
   assert.ok(snapshot.mainDirectDependencies <= BASELINE.mainDirectDependencies);
   assert.ok(snapshot.mainTransitiveDependencies <= BASELINE.mainTransitiveDependencies);
   assert.ok(snapshot.mainLines <= BASELINE.mainLines);
@@ -114,6 +182,12 @@ test('current production graph has no cycle and stays within debt growth caps', 
   assert.ok(snapshot.libMaxFanIn <= BASELINE.libMaxFanIn);
   assert.ok(snapshot.libMaxFanOut <= BASELINE.libMaxFanOut);
   assert.ok(snapshot.runtimeCompositionExports <= BASELINE.runtimeCompositionExports);
+  assert.ok(snapshot.runtimeCompositionMembers <= BASELINE.runtimeCompositionMembers);
+  assert.ok(snapshot.mainCompositionBindings <= BASELINE.mainCompositionBindings);
+  assert.ok(
+    snapshot.mainEffectiveDirectDependencies <= BASELINE.mainEffectiveDirectDependencies,
+  );
+  assert.ok(snapshot.mainCompositionBindings <= snapshot.runtimeCompositionMembers);
   assert.deepEqual(snapshot.domainLayerErrors, []);
   assert.deepEqual(snapshot.rootLibraryDebtErrors, []);
 });
@@ -121,6 +195,8 @@ test('current production graph has no cycle and stays within debt growth caps', 
 test('growth beyond any explicit baseline fails the gate', () => {
   const snapshot = {
     cycles: [],
+    testCycles: [],
+    supportCycles: [],
     mainDirectDependencies: BASELINE.mainDirectDependencies + 1,
     mainTransitiveDependencies: BASELINE.mainTransitiveDependencies + 1,
     mainLines: BASELINE.mainLines + 1,
@@ -128,6 +204,9 @@ test('growth beyond any explicit baseline fails the gate', () => {
     libMaxFanIn: BASELINE.libMaxFanIn + 1,
     libMaxFanOut: BASELINE.libMaxFanOut + 1,
     runtimeCompositionExports: BASELINE.runtimeCompositionExports + 1,
+    runtimeCompositionMembers: BASELINE.runtimeCompositionMembers + 1,
+    mainCompositionBindings: BASELINE.mainCompositionBindings + 1,
+    mainEffectiveDirectDependencies: BASELINE.mainEffectiveDirectDependencies + 1,
   };
   assert.deepEqual(architectureErrors(snapshot), [
     `mainDirectDependencies grew from ${BASELINE.mainDirectDependencies} to ${snapshot.mainDirectDependencies}`,
@@ -137,5 +216,8 @@ test('growth beyond any explicit baseline fails the gate', () => {
     `libMaxFanIn grew from ${BASELINE.libMaxFanIn} to ${snapshot.libMaxFanIn}`,
     `libMaxFanOut grew from ${BASELINE.libMaxFanOut} to ${snapshot.libMaxFanOut}`,
     `runtimeCompositionExports grew from ${BASELINE.runtimeCompositionExports} to ${snapshot.runtimeCompositionExports}`,
+    `runtimeCompositionMembers grew from ${BASELINE.runtimeCompositionMembers} to ${snapshot.runtimeCompositionMembers}`,
+    `mainCompositionBindings grew from ${BASELINE.mainCompositionBindings} to ${snapshot.mainCompositionBindings}`,
+    `mainEffectiveDirectDependencies grew from ${BASELINE.mainEffectiveDirectDependencies} to ${snapshot.mainEffectiveDirectDependencies}`,
   ]);
 });

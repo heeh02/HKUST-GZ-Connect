@@ -66,6 +66,14 @@ function createMemoryRoutingPolicy() {
       ))];
       return { rule, rules: userRules.map((candidate) => ({ ...candidate })) };
     },
+    remove(payload) {
+      const host = normalizeRuleHost(payload?.host);
+      const includeSubdomains = payload?.includeSubdomains === true;
+      userRules = userRules.filter((candidate) => !(
+        candidate.host === host && candidate.includeSubdomains === includeSubdomains
+      ));
+      return userRules.map((candidate) => ({ ...candidate }));
+    },
     proxyConfig(port) {
       return {
         mode: 'pac_script',

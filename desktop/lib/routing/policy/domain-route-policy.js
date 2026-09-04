@@ -22,8 +22,8 @@ const POLICY_SOURCES = Object.freeze([
   'user-exact',
   'user-subdomain',
   'custom-resource',
-  'builtin',
   'server-resource',
+  'builtin',
   'inherited',
   'default',
 ]);
@@ -47,7 +47,7 @@ function normalizeResourceRoutes(resources) {
   const seen = new Set();
   const result = [];
   for (const resource of Array.isArray(resources) ? resources : []) {
-    if (!resource || !validRoute(resource.route)) continue;
+    if (!resource || resource.routePreference === 'auto' || !validRoute(resource.route)) continue;
     const host = hostnameForUrl(resource.url);
     if (!host || seen.has(host)) continue;
     seen.add(host);
@@ -92,7 +92,7 @@ function resolveDomainRouteForUrl(rawUrl, options = {}) {
   return resolveRouteForUrl(rawUrl, options);
 }
 
-function buildDomainRoutePac(options = {}, port, {
+function renderDomainRoutePac(policy, port, {
   defaultRoute = ROUTE_CAMPUS,
   campusPrivateIpv4 = false,
   proxyKind = 'socks5',
@@ -103,7 +103,6 @@ function buildDomainRoutePac(options = {}, port, {
   }
   if (!validRoute(defaultRoute)) throw new Error('默认浏览器网络路径无效');
   if (!['socks5', 'http'].includes(proxyKind)) throw new Error('本地代理类型无效');
-  const policy = normalizeDomainRoutePolicy(options);
   const proxy = `${proxyKind === 'http' ? 'PROXY' : 'SOCKS5'} 127.0.0.1:${proxyPort}`;
   return `'use strict';
 var USER_EXACT = ${JSON.stringify(policy.userExact)};
@@ -151,13 +150,17 @@ function FindProxyForURL(url, host) {
   if (CAMPUS_PRIVATE_IPV4 && forceCampusHost(host)) return ${JSON.stringify(proxy)};
   var route = exactRoute(USER_EXACT, host)
     || suffixRoute(USER_SUBDOMAINS, host)
-    || exactRoute(CUSTOM_EXACT, host);
+    || exactRoute(CUSTOM_EXACT, host)
+    || exactRoute(SERVER_EXACT, host);
   route = route || suffixRoute(BUILTIN_SUBDOMAINS, host)
-    || exactRoute(SERVER_EXACT, host)
     || DEFAULT_ROUTE;
   return route === "direct" ? "DIRECT" : ${JSON.stringify(proxy)};
 }
 `;
+}
+
+function buildDomainRoutePac(options = {}, port, config = {}) {
+  return renderDomainRoutePac(normalizeDomainRoutePolicy(options), port, config);
 }
 
 class DomainRoutePolicyStore {
@@ -184,10 +187,19 @@ class DomainRoutePolicyStore {
     this.serverResources = typeof serverResources === 'function'
       ? serverResources
       : () => serverResources;
+    this.cachedRules = null;
   }
 
-  list() {
-    return loadRoutingRules(this.filePath);
+  cacheRules(rules) {
+    this.cachedRules = Object.freeze(rules.map((rule) => Object.freeze({ ...rule })));
+    return this.list();
+  }
+
+  list({ reload = false } = {}) {
+    if (reload || this.cachedRules === null) {
+      this.cacheRules(loadRoutingRules(this.filePath));
+    }
+    return this.cachedRules.map((rule) => ({ ...rule }));
   }
 
   options() {
@@ -198,6 +210,14 @@ class DomainRoutePolicyStore {
       directPartnerDomains: this.directPartnerDomains(),
       serverResources: this.serverResources(),
     };
+  }
+
+  snapshot() {
+    const policy = normalizeDomainRoutePolicy(this.options());
+    return Object.freeze(Object.fromEntries(Object.entries(policy).map(([key, entries]) => [
+      key,
+      Object.freeze(entries.map((entry) => Object.freeze({ ...entry }))),
+    ])));
   }
 
   resolve(rawUrl, inheritedRoute = null) {
@@ -215,22 +235,24 @@ class DomainRoutePolicyStore {
     }
     const result = upsertRoutingRule(current, payload, now);
     const rules = saveRoutingRules(this.filePath, result.rules);
-    return { rule: result.rule, rules };
+    return { rule: result.rule, rules: this.cacheRules(rules) };
   }
 
   remove({ host, includeSubdomains = false } = {}) {
-    return saveRoutingRules(
+    const rules = saveRoutingRules(
       this.filePath,
       deleteRoutingRule(this.list(), host, includeSubdomains),
     );
+    return this.cacheRules(rules);
   }
 
   replace(rules) {
-    return saveRoutingRules(this.filePath, rules);
+    const saved = saveRoutingRules(this.filePath, rules);
+    return this.cacheRules(saved);
   }
 
   buildPac(port, config) {
-    return buildDomainRoutePac(this.options(), port, config);
+    return renderDomainRoutePac(this.snapshot(), port, config);
   }
 }
 

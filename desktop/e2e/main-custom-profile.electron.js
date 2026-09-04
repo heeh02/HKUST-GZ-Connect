@@ -110,7 +110,7 @@ async function run() {
     .update(expectedPartition, 'utf8').digest('hex').slice(0, 32)}`;
   const expectedSession = session.fromPartition(partitionName);
   const page = await waitFor(() => webContents.getAllWebContents().find((contents) => (
-    contents !== control.webContents && contents.getURL() === 'about:blank' &&
+    contents !== control.webContents && contents.getURL().endsWith('/renderer/campus-workspace.html') &&
     contents.session === expectedSession
   )), 'custom Profile page did not use its Workspace-derived Session');
   assert.equal(page.session.getStoragePath().includes('hkustgz-campus-browser'), false);

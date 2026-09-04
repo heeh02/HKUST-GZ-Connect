@@ -3,6 +3,22 @@
 const { contextBridge } = require('electron');
 const fixtureLocale = process.env.HKUSTGZ_E2E_LOCALE === 'en' ? 'en' : 'zh';
 
+function reviewedPreviewResources() {
+  const payload = process.env.HKUSTGZ_CONTROL_PREVIEW_RESOURCES_JSON || '';
+  if (!payload) return null;
+  const document = JSON.parse(payload);
+  return document.resources.map((resource) => ({
+    ...resource,
+    name: fixtureLocale === 'en' ? resource.localizedName?.en || resource.name : resource.name,
+    description: fixtureLocale === 'en'
+      ? resource.localizedDescription?.en || resource.description : resource.description,
+    favorite: false,
+    lastOpenedAt: null,
+    reviewed: true,
+    builtin: true,
+  }));
+}
+
 const builtinResource = Object.freeze({
   id: 'builtin-home',
   name: fixtureLocale === 'en' ? 'Built-in School Home' : '内置学校主页',
@@ -15,21 +31,31 @@ const builtinResource = Object.freeze({
   lastOpenedAt: null,
   builtin: true,
 });
-let resources = [builtinResource, ...Array.from({ length: 18 }, (_, index) => ({
+let resources = reviewedPreviewResources() || [builtinResource, ...Array.from({ length: 30 }, (_, index) => ({
   id: `fixture-${index}`,
   name: fixtureLocale === 'en' ? `Test Site ${index + 1}` : `测试网站 ${index + 1}`,
   url: `https://fixture-${index}.example.edu/`,
   description: fixtureLocale === 'en' ? 'Layout regression fixture' : '用于布局回归测试',
   route: index % 2 ? 'direct' : 'campus',
-  category: 'custom',
+  category: index >= 18 ? [
+    'gateway', 'courses', 'research', 'labs', 'student-finance', 'expenses',
+    'documents', 'campus-life', 'career', 'tools', 'newcomer', 'staff',
+  ][index - 18] : ['common', 'academic', 'campus-service', 'custom'][index % 4],
   keywords: [],
-  favorite: false,
-  lastOpenedAt: null,
+  favorite: index < 10,
+  lastOpenedAt: index >= 10 && index < 20 ? 100 - index : null,
+  reviewed: index >= 18,
   builtin: false,
 }))];
 let lastOpenRequest = null;
+let workspaceOpenCount = 0;
+let bookmarkManagerOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
+let cardBoardRequests = { get: 0, commit: 0, reset: 0, lastOperations: [] };
+let routingRules = [
+  { host: 'login.example.com', includeSubdomains: false, route: 'direct', updatedAt: 2 },
+];
 
 const integrationAdapters = [
   'clash_mihomo_yaml', 'vscode_remote_ssh',
@@ -57,41 +83,115 @@ const state = {
   loggedIn: true,
   settings: {
     port: 1080,
+    strictProxyAuth: true,
     autoReconnect: true,
     maxAttempts: 3,
     closeAction: 'ask',
+    underlaySourceAddress: '',
+  },
+  networkEnvironment: {
+    schemaVersion: 2,
+    platform: 'linux',
+    status: 'ready',
+    interfaces: [
+      { id: 'eth0', name: 'Ethernet', kind: 'physical', active: true, default: true,
+        systemDefault: false, addresses: [{ address: '192.0.2.20', family: 4, internal: false, selectable: true,
+          publicEgress: { status: 'ready', address: '203.76.12.45', family: 4,
+            binding: 'source-address', provider: 'ipify', observedAt: 1_800_000_000_000,
+            relation: 'baseline', reason: '' } }] },
+      { id: 'tun0', name: 'Mihomo TUN', kind: 'virtual', active: true, default: false,
+        systemDefault: true, addresses: [{ address: '198.18.0.1', family: 4, internal: false, selectable: true,
+          publicEgress: { status: 'ready', address: '104.16.1.40', family: 4,
+            binding: 'source-address', provider: 'ipify', observedAt: 1_800_000_000_000,
+            relation: 'different', reason: '' } }] },
+    ],
+    defaultRoute: { interfaceId: 'eth0', sourceAddress: '192.0.2.20' },
+    systemRoute: { interfaceId: 'tun0', sourceAddress: '198.18.0.1' },
+    systemProxy: { state: 'detected', type: 'http', endpoint: { host: '127.0.0.1', port: 7890 },
+      owner: { provider: 'mihomo', name: 'Mihomo / Clash', mode: 'rule', tunEnabled: true,
+        confidence: 'confirmed' } },
+    selection: { mode: 'default', interfaceId: 'eth0', sourceAddress: '', available: true },
   },
   campusResources: resources,
+  resourceGroups: [
+    { id: 'group_abcdefghijkl', name: '学习', resourceIds: ['fixture-0', 'fixture-1'] },
+    { id: 'group_mnopqrstuvwx', name: '常用工具', resourceIds: ['fixture-2', 'fixture-3'] },
+    { id: 'group_research12345', name: '科研协作', resourceIds: ['fixture-4', 'fixture-5'] },
+    { id: 'group_expenses1234', name: '报销采购', resourceIds: ['fixture-6', 'fixture-7'] },
+    { id: 'group_campuslife12', name: '校园生活', resourceIds: ['fixture-8'] },
+    { id: 'group_adminservice', name: '行政办事', resourceIds: ['fixture-9'] },
+  ],
   connected: false,
   connecting: false,
   clientIp: null,
   lastError: null,
   version: 'test',
   pacUrl: '',
-  capabilitySnapshot: {
-    schemaVersion: 1,
-    profileId: 'hkustgz',
-    effective: {
-      'auth.password': 'supported',
-      'auth.captcha': 'unsupported',
-      'auth.sms': 'unsupported',
-      'auth.token': 'unsupported',
-      'auth.certificate': 'unsupported',
-      'auth.hid': 'unsupported',
-      'auth.sso': 'unsupported',
-      'auth.device': 'unsupported',
-      'auth.unknown_secondary': 'unsupported',
-      'resource.catalogue': 'unsupported',
-      'resource.authorization_decision': 'unsupported',
-      'transport.l3': 'supported',
-      'transport.web_vpn': 'unsupported',
-    },
-  },
 };
+
+const officialCategoryIds = [...new Set(resources.filter(({ reviewed }) => reviewed)
+  .map(({ category }) => category))];
+const cloneCardBoardDocument = (document) => JSON.parse(JSON.stringify(document));
+function placement(boardId, kind, id, order) {
+  return {
+    placementId: `fixture-${boardId}-${kind}-${id}`,
+    boardId,
+    card: { kind, id },
+    deckId: null,
+    order,
+    size: 'small',
+    hidden: false,
+  };
+}
+const catalogPlacements = officialCategoryIds.map((id, order) => (
+  placement('browser-catalog', 'official-category', id, order)
+));
+const firstDeck = catalogPlacements.length >= 2 ? {
+  deckId: 'fixture-deck-catalog-primary',
+  boardId: 'browser-catalog',
+  placementIds: catalogPlacements.slice(0, 2).map(({ placementId }) => placementId),
+  activePlacementId: catalogPlacements[0].placementId,
+  order: 0,
+} : null;
+if (firstDeck) {
+  firstDeck.placementIds.forEach((placementId, order) => {
+    const target = catalogPlacements.find((candidate) => candidate.placementId === placementId);
+    target.deckId = firstDeck.deckId;
+    target.order = order;
+  });
+  catalogPlacements.slice(2).forEach((target, index) => { target.order = index + 1; });
+}
+const initialCardBoardDocument = {
+  schemaVersion: 1,
+  revision: 0,
+  placements: [
+    ...catalogPlacements,
+    ...state.resourceGroups.map(({ id }, order) => (
+      placement('browser-personal', 'user-collection', id, order)
+    )),
+    placement('connect', 'system-widget', 'connection-metrics', 0),
+    placement('connect', 'system-widget', 'network-adapter', 1),
+    placement('connect', 'system-widget', 'connection-details', 2),
+  ],
+  decks: firstDeck ? [firstDeck] : [],
+};
+let cardBoardDocument = cloneCardBoardDocument(initialCardBoardDocument);
 
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
-  save: async () => ({ ok: true }),
+  getNetworkEnvironment: async () => state.networkEnvironment,
+  save: async (patch) => {
+    state.settings = { ...state.settings, ...(patch || {}) };
+    if (Object.hasOwn(patch || {}, 'underlaySourceAddress')) {
+      const selected = state.networkEnvironment.interfaces.find((item) => item.addresses.some(({ address }) => (
+        address === patch.underlaySourceAddress
+      )));
+      state.networkEnvironment.selection = selected ? { mode: 'selected', interfaceId: selected.id,
+        sourceAddress: patch.underlaySourceAddress, available: true } :
+        { mode: 'default', interfaceId: 'eth0', sourceAddress: '', available: true };
+    }
+    return { ok: true, settings: state.settings };
+  },
   connect: async () => ({ ok: true }),
   disconnect: async () => ({ ok: true }),
   reconnect: async () => ({ ok: true }),
@@ -101,7 +201,12 @@ contextBridge.exposeInMainWorld('api', {
   openLog: async () => ({ ok: true }),
   copy: async () => ({ ok: true }),
   openCampusBrowser: async (request) => {
+    if (request == null) workspaceOpenCount += 1;
     lastOpenRequest = request;
+    return { ok: true };
+  },
+  openBookmarkManager: async () => {
+    bookmarkManagerOpenCount += 1;
     return { ok: true };
   },
   openResource: async (resourceId) => {
@@ -110,6 +215,31 @@ contextBridge.exposeInMainWorld('api', {
       resource.id === resourceId ? { ...resource, lastOpenedAt: Date.now() } : resource
     ));
     return { ok: true, resourceId, resources };
+  },
+  getCardBoardLayout: async () => {
+    cardBoardRequests = { ...cardBoardRequests, get: cardBoardRequests.get + 1 };
+    return { ok: true, document: cloneCardBoardDocument(cardBoardDocument) };
+  },
+  commitCardBoardLayout: async ({ baseRevision, operations }) => {
+    if (baseRevision !== cardBoardDocument.revision) {
+      return { ok: false, code: 'CARD_BOARD_REVISION_CONFLICT' };
+    }
+    cardBoardDocument.revision += 1;
+    cardBoardRequests = {
+      ...cardBoardRequests,
+      commit: cardBoardRequests.commit + 1,
+      lastOperations: structuredClone(operations),
+    };
+    return { ok: true, changed: operations.length > 0 };
+  },
+  resetCardBoardLayout: async ({ baseRevision }) => {
+    if (baseRevision !== cardBoardDocument.revision) {
+      return { ok: false, code: 'CARD_BOARD_REVISION_CONFLICT' };
+    }
+    cardBoardDocument = { ...cloneCardBoardDocument(initialCardBoardDocument),
+      revision: cardBoardDocument.revision + 1 };
+    cardBoardRequests = { ...cardBoardRequests, reset: cardBoardRequests.reset + 1 };
+    return { ok: true, document: cloneCardBoardDocument(cardBoardDocument), changed: true };
   },
   saveResource: async (resource) => {
     const saved = {
@@ -125,6 +255,29 @@ contextBridge.exposeInMainWorld('api', {
     };
     resources = [...resources.filter((item) => item.id !== saved.id), saved];
     return { ok: true, resource: saved, resources };
+  },
+  createFavoriteResource: async (resource) => {
+    const saved = {
+      id: `custom-test-${nextCustomId++}`,
+      name: resource.name,
+      url: normalizeFixtureUrl(resource.url),
+      description: resource.description || '',
+      routePreference: 'auto',
+      route: resource.routePreference === 'direct' ? 'direct' : 'campus',
+      builtin: false,
+      category: 'custom',
+      keywords: [],
+      favorite: true,
+      lastOpenedAt: null,
+    };
+    resources = [...resources, saved];
+    state.campusResources = resources;
+    if (resource.groupId) {
+      state.resourceGroups = state.resourceGroups.map((group) => group.id === resource.groupId
+        ? { ...group, resourceIds: [...group.resourceIds, saved.id] } : group);
+    }
+    return { ok: true, resource: saved, resources, groups: state.resourceGroups,
+      affectedResourceIds: [] };
   },
   deleteResource: async (resourceId) => {
     resources = resources.filter((resource) => resource.id !== resourceId);
@@ -143,6 +296,37 @@ contextBridge.exposeInMainWorld('api', {
     ));
     return { ok: true, resources };
   },
+  listRoutingRules: async () => ({ ok: true, rules: routingRules }),
+  previewRoutingTarget: async (target) => {
+    try {
+      const input = String(target || '').trim();
+      const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(input) ? input : `https://${input}`);
+      return { ok: true, target: { host: parsed.hostname.toLowerCase(), inputKind: 'url',
+        discardedPort: !!parsed.port, discardedPath: parsed.pathname !== '/' },
+      resolution: { route: parsed.hostname.endsWith('.example.com') ? 'direct' : 'campus',
+        source: 'default', matchedRule: null } };
+    } catch { return { ok: false, error: 'invalid target' }; }
+  },
+  saveRoutingRule: async (rule) => {
+    const input = String(rule.target || rule.host || '').trim();
+    const parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//iu.test(input) ? input : `https://${input}`);
+    const host = parsed.hostname.toLowerCase();
+    if (rule.previous) routingRules = routingRules.filter((item) => !(
+      item.host === rule.previous.host && item.includeSubdomains === rule.previous.includeSubdomains
+    ));
+    routingRules = [...routingRules.filter((item) => !(
+      item.host === host && item.includeSubdomains === rule.includeSubdomains
+    )), { host, includeSubdomains: rule.includeSubdomains,
+      route: rule.route, updatedAt: Date.now() }];
+    return { ok: true, rules: routingRules };
+  },
+  deleteRoutingRule: async (identity) => {
+    routingRules = routingRules.filter((item) => !(
+      item.host === identity.host && item.includeSubdomains === identity.includeSubdomains
+    ));
+    return { ok: true, rules: routingRules };
+  },
+  onOpenRoutingRules: () => {},
   listIntegrations: async () => ({ ok: true, integrations: integrationViews() }),
   prepareIntegration: async ({ adapterId, action }) => {
     if (!integrationAdapters.includes(adapterId)) {
@@ -180,5 +364,8 @@ contextBridge.exposeInMainWorld('api', {
   resize: async () => ({ ok: true }),
   onStatus: () => {},
   onTelemetry: () => {},
-  testState: () => ({ lastOpenRequest }),
+  onNetworkEnvironment: () => {},
+  testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount,
+    resources, resourceGroups: state.resourceGroups, cardBoardRequests,
+    cardBoardDocument: cloneCardBoardDocument(cardBoardDocument) }),
 });

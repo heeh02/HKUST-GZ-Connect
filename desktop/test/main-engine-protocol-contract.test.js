@@ -48,6 +48,6 @@ test('desktop opts into the private Control v2 stream and retains signal fallbac
   assert.match(runtime, /this\.control\.handshake\(\)/);
   assert.match(runtime, /this\.control\.providerCapabilities\(\)/);
   assert.match(source, /activeSchoolProfile\.observeCapabilityReport\(report\)/u);
-  assert.match(source, /getCapabilitySnapshot: \(\) => activeSchoolProfile\.capabilitySnapshot\(\)/u);
+  assert.doesNotMatch(source, /capabilitySnapshot:\s*activeSchoolProfile\.capabilitySnapshot\(\)/u);
   assert.match(source, /requestGracefulStop: requestActiveEngineControlShutdown/);
 });

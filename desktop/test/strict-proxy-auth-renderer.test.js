@@ -32,25 +32,29 @@ test('strict proxy authentication is settings-driven rather than hardcoded in ma
   assert.match(html, /id="proxyAuthMigrationKeep"/);
 });
 
-test('strict authentication switch saves immediately without committing other dirty fields', () => {
+test('strict authentication changes only through an explicit Control Tower apply', () => {
   assert.match(app, /\$\('strictProxyAuth'\)\.checked\s*=\s*settings\.strictProxyAuth\s*===\s*true/,
     'the normalized settings object owns the safe default');
   assert.match(proxyFeature, /async function applyStrict\(requested\)/);
   assert.match(proxyFeature, /api\.save\(\{ strictProxyAuth: requested \}\)/,
-    'the switch owns a narrow, immediate settings transaction');
-  assert.match(proxyFeature, /\$\('strictProxyAuth'\)\.addEventListener\('change'/);
+    'the explicit migration decision retains its narrow transaction');
+  assert.doesNotMatch(proxyFeature, /\$\('strictProxyAuth'\)\.addEventListener\('change'/);
   assert.match(proxyFeature, /settings\.proxyAuthMigrationPending\s*!==\s*true/);
   assert.match(proxyFeature, /api\.save\(\{ proxyAuthMigrationAcknowledged: true \}\)/);
   assert.match(app, /window\.proxyAuthMigration\.createProxyAuthMigration\(\{/,
     'the application entry only composes the isolated feature');
-  assert.doesNotMatch(app, /'towerPort', 'routeDomains', 'strictProxyAuth', 'autoReconnect'/,
-    'the switch must not enter the general dirty-form path');
+  assert.match(app, /'towerPort', 'strictProxyAuth', 'autoReconnect'/,
+    'ordinary checkbox changes must wait in the explicit dirty-form path');
+  assert.match(html, /id="towerActions"[^>]*hidden/u);
+  assert.doesNotMatch(html, /id="towerReconnect"/u);
+  assert.match(app, /function setTowerDirty\(value\)[\s\S]{0,180}towerActions/u,
+    'the apply action appears only while the form is dirty');
 
   const saveTowerStart = app.indexOf('async function saveTower()');
   const flashStart = app.indexOf('let flashTimer', saveTowerStart);
   assert.ok(saveTowerStart >= 0 && flashStart > saveTowerStart);
-  assert.doesNotMatch(app.slice(saveTowerStart, flashStart), /strictProxyAuth\s*:/,
-    'saving unrelated tower fields must not implicitly toggle authentication');
+  assert.match(app.slice(saveTowerStart, flashStart), /strictProxyAuth:\s*\$\('strictProxyAuth'\)\.checked/,
+    'applying the Control Tower form owns the requested authentication value');
   assert.match(proxyFeature, /checkbox\.checked\s*=\s*previous/,
     'a failed immediate save must restore the persisted switch value');
 });
@@ -68,14 +72,14 @@ test('bilingual help states the secure default, explicit compatibility downgrade
   assert.match(zh, /旧 SOCKS5 客户端.*显式关闭/);
   assert.match(zh, /应用内浏览器(?:会)?自动处理/);
   assert.match(zh, /Clash.*Mihomo.*VS Code/);
-  assert.match(zh, /立即保存/);
-  assert.match(zh, /外部工具集成/);
+  assert.match(zh, /点击应用/);
+  assert.match(zh, /在其他软件中使用/);
   assert.match(zh, /127\.0\.0\.1/);
   assert.match(en, /Campus Browser handles it automatically/i);
   assert.match(en, /local authorization boundary/i);
   assert.match(en, /legacy SOCKS5 client/i);
-  assert.match(en, /switch saves immediately/i);
-  assert.match(en, /External Tool Integrations/i);
+  assert.match(en, /Click Apply/i);
+  assert.match(en, /Use in other apps/i);
   assert.match(en, /127\.0\.0\.1/);
 });
 
@@ -99,13 +103,15 @@ test('Clash and Mihomo share one explained configuration surface', () => {
   assert.doesNotMatch(integrationFeature, /['"]mihomo_yaml['"]/u,
     'the retired duplicate adapter must not remain a second Renderer card');
   assert.match(i18n.dictionaries.zh['integration.adapter.clash_mihomo_yaml'], /Clash \/ Mihomo/u);
-  assert.match(i18n.dictionaries.zh['integration.explainStep2'], /SOCKS5.*校园域名分流/u);
-  assert.match(i18n.dictionaries.zh['integration.explainPrivacy'], /不含校园账号密码/u);
-  assert.match(i18n.dictionaries.en['integration.explainStep3'], /other sites keep their existing routes/i);
+  assert.match(i18n.dictionaries.zh['integration.explainStep1'], /SOCKS5.*学校基础规则.*个人规则/u);
+  assert.match(i18n.dictionaries.zh['integration.explainStep2'], /VS Code.*ProxyCommand/u);
+  assert.match(i18n.dictionaries.zh['integration.explainPrivacy'], /不含校园密码/u);
+  assert.match(i18n.dictionaries.en['integration.explainStep3'], /never overwrite third-party files/i);
 });
 
 test('strict proxy authentication card wraps safely in narrow windows', () => {
-  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*border-radius:[^}]*background:/);
+  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*background:/);
+  assert.match(css, /\.proxy-auth-setting\s*\{[^}]*border-radius:/);
   assert.match(css, /\.sw\s*>\s*span\s*\{[^}]*min-width:\s*0/);
   assert.match(css, /\.sw input\s*\{[^}]*flex:\s*0 0 auto/);
   assert.match(css, /\.proxy-auth-details summary\s*\{[^}]*display:\s*flex/);

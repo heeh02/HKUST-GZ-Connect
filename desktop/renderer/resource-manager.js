@@ -37,6 +37,7 @@
     setResources,
     saveResource,
     setSaved,
+    launcherId = 'manageResources',
     setTimeoutFn = setTimeout,
     clearTimeoutFn = clearTimeout,
   } = {}) {
@@ -88,7 +89,7 @@
       $('resourceName').value = '';
       $('resourceUrl').value = '';
       $('resourceDescription').value = '';
-      $('resourceRoute').value = 'campus';
+      $('resourceRoute').value = 'auto';
       clearMessages();
       setFormMode(null);
       doc.querySelectorAll('.resource-editor-row').forEach((row) => row.classList.remove('active'));
@@ -100,7 +101,8 @@
       $('resourceName').value = resource?.name || '';
       $('resourceUrl').value = resource?.url || '';
       $('resourceDescription').value = resource?.description || '';
-      $('resourceRoute').value = resource?.route === 'direct' ? 'direct' : 'campus';
+      $('resourceRoute').value = resource?.routePreference === 'auto'
+        ? 'auto' : resource?.route === 'direct' ? 'direct' : 'campus';
       clearMessages();
       setFormMode(resource && !resource.builtin ? resource : null);
       $('resourceFormError').textContent = resource?.builtin
@@ -154,7 +156,7 @@
     function start() {
       if (started) return false;
       started = true;
-      $('manageResources').addEventListener('click', open);
+      $(launcherId).addEventListener('click', open);
       $('closeResourceDialog').addEventListener('click', () => dialog.close());
       $('cancelResource').addEventListener('click', clearEditor);
       $('restoreBuiltinResources').addEventListener('click', async () => {
@@ -233,12 +235,16 @@
         }
         const editing = !!$('resourceId').value;
         try {
+          const routePreference = $('resourceRoute').value;
+          const previous = getResources().find(({ id }) => id === $('resourceId').value);
           const saved = await saveResource({
             id: $('resourceId').value || undefined,
             name: $('resourceName').value,
             url: $('resourceUrl').value,
             description: $('resourceDescription').value,
-            route: $('resourceRoute').value,
+            route: routePreference === 'auto'
+              ? (previous?.route === 'direct' ? 'direct' : 'campus') : routePreference,
+            routePreference,
           });
           if (!saved.ok) {
             $('resourceFormError').textContent = saved.error;

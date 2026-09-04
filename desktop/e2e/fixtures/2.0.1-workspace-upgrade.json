@@ -1,0 +1,56 @@
+{
+  "previousBuiltinResourceIds": [
+    "home",
+    "one-stop",
+    "library",
+    "new-student",
+    "outlook",
+    "canvas",
+    "sis",
+    "class-schedule",
+    "grade-reporting",
+    "exam-scheduling",
+    "room-booking",
+    "class-enrollment-request",
+    "thesis-exam",
+    "academic-edoc",
+    "ug-major-selection"
+  ],
+  "localResources": {
+    "schemaVersion": 1,
+    "resources": [
+      {
+        "id": "custom-upgrade-fixture",
+        "name": "Upgrade fixture portal",
+        "description": "Synthetic local-only upgrade fixture",
+        "url": "https://portal.upgrade-fixture.example.edu/",
+        "route": "campus",
+        "category": "custom",
+        "keywords": ["upgrade", "fixture"]
+      }
+    ],
+    "hiddenBuiltinResourceIds": ["room-booking"]
+  },
+  "favorites": {
+    "schemaVersion": 1,
+    "entries": ["one-stop", "custom-upgrade-fixture"]
+  },
+  "recentResources": {
+    "schemaVersion": 1,
+    "entries": [
+      { "resourceId": "custom-upgrade-fixture", "openedAt": 1700000002000 },
+      { "resourceId": "class-schedule", "openedAt": 1700000001000 }
+    ]
+  },
+  "routingRules": {
+    "version": 1,
+    "rules": [
+      {
+        "host": "login.upgrade-fixture.example.edu",
+        "includeSubdomains": true,
+        "route": "direct",
+        "updatedAt": 1700000003000
+      }
+    ]
+  }
+}

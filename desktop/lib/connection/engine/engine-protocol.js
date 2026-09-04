@@ -1,5 +1,7 @@
 'use strict';
 
+const { isIP } = require('node:net');
+
 const ENGINE_API_VERSION = 1;
 const MAX_ENGINE_EVENT_BYTES = 16 * 1024;
 const MAX_ENGINE_BUFFER_BYTES = 32 * 1024;
@@ -61,8 +63,9 @@ function normalizeEngineEvent(value) {
     }
     case 'client_ip_assigned': {
       const family = value.family === 4 || value.family === 6 ? value.family : null;
-      if (!family) return null;
-      return { type: 'client_ip_assigned', family };
+      const address = typeof value.address === 'string' && isIP(value.address) === family ? value.address : null;
+      if (!family || !address) return null;
+      return { type: 'client_ip_assigned', family, address };
     }
     case 'dns_mode':
       return DNS_MODES.has(value.mode) ? { type: 'dns_mode', mode: value.mode } : null;

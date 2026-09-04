@@ -102,3 +102,24 @@ test('Profile and authority drift fail before integration payload generation', (
     profileDocument, settings, proxyCredential, pacSource,
   }));
 });
+
+test('VS Code context is independent from website-rule and PAC export inputs', () => {
+  const context = createIntegrationRuntimeContext({
+    adapterId: 'vscode_remote_ssh',
+    authority: { account, workspaceState }, profileDocument,
+    settings: { ...settings, customResources: [
+      { url: 'https://same.example.edu/one', route: 'direct' },
+      { url: 'https://same.example.edu/two', route: 'direct' },
+    ] },
+    userRules: [{ invalid: true }],
+    serverResources: [{ url: 'javascript:bad', route: 'campus' }],
+    proxyCredential,
+    pacSource: 'not a PAC',
+  });
+  assert.equal(context.bindingFor('vscode_remote_ssh', 1).adapterId, 'vscode_remote_ssh');
+  assert.throws(() => context.bindingFor('clash_mihomo_yaml', 1), {
+    code: 'INTEGRATION_ADAPTER_UNAVAILABLE',
+  });
+  assert.equal(context.networkRules.domainPolicy.userExact.length, 0);
+  assert.equal(context.networkRules.domainPolicy.customExact.length, 0);
+});

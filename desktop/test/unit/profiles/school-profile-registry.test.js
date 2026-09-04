@@ -109,6 +109,7 @@ function appendReviewedProfile(target, { makeDefault = false } = {}) {
   profile.browser.campusDomains = ['example.edu'];
   profile.browser.directPartnerDomains = [];
   profile.browser.builtinResourcesRef = 'example-university-builtin-resources';
+  profile.browser.officialPortalResourceId = 'example-service-1';
   profile.browser.healthTargets = [
     { host: 'www.example.edu', port: 443 },
     { host: 'library.example.edu', port: 443 },
@@ -181,7 +182,12 @@ test('loads the reviewed HKUST packaged registry and bounded views', () => {
     { host: 'library.hkust-gz.edu.cn', port: 443 },
   ]);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
-  assert.equal(registry.getBuiltinResources('hkustgz').length, 15);
+  assert.equal(profile.browser.homeUrl, 'https://myportal.hkust-gz.edu.cn/');
+  assert.equal(profile.browser.officialPortalResourceId, 'official-portal');
+  assert.equal(registry.getBuiltinResources('hkustgz').length, 45);
+  assert.equal(registry.getBuiltinResources('hkustgz').find(
+    ({ id }) => id === profile.browser.officialPortalResourceId,
+  )?.url, 'https://myportal.hkust-gz.edu.cn/');
   assert.deepEqual(registry.listViews({ locale: 'en', compatibility: 'reviewed' }), [
     {
       schemaVersion: 1,
@@ -194,8 +200,17 @@ test('loads the reviewed HKUST packaged registry and bounded views', () => {
       normalizedGatewayOrigin: 'https://remote.hkust-gz.edu.cn',
       sanitizedCompatibility: 'reviewed',
       unverified: false,
+      officialPortalResourceId: 'official-portal',
     },
   ]);
+});
+
+test('reviewed Profile official portal must reference one packaged resource', (t) => {
+  const target = fixture(t, {
+    mutateProfile: (profile) => { profile.browser.officialPortalResourceId = 'missing-portal'; },
+  });
+  assert.throws(() => new SchoolProfileRegistry({ packageRoot: target.root }).load(),
+    /official portal resource/u);
 });
 
 test('manifest assets are exact, hashed, read-only copies and match current sources', () => {
@@ -251,8 +266,13 @@ test('profile document contains deployment policy but no user authority', () => 
     'microsoftonline-p.com',
     'msauth.net',
     'msftauth.net',
+    'cloud.microsoft',
     'office.com',
     'office.net',
+    'sharepoint.com',
+    'teams.microsoft.com',
+    'sso.hkust-gz.edu.cn',
+    'gzcas.hkust-gz.edu.cn',
     'hkust-gz.instructure.com',
     'instructure.com',
     'instructuremedia.com',

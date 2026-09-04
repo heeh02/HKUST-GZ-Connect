@@ -1,5 +1,6 @@
 'use strict';
 
+const net = require('node:net');
 const { validateCustomResourceDocument } = require('../../resources/schema/campus-resource-contract');
 const { normalizeRouteDomains } = require('../../routing/pac/pac');
 const {
@@ -9,8 +10,10 @@ const {
   validateProtocolFamily,
 } = require('../../profiles/schema/school-profile-schema');
 const {
+  DEFAULT_BROWSER_NEW_TAB_URL,
   PROXY_SECURITY_VERSION,
   isValidPort,
+  normalizeBrowserNewTabUrl,
   normalizeHiddenBuiltinResourceIds,
 } = require('../settings/settings-store');
 
@@ -54,15 +57,23 @@ function documentVersion(value, name) {
 }
 
 function validateGlobalSettingsDocument(value) {
-  const source = exactKeys(value, [
+  const input = plainObject(value, 'global settings');
+  const legacyKeys = [
     'schemaVersion', 'activeProfileKey', 'activeAccountKey', 'port', 'strictProxyAuth',
     'proxySecurityVersion', 'proxyAuthMigrationPending', 'closeAction', 'language',
     'startAtLogin',
-  ], 'global settings');
+  ];
+  const source = exactKeys({ browserNewTabUrl: DEFAULT_BROWSER_NEW_TAB_URL,
+    underlaySourceAddress: '', ...input },
+    [...legacyKeys, 'browserNewTabUrl', 'underlaySourceAddress'], 'global settings');
   if (!isValidPort(source.port) || source.proxySecurityVersion !== PROXY_SECURITY_VERSION ||
       !['ask', 'minimize', 'quit'].includes(source.closeAction) ||
-      !['auto', 'zh', 'en'].includes(source.language)) {
+      !['auto', 'zh', 'en'].includes(source.language) ||
+      source.browserNewTabUrl !== normalizeBrowserNewTabUrl(source.browserNewTabUrl)) {
     throw new TypeError('global settings contain an unsupported value');
+  }
+  if (source.underlaySourceAddress !== '' && !net.isIP(source.underlaySourceAddress)) {
+    throw new TypeError('global underlay source address is invalid');
   }
   const strictProxyAuth = boolean(source.strictProxyAuth, 'strictProxyAuth');
   const proxyAuthMigrationPending = boolean(
@@ -82,6 +93,8 @@ function validateGlobalSettingsDocument(value) {
     proxyAuthMigrationPending,
     closeAction: source.closeAction,
     language: source.language,
+    browserNewTabUrl: source.browserNewTabUrl,
+    underlaySourceAddress: source.underlaySourceAddress,
     startAtLogin: boolean(source.startAtLogin, 'startAtLogin'),
   });
 }
@@ -169,6 +182,7 @@ function validateLocalResourcesDocument(value) {
     route: resource.route,
     category: resource.category,
     keywords: resource.keywords,
+    ...(resource.favoriteOnly === true ? { favoriteOnly: true } : {}),
   }));
   const hiddenBuiltinResourceIds = normalizeHiddenBuiltinResourceIds(
     source.hiddenBuiltinResourceIds,

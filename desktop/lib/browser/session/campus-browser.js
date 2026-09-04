@@ -11,8 +11,13 @@ const {
 const { resolveDomainRouteForUrl } = require('../../routing/policy/domain-route-policy');
 const { normalizeRuleHost } = require('../../routing/rules/routing-rule-store');
 const { normalizeToolbarCommand } = require('../toolbar/campus-toolbar-contract');
+const { projectWorkspaceGroups } = require('../workspace/campus-workspace-controller');
 const { CertificateController } = require('../certificates/certificate-controller');
 const { CredentialController } = require('../credentials/credential-controller');
+const {
+  RESOURCE_CATEGORIES,
+  normalizePageFavoriteCandidate,
+} = require('../../resources/schema/campus-resource-contract');
 const {
   BrowserSessionManager,
   applyCampusSessionPolicy,
@@ -22,7 +27,7 @@ const {
 } = require('./browser-session-manager');
 const { DEFAULT_MAX_TABS, TabManager } = require('../tabs/tab-manager');
 const { createT } = require('../../platform/i18n/i18n');
-const TOOLBAR_HEIGHT = 76;
+const TOOLBAR_HEIGHT = 108;
 const FIND_BAR_HEIGHT = 34;
 const SLOW_LOADING_HINT_MS = 10000;
 const MAX_URL_LENGTH = 2048;
@@ -34,7 +39,7 @@ const MAX_TABS = DEFAULT_MAX_TABS;
 
 function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('zh')) {
   let value = String(input || '').trim() || fallback;
-  if (value === BLANK_CAMPUS_HOME && fallback === BLANK_CAMPUS_HOME) return BLANK_CAMPUS_HOME;
+  if (value === BLANK_CAMPUS_HOME) return BLANK_CAMPUS_HOME;
   if (value.length > MAX_URL_LENGTH) throw new Error(t('url.tooLong'));
   if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) value = `https://${value}`;
 
@@ -51,6 +56,14 @@ function normalizeCampusUrl(input, fallback = DEFAULT_CAMPUS_HOME, t = createT('
     throw new Error(t('url.invalid'));
   }
   return parsed.href;
+}
+
+function workspaceSearchQuery(value) {
+  const query = String(value || '').trim();
+  if (!query || query.length > 80 || /[\u0000-\u001f\u007f]/u.test(query)) return null;
+  if (/\s/u.test(query)) return query;
+  if (/[./:@]/u.test(query)) return null;
+  return /^[\p{L}\p{N}_-]+$/u.test(query) ? query : null;
 }
 
 function campusWindowChrome(platform) {
@@ -185,59 +198,12 @@ function workspaceHomeResources(value, t = createT('zh')) {
       description: resource.description,
       url,
       route: resource.route,
+      category: RESOURCE_CATEGORIES.includes(resource.category)
+        ? resource.category : 'custom',
       favorite: resource.favorite,
       lastOpenedAt: resource.lastOpenedAt,
     });
   }));
-}
-
-function workspaceResourceCard(resource, t) {
-  const description = resource.description
-    ? `<span class="description">${escapeHtml(resource.description)}</span>` : '';
-  const route = escapeHtml(t(resource.route === ROUTE_DIRECT ? 'route.direct' : 'route.campus'));
-  return `<a class="resource" href="${escapeHtml(resource.url)}">
-    <strong>${escapeHtml(resource.name)}</strong>${description}
-    <span class="route ${resource.route === ROUTE_DIRECT ? 'direct' : ''}">${route}</span>
-  </a>`;
-}
-
-function workspaceHomeSection(title, resources, t) {
-  if (!resources.length) return '';
-  return `<section><h2>${escapeHtml(title)}</h2><div class="grid">${resources
-    .map((resource) => workspaceResourceCard(resource, t)).join('')}</div></section>`;
-}
-
-function neutralHomePage(profile, t = createT('zh'), rawResources = []) {
-  const resources = workspaceHomeResources(rawResources, t);
-  const school = escapeHtml(profile?.schoolName || t('browser.workspace'));
-  const warning = profile?.unverified
-    ? `<p class="warning">${escapeHtml(t('browser.neutralHomeUnverified'))}</p>` : '';
-  const favorites = resources.filter((resource) => resource.favorite);
-  const claimed = new Set(favorites.map(({ id }) => id));
-  const recent = resources.filter((resource) => !claimed.has(resource.id) && resource.lastOpenedAt)
-    .sort((left, right) => right.lastOpenedAt - left.lastOpenedAt);
-  for (const resource of recent) claimed.add(resource.id);
-  const services = resources.filter((resource) => !claimed.has(resource.id));
-  const sections = [
-    workspaceHomeSection(t('browser.homeFavorites'), favorites, t),
-    workspaceHomeSection(t('browser.homeRecent'), recent, t),
-    workspaceHomeSection(t('browser.homeServices'), services, t),
-  ].join('');
-  const empty = sections ? '' : `<p class="empty">${escapeHtml(t('browser.homeEmpty'))}</p>`;
-  return `<!doctype html><meta charset="utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-    <title>${escapeHtml(t('browser.workspace'))}</title>
-    <style>
-      *{box-sizing:border-box}body{margin:0;background:#f7f9fc;color:#1b2536;font-family:-apple-system,"PingFang SC","Segoe UI",sans-serif}
-      main{max-width:900px;margin:6vh auto;padding:32px}.hero{padding:24px;background:#fff;border:1px solid #e8edf5;border-radius:18px;box-shadow:0 12px 30px rgba(13,30,66,.08)}
-      h1{margin:0 0 8px;color:#0b2a5b;font-size:25px}h2{margin:24px 0 10px;color:#0b2a5b;font-size:16px}p{margin:0;line-height:1.7;color:#667085}
-      .warning{margin-top:12px;color:#7a5200;background:#fff1cf;border-radius:10px;padding:10px 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-      .resource{display:flex;min-width:0;min-height:104px;flex-direction:column;gap:6px;padding:14px;color:#0b2a5b;text-decoration:none;background:#fff;border:1px solid #e2e8f2;border-radius:14px;transition:border-color .16s,box-shadow .16s,transform .16s}
-      .resource:hover,.resource:focus-visible{border-color:#c59a2b;box-shadow:0 8px 20px rgba(13,30,66,.08);transform:translateY(-1px);outline:none}.description{color:#7a8598;font-size:13px;line-height:1.4}.route{align-self:flex-start;margin-top:auto;padding:3px 7px;border-radius:999px;background:#eaf0fa;color:#0b2a5b;font-size:11px;font-weight:700}.route.direct{background:#fff1cf;color:#715300}.empty{margin-top:18px;text-align:center}
-      @media(max-width:560px){main{margin:0;padding:18px}.hero{padding:18px}.grid{grid-template-columns:1fr}}
-      @media(prefers-reduced-motion:reduce){.resource{transition:none}.resource:hover,.resource:focus-visible{transform:none}}
-    </style>
-    <main><div class="hero"><h1>${school}</h1><p>${escapeHtml(t('browser.neutralHomeBody'))}</p>${warning}</div>${sections}${empty}</main>`;
 }
 
 class CampusBrowser {
@@ -254,11 +220,18 @@ class CampusBrowser {
     campusPreload,
     profilePresentation = null,
     getWorkspaceResources = () => [],
+    getWorkspaceGroups = () => [],
+    onOpenResource = null,
+    showBookmarkMenu = null,
+    onTogglePageFavorite = null,
+    onRecordPageOpen = null,
+    workspaceController = null,
     showItemInFolder = null,
+    getNewTabUrl = () => BLANK_CAMPUS_HOME,
+    onOpenSettings = null,
     homeUrl = DEFAULT_CAMPUS_HOME,
     routingPolicy,
     ensureCampusReady,
-    onManageRoutingRules,
     locale,
     t,
     onError,
@@ -277,7 +250,6 @@ class CampusBrowser {
     this.ensureCampusReady = typeof ensureCampusReady === 'function'
       ? ensureCampusReady
       : async () => true;
-    this.onManageRoutingRules = onManageRoutingRules;
     this.locale = locale === 'en' ? 'en' : 'zh';
     this.t = typeof t === 'function' ? t : createT(this.locale);
     this.profilePresentation = profilePresentation &&
@@ -286,13 +258,33 @@ class CampusBrowser {
       ? Object.freeze({
         schoolName: profilePresentation.schoolName.slice(0, 160),
         unverified: profilePresentation.unverified,
+        officialPortalResourceId: typeof profilePresentation.officialPortalResourceId === 'string'
+          ? profilePresentation.officialPortalResourceId : null,
       })
-      : Object.freeze({ schoolName: this.t('browser.workspace'), unverified: false });
-    if (typeof getWorkspaceResources !== 'function') {
-      throw new TypeError('Campus Browser workspace resource provider is invalid');
+      : Object.freeze({
+        schoolName: this.t('browser.workspace'), unverified: false,
+        officialPortalResourceId: null,
+      });
+    if (typeof getWorkspaceResources !== 'function' || typeof getWorkspaceGroups !== 'function') {
+      throw new TypeError('Campus Browser workspace provider is invalid');
     }
     this.getWorkspaceResources = getWorkspaceResources;
+    this.getWorkspaceGroups = getWorkspaceGroups;
+    this.onOpenResource = typeof onOpenResource === 'function' ? onOpenResource : null;
+    this.showBookmarkMenu = typeof showBookmarkMenu === 'function' ? showBookmarkMenu : null;
+    this.onTogglePageFavorite = typeof onTogglePageFavorite === 'function'
+      ? onTogglePageFavorite : null;
+    this.onRecordPageOpen = typeof onRecordPageOpen === 'function' ? onRecordPageOpen : null;
+    if (workspaceController && (typeof workspaceController.createView !== 'function' ||
+        typeof workspaceController.load !== 'function' ||
+        typeof workspaceController.sendState !== 'function')) {
+      throw new TypeError('Campus Workspace controller is invalid');
+    }
+    this.workspaceController = workspaceController || null;
     this.showItemInFolder = typeof showItemInFolder === 'function' ? showItemInFolder : () => {};
+    this.getNewTabUrl = typeof getNewTabUrl === 'function'
+      ? getNewTabUrl : () => BLANK_CAMPUS_HOME;
+    this.onOpenSettings = typeof onOpenSettings === 'function' ? onOpenSettings : () => {};
     this.homeUrl = homeUrl === BLANK_CAMPUS_HOME
       ? BLANK_CAMPUS_HOME
       : normalizeCampusUrl(homeUrl, DEFAULT_CAMPUS_HOME, this.t);
@@ -314,6 +306,12 @@ class CampusBrowser {
     });
     this.window = null;
     this.view = null;
+    // Only the active tab is attached to the native View hierarchy. Hiding a
+    // WebContentsView stops painting, but Electron can still expose its page
+    // through the platform accessibility tree. Detached views retain their
+    // WebContents, history, cookies, and scroll state without being reachable
+    // by VoiceOver/UI Automation until the tab is selected again.
+    this.attachedView = null;
     this.tabManager = new TabManager({ maxTabs: MAX_TABS });
     this.browserSessionManager = new BrowserSessionManager({
       session,
@@ -336,6 +334,7 @@ class CampusBrowser {
     this.lastFindQuery = '';
     this.scheduledLayout = null;
     this.scheduledToolbarUpdate = null;
+    this.routingActivationInFlight = null;
     this.lastToolbarState = null;
   }
 
@@ -366,9 +365,7 @@ class CampusBrowser {
       trust: this.profilePresentation.unverified ? this.t('browser.unverifiedSuffix') : '',
     }));
     this.window.webContents.send?.('campus-toolbar-locale', this.locale);
-    for (const tab of this.tabs) {
-      if (this.currentUrl(tab) === BLANK_CAMPUS_HOME) this.renderWorkspaceHome(tab);
-    }
+    this.refreshWorkspaceHomes();
     this.updateToolbar();
   }
 
@@ -377,11 +374,231 @@ class CampusBrowser {
     catch { return Object.freeze([]); }
   }
 
-  renderWorkspaceHome(tab) {
+  workspaceGroups() {
+    try { return projectWorkspaceGroups(this.getWorkspaceGroups()); }
+    catch { return Object.freeze([]); }
+  }
+
+  bookmarkBarState() {
+    const resources = this.workspaceResources();
+    const favorites = resources.filter(({ favorite }) => favorite === true);
+    const byId = new Map(favorites.map((resource) => [resource.id, resource]));
+    const assigned = new Set();
+    const officialId = this.profilePresentation.officialPortalResourceId;
+    const groups = this.workspaceGroups().map((group) => {
+      const children = group.resourceIds.filter((id) => id !== officialId)
+        .map((id) => byId.get(id)).filter(Boolean)
+        .map(({ id, name }) => Object.freeze({ id, name }));
+      for (const child of children) assigned.add(child.id);
+      return Object.freeze({ type: 'folder', id: group.id, name: group.name, children });
+    }).filter(({ children }) => children.length > 0);
+    const entries = [];
+    const official = resources.find(({ id }) => id === officialId);
+    if (official) {
+      entries.push(Object.freeze({ type: 'bookmark', id: official.id, name: official.name, official: true }));
+      assigned.add(official.id);
+    }
+    for (const { id, name } of favorites) {
+      if (!assigned.has(id)) entries.push(Object.freeze({ type: 'bookmark', id, name, official: false }));
+    }
+    entries.push(...groups);
+    return Object.freeze(entries);
+  }
+
+  refreshWorkspaceHomes() {
+    if (!this.workspaceController) return;
+    for (const tab of this.tabs) {
+      if (tab.kind === 'workspace') this.workspaceController.sendState(tab.view.webContents);
+    }
+  }
+
+  refreshCardBoardLayout(document) {
+    if (!document || typeof document !== 'object' || document.schemaVersion !== 1) return false;
+    let sent = false;
+    for (const tab of this.tabs) {
+      if (tab.kind !== 'workspace' || tab.view.webContents.isDestroyed?.()) continue;
+      tab.view.webContents.send?.('card-board-layout-changed', document);
+      sent = true;
+    }
+    return sent;
+  }
+
+  focusWorkspace(target = 'search', query = '') {
+    if (!this.workspaceController) return false;
+    let tab = this.activeTab();
+    if (!tab || tab.kind !== 'workspace') {
+      const existing = this.tabs.find((candidate) => candidate.kind === 'workspace');
+      tab = existing || this.createTab(BLANK_CAMPUS_HOME, ROUTE_DIRECT);
+      if (existing) this.switchTab(existing.id);
+    }
     if (!tab || tab.view.webContents.isDestroyed()) return false;
-    const source = neutralHomePage(this.profilePresentation, this.t, this.workspaceResources());
-    const script = `document.open();document.write(${JSON.stringify(source)});document.close();`;
-    tab.view.webContents.executeJavaScript(script).catch(() => {});
+    const focus = () => {
+      if (typeof this.workspaceController.focus === 'function') {
+        this.workspaceController.focus(tab.view.webContents, target, query);
+      } else if (target === 'search') {
+        this.workspaceController.focusSearch?.(tab.view.webContents);
+      }
+    };
+    if (tab.loading) tab.pendingWorkspaceFocus = { target, query };
+    else setImmediate(focus);
+    return true;
+  }
+
+  focusWorkspaceSearch() { return this.focusWorkspace('search'); }
+
+  focusAddressBar() {
+    if (!this.window || this.window.isDestroyed()) return false;
+    this.window.webContents.send?.('campus-toolbar-focus', 'address');
+    return true;
+  }
+
+  beginNavigationIntent(tab = this.activeTab()) {
+    if (!tab || tab.view.webContents.isDestroyed()) return null;
+    tab.navigationIntent = (tab.navigationIntent || 0) + 1;
+    return tab.navigationIntent;
+  }
+
+  navigationIntentCurrent(tab, intent) {
+    return Number.isSafeInteger(intent) && this.tabManager.contains(tab) &&
+      tab.navigationIntent === intent && !tab.view.webContents.isDestroyed();
+  }
+
+  async openHome() {
+    if (this.homeUrl === BLANK_CAMPUS_HOME) {
+      return this.focusWorkspaceSearch();
+    }
+    const active = this.activeTab();
+    const intent = active ? this.beginNavigationIntent(active) : null;
+    const port = this.configuredPort || 1080;
+    const resolution = this.resolveRoute(this.homeUrl);
+    if (!await this.ensureRoutingReady(resolution, port)) return false;
+    if (active && !this.navigationIntentCurrent(active, intent)) return false;
+    if (active && active.kind !== 'workspace') {
+      return this.navigate(this.homeUrl, active);
+    }
+    return !!this.createTab(this.homeUrl);
+  }
+
+  openBlankTab() {
+    return !!this.createTab(BLANK_CAMPUS_HOME, ROUTE_DIRECT, { blankPage: true });
+  }
+
+  async openNewTab() {
+    let url;
+    try { url = normalizeCampusUrl(this.getNewTabUrl(), BLANK_CAMPUS_HOME, this.t); }
+    catch (error) {
+      this.onError?.(error.message);
+      return false;
+    }
+    if (url === BLANK_CAMPUS_HOME) return this.openBlankTab();
+    const port = this.configuredPort || 1080;
+    // The saved new-tab URL is a destination preference, not an implicit
+    // routing override. Resolve it through the same policy that generates the
+    // Session PAC so the toolbar can never claim Direct while Chromium is
+    // actually using the fail-safe Campus default. Users can persist an exact
+    // Direct choice through the routing-rule UI, where it becomes PAC input.
+    const resolution = this.resolveRoute(url);
+    if (!await this.ensureRoutingReady(resolution, port)) return false;
+    return !!this.createTab(url);
+  }
+
+  async ensureRoutingReady(resolution, port = this.configuredPort || 1080) {
+    if (!resolution || ![ROUTE_CAMPUS, ROUTE_DIRECT].includes(resolution.route)) return false;
+    if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+    const activated = await this.activateRoutingPolicy(port);
+    // A superseding suspend intent makes BrowserSessionManager activation
+    // resolve null. Never start a navigation while its fail-closed gate remains
+    // authoritative.
+    return activated !== null && !this.routingSuspended && !this.routingRequestsBlocked;
+  }
+
+  async activateRoutingPolicy(port) {
+    const value = Number(port);
+    if (!this.routingSuspended && !this.routingRequestsBlocked &&
+        this.configuredPort === value && this.campusSession) return this.campusSession;
+    const current = this.routingActivationInFlight;
+    if (current) {
+      await current.promise;
+      if (!this.routingSuspended && !this.routingRequestsBlocked &&
+          this.configuredPort === value && this.campusSession) return this.campusSession;
+    }
+    const operation = this.routingSuspended
+      ? this.resumeRoutingPolicy(value)
+      : this.configure(value);
+    const record = { port: value, promise: operation };
+    this.routingActivationInFlight = record;
+    try { return await operation; }
+    finally {
+      if (this.routingActivationInFlight === record) this.routingActivationInFlight = null;
+    }
+  }
+
+  async navigateWhenReady(rawUrl, tab = this.activeTab()) {
+    let url;
+    try {
+      url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
+    } catch (error) {
+      this.onError?.(error.message);
+      return false;
+    }
+    if (!tab || tab.view.webContents.isDestroyed()) return false;
+    const intent = this.beginNavigationIntent(tab);
+    const resolution = this.resolveRoute(url);
+    if (!await this.ensureRoutingReady(resolution)) return false;
+    if (!this.navigationIntentCurrent(tab, intent)) return false;
+    if (tab.kind === 'workspace') return !!this.createTab(url);
+    return this.navigate(url, tab);
+  }
+
+  async reloadWhenReady(tab = this.activeTab()) {
+    if (!tab || tab.kind === 'workspace' || tab.view.webContents.isDestroyed()) return false;
+    const url = tab.failedUrl || this.currentUrl(tab);
+    if (!url || url === BLANK_CAMPUS_HOME) {
+      tab.view.webContents.reload();
+      return true;
+    }
+    const intent = this.beginNavigationIntent(tab);
+    const resolution = this.resolveRoute(url);
+    if (!await this.ensureRoutingReady(resolution)) return false;
+    if (!this.navigationIntentCurrent(tab, intent)) return false;
+    if (tab.failedUrl) return this.navigate(url, tab);
+    tab.view.webContents.reload();
+    return true;
+  }
+
+  pageFavoriteState(tab = this.activeTab()) {
+    const url = this.currentUrl(tab);
+    if (!tab || url === BLANK_CAMPUS_HOME || !this.onTogglePageFavorite) {
+      return { canFavorite: false, favorite: false };
+    }
+    let canonical;
+    try {
+      canonical = normalizePageFavoriteCandidate({
+        url,
+        title: tab.view.webContents.getTitle?.() || '',
+        route: tab.route || ROUTE_CAMPUS,
+      }).url;
+    } catch {
+      return { canFavorite: false, favorite: false };
+    }
+    const resource = this.workspaceResources().find(({ url: resourceUrl }) => resourceUrl === canonical);
+    return { canFavorite: true, favorite: resource?.favorite === true };
+  }
+
+  async toggleActivePageFavorite(tab = this.activeTab()) {
+    const state = this.pageFavoriteState(tab);
+    if (!state.canFavorite || !tab || !this.onTogglePageFavorite) return false;
+    const result = await this.onTogglePageFavorite({
+      url: this.currentUrl(tab),
+      title: tab.view.webContents.getTitle?.() || '',
+      route: tab.route || ROUTE_CAMPUS,
+    });
+    if (!result?.ok) {
+      this.onError?.(result?.error || this.t('browser.favoriteFailed'));
+      return false;
+    }
+    this.refreshWorkspaceHomes();
+    this.updateToolbar();
     return true;
   }
 
@@ -524,6 +741,7 @@ class CampusBrowser {
 
   currentUrl(tab) {
     if (!tab) return '';
+    if (tab.kind === 'workspace') return BLANK_CAMPUS_HOME;
     if (tab.failedUrl) return tab.failedUrl;
     if (tab.view.webContents.isDestroyed()) return '';
     try {
@@ -565,7 +783,7 @@ class CampusBrowser {
 
   updateAllTabRoutes() {
     for (const tab of this.tabs) {
-      const url = this.currentUrl(tab) || tab.failedUrl;
+      const url = tab.failedUrl || this.currentUrl(tab);
       if (url) this.updateTabRoute(tab, url);
     }
   }
@@ -605,6 +823,7 @@ class CampusBrowser {
       url: this.currentUrl(active),
       title: activeTitle,
       loading: !!active?.loading,
+      loadingLabel: active?.loading ? active.loadingLabel || '' : '',
       slow: !!active?.slow,
       findOpen: this.findOpen,
       route: active?.route || ROUTE_CAMPUS,
@@ -617,11 +836,14 @@ class CampusBrowser {
         id: tab.id,
         title: tab.view.webContents.isDestroyed()
           ? this.t('tab.new')
-          : tab.view.webContents.getTitle() || this.t('tab.new'),
+          : tab.view.webContents.getTitle() || tab.loadingLabel || this.t('tab.new'),
         loading: tab.loading,
         route: tab.route,
       })),
       download: this.downloadState,
+      workspace: active?.kind === 'workspace',
+      bookmarks: this.bookmarkBarState(),
+      ...this.pageFavoriteState(active),
     };
     const serialized = JSON.stringify(state);
     if (serialized === this.lastToolbarState) return;
@@ -650,8 +872,25 @@ class CampusBrowser {
     const active = this.activeTab();
     const navigation = navigationForContents(active?.view.webContents);
 
-    if (command === 'new-tab') this.createTab(this.homeUrl);
-    else if (command === 'home' && active) this.navigate(this.homeUrl, active);
+    if (command === 'new-tab') {
+      Promise.resolve(this.openNewTab()).catch(() => this.onError?.(this.t('tab.createFailed')));
+    }
+    else if (command === 'home') {
+      Promise.resolve(this.openHome()).catch(() => this.onError?.(this.t('tab.createFailed')));
+    }
+    else if (command === 'manage-bookmarks') this.focusWorkspace('manage');
+    else if (command === 'open-bookmark-menu' && this.showBookmarkMenu) {
+      this.showBookmarkMenu(this.bookmarkBarState());
+    }
+    else if (command === 'open-bookmark-folder' && this.showBookmarkMenu) {
+      const folder = this.bookmarkBarState().find(({ type, id }) => type === 'folder' && id === value);
+      if (folder) this.showBookmarkMenu(folder.children);
+    }
+    else if (command === 'open-resource' && this.onOpenResource) {
+      Promise.resolve(this.onOpenResource(value)).then(() => this.updateToolbar()).catch((error) => {
+        this.onError?.(error?.message || this.t('browser.favoriteFailed'));
+      });
+    }
     else if (command === 'switch-tab') this.switchTab(Number(value));
     else if (command === 'close-tab') this.closeTab(Number(value));
     else if (command === 'set-route' && active) {
@@ -662,19 +901,31 @@ class CampusBrowser {
     else if (command === 'manage-credential' && active) {
       this.manageCredential(active);
     }
-    else if (command === 'manage-routing-rules') {
-      if (typeof this.onManageRoutingRules === 'function') this.onManageRoutingRules();
+    else if (command === 'open-settings') this.onOpenSettings();
+    else if (command === 'toggle-favorite' && active) {
+      this.toggleActivePageFavorite(active).catch((error) => {
+        this.onError?.(error.message || this.t('browser.favoriteFailed'));
+      });
+    }
+    else if (command === 'focus-workspace') {
+      this.focusWorkspaceSearch();
     }
     else if (command === 'back' && navigation.canGoBack()) {
+      this.beginNavigationIntent(active);
       navigation.goBack();
     } else if (command === 'forward' && navigation.canGoForward()) {
+      this.beginNavigationIntent(active);
       navigation.goForward();
     } else if (command === 'reload' && active) {
-      active.failedUrl
-        ? this.navigate(active.failedUrl, active)
-        : active.view.webContents.reload();
+      Promise.resolve(this.reloadWhenReady(active)).catch((error) => {
+        this.onError?.(error?.message || this.t('error.connectTimeout'));
+      });
     } else if (command === 'navigate' && active) {
-      this.navigate(value, active);
+      const query = workspaceSearchQuery(value);
+      if (query) this.focusWorkspace('search', query);
+      else Promise.resolve(this.navigateWhenReady(value, active)).catch((error) => {
+        this.onError?.(error?.message || this.t('error.connectTimeout'));
+      });
     } else if (command === 'find-open') {
       this.setFindBar(true);
     } else if (command === 'find-close') {
@@ -755,6 +1006,9 @@ class CampusBrowser {
     contents.on('will-redirect', rejectNonWebNavigation);
     contents.on('did-start-loading', () => {
       tab.loading = true;
+      if (!tab.loadingLabel) {
+        try { tab.loadingLabel = new URL(this.currentUrl(tab)).hostname; } catch { tab.loadingLabel = ''; }
+      }
       if (!tab.renderingError) tab.failedUrl = '';
       this.clearSlowTimer(tab);
       tab.slowTimer = setTimeout(() => {
@@ -767,13 +1021,20 @@ class CampusBrowser {
     });
     contents.on('did-stop-loading', () => {
       tab.loading = false;
+      tab.loadingLabel = '';
       tab.renderingError = false;
       this.clearSlowTimer(tab);
       this.scheduleToolbarUpdate();
     });
     contents.on('did-navigate', (_event, url, httpResponseCode = 0) => {
+      if (tab.kind === 'blank' && url !== BLANK_CAMPUS_HOME) delete tab.kind;
       this.markCredentialNavigation(tab, url, httpResponseCode);
       this.updateTabRoute(tab, url);
+      if (this.onRecordPageOpen) {
+        Promise.resolve(this.onRecordPageOpen(url)).then((changed) => {
+          if (changed) this.refreshWorkspaceHomes();
+        }).catch(() => {});
+      }
       this.scheduleToolbarUpdate();
     });
     for (const eventName of ['did-navigate-in-page', 'page-title-updated']) {
@@ -811,16 +1072,22 @@ class CampusBrowser {
       const navigation = navigationForContents(contents);
       if (commandKey && key === 't') {
         event.preventDefault();
-        this.createTab(this.homeUrl);
+        Promise.resolve(this.openNewTab())
+          .catch(() => this.onError?.(this.t('tab.createFailed')));
       } else if (commandKey && key === 'w') {
         event.preventDefault();
         this.closeTab(tab.id);
       } else if (commandKey && key === 'l') {
         event.preventDefault();
         this.window?.webContents.send?.('campus-toolbar-focus', 'address');
+      } else if (commandKey && key === 'k' && input.type === 'keyDown') {
+        event.preventDefault();
+        this.focusWorkspaceSearch();
       } else if (commandKey && key === 'r') {
         event.preventDefault();
-        tab.failedUrl ? this.navigate(tab.failedUrl, tab) : contents.reload();
+        Promise.resolve(this.reloadWhenReady(tab)).catch((error) => {
+          this.onError?.(error?.message || this.t('error.connectTimeout'));
+        });
       } else if (commandKey && key === 'f' && input.type === 'keyDown') {
         event.preventDefault();
         this.setFindBar(true);
@@ -947,11 +1214,14 @@ class CampusBrowser {
     }
     let url;
     try {
-      url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
+      url = options.blankPage === true
+        ? BLANK_CAMPUS_HOME
+        : normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     } catch (error) {
       if (this.onError) this.onError(error.message);
       return null;
     }
+    if (url === BLANK_CAMPUS_HOME && options.blankPage !== true) return this.createWorkspaceTab();
     const routeSession = this.browserSessionManager.sessionForRoute(ROUTE_CAMPUS);
     if (!routeSession) return null;
     const resolution = this.resolveRoute(url, null, route);
@@ -973,10 +1243,15 @@ class CampusBrowser {
           backgroundThrottling: true,
         },
       });
+      view.setBackgroundColor?.('#f4f6f9');
       tab = {
+        ...(options.blankPage === true ? { kind: 'blank' } : {}),
         view,
         failedUrl: '',
-        loading: false,
+        loading: url !== BLANK_CAMPUS_HOME,
+        loadingLabel: typeof options.displayName === 'string' && options.displayName.trim()
+          ? options.displayName.trim().slice(0, 96)
+          : (() => { try { return new URL(url).hostname; } catch { return ''; } })(),
         slow: false,
         slowTimer: null,
         renderingError: false,
@@ -990,16 +1265,15 @@ class CampusBrowser {
       this.credentialController.linkPopup(options.credentialReservation, tab);
       this.tabManager.add(tab);
       added = true;
-      // A newly attached view is hidden until switchTab has applied the current
-      // window bounds and made exactly one tab visible. This avoids a one-frame
-      // flash where two renderer surfaces can both paint.
+      // Keep the new renderer detached until switchTab has applied its bounds.
+      // This prevents both a paint flash and an inactive page entering the
+      // native accessibility tree.
       view.setVisible(false);
       if (this.window !== targetWindow || targetWindow.isDestroyed()) {
         throw new Error('campus browser window closed during tab creation');
       }
-      targetWindow.contentView.addChildView(view);
       this.attachPageEvents(tab);
-      if (!this.switchTab(tab.id) || !this.navigate(url, tab, resolution.route)) {
+      if (!this.switchTab(tab.id) || !this.navigate(url, tab, route)) {
         throw new Error('campus browser tab activation failed');
       }
       return tab;
@@ -1007,14 +1281,17 @@ class CampusBrowser {
       if (tab) this.credentialController.closeTab(tab);
       else this.credentialController.releasePopup(options.credentialReservation);
       if (added) this.tabManager.remove(tab.id);
-      try { if (view) targetWindow.contentView.removeChildView(view); } catch {}
+      if (this.attachedView === view) {
+        try { targetWindow.contentView.removeChildView(view); } catch {}
+        this.attachedView = null;
+      }
       try {
         if (view?.webContents && !view.webContents.isDestroyed()) view.webContents.close();
       } catch {}
       const previous = previousActiveId === null ? null : this.tabManager.select(previousActiveId);
       this.view = previous?.view || null;
       if (previous && this.window === targetWindow && !targetWindow.isDestroyed()) {
-        try { previous.view.setVisible(true); this.layout(); } catch {}
+        try { this.switchTab(previous.id); } catch {}
         this.scheduleToolbarUpdate();
       }
       if (this.onError) this.onError(this.t('tab.createFailed'));
@@ -1022,14 +1299,75 @@ class CampusBrowser {
     }
   }
 
+  createWorkspaceTab() {
+    if (!this.workspaceController || !this.window || this.window.isDestroyed()) return null;
+    const existing = this.tabs.find((tab) => tab.kind === 'workspace');
+    if (existing) { this.switchTab(existing.id); this.workspaceController.sendState(existing.view.webContents); return existing; }
+    if (!this.tabManager.canAdd()) {
+      this.onError?.(this.t('tab.limit', { count: MAX_TABS }));
+      return null;
+    }
+    const routeSession = this.browserSessionManager.sessionForRoute(ROUTE_CAMPUS);
+    if (!routeSession) return null;
+    const previousActiveId = this.tabManager.activeTabId;
+    let view;
+    let tab;
+    try {
+      view = this.workspaceController.createView(this.WebContentsView, routeSession);
+      tab = {
+        kind: 'workspace', view, failedUrl: '', loading: true, slow: false,
+        slowTimer: null, renderingError: false, crashed: false,
+        pendingCredential: null, pendingCredentialTimer: null,
+        route: ROUTE_DIRECT, routeSource: 'local-workspace', matchedRule: null,
+        pendingWorkspaceFocus: null,
+      };
+      this.tabManager.add(tab);
+      view.setVisible(false);
+      if (!this.switchTab(tab.id)) throw new Error('workspace activation failed');
+      this.workspaceController.load(view).then(() => {
+        tab.loading = false;
+        this.workspaceController.sendState(view.webContents);
+        if (tab.pendingWorkspaceFocus) {
+          const { target, query } = tab.pendingWorkspaceFocus;
+          tab.pendingWorkspaceFocus = null;
+          if (typeof this.workspaceController.focus === 'function') {
+            this.workspaceController.focus(view.webContents, target, query);
+          } else if (target === 'search') {
+            this.workspaceController.focusSearch?.(view.webContents);
+          }
+        }
+        this.updateToolbar();
+      }).catch(() => this.onError?.(this.t('tab.createFailed')));
+      view.webContents.on('render-process-gone', () => {
+        if (!view.webContents.isDestroyed()) this.workspaceController.load(view).catch(() => {});
+      });
+      return tab;
+    } catch {
+      if (tab) this.tabManager.remove(tab.id);
+      if (this.attachedView === view) {
+        try { this.window.contentView.removeChildView(view); } catch {}
+        this.attachedView = null;
+      }
+      try { if (view?.webContents && !view.webContents.isDestroyed()) view.webContents.close(); } catch {}
+      const previous = previousActiveId === null ? null : this.tabManager.select(previousActiveId);
+      this.view = previous?.view || null;
+      if (previous && this.window && !this.window.isDestroyed()) {
+        try { this.switchTab(previous.id); } catch {}
+      }
+      this.onError?.(this.t('tab.createFailed'));
+      return null;
+    }
+  }
+
   async setTabRoute(id, route) {
-    if (![ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
+    if (!['auto', ROUTE_CAMPUS, ROUTE_DIRECT].includes(route)) return false;
     const tab = this.tabManager.find(id);
-    if (!tab || !this.window || this.window.isDestroyed()) return false;
+    if (!tab || tab.kind === 'workspace' || !this.window || this.window.isDestroyed()) return false;
+    const navigationIntent = this.beginNavigationIntent(tab);
     // A route-switch request invalidates the in-flight page regardless of
     // whether reconnecting/configuring the requested route later succeeds.
     this.clearCredentialCandidate(tab);
-    const url = this.currentUrl(tab) || this.homeUrl;
+    const url = tab.failedUrl || this.currentUrl(tab) || this.homeUrl;
     let host;
     try {
       host = normalizeRuleHost(new URL(url).hostname);
@@ -1037,20 +1375,21 @@ class CampusBrowser {
       return false;
     }
     if (route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
-
-    await this.routingPolicy.upsert({
-      host,
-      includeSubdomains: false,
-      route,
-    });
+    if (route === 'auto') {
+      if (typeof this.routingPolicy.remove !== 'function') return false;
+      await this.routingPolicy.remove({ host, includeSubdomains: false });
+    } else {
+      await this.routingPolicy.upsert({ host, includeSubdomains: false, route });
+    }
     if (this.routingPolicy.appliesLiveSession !== true) {
       await this.configure(this.configuredPort || 1080, { force: true });
     }
+    if (!this.navigationIntentCurrent(tab, navigationIntent)) return true;
     this.clearSlowTimer(tab);
     this.updateAllTabRoutes();
-    tab.route = route;
-    tab.routeSource = 'user-exact';
-    tab.matchedRule = { host, includeSubdomains: false };
+    const resolution = this.updateTabRoute(tab, url);
+    if (resolution?.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) return false;
+    if (!this.navigationIntentCurrent(tab, navigationIntent)) return true;
     if (tab.failedUrl || tab.renderingError) {
       this.navigate(url, tab);
     } else if (!tab.view.webContents.isDestroyed()) {
@@ -1065,16 +1404,56 @@ class CampusBrowser {
   }
 
   switchTab(id) {
-    const selected = this.tabManager.select(id);
+    const selected = this.tabManager.find(id);
     if (!selected) return false;
-    this.view = selected.view;
-    this.layout();
-    for (const tab of this.tabs) {
-      if (tab.id !== selected.id) tab.view.setVisible(false);
+    const previous = this.activeTab();
+    const previousView = this.attachedView;
+    if (!this.window || this.window.isDestroyed() || selected.view.webContents.isDestroyed()) {
+      return false;
     }
-    selected.view.setVisible(true);
-    this.scheduleToolbarUpdate();
-    return true;
+    try {
+      if (previous && previous.id !== selected.id) this.beginNavigationIntent(previous);
+      if (previousView && previousView !== selected.view) {
+        previousView.setVisible(false);
+        this.window.contentView.removeChildView(previousView);
+        this.attachedView = null;
+      }
+      const [width, height] = this.window.getContentSize();
+      const toolbarHeight = TOOLBAR_HEIGHT + (this.findOpen ? FIND_BAR_HEIGHT : 0);
+      selected.view.setVisible(false);
+      selected.view.setBounds({
+        x: 0,
+        y: toolbarHeight,
+        width: Math.max(1, width),
+        height: Math.max(1, height - toolbarHeight),
+      });
+      if (this.attachedView !== selected.view) {
+        this.window.contentView.addChildView(selected.view);
+        this.attachedView = selected.view;
+      }
+      selected.view.setVisible(true);
+      this.tabManager.select(selected.id);
+      this.view = selected.view;
+      this.scheduleToolbarUpdate();
+      return true;
+    } catch {
+      if (this.attachedView === selected.view) {
+        try { this.window.contentView.removeChildView(selected.view); } catch {}
+        this.attachedView = null;
+      }
+      try { selected.view.setVisible(false); } catch {}
+      if (previous && !previous.view.webContents.isDestroyed()) {
+        try {
+          this.window.contentView.addChildView(previous.view);
+          this.attachedView = previous.view;
+          previous.view.setVisible(true);
+          this.tabManager.select(previous.id);
+          this.view = previous.view;
+          this.layout();
+        } catch {}
+      }
+      return false;
+    }
   }
 
   closeTab(id) {
@@ -1085,12 +1464,16 @@ class CampusBrowser {
     const { tab, replacement, empty } = removal;
     this.clearSlowTimer(tab);
     this.credentialController.closeTab(tab);
-    this.window.contentView.removeChildView(tab.view);
+    if (this.attachedView === tab.view) {
+      this.window.contentView.removeChildView(tab.view);
+      this.attachedView = null;
+    }
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
 
     if (empty) {
       this.view = null;
-      this.createTab(this.homeUrl, ROUTE_CAMPUS);
+      Promise.resolve(this.openNewTab())
+        .catch(() => this.onError?.(this.t('tab.createFailed')));
     } else if (replacement) {
       this.switchTab(replacement.id);
     } else {
@@ -1144,6 +1527,8 @@ class CampusBrowser {
       }
       this.tabManager.clear();
       this.view = null;
+      this.attachedView = null;
+      this.routingActivationInFlight = null;
       this.window = null;
       this.findOpen = false;
       this.lastToolbarState = null;
@@ -1168,10 +1553,7 @@ class CampusBrowser {
     tab.renderingError = false;
     tab.crashed = false;
     const loading = tab.view.webContents.loadURL(url);
-    loading.then(() => {
-      if (url !== BLANK_CAMPUS_HOME || tab.view.webContents.isDestroyed()) return;
-      this.renderWorkspaceHome(tab);
-    }).catch(() => {
+    loading.catch(() => {
       // did-fail-load renders a local error page. A superseded navigation can
       // reject this promise even though the newer page loaded successfully.
     });
@@ -1179,24 +1561,51 @@ class CampusBrowser {
     return true;
   }
 
-  async open(rawUrl, port, route = null) {
+  async open(rawUrl, port, route = null, options = {}) {
     const url = normalizeCampusUrl(rawUrl, this.homeUrl, this.t);
     const resolution = this.resolveRoute(url, null, route);
-    if (resolution.route === ROUTE_CAMPUS && !await this.ensureCampusReady()) {
-      throw new Error(this.t('error.connectTimeout'));
-    }
     // ensureCampusReady() proves the current engine generation has reached its
     // listener-ready boundary. Only then may a Session suspended during a
     // previous disconnect be pointed back at the live loopback frontend.
-    if (this.routingSuspended) await this.resumeRoutingPolicy(port);
-    else await this.configure(port);
+    if (!await this.ensureRoutingReady(resolution, port)) {
+      throw new Error(this.t('error.connectTimeout'));
+    }
     if (!this.window || this.window.isDestroyed()) await this.createWindow();
 
     if (this.window.isMinimized()) this.window.restore();
     this.window.show();
     this.window.focus();
-    this.createTab(url, resolution.route);
+    if (url === BLANK_CAMPUS_HOME) {
+      const existing = this.tabs.find((tab) => tab.kind === 'workspace');
+      if (existing) {
+        this.switchTab(existing.id);
+        this.workspaceController.sendState(existing.view.webContents);
+      } else {
+        this.createTab(url, ROUTE_DIRECT);
+      }
+    } else {
+      this.createTab(url, resolution.route, { displayName: options.displayName || '' });
+    }
     return url;
+  }
+
+  async openWorkspace(port) {
+    if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+      throw new TypeError('Campus Workspace port is invalid');
+    }
+    if (!this.configuredPort && !this.routingSuspended) await this.configure(port);
+    if (!this.window || this.window.isDestroyed()) await this.createWindow();
+    if (this.window.isMinimized()) this.window.restore();
+    this.window.show();
+    this.window.focus();
+    const existing = this.tabs.find((tab) => tab.kind === 'workspace');
+    if (existing) {
+      this.switchTab(existing.id);
+      this.workspaceController.sendState(existing.view.webContents);
+    } else {
+      this.createWorkspaceTab();
+    }
+    return BLANK_CAMPUS_HOME;
   }
 
   close() {
@@ -1212,6 +1621,8 @@ class CampusBrowser {
     }
     this.window = null;
     this.view = null;
+    this.attachedView = null;
+    this.routingActivationInFlight = null;
     this.tabManager.clear();
     this.findOpen = false;
     this.lastToolbarState = null;
@@ -1261,7 +1672,6 @@ module.exports = {
   campusProxyConfig,
   campusWindowChrome,
   errorPage,
-  neutralHomePage,
   workspaceHomeResources,
   nextZoomFactor,
   navigationForContents,
@@ -1269,4 +1679,5 @@ module.exports = {
   pacDataUrl,
   redactedFailedUrl,
   safePopupUrl,
+  workspaceSearchQuery,
 };

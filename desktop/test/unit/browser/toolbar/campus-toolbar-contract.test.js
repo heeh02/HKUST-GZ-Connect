@@ -10,9 +10,35 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.deepEqual(normalizeToolbarCommand('set-route', 'direct'), {
     command: 'set-route', value: 'direct',
   });
+  assert.deepEqual(normalizeToolbarCommand('set-route', 'auto'), {
+    command: 'set-route', value: 'auto',
+  });
   assert.deepEqual(normalizeToolbarCommand('navigate', 'https://example.com/'), {
     command: 'navigate', value: 'https://example.com/',
   });
+  assert.deepEqual(normalizeToolbarCommand('open-settings', 'ignored'), {
+    command: 'open-settings', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('toggle-favorite', 'ignored'), {
+    command: 'toggle-favorite', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('focus-workspace', 'ignored'), {
+    command: 'focus-workspace', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('manage-bookmarks', 'ignored'), {
+    command: 'manage-bookmarks', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('open-bookmark-menu', 'ignored'), {
+    command: 'open-bookmark-menu', value: '',
+  });
+  assert.deepEqual(normalizeToolbarCommand('open-bookmark-folder', 'group_abcdefghijkl'), {
+    command: 'open-bookmark-folder', value: 'group_abcdefghijkl',
+  });
+  assert.equal(normalizeToolbarCommand('open-bookmark-folder', '../group'), null);
+  assert.deepEqual(normalizeToolbarCommand('open-resource', 'canvas'), {
+    command: 'open-resource', value: 'canvas',
+  });
+  assert.equal(normalizeToolbarCommand('open-resource', '../canvas'), null);
   assert.equal(normalizeToolbarCommand('execute-javascript', 'alert(1)'), null);
   assert.equal(normalizeToolbarCommand('switch-tab', '-1'), null);
   assert.equal(normalizeToolbarCommand('set-route', 'system'), null);
@@ -20,8 +46,6 @@ test('toolbar commands are a small typed allowlist with bounded values', () => {
   assert.equal(normalizeToolbarCommand('find', 'bad\u0000query'), null);
 });
 
-test('routing-rule management is an explicit value-free toolbar command', () => {
-  assert.deepEqual(normalizeToolbarCommand('manage-routing-rules', { unexpected: true }), {
-    command: 'manage-routing-rules', value: '',
-  });
+test('low-frequency routing-rule management is not exposed by the browser toolbar', () => {
+  assert.equal(normalizeToolbarCommand('manage-routing-rules', { unexpected: true }), null);
 });

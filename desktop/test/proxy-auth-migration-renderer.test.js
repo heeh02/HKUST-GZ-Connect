@@ -7,7 +7,7 @@ const { createProxyAuthMigration } = require('../renderer/proxy-auth-migration')
 function fixture(initialSettings, save) {
   const elements = new Map();
   for (const id of [
-    'strictProxyAuth', 'towerSave', 'towerReconnect',
+    'strictProxyAuth', 'towerSave',
     'proxyAuthMigration', 'proxyAuthMigrationEnable', 'proxyAuthMigrationKeep',
   ]) {
     elements.set(id, {

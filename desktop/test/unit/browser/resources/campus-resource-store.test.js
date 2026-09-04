@@ -42,6 +42,16 @@ test('editing a shortcut preserves its id and replaces its fields', () => {
   assert.equal(edited.resources.length, 1);
 });
 
+test('editing a browser-captured shortcut preserves its favorite-only lifecycle', () => {
+  const first = upsertCustomResource([], {
+    name: 'Captured', url: 'https://captured.example.edu/', favoriteOnly: true,
+  });
+  const edited = upsertCustomResource(first.resources, {
+    id: first.resource.id, name: 'Renamed', url: first.resource.url, route: 'campus',
+  });
+  assert.equal(edited.resource.favoriteOnly, true);
+});
+
 test('deleting and reordering only affect local shortcuts', () => {
   const first = upsertCustomResource([], { name: 'A', url: 'https://a.example.com' });
   const second = upsertCustomResource(first.resources, { name: 'B', url: 'https://b.example.com' });
@@ -86,4 +96,29 @@ test('custom shortcuts strip ordinary queries and reject temporary login paramet
       route: 'campus',
     }), /临时登录链接/u);
   }
+});
+
+test('same-host shortcuts share one explicit or automatic route preference', () => {
+  const first = upsertCustomResource([], {
+    name: 'HPC login', url: 'https://hpc.example.edu/login',
+    route: 'campus', routePreference: 'campus',
+  });
+  const second = upsertCustomResource(first.resources, {
+    name: 'HPC dashboard', url: 'https://hpc.example.edu/dashboard',
+    route: 'direct', routePreference: 'direct',
+  });
+  assert.deepEqual(second.affectedResourceIds, [first.resource.id]);
+  assert.deepEqual(second.resources.map(({ route, routePreference }) => (
+    [route, routePreference || route]
+  )), [['direct', 'direct'], ['direct', 'direct']]);
+
+  const automatic = upsertCustomResource(second.resources, {
+    id: second.resource.id,
+    name: second.resource.name,
+    url: second.resource.url,
+    route: 'campus',
+    routePreference: 'auto',
+  });
+  assert.deepEqual(automatic.affectedResourceIds, [first.resource.id]);
+  assert.ok(automatic.resources.every(({ routePreference }) => routePreference === 'auto'));
 });

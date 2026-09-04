@@ -33,7 +33,7 @@
               data-i18n-attr="title:browser.reload; aria-label:browser.reload">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 1-2.3-5.6M20 3v5h-5"/></svg>
       </button>
-      <button id="home" class="icon" title="校园工作台主页" aria-label="校园工作台主页"
+      <button id="home" class="icon" title="学校官方门户主页" aria-label="学校官方门户主页"
               data-i18n-attr="title:browser.home; aria-label:browser.home">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10M9 20v-6h6v6"/></svg>
       </button>
@@ -45,27 +45,49 @@
           <path d="M12 12h8m-3 0v3m-3-3v2"></path>
         </svg>
       </button>
+      <button id="favoritePage" class="icon favorite-page" title="收藏当前页面"
+              aria-label="收藏当前页面" disabled
+              data-i18n-attr="title:browser.favoritePage; aria-label:browser.favoritePage">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>
+      </button>
       <form id="addressForm">
-        <span id="routeBadge" class="route-badge" title="当前网络路径：校园访问"
-              data-i18n-attr="title:browser.viaCampus">校园访问</span>
         <input id="address" type="text" inputmode="url" spellcheck="false"
                aria-label="校园网站地址" placeholder="输入校园网站地址"
                data-i18n-attr="aria-label:browser.addressLabel; placeholder:browser.addressPlaceholder" />
+        <span id="routeBadge" class="route-badge" title="当前网络路径：校园访问"
+              data-i18n-attr="title:browser.viaCampus">校园访问</span>
+        <select id="routeSelector" class="route-selector" aria-label="此标签的网络路径" title="选择此标签的网络路径"
+                data-i18n-attr="aria-label:browser.routeLabel; title:browser.routeTitle">
+          <option id="routeAutoOption" value="auto" data-i18n="browser.routeFollow">跟随规则</option>
+          <option value="campus" data-i18n="browser.routeAlwaysCampus">始终使用校园隧道</option>
+          <option value="direct" data-i18n="browser.routeAlwaysDirect">始终保持原网络</option>
+        </select>
       </form>
-      <select id="routeSelector" class="route-selector" aria-label="此标签的网络路径" title="选择此标签的网络路径"
-              data-i18n-attr="aria-label:browser.routeLabel; title:browser.routeTitle">
-        <option value="campus" data-i18n="browser.routeCampus">校园隧道</option>
-        <option value="direct" data-i18n="browser.routeDirect">直连</option>
-      </select>
-      <button id="routeRules" class="icon route-rules" title="管理域名网络规则"
-              aria-label="管理域名网络规则"
-              data-i18n-attr="title:browser.routeRules; aria-label:browser.routeRules">
+      <button id="browserSettings" class="icon" title="打开设置"
+              aria-label="打开设置"
+              data-i18n-attr="title:browser.settings; aria-label:browser.settings">
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4 7h10m4 0h2M4 17h2m4 0h10M14 4v6M10 14v6"/>
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/>
         </svg>
       </button>
       <span id="state" class="state" data-i18n="browser.stateDefault">校园网络</span>
       <span id="downloadStatus" class="download-status" hidden></span>
+    </div>
+    <div id="bookmarkBar" class="bookmark-bar" aria-label="书签栏"
+         data-i18n-attr="aria-label:browser.bookmarkBar">
+      <div id="loadingBanner" class="loading-banner" role="status" aria-live="polite" hidden>
+        <span class="loading-banner-indicator" aria-hidden="true"></span>
+        <strong id="loadingBannerName">正在打开网站</strong>
+        <span id="loadingBannerRoute">通过校园隧道</span>
+      </div>
+      <div id="bookmarkItems" class="bookmark-items"></div>
+      <div id="bookmarkMoreWrap" class="bookmark-folder" hidden>
+        <button id="bookmarkMore" class="bookmark-control" type="button" aria-expanded="false"
+                title="更多书签" aria-label="更多书签"
+                data-i18n-attr="title:browser.moreBookmarks; aria-label:browser.moreBookmarks">»</button>
+      </div>
+      <button id="manageBookmarks" class="bookmark-control bookmark-manage" type="button"
+              data-i18n="browser.manageBookmarks">整理书签</button>
     </div>
     <div id="findBar" class="find-bar" hidden>
       <input id="findInput" type="text" spellcheck="false"

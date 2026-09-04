@@ -24,37 +24,24 @@ class IntegrationCenterRuntime {
   constructor({
     getContext,
     selectTarget,
-    ensureSidecar,
     genericCoordinator,
     helperPath,
     credentialFile,
   } = {}) {
     if (typeof getContext !== 'function' || typeof selectTarget !== 'function' ||
-        typeof ensureSidecar !== 'function' || !genericCoordinator ||
+        !genericCoordinator ||
         typeof helperPath !== 'string' || !path.isAbsolute(helperPath) ||
         typeof credentialFile !== 'string' || !path.isAbsolute(credentialFile)) {
       throw new TypeError('Integration Center runtime dependencies are invalid');
     }
     Object.assign(this, {
-      getContext, selectTarget, ensureSidecar, genericCoordinator,
+      getContext, selectTarget, genericCoordinator,
       helperPath, credentialFile,
     });
     this.pending = null;
   }
 
   list() {
-    let context;
-    try {
-      context = this.getContext();
-    } catch (error) {
-      const state = error?.code === 'INTEGRATION_AUTH_INCOMPATIBLE'
-        ? 'unsupported' : 'unavailable';
-      return Object.freeze(ACTIVE_INTEGRATION_ADAPTER_IDS.map((adapterId) => (
-        createIntegrationAdapterView({
-          adapterId, compatibilityState: state, bindingState: 'unavailable',
-        })
-      )));
-    }
     return Object.freeze(ACTIVE_INTEGRATION_ADAPTER_IDS.map((adapterId) => {
       return createIntegrationAdapterView({
         adapterId,
@@ -66,17 +53,16 @@ class IntegrationCenterRuntime {
   }
 
   async prepare({ adapterId, action } = {}) {
-    this.cancel();
     if (!ACTIVE_INTEGRATION_ADAPTER_IDS.includes(adapterId)) {
       throw integrationError('INTEGRATION_ADAPTER_UNAVAILABLE');
     }
-    const context = this.getContext();
+    if (!GENERIC.has(adapterId) || !['copy', 'save'].includes(action) ||
+        (adapterId === 'vscode_remote_ssh' && action !== 'copy')) {
+      throw integrationError('INTEGRATION_ADAPTER_UNAVAILABLE');
+    }
+    const context = this.getContext(adapterId);
     let preview;
     if (GENERIC.has(adapterId)) {
-      if (!['copy', 'save'].includes(action) ||
-          (adapterId === 'vscode_remote_ssh' && action !== 'copy')) {
-        throw integrationError('INTEGRATION_ADAPTER_UNAVAILABLE');
-      }
       const targetFile = action === 'save'
         ? await this.#target(adapterId, action, null)
         : null;
@@ -101,9 +87,8 @@ class IntegrationCenterRuntime {
     const pending = this.pending;
     this.pending = null;
     if (!pending) throw integrationError('INTEGRATION_TARGET_CHANGED');
-    const context = this.getContext();
     try {
-      if (pending.adapterId === 'vscode_remote_ssh') this.ensureSidecar();
+      const context = this.getContext(pending.adapterId);
       return await this.genericCoordinator.confirm({ confirmationHandle, currentBinding: context.bindingFor(
         pending.adapterId, 1,
       ) });
@@ -144,9 +129,12 @@ function createIntegrationCenterRuntime({
   const fileTransaction = new AtomicExportFileTransaction({ fileSystem, platform, windowsAcl });
   const genericCoordinator = createGenericExportCoordinator({
     fileTransaction, writeClipboard,
+    beforePerform: ({ adapterId }) => {
+      if (adapterId === 'vscode_remote_ssh') ensureSidecar();
+    },
   });
   return new IntegrationCenterRuntime({
-    getContext, selectTarget, ensureSidecar, genericCoordinator,
+    getContext, selectTarget, genericCoordinator,
     helperPath, credentialFile,
   });
 }

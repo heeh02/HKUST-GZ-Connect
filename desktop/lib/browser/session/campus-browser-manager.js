@@ -1,27 +1,44 @@
 'use strict';
 
 const { BLANK_CAMPUS_HOME, CampusBrowser } = require('./campus-browser');
-const { ROUTE_CAMPUS } = require('../../routing/policy/campus-route');
+const { ROUTE_CAMPUS, ROUTE_DIRECT } = require('../../routing/policy/campus-route');
 const { CampusCredentialVault } = require('../credentials/campus-credential-vault');
 const { normalizeOpenRequest } = require('../resources/campus-open-policy');
+const { CampusWorkspaceController } = require('../workspace/campus-workspace-controller');
 
 function browserProfilePresentation(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       typeof value.schoolName !== 'string' || !value.schoolName.trim() ||
       value.schoolName.length > 160 || /[\u0000-\u001f\u007f<>]/u.test(value.schoolName) ||
-      typeof value.unverified !== 'boolean') {
+      typeof value.unverified !== 'boolean' ||
+      (value.officialPortalResourceId != null &&
+       (typeof value.officialPortalResourceId !== 'string' ||
+        !/^[a-z0-9-]{1,40}$/u.test(value.officialPortalResourceId)))) {
     throw new TypeError('Campus Browser Profile presentation is invalid');
   }
   return Object.freeze({
     schoolName: value.schoolName.trim(),
     unverified: value.unverified,
+    officialPortalResourceId: value.officialPortalResourceId || null,
   });
+}
+
+function officialPortalHomeUrl(profile, resources) {
+  const presentation = browserProfilePresentation(profile);
+  if (!presentation.officialPortalResourceId) return null;
+  if (!Array.isArray(resources) || resources.length > 64) {
+    throw new TypeError('Campus Browser resource library is invalid');
+  }
+  const portal = resources.find(({ id }) => id === presentation.officialPortalResourceId);
+  if (!portal || typeof portal.url !== 'string' || !portal.url) return null;
+  return portal.url;
 }
 
 class CampusBrowserManager {
   constructor({
     BrowserWindow,
     WebContentsView,
+    Menu,
     session,
     dialog,
     safeStorage,
@@ -32,6 +49,8 @@ class CampusBrowserManager {
     toolbarFile,
     toolbarPreload,
     campusPreload,
+    workspaceFile,
+    workspacePreload,
     homeUrl = BLANK_CAMPUS_HOME,
     browserPartition,
     routingPolicy,
@@ -42,8 +61,15 @@ class CampusBrowserManager {
     getLocale,
     getTranslator,
     getProfilePresentation,
+    getNewTabUrl = () => BLANK_CAMPUS_HOME,
     getWorkspaceResources,
+    getWorkspaceGroups = () => [],
+    onTogglePageFavorite,
+    onOpenResource,
+    onWorkspaceMutation,
+    onRecordPageOpen,
     showItemInFolder,
+    showSettings,
     showRoutingRules,
     reportError,
     CampusBrowserClass = CampusBrowser,
@@ -52,8 +78,9 @@ class CampusBrowserManager {
     for (const dependency of [
       BrowserWindow, WebContentsView, parentWindow, ensureCampusReady, resolveRoute,
       ensureConnected, getSocksPort, getLocale, getTranslator, getProfilePresentation,
-      getWorkspaceResources, showItemInFolder,
-      showRoutingRules,
+      getNewTabUrl, getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      showItemInFolder,
+      showRoutingRules, showSettings,
       reportError, CampusBrowserClass, CredentialVaultClass,
     ]) {
       if (typeof dependency !== 'function') {
@@ -61,18 +88,24 @@ class CampusBrowserManager {
       }
     }
     if (!session || !dialog || !safeStorage || !certificateTrust || !routingPolicy ||
-        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, browserPartition]
+        ![credentialFile, toolbarFile, toolbarPreload, campusPreload, workspaceFile,
+          workspacePreload, browserPartition]
           .every((value) => typeof value === 'string' && value)) {
       throw new TypeError('Campus Browser manager environment is incomplete');
     }
     Object.assign(this, {
-      BrowserWindow, WebContentsView, session, dialog, safeStorage, platform,
+      BrowserWindow, WebContentsView, Menu, session, dialog, safeStorage, platform,
       credentialFile, certificateTrust, parentWindow, toolbarFile, toolbarPreload,
-      campusPreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
+      campusPreload, workspaceFile, workspacePreload, homeUrl: homeUrl || BLANK_CAMPUS_HOME,
       routingPolicy, ensureCampusReady, resolveRoute, ensureConnected,
       browserPartition,
       getSocksPort, getLocale, getTranslator, getProfilePresentation, showItemInFolder,
-      getWorkspaceResources, showRoutingRules, reportError,
+      getNewTabUrl, getWorkspaceResources, getWorkspaceGroups, onOpenResource, onWorkspaceMutation,
+      onTogglePageFavorite: typeof onTogglePageFavorite === 'function'
+        ? onTogglePageFavorite : async () => ({ ok: false }),
+      onRecordPageOpen: typeof onRecordPageOpen === 'function' ? onRecordPageOpen : () => false,
+      showRoutingRules, reportError,
+      showSettings,
       CampusBrowserClass, CredentialVaultClass,
     });
     this.browser = null;
@@ -91,6 +124,22 @@ class CampusBrowserManager {
       safeStorage: this.safeStorage,
       platform: this.platform,
     });
+    const workspaceController = new CampusWorkspaceController({
+      workspaceFile: this.workspaceFile,
+      workspacePreload: this.workspacePreload,
+      getProfilePresentation: () => browserProfilePresentation(this.getProfilePresentation()),
+      getResources: () => this.getWorkspaceResources(),
+      getGroups: () => this.getWorkspaceGroups(),
+      getLocale: this.getLocale,
+      onCommand: async (command) => {
+        if (command.command === 'focus-address') return { ok: this.browser?.focusAddressBar() === true };
+        if (command.command === 'open-resource') return this.onOpenResource(command.resourceId);
+        if (command.command === 'manage-rules') return this.showRoutingRules();
+        const result = await this.onWorkspaceMutation(command);
+        this.browser?.updateToolbar();
+        return result;
+      },
+    });
     this.browser = new this.CampusBrowserClass({
       BrowserWindow: this.BrowserWindow,
       WebContentsView: this.WebContentsView,
@@ -104,12 +153,19 @@ class CampusBrowserManager {
       campusPreload: this.campusPreload,
       profilePresentation: browserProfilePresentation(this.getProfilePresentation()),
       getWorkspaceResources: () => this.getWorkspaceResources(),
+      getWorkspaceGroups: () => this.getWorkspaceGroups(),
+      onOpenResource: (resourceId) => this.onOpenResource(resourceId),
+      showBookmarkMenu: (entries) => this.popupBookmarkMenu(entries),
+      onTogglePageFavorite: (candidate) => this.onTogglePageFavorite(candidate),
+      workspaceController,
+      onRecordPageOpen: (url) => this.onRecordPageOpen(url),
       showItemInFolder: this.showItemInFolder,
+      getNewTabUrl: this.getNewTabUrl,
+      onOpenSettings: this.showSettings,
       homeUrl: this.homeUrl,
       partition: this.browserPartition,
       routingPolicy: this.routingPolicy,
       ensureCampusReady: this.ensureCampusReady,
-      onManageRoutingRules: this.showRoutingRules,
       locale: this.getLocale(),
       t: this.getTranslator(),
       onError: this.reportError,
@@ -148,7 +204,14 @@ class CampusBrowserManager {
       }
     }
     try {
-      await this.getOrCreate().open(request.url, this.getSocksPort(), request.route);
+      const browser = this.getOrCreate();
+      if (request.displayName) {
+        await browser.open(request.url, this.getSocksPort(), request.route, {
+          displayName: request.displayName,
+        });
+      } else {
+        await browser.open(request.url, this.getSocksPort(), request.route);
+      }
       return { ok: true, url: request.url, route: request.route };
     } catch (error) {
       const message = error.code === 'SETTINGS_READ_FAILED'
@@ -157,6 +220,27 @@ class CampusBrowserManager {
       this.reportError(message);
       return { ok: false, error: message };
     }
+  }
+
+  async openBookmarkManager() {
+    try {
+      await this.getOrCreate().openWorkspace(this.getSocksPort());
+      this.browser?.focusWorkspace('manage');
+      return { ok: true, url: BLANK_CAMPUS_HOME, route: ROUTE_DIRECT };
+    } catch (error) {
+      const message = this.getTranslator()('error.browserStart', { message: error.message });
+      this.reportError(message);
+      return { ok: false, error: message };
+    }
+  }
+
+  popupBookmarkMenu(entries) {
+    if (!this.Menu?.buildFromTemplate || !Array.isArray(entries) || !entries.length) return false;
+    const item = (entry) => entry.type === 'folder'
+      ? { label: entry.name, submenu: entry.children.map(item) }
+      : { label: entry.name, click: () => Promise.resolve(this.onOpenResource(entry.id)).catch(() => {}) };
+    this.Menu.buildFromTemplate(entries.map(item)).popup({ window: this.browser?.window || undefined });
+    return true;
   }
 
   suspendRoutingPolicy() {
@@ -206,4 +290,4 @@ class CampusBrowserManager {
   }
 }
 
-module.exports = { CampusBrowserManager, browserProfilePresentation };
+module.exports = { CampusBrowserManager, browserProfilePresentation, officialPortalHomeUrl };

@@ -166,7 +166,7 @@ class EngineConnectionRuntime {
         else this.handlers.onListenerMismatch(event.port, this.expectedPort);
         break;
       case 'client_ip_assigned':
-        this.handlers.onClientIpAssigned(event.family);
+        this.handlers.onClientIpAssigned(event.family, event.address);
         break;
       case 'dns_mode':
         this.handlers.onDnsMode(event.mode);

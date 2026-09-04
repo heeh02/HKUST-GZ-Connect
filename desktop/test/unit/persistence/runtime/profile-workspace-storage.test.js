@@ -260,7 +260,7 @@ test('journal generation fails closed on weak entropy, missing receipts and unsa
   }), /precondition source must be absent/u);
 });
 
-test('P3 foundation is packaged but does not activate migration in production Main', () => {
+test('Main reaches Profile/Account/Workspace persistence through runtime composition, not leaf imports', () => {
   const main = fs.readFileSync(path.join(desktopRoot, 'main.js'), 'utf8');
   for (const moduleName of [
     'profile-workspace-layout',
@@ -285,7 +285,6 @@ test('P3 foundation is packaged but does not activate migration in production Ma
     'desktop-persistence-runtime',
     'legacy-flat-source-receipts',
     'vpn-credential-envelope',
-    'vpn-credential-envelope-store',
   ]) {
     assert.equal(main.includes(moduleName), false);
   }

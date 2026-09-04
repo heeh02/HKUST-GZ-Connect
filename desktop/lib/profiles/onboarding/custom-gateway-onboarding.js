@@ -124,6 +124,7 @@ function customProfileDocument({ profileId, origin, schoolLabel }) {
     },
     browser: {
       homeUrl: null,
+      officialPortalResourceId: null,
       campusDomains: [],
       directPartnerDomains: [],
       builtinResourcesRef: null,

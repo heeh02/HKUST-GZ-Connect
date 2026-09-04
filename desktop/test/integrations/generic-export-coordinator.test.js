@@ -40,7 +40,7 @@ function binding(adapterId = 'clash_mihomo_yaml', patch = {}) {
   });
 }
 
-function fixture(t, { writeClipboard = null } = {}) {
+function fixture(t, { writeClipboard = null, beforePerform = null } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'generic-export-coordinator-'));
   fs.chmodSync(root, 0o700);
   const output = path.join(root, 'output');
@@ -52,6 +52,7 @@ function fixture(t, { writeClipboard = null } = {}) {
   const coordinator = createGenericExportCoordinator({
     fileTransaction,
     writeClipboard: writeClipboard || ((text) => { clipboard.push(text); return true; }),
+    beforePerform: beforePerform || (() => {}),
     randomBytes: (length) => Buffer.alloc(length, ++entropy),
     now: () => 1_800_000_000_000,
     ttlMs: 20_000,
@@ -74,6 +75,32 @@ test('copy confirms once and returns no generated payload to its caller', async 
   assert.equal(Object.hasOwn(result, 'payload'), false);
   assert.match(f.clipboard[0], /Campus Connect - hkustgz/u);
   assert.match(f.clipboard[0], new RegExp('B'.repeat(32), 'u'));
+});
+
+test('pre-export side effects run only after binding revalidation', async (t) => {
+  const effects = [];
+  const f = fixture(t, { beforePerform: ({ adapterId, action }) => {
+    effects.push([adapterId, action]);
+  } });
+  const current = binding();
+  let preview = f.coordinator.prepare({
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
+    networkRules: rules, port: 6180, credential,
+  });
+  await assert.rejects(f.coordinator.confirm({
+    confirmationHandle: preview.confirmationHandle,
+    currentBinding: binding('clash_mihomo_yaml', { activeContextEpoch: 2 }),
+  }), { code: 'INTEGRATION_PROFILE_STALE' });
+  assert.deepEqual(effects, []);
+
+  preview = f.coordinator.prepare({
+    adapterId: 'clash_mihomo_yaml', action: 'copy', binding: current,
+    networkRules: rules, port: 6180, credential,
+  });
+  await f.coordinator.confirm({
+    confirmationHandle: preview.confirmationHandle, currentBinding: current,
+  });
+  assert.deepEqual(effects, [['clash_mihomo_yaml', 'copy']]);
 });
 
 test('save applies the exact previewed file plan and commits owner-only validated output', async (t) => {

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getState: () => ipcRenderer.invoke('get-state'),
+  getNetworkEnvironment: () => ipcRenderer.invoke('get-network-environment'),
   getLoginAccount: () => ipcRenderer.invoke('get-login-account'),
   save: (payload) => ipcRenderer.invoke('save', payload),
   connect: () => ipcRenderer.invoke('connect'),
@@ -17,10 +18,15 @@ contextBridge.exposeInMainWorld('api', {
   openLog: () => ipcRenderer.invoke('open-log'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openCampusBrowser: (request) => ipcRenderer.invoke('open-campus-browser', request),
+  openBookmarkManager: () => ipcRenderer.invoke('open-bookmark-manager'),
   openResource: (resourceId) => ipcRenderer.invoke('open-resource', { resourceId }),
+  getCardBoardLayout: () => ipcRenderer.invoke('get-card-board-layout'),
+  commitCardBoardLayout: (request) => ipcRenderer.invoke('commit-card-board-layout', request),
+  resetCardBoardLayout: (request) => ipcRenderer.invoke('reset-card-board-layout', request),
   checkUpdate: (force) => ipcRenderer.invoke('check-update', force),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveResource: (resource) => ipcRenderer.invoke('save-resource', resource),
+  createFavoriteResource: (resource) => ipcRenderer.invoke('create-favorite-resource', resource),
   deleteResource: (id) => ipcRenderer.invoke('delete-resource', id),
   restoreBuiltinResources: () => ipcRenderer.invoke('restore-builtin-resources'),
   reorderResources: (ids) => ipcRenderer.invoke('reorder-resources', ids),
@@ -29,6 +35,7 @@ contextBridge.exposeInMainWorld('api', {
     { resourceId },
   ),
   listRoutingRules: () => ipcRenderer.invoke('list-routing-rules'),
+  previewRoutingTarget: (target) => ipcRenderer.invoke('preview-routing-target', target),
   saveRoutingRule: (rule) => ipcRenderer.invoke('save-routing-rule', rule),
   deleteRoutingRule: (identity) => ipcRenderer.invoke('delete-routing-rule', identity),
   listCertificatePins: () => ipcRenderer.invoke('list-certificate-pins'),
@@ -50,8 +57,26 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('open-routing-rules', listener);
     return () => ipcRenderer.removeListener('open-routing-rules', listener);
   },
+  onOpenSettings: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = () => cb();
+    ipcRenderer.on('open-settings', listener);
+    return () => ipcRenderer.removeListener('open-settings', listener);
+  },
   onStatus: (cb) => ipcRenderer.on('status', (_e, s) => cb(s)),
   onTelemetry: (cb) => ipcRenderer.on('telemetry', (_e, t) => cb(t)),
+  onNetworkEnvironment: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (_event, snapshot) => cb(snapshot);
+    ipcRenderer.on('network-environment', listener);
+    return () => ipcRenderer.removeListener('network-environment', listener);
+  },
+  onCardBoardLayoutChanged: (cb) => {
+    if (typeof cb !== 'function') return () => {};
+    const listener = (_event, document) => cb(document);
+    ipcRenderer.on('card-board-layout-changed', listener);
+    return () => ipcRenderer.removeListener('card-board-layout-changed', listener);
+  },
   onAuthChallenge: (cb) => {
     if (typeof cb !== 'function') return () => {};
     const listener = (_event, challenge) => cb(challenge);

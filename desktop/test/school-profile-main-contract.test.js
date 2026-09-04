@@ -28,10 +28,14 @@ test('composition root resolves one active Profile before credential recovery', 
   assert.doesNotMatch(main, /: 'remote\.hkust-gz\.edu\.cn'/u);
 });
 
-test('profile drives resources, routes and health while Browser Home stays app-owned', () => {
-  assert.match(main, /activeSchoolProfile\.mergeResourceLibrary\(settings\.customResources, settings\.hiddenBuiltinResourceIds\)/u);
+test('profile drives resources, routes and a Main-resolved official portal home', () => {
+  assert.match(main, /resourceLibraryRuntime\.resolveRoutes\(activeSchoolProfile\.mergeResourceLibrary\(\s*settings\.customResources, settings\.hiddenBuiltinResourceIds,/u);
+  assert.match(main,
+    /serverCampusResources = activeSchoolProfile\.mergeResourceLibrary\(\[\], \[\]\)/u,
+    'reviewed per-site routes must feed the shared browser and external PAC policy');
   assert.match(main, /defaultRouteDomains: activeSchoolProfile\.defaultRouteDomains/u);
   assert.match(main, /directPartnerDomains: \(\) => activeSchoolProfile\.directPartnerDomains/u);
+  assert.match(main, /homeUrl: officialPortalHomeUrl\(activeSchoolProfile\.createPresentation/u);
   assert.doesNotMatch(main, /homeUrl: activeSchoolProfile\.browserHomeUrl/u);
   assert.match(main, /getWorkspaceResources: \(\) => safeCampusResourceLibrary\(\)/u);
   assert.match(main, /healthTargets: activeSchoolProfile\.healthTargets/u);
@@ -41,10 +45,12 @@ test('profile drives resources, routes and health while Browser Home stays app-o
 test('reviewed profile and config binding is validated before credential decryption', () => {
   const connect = section('async function connectOnce(', '\nfunction ensureEngineStopped(');
   const profileConfig = connect.indexOf('engineConfigBinding = activeSchoolProfile.verifyEngineLaunchBinding();');
-  const credential = connect.indexOf('persistenceRuntime.openCredential();');
+  const credential = connect.indexOf('const credentialOwner = persistenceRuntime.openCredential()');
   const spawn = connect.indexOf('const started = engineSupervisor.start(');
   assert.ok(profileConfig >= 0 && credential > profileConfig && spawn > credential);
   assert.match(main, /engineConfigBinding = activeSchoolProfile\.verifyEngineLaunchBinding\(\)/u);
+  assert.match(connect,
+    /oneShotVpnCredential\.open\(\{[\s\S]*profileId: activeSchoolProfile\.activeContextBinding\(\)\.profileId/u);
   assert.match(connect, /--profile-binding-v1-stdin/u);
   const bindingWrite = connect.indexOf('${engineConfigBinding.stdinFrame}\\n${username}\\n${pw}');
   assert.ok(bindingWrite > profileConfig && bindingWrite > credential && bindingWrite > spawn);

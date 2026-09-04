@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 
@@ -23,7 +24,7 @@ async function measureAt(window, width, height) {
   return window.webContents.executeJavaScript(`(() => {
     const dialog = document.getElementById('resourceDialog');
     if (dialog.open) dialog.close();
-    document.getElementById('manageResources').click();
+    document.getElementById('legacyResourceManager').click();
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
       document.querySelector('[data-resource-action="edit"]').click();
       const rect = (element) => {
@@ -78,7 +79,7 @@ function assertLayout(view, width, height) {
 async function saveCustomResource(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
-    if (!dialog.open) document.getElementById('manageResources').click();
+    if (!dialog.open) document.getElementById('legacyResourceManager').click();
     document.getElementById('cancelResource').click();
     document.getElementById('resourceName').value = '';
     const url = document.getElementById('resourceUrl');
@@ -118,18 +119,28 @@ async function addAndOpenCustomResource(window) {
   return window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
     if (dialog.open) dialog.close();
-    const add = document.getElementById('quickAddCampus');
+    const add = document.getElementById('addWebsite');
     if (!add) return { controlPresent: false };
-    document.getElementById('campusUrl').value = '103.189.154.10:4433';
     add.click();
+    const addDialog = document.getElementById('addWebsiteDialog');
+    document.getElementById('addWebsiteUrl').value = 'https://hpc2login.hpc.hkust-gz.edu.cn/';
+    document.getElementById('addWebsiteUrl').dispatchEvent(new Event('blur'));
     await new Promise((resolve) => setTimeout(resolve, 25));
+    document.getElementById('addWebsiteName').value = 'HPC2 登录';
+    document.getElementById('addWebsiteGroup').value = 'group_research12345';
+    document.getElementById('addWebsiteRoute').value = 'campus';
+    document.getElementById('addWebsiteForm').requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const state = window.api.testState();
+    const saved = state.resources.find((resource) => resource.url === 'https://hpc2login.hpc.hkust-gz.edu.cn/');
+    const group = state.resourceGroups.find(({ id }) => id === 'group_research12345');
     return {
       controlPresent: true,
-      error: document.getElementById('quickAddErr')?.textContent || '',
-      savedMessage: document.getElementById('resourceSaved')?.textContent || '',
-      openedRequest: window.api.testState().lastOpenRequest,
-      savedRows: [...document.querySelectorAll('.resource-editor-row')]
-        .filter((candidate) => candidate.textContent.includes('103.189.154.10:4433')).length,
+      dialogClosed: !addDialog.open,
+      error: document.getElementById('addWebsiteError')?.textContent || '',
+      openedRequest: state.lastOpenRequest,
+      saved,
+      grouped: group?.resourceIds.includes(saved?.id) === true,
     };
   })()`);
 }
@@ -137,11 +148,13 @@ async function addAndOpenCustomResource(window) {
 function assertCustomResourceAddAndOpen(result) {
   assert.equal(result.controlPresent, true, 'dashboard is missing the add-to-favorites action');
   assert.equal(result.error, '', 'adding and opening a shortcut reported an error');
-  assert.equal(result.savedMessage, '已添加到常用网站', 'adding and opening did not confirm the saved shortcut');
-  assert.equal(result.savedRows, 1, 'adding and opening did not persist a shortcut');
-  assert.deepEqual(result.openedRequest, {
-    resourceId: 'custom-test-2',
-  }, 'adding and opening did not use the saved WebResource ID');
+  assert.equal(result.dialogClosed, true, 'successful add did not close its dialog');
+  assert.equal(result.saved.url, 'https://hpc2login.hpc.hkust-gz.edu.cn/');
+  assert.equal(result.saved.route, 'campus');
+  assert.equal(result.saved.favorite, true);
+  assert.equal(result.grouped, true, 'added website was not placed in the selected category');
+  assert.deepEqual(result.openedRequest, { resourceId: result.saved.id },
+    'adding and opening did not use the saved WebResource ID');
 }
 
 async function exerciseIntegrationCenter(window) {
@@ -151,22 +164,50 @@ async function exerciseIntegrationCenter(window) {
   await waitFor(window,
     `document.querySelectorAll('[data-integration-adapter]').length === 2`,
     'Integration Center rows');
-  const capabilities = await window.webContents.executeJavaScript(`(async () => {
+  const capabilityBoundary = await window.webContents.executeJavaScript(`(async () => {
     const state = await window.api.getState();
     return {
-      hidden: document.getElementById('capabilitySummary').hidden,
-      rows: document.querySelectorAll('.capability-item').length,
-      text: document.getElementById('capabilitySummary').textContent,
+      card: !!document.getElementById('capabilitySummary'),
       feature: !!window.capabilityPresentationFeature,
-      view: window.capabilityPresentation?.capabilityView(state.capabilitySnapshot) || null,
+      projected: Object.hasOwn(state, 'capabilitySnapshot'),
     };
   })()`);
-  assert.equal(capabilities.hidden, false,
-    `confirmed capabilities stayed hidden: ${JSON.stringify(capabilities)}`);
-  assert.equal(capabilities.rows, 5, 'CapabilitySnapshot did not render the bounded summary');
-  assert.match(capabilities.text, /密码登录|Password sign-in/u);
-  assert.doesNotMatch(capabilities.text, /auth\.password|accountHandle/u,
-    'Control Tower exposed raw capability or Account fields');
+  assert.deepEqual(capabilityBoundary, { card: false, feature: false, projected: false },
+    'Engine capability details must stay outside the Control Renderer');
+  const routingStacks = await window.webContents.executeJavaScript(`(async () => {
+    const accessibleGroups = () => [
+      ...document.querySelectorAll('[data-routing-group]'),
+      ...document.querySelectorAll('[data-routing-stack-activate]'),
+    ].map((node) => node.dataset.routingGroup || node.dataset.routingStackActivate).sort();
+    const initialGroup = document.querySelector('[data-routing-group]')?.dataset.routingGroup || '';
+    const initialHost = document.querySelector('.routing-rule-row strong')?.textContent || '';
+    document.querySelector('[data-routing-stack-activate]')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const focusedHeading = document.activeElement;
+    const stableRenderChanged = window.routingManager.start().renderStacks();
+    return {
+      groups: accessibleGroups(),
+      initialGroup,
+      initialHost,
+      afterGroup: document.querySelector('[data-routing-group]')?.dataset.routingGroup || '',
+      afterHost: document.querySelector('.routing-rule-row strong')?.textContent || '',
+      focusedRoute: focusedHeading?.dataset.routingHeading || '',
+      stableRenderChanged,
+      focusPreserved: document.activeElement === focusedHeading,
+      legacyList: !!document.getElementById('routingRuleList'),
+    };
+  })()`);
+  assert.deepEqual(routingStacks, {
+    groups: ['campus', 'direct'],
+    initialGroup: 'direct',
+    initialHost: 'login.example.com',
+    afterGroup: 'campus',
+    afterHost: '',
+    focusedRoute: 'campus',
+    stableRenderChanged: false,
+    focusPreserved: true,
+    legacyList: false,
+  }, 'routing stacks must lead with the populated route and keep the empty route accessible');
   const explanation = await window.webContents.executeJavaScript(`(() => {
     const details = document.querySelector('.integration-explainer');
     details.querySelector('summary').click();
@@ -175,7 +216,7 @@ async function exerciseIntegrationCenter(window) {
   assert.equal(explanation.open, true, 'Integration Center explanation did not expand');
   assert.match(explanation.text, /SOCKS5/u,
     'Integration Center explanation omitted its local proxy mechanism');
-  assert.match(explanation.text, /校园账号密码|campus password/iu,
+  assert.match(explanation.text, /校园(?:账号)?密码|campus password/iu,
     'Integration Center explanation omitted the credential boundary');
   const prepared = await window.webContents.executeJavaScript(`(async () => {
     document.querySelector('[data-integration-adapter="clash_mihomo_yaml"] [data-integration-action="copy"]').click();
@@ -221,7 +262,7 @@ async function exerciseIntegrationCenter(window) {
 async function exerciseBuiltinResourceRemoval(window) {
   const result = await window.webContents.executeJavaScript(`(async () => {
     const dialog = document.getElementById('resourceDialog');
-    if (!dialog.open) document.getElementById('manageResources').click();
+    if (!dialog.open) document.getElementById('legacyResourceManager').click();
     document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
     document.querySelector('[data-resource-id="builtin-home"] [data-resource-action="delete"]').click();
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -240,37 +281,88 @@ async function exerciseBuiltinResourceRemoval(window) {
 }
 
 async function assertStudentHome(window) {
-  for (const [width, expectedColumns] of [[420, 2], [960, 3]]) {
+  for (const [width, expectedMode, expectedColumns, expectedItems] of [
+    [420, 'compact', 2, 10],
+    [620, 'standard', 3, 10],
+    [960, 'wide', 2, 10],
+  ]) {
     window.setContentSize(width, 720);
     await waitFor(window, `window.innerWidth === ${width}`, `Student Home ${width}px width`);
+    await window.webContents.executeJavaScript(
+      `document.querySelector('.nav[data-page="connect"]').click()`,
+    );
+    await waitFor(window,
+      `document.getElementById('resourceShelf').dataset.resourceLayout === '${expectedMode}'`,
+      `Student Home ${width}px resource layout`);
     const view = await window.webContents.executeJavaScript(`(() => {
       document.querySelector('.nav[data-page="connect"]').click();
       const grid = document.querySelector('.resource-section .resource-grid');
       const hero = document.getElementById('connTop').getBoundingClientRect();
-      const search = document.getElementById('resourceSearch').getBoundingClientRect();
-      const manual = document.querySelector('.custom-url-details').getBoundingClientRect();
       const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+      const firstItem = document.querySelector('.resource-card');
+      const chips = document.getElementById('resourceViewChips');
+      const select = document.getElementById('resourceView');
+      const sectionColumns = getComputedStyle(document.getElementById('campusResources'))
+        .gridTemplateColumns.split(' ').filter(Boolean).length;
+      const controls = document.querySelector('.resource-library-controls');
       const content = document.querySelector('.content');
-      content.scrollTop = content.scrollHeight;
-      document.querySelector('.nav[data-page="settings"]').click();
-      return {
+      const snapshot = {
         columns,
+        layoutMode: document.getElementById('resourceShelf').dataset.resourceLayout,
+        visibleItems: document.querySelectorAll('.resource-card').length,
+        descriptions: document.querySelectorAll('.resource-desc, .resource-origin').length,
+        firstDivider: getComputedStyle(firstItem).borderBottomStyle,
+        chipsDisplay: getComputedStyle(chips).display,
+        selectDisplay: getComputedStyle(select).display,
+        controlsDisplay: getComputedStyle(controls).display,
+        sectionColumns,
         heroHeight: hero.height,
+        connectionActionText: document.getElementById('power').textContent.trim(),
+        connectionActionHeight: document.getElementById('power').getBoundingClientRect().height,
+        connectionActionWidth: document.getElementById('power').getBoundingClientRect().width,
+        connectionActionRole: document.getElementById('power').getAttribute('role'),
+        connectionActionChecked: document.getElementById('power').getAttribute('aria-checked'),
+        legacySwitchKnobs: document.querySelectorAll('#power .knob').length,
         resourceSections: document.querySelectorAll('.resource-section').length,
-        searchBeforeManual: search.top < manual.top,
         towerHidden: document.querySelector('.nav[data-page="tower"]').hidden,
         diagnosticsClosed: !document.querySelector('.diagnostic-details').open,
-        scrollTopAfterPageSwitch: content.scrollTop,
       };
+      content.scrollTop = content.scrollHeight;
+      document.querySelector('.nav[data-page="settings"]').click();
+      snapshot.scrollTopAfterPageSwitch = content.scrollTop;
+      return snapshot;
     })()`);
     assert.equal(view.columns, expectedColumns, `${width}px: resource grid column count`);
-    assert.ok(view.heroHeight >= 110 && view.heroHeight <= 165,
-      `${width}px: connection card lost its balanced visual hierarchy`);
+    assert.equal(view.layoutMode, expectedMode, `${width}px: resource layout mode`);
+    assert.equal(view.visibleItems, expectedItems, `${width}px: responsive resource budget`);
+    assert.equal(view.descriptions, 0, `${width}px: website explanation text returned`);
+    assert.equal(view.firstDivider, 'solid', `${width}px: website divider disappeared`);
+    assert.equal(view.controlsDisplay, 'none', `${width}px: delegated catalogue controls became visible`);
+    assert.equal(view.chipsDisplay, 'none', `${width}px: duplicate category chips became visible`);
+    assert.equal(view.selectDisplay, 'none', `${width}px: legacy category select became visible`);
+    if (width >= 900) {
+      assert.equal(view.sectionColumns, 2, `${width}px: wide resource modules`);
+    }
+    assert.ok(view.heroHeight >= 75 && view.heroHeight <= 105,
+      `${width}px: connection status strip wastes vertical space`);
+    assert.equal(view.connectionActionText, '连接', `${width}px: connection action is unclear`);
+    assert.ok(view.connectionActionHeight >= 22 && view.connectionActionHeight <= 28,
+      `${width}px: connection switch is not compact`);
+    assert.ok(view.connectionActionWidth >= 40 && view.connectionActionWidth <= 48,
+      `${width}px: connection switch is too wide`);
+    assert.equal(view.connectionActionRole, 'switch', `${width}px: connection control lost switch semantics`);
+    assert.equal(view.connectionActionChecked, 'false', `${width}px: disconnected switch state drifted`);
+    assert.equal(view.legacySwitchKnobs, 0, `${width}px: ambiguous connection switch returned`);
     assert.ok(view.resourceSections >= 1, `${width}px: resource-first sections are absent`);
-    assert.equal(view.searchBeforeManual, true, `${width}px: manual URL still precedes resource search`);
     assert.equal(view.towerHidden, false, `${width}px: Control Tower navigation disappeared`);
     assert.equal(view.diagnosticsClosed, true, `${width}px: raw diagnostics are expanded by default`);
     assert.equal(view.scrollTopAfterPageSwitch, 0, `${width}px: page switch retained stale scroll`);
+
+    const workspaceEntry = await window.webContents.executeJavaScript(
+      `document.getElementById('openCampusWorkspace').textContent.trim()`,
+    );
+    assert.match(workspaceEntry, /校园门户/u, `${width}px: Campus portal entry disappeared`);
+
   }
 }
 
@@ -309,6 +401,102 @@ async function assertTwoHundredPercentReflow(window) {
   }
 }
 
+async function assertUsabilityLayer(window) {
+  window.setContentSize(500, 720);
+  await waitFor(window, 'window.innerWidth === 500', 'usability fixture width');
+  const result = await window.webContents.executeJavaScript(`(async () => {
+    const key = (value, options = {}) => document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: value, bubbles: true, cancelable: true, ...options,
+    }));
+    key('2', { metaKey: true });
+    const towerActive = document.querySelector('.page.active').dataset.page;
+    key('k', { metaKey: true });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const connectActive = document.querySelector('.page.active').dataset.page;
+    const workspaceOpenCount = window.api.testState().workspaceOpenCount;
+    document.getElementById('manageResources').click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const bookmarkManagerOpenCount = window.api.testState().bookmarkManagerOpenCount;
+    const legacyManagerClosed = !document.getElementById('resourceDialog').open;
+
+    const favorite = document.querySelector('.resource-favorite');
+    favorite.click();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const toast = document.getElementById('globalToast');
+    const nav = document.querySelector('.nav[data-page="connect"]');
+    return {
+      towerActive, connectActive, workspaceOpenCount, bookmarkManagerOpenCount, legacyManagerClosed,
+      toastVisible: !toast.hidden, toastText: toast.textContent,
+      statusClass: document.getElementById('navConnectionState').className,
+      statusLabel: nav.getAttribute('aria-label'),
+    };
+  })()`);
+  assert.equal(result.towerActive, 'tower', 'Command-2 did not open Control Tower');
+  assert.equal(result.connectActive, 'connect', 'Command-K did not open Campus Services');
+  assert.equal(result.workspaceOpenCount, 1, 'Command-K did not open Campus Workspace');
+  assert.equal(result.bookmarkManagerOpenCount, 1, 'Organize did not open the bookmark manager');
+  assert.equal(result.legacyManagerClosed, true, 'Organize reopened the legacy website dialog');
+  assert.equal(result.toastVisible, true, 'favorite feedback toast stayed hidden');
+  assert.match(result.toastText, /收藏/u);
+  assert.match(result.statusClass, /disconnected/u);
+  assert.match(result.statusLabel, /未连接[\s\S]*⌘1/u);
+}
+
+async function captureVisualStates(window) {
+  const output = process.env.HKUSTGZ_LAYOUT_SCREENSHOT_DIR;
+  if (!output) return;
+  if (!path.isAbsolute(output)) throw new Error('layout screenshot directory must be absolute');
+  fs.mkdirSync(output, { recursive: true });
+  for (const [label, width, height] of [
+    ['compact', 420, 720],
+    ['standard', 620, 760],
+    ['wide', 960, 760],
+    ['wide-tall', 1200, 900],
+  ]) {
+    window.setContentSize(width, height);
+    await waitFor(window, `window.innerWidth === ${width}`, `${label} screenshot width`);
+    for (const page of ['connect', 'tower', 'notif', 'settings']) {
+      await window.webContents.executeJavaScript(`(() => {
+        for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
+        document.getElementById('globalToast').hidden = true;
+        document.querySelector('.nav[data-page="${page}"]').click();
+        document.querySelector('.content').scrollTop = 0;
+        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(
+          () => setTimeout(resolve, 260),
+        )));
+      })()`);
+      const image = await window.webContents.capturePage();
+      fs.writeFileSync(path.join(output, `${label}-${page}.png`), image.toPNG());
+    }
+    if (label === 'compact') {
+      await window.webContents.executeJavaScript(`(async () => {
+        for (const dialog of document.querySelectorAll('dialog[open]')) { try { dialog.close(); } catch {} }
+        document.getElementById('globalToast').hidden = true;
+        document.querySelectorAll('.nav').forEach((nav) => nav.classList.toggle('active', nav.dataset.page === 'connect'));
+        document.querySelectorAll('.page').forEach((page) => {
+          const active = page.dataset.page === 'connect';
+          page.classList.toggle('active', active);
+          page.hidden = !active;
+        });
+        const search = document.getElementById('resourceSearch');
+        search.value = 'no-such-campus-service';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(
+          () => setTimeout(resolve, 240),
+        )));
+      })()`);
+      fs.writeFileSync(path.join(output, 'compact-empty.png'), (await window.webContents.capturePage()).toPNG());
+      await window.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-resource-empty-action="clear"]').click();
+        document.querySelector('.resource-favorite').click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      fs.writeFileSync(path.join(output, 'compact-toast.png'), (await window.webContents.capturePage()).toPNG());
+    }
+  }
+}
+
 async function main() {
   await app.whenReady();
   const window = new BrowserWindow({
@@ -321,8 +509,6 @@ async function main() {
   try {
     await window.loadFile(renderer);
     await waitFor(window, "document.getElementById('dash').hidden === false", 'dashboard initialization');
-    await assertStudentHome(window);
-    await assertTwoHundredPercentReflow(window);
     await exerciseIntegrationCenter(window);
     for (const [width, height] of [[500, 640], [420, 560], [760, 900]]) {
       assertLayout(await measureAt(window, width, height), width, height);

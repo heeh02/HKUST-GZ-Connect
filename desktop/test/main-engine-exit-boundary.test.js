@@ -60,3 +60,13 @@ test('an unclean stop releases the local process but blocks automatic reconnect'
   assert.match(reconnect, /connectionState\.failIntent\(intent\)/);
   assert.match(reconnect, /error\.engineCleanupUnconfirmed/);
 });
+
+test('orphan cleanup and Windows owner recording are mandatory start boundaries', () => {
+  const connect = source.slice(source.indexOf('async function connectOnce('));
+  assert.match(connect,
+    /killStrayEngines\(resolvedBin\) !== true[\s\S]*cleanupUnconfirmed: true/u,
+    'an unconfirmed orphan cleanup must stop before spawning a replacement Engine');
+  assert.match(connect,
+    /writeEngineOwnerRecord\(ENGINE_OWNER, ownedEngine\);[\s\S]*catch \{[\s\S]*engineSupervisor\.stop/u,
+    'a Windows Engine without a durable owner record must be stopped immediately');
+});

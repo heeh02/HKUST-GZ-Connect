@@ -165,8 +165,8 @@ test('RouteResolver and internal PAC agree across every precedence source and bo
     },
     {
       url: 'https://teams.partner.routing.test/',
-      expectedRoute: ROUTE_DIRECT,
-      expectedSource: 'builtin',
+      expectedRoute: ROUTE_CAMPUS,
+      expectedSource: 'server-resource',
     },
     {
       url: 'https://library.school.routing.test/',
@@ -185,6 +185,11 @@ test('RouteResolver and internal PAC agree across every precedence source and bo
     },
     {
       url: 'https://server.routing.test/',
+      expectedRoute: ROUTE_DIRECT,
+      expectedSource: 'server-resource',
+    },
+    {
+      url: 'wss://server.routing.test/realtime',
       expectedRoute: ROUTE_DIRECT,
       expectedSource: 'server-resource',
     },
@@ -248,7 +253,7 @@ test('higher-priority policy still overrides a contextual inherited fallback', (
   for (const fixture of [
     { url: 'https://exact.branch.routing.test/', expectedRoute: ROUTE_CAMPUS, expectedSource: 'user-exact' },
     { url: 'https://custom.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'custom-resource' },
-    { url: 'https://teams.partner.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'builtin' },
+    { url: 'https://teams.partner.routing.test/', expectedRoute: ROUTE_CAMPUS, expectedSource: 'server-resource' },
     { url: 'https://server.routing.test/', expectedRoute: ROUTE_DIRECT, expectedSource: 'server-resource' },
     {
       url: 'https://server-campus.routing.test/',

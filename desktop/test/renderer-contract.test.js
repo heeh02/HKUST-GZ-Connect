@@ -9,6 +9,10 @@ const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
+const studentHomeJs = fs.readFileSync(path.join(rendererDir, 'student-home.js'), 'utf8');
+const categoryStacksJs = fs.readFileSync(path.join(rendererDir, 'campus-category-stacks.js'), 'utf8');
+const layoutControllerJs = fs.readFileSync(path.join(rendererDir, 'resource-layout-controller.js'), 'utf8');
+const usabilityControllerJs = fs.readFileSync(path.join(rendererDir, 'usability-controller.js'), 'utf8');
 
 test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /id="lgUser"[^>]*name="username"/);
@@ -26,7 +30,7 @@ test('login fields keep native keyboard and password-manager semantics', () => {
   assert.match(html, /<script src="student-home\.js"><\/script>/);
   assert.match(appJs, /updateLoginProgress\(s\)/);
   assert.match(appJs, /const \{ evaluateLoginProgress \} = window\.loginFlow/);
-  assert.match(appJs, /window\.studentHome\.renderStudentHome/u);
+  assert.match(appJs, /window\.campusCategoryStacks\.render/u);
   assert.doesNotMatch(appJs, /function evaluateLoginProgress\(/);
   assert.doesNotMatch(appJs, /function visibleResources\(|function routeLabel\(/);
   assert.doesNotMatch(appJs, /saved\.ok[\s\S]{0,180}lgPass'\)\.value\s*=\s*''[\s\S]{0,80}show\('dash'\)/);
@@ -57,33 +61,155 @@ test('Control Tower owns a modular Integration Center instead of scattered secre
   assert.doesNotMatch(appJs, /prepareIntegration|confirmIntegration|listIntegrations/u);
 });
 
-test('dashboard exposes collapsible secondary sections', () => {
-  assert.match(html, /data-collapsible="stats"/);
-  assert.match(html, /data-collapsible="gateway"/);
-  assert.match(html, /id="toggleResources"/);
+test('dashboard separates connection, personal Campus Browser, advanced tower, and settings', () => {
+  assert.match(html, /data-page="connect"/);
+  assert.match(html, /data-page="browser"/);
+  assert.doesNotMatch(html, /data-page="notif"/);
+  assert.match(html, /id="openCampusWorkspace"/u);
+  assert.match(appJs, /openCampusWorkspace[\s\S]*openCampusBrowser/u);
+  assert.doesNotMatch(appJs, /manageResources[\s\S]*openBookmarkManager/u);
+  assert.match(html, /id="manageResources"/u);
+  assert.match(html, /id="connectCardBoardHost"/u);
+  assert.match(categoryStacksJs, /activeController\(\)[\s\S]*toggleEdit/u);
+  assert.match(html, /id="notificationDrawer"[^>]*role="dialog"/u);
+  assert.match(html, /id="openNotificationDrawer"/u);
+  assert.match(html, /class="custom-url-details" hidden/u);
 });
 
-test('WebResource shelf supports ID-only open, search, categories, favorites and recent views', () => {
-  for (const id of ['resourceSearch', 'resourceView', 'campusResources']) {
+test('Connection keeps student essentials visible and progressively discloses network diagnostics', () => {
+  assert.match(html, /id="currentNetworkExit"/u);
+  assert.match(html, /id="networkPathDetails"[^>]*class="network-path-details"/u);
+  assert.match(html, /data-i18n="connect\.networkPathAction"/u);
+  assert.match(html, /data-i18n="stats\.connections">正在使用校园隧道的应用/u);
+  assert.match(html, /id="latencyHint"[^>]*data-i18n="connect\.latencyEmpty"/u);
+  assert.match(css, /\.latency-metric\.is-empty \.latency-sparkline\s*\{[^}]*display:\s*none/u);
+});
+
+test('Campus Browser exposes plain-language actions without a nested surface shell', () => {
+  assert.match(html, /id="openCampusWorkspace"[^>]*data-i18n="browser\.openWindow"[^>]*>打开校园浏览器</u);
+  assert.match(html, /id="addWebsite"[^>]*data-i18n="browser\.addWebsite"[^>]*>添加网站</u);
+  assert.match(html, /id="manageResources"[^>]*data-i18n="resources\.manage"[^>]*>整理分类与网站</u);
+  assert.match(html, /class="category-workspace"/u);
+  assert.doesNotMatch(html, /class="quick-card category-workspace"/u,
+    'Campus Browser must not wrap Card Board in another large white card');
+});
+
+test('dashboard usability layer keeps status shortcuts feedback and recovery outside Main', () => {
+  assert.match(html, /id="navConnectionState"/u);
+  assert.match(html, /id="globalToast"[^>]*aria-live="polite"/u);
+  assert.match(html, /<script src="usability-controller\.js"><\/script>/u);
+  assert.match(usabilityControllerJs, /PAGE_SHORTCUTS/u);
+  assert.match(usabilityControllerJs, /event\.key\.toLowerCase\(\) === 'k'/u);
+  assert.match(usabilityControllerJs, /data-resource-empty-action/u);
+  assert.match(layoutControllerJs, /ArrowLeft[\s\S]*ArrowRight[\s\S]*Home[\s\S]*End/u);
+  assert.match(layoutControllerJs, /scrollIntoView/u);
+  assert.doesNotMatch(appJs, /addEventListener\('keydown'[\s\S]*PAGE_SHORTCUTS/u,
+    'global shortcuts belong to the usability module');
+});
+
+test('official and personal categories share responsive card boards and ID-only resource actions', () => {
+  for (const id of ['resourceSearch', 'resourceView', 'resourceViewChips', 'campusResources']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'));
-  }
-  for (const view of ['favorites', 'recent', 'common', 'academic', 'campus-service', 'custom']) {
-    assert.match(html, new RegExp(`value="${view}"`, 'u'));
   }
   assert.match(appJs, /window\.api\.openResource\(selected\.id\)/u);
   assert.match(appJs, /window\.api\.toggleResourceFavorite\(resource\.id\)/u);
   assert.doesNotMatch(appJs, /openCampusBrowser\(\{\s*url:\s*selected\.url/u);
-  assert.match(css, /\.resource-library-controls/u);
-  assert.match(css, /\.resource-favorite\.active/u);
+  assert.match(html, /class="card-board-mount"/u);
+  assert.match(categoryStacksJs, /balancedPartitions/u);
+  assert.match(categoryStacksJs, /officialCategoryProjection/u);
+  assert.match(categoryStacksJs, /personalCategoryProjection/u);
+  assert.match(categoryStacksJs, /cardBoardController\.create/u);
+  assert.match(categoryStacksJs, /getCardBoardLayout/u);
+  assert.match(categoryStacksJs, /commitCardBoardLayout/u);
+  assert.doesNotMatch(studentHomeJs, /class="resource-desc"|class="resource-origin"/u);
+  const policyScript = html.indexOf('<script src="resource-layout-policy.js"></script>');
+  const controllerScript = html.indexOf('<script src="resource-layout-controller.js"></script>');
+  const studentHomeScript = html.indexOf('<script src="student-home.js"></script>');
+  assert.ok(policyScript > 0 && policyScript < controllerScript && controllerScript < studentHomeScript,
+    'resource layout modules must load before Student Home');
+  const workspaceModelScript = html.indexOf('<script src="campus-workspace-model.js"></script>');
+  const cardModelScript = html.indexOf('<script src="components/card-board/card-board-model.js"></script>');
+  const cardControllerScript = html.indexOf('<script src="components/card-board/card-board-controller.js"></script>');
+  const categoryStacksScript = html.indexOf('<script src="campus-category-stacks.js"></script>');
+  assert.ok(workspaceModelScript > 0 && workspaceModelScript < cardModelScript &&
+    cardModelScript < cardControllerScript && cardControllerScript < categoryStacksScript,
+  'taxonomy and shared Card Board must load before category composition');
 });
 
 test('control panel has responsive wide and compact layout rules', () => {
-  assert.match(css, /@media\s*\(min-width:\s*620px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*619px\)/);
-  assert.match(css, /@media\s*\(max-width:\s*379px\)[\s\S]*\.resource-grid\s*\{[^}]*grid-template-columns:\s*1fr/u);
+  assert.match(css, /@media\s*\(max-width:\s*459px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*359px\)[\s\S]*\.resource-grid[^}]*grid-template-columns:\s*1fr/u);
   assert.match(css, /\.resource-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/u);
+  assert.match(css, /data-resource-layout="standard"/u);
+  assert.match(css, /data-resource-layout="wide"/u);
   assert.match(css, /\.page\[data-page="connect"\][^{]*\{/);
-  assert.match(appJs, /document\.querySelector\('\.content'\)[\s\S]{0,100}scrollTop\s*=\s*0/u);
+  assert.match(appJs, /const content = document\.querySelector\('\.content'\)[\s\S]{0,220}content\.scrollTop\s*=\s*0/u);
+});
+
+test('Control Tower distinguishes a committed save from a failed reconnect', () => {
+  assert.match(appJs, /outcome === 'saved_reconnect_failed'/u);
+  assert.match(appJs, /`\$\{t\('tower\.saved'\)\} · \$\{result\.warning/u);
+});
+
+test('Campus Browser chrome keeps the minimum task set and exposes app settings', () => {
+  const browserHtml = fs.readFileSync(path.join(rendererDir, 'campus-browser.html'), 'utf8');
+  const browserJs = fs.readFileSync(path.join(rendererDir, 'campus-browser.js'), 'utf8');
+  for (const id of [
+    'tabs', 'back', 'forward', 'reload', 'address', 'routeBadge', 'browserSettings',
+    'bookmarkBar', 'bookmarkItems', 'bookmarkMore', 'manageBookmarks',
+  ]) {
+    assert.match(browserHtml, new RegExp(`id="${id}"`, 'u'));
+  }
+  assert.match(browserJs, /command\('open-settings'\)/u);
+  assert.match(browserJs, /command\('open-resource',\s*entry\.id\)/u);
+  assert.match(browserJs, /command\('manage-bookmarks'\)/u);
+  assert.doesNotMatch(browserHtml, /id="openExternal"/u);
+  assert.match(browserHtml, /id="loadingBanner"[^>]*hidden/u);
+  assert.match(browserHtml, /id="loadingBannerName"/u);
+  assert.match(browserHtml, /id="loadingBannerRoute"/u);
+  assert.match(browserJs, /next\.loadingLabel/u);
+});
+
+test('Campus Workspace is a real local renderer with ID-only actions and modular portal surfaces', () => {
+  const workspaceHtml = fs.readFileSync(path.join(rendererDir, 'campus-workspace.html'), 'utf8');
+  const workspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-workspace.js'), 'utf8');
+  const workspaceModel = fs.readFileSync(path.join(rendererDir, 'campus-workspace-model.js'), 'utf8');
+  const workspaceCss = fs.readFileSync(path.join(rendererDir, 'campus-workspace.css'), 'utf8');
+  for (const id of [
+    'homeScreen', 'servicePanel', 'backToServices', 'primaryTabs', 'primaryWorkspace',
+    'primaryRecent', 'primaryCatalog', 'secondaryNavigation', 'secondarySelect', 'serviceViewTabs', 'quickCreateGroup',
+    'serviceViewGrid', 'servicePager', 'manageScreen', 'resourcePool',
+    'manageFolderNav', 'managePager', 'createGroup',
+  ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  for (const id of [
+    'workspaceCardBoard', 'workspaceCardBoardCatalog', 'workspaceCardBoardPersonal',
+    'workspaceCatalogBoardHost', 'workspacePersonalBoardHost',
+  ]) assert.match(workspaceHtml, new RegExp(`id="${id}"`, 'u'));
+  assert.doesNotMatch(workspaceHtml, /workspace-header|workspace-command|id="workspaceSearch"|id="manageRules"/u);
+  assert.match(workspaceModel, /SCREENS[\s\S]*home[\s\S]*manage/u);
+  assert.doesNotMatch(workspaceModel, /SCREENS[^\n]*catalog/u);
+  assert.match(workspaceModel, /TASK_CATEGORIES[\s\S]*id:\s*'courses'[\s\S]*categoryOf/u);
+  assert.match(workspaceJs, /command\('open-resource',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /mutate\('toggle-favorite',\s*\{\s*resourceId:/u);
+  assert.match(workspaceJs, /campusWorkspace\?\.request\(name, payload\)/u);
+  assert.match(workspaceJs, /workspaceMutationFeedback[\s\S]*role', 'alert'/u);
+  assert.match(workspaceJs, /command\('focus-address'\)/u);
+  assert.match(workspaceJs, /workspaceBoardFeature\.toggleEdit\(\)/u);
+  assert.doesNotMatch(workspaceJs, /\$\('openManage'\)[\s\S]{0,160}normalizeNavigation\(\{\s*screen:\s*'manage'/u);
+  assert.doesNotMatch(workspaceJs, /window\.open|location\.href|resource\.url/u);
+  assert.match(workspaceCss, /\.surface\s*\{[^}]*background:\s*var\(--workspace-surface\)/u);
+  assert.match(workspaceCss, /@media\s*\(min-width:\s*1100px\)[\s\S]*repeat\(3/u);
+  assert.match(workspaceCss, /\.resource-icon\s*\{[^}]*width:\s*36px[^}]*height:\s*36px/u);
+  assert.match(workspaceCss, /@media\s*\(max-width:\s*759px\)[\s\S]*grid-template-columns:\s*1fr/u);
+  assert.match(workspaceCss, /body\s*\{[^}]*overflow:\s*auto/u);
+  assert.match(workspaceCss, /\.pager-range[\s\S]*\.pager-button/u);
+});
+
+test('notifications keep a compact state summary and raw diagnostics collapsed', () => {
+  assert.match(html, /id="notificationCard"/u);
+  assert.doesNotMatch(html, /class="help-section"/u);
+  assert.match(html, /<details class="diagnostic-details">/u);
+  assert.doesNotMatch(html, /<details class="diagnostic-details"[^>]*open/u);
 });
 
 test('connected status remains static instead of continuously repainting Electron', () => {

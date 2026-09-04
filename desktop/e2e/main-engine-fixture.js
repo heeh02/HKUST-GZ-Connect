@@ -136,7 +136,7 @@ input.on('line', (line) => {
       state('connecting');
       state('authenticating');
       state('preparing_tunnel');
-      send({ type: 'client_ip_assigned', family: 4 });
+      send({ type: 'client_ip_assigned', family: 4, address: '10.20.30.40' });
       send({ type: 'dns_mode', mode: 'gateway' });
       listener = net.createServer((socket) => socket.destroy());
       listener.once('error', (error) => {

@@ -31,13 +31,17 @@ test('missing activity starts empty and each mutation is owner-only and restart-
   });
   store.toggleFavorite('canvas', resources);
   store.recordOpen('home', resources);
+  store.replaceRecent({
+    schemaVersion: 1,
+    entries: [{ resourceId: 'canvas', openedAt: 101 }],
+  });
   const restarted = new ResourceActivityStore({
     favoritesFile: path.join(root, 'favorites.json'),
     recentFile: path.join(root, 'recent.json'),
   });
   assert.deepEqual(restarted.snapshot(), {
     favorites: { schemaVersion: 1, entries: ['canvas'] },
-    recent: { schemaVersion: 1, entries: [{ resourceId: 'home', openedAt: 100 }] },
+    recent: { schemaVersion: 1, entries: [{ resourceId: 'canvas', openedAt: 101 }] },
   });
   if (process.platform !== 'win32') {
     assert.equal(fs.statSync(path.join(root, 'favorites.json')).mode & 0o077, 0);

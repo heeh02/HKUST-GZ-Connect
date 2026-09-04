@@ -99,6 +99,7 @@
     let timer = null;
     let busy = false;
     let bound = false;
+    let lastTrigger = null;
 
     function errorMessage(code) {
       const specific = new Set([
@@ -106,6 +107,7 @@
         'INTEGRATION_AUTH_INCOMPATIBLE', 'INTEGRATION_EXPORT_CANCELLED',
         'INTEGRATION_EXPORT_TARGET_INVALID', 'INTEGRATION_EXPORT_CONFLICT',
         'INTEGRATION_TARGET_CHANGED', 'INTEGRATION_ROLLBACK_INCOMPLETE',
+        'INTEGRATION_LISTENER_UNAVAILABLE',
       ]);
       return t(`integration.error.${specific.has(code) ? code : 'generic'}`);
     }
@@ -118,20 +120,32 @@
       preview = null;
       elements.integrationDialogError.textContent = '';
       if (elements.integrationDialog.open) elements.integrationDialog.close();
+      restoreTriggerFocus();
+    }
+    function restoreTriggerFocus() {
+      if (!lastTrigger) return;
+      const target = [...elements.integrationList.querySelectorAll?.('[data-integration-action]') || []]
+        .find((candidate) => candidate.dataset.integrationActionAdapter === lastTrigger.adapterId &&
+          candidate.dataset.integrationAction === lastTrigger.action);
+      target?.focus?.({ preventScroll: true });
     }
     function button(label, action, adapterId, danger = false) {
       const value = document.createElement('button');
       value.type = 'button';
       value.className = `mini${danger ? ' danger-action' : ''}`;
       value.dataset.integrationAction = action;
+      value.dataset.integrationActionAdapter = adapterId;
       value.textContent = label;
       value.disabled = busy;
-      value.addEventListener('click', () => prepare(adapterId, action));
+      value.addEventListener('click', () => {
+        lastTrigger = { adapterId, action };
+        prepare(adapterId, action);
+      });
       return value;
     }
     function render() {
       const rows = [];
-      for (const view of views.filter((value) => value.compatibilityState !== 'unavailable')) {
+      for (const view of views) {
         const row = document.createElement('div'); row.className = 'integration-row';
         row.dataset.integrationAdapter = view.adapterId;
         const main = document.createElement('div'); main.className = 'integration-main';
@@ -143,14 +157,15 @@
         const meta = document.createElement('div'); meta.className = 'integration-meta';
         const state = document.createElement('span');
         state.className = `integration-state ${view.bindingState}`;
-        state.textContent = t(`integration.state.${view.bindingState}`);
+        state.textContent = t(`integration.state.${view.compatibilityState === 'supported'
+          ? view.bindingState : 'unavailable'}`);
         meta.append(state); main.append(name, description, meta);
         const actions = document.createElement('div'); actions.className = 'integration-actions';
-        if (view.supportedActions.includes('copy')) {
-          actions.append(button(t('integration.action.copy'), 'copy', view.adapterId));
+        if (view.compatibilityState === 'supported' && view.supportedActions.includes('copy')) {
+          actions.append(button(t(`integration.action.copy.${view.adapterId}`), 'copy', view.adapterId));
         }
-        if (view.supportedActions.includes('save')) {
-          actions.append(button(t('integration.action.save'), 'save', view.adapterId));
+        if (view.compatibilityState === 'supported' && view.supportedActions.includes('save')) {
+          actions.append(button(t(`integration.action.save.${view.adapterId}`), 'save', view.adapterId));
         }
         row.append(main, actions); rows.push(row);
       }
@@ -198,6 +213,7 @@
         if (result?.code !== 'INTEGRATION_EXPORT_CANCELLED') {
           elements.integrationError.textContent = errorMessage(result?.code);
         }
+        restoreTriggerFocus();
         return;
       }
       preview = previewView(result.preview, now());
@@ -218,6 +234,7 @@
     async function confirm() {
       if (!preview || busy) return;
       const handle = preview.confirmationHandle;
+      const action = preview.action;
       busy = true; elements.confirmIntegration.disabled = true;
       let result;
       try { result = await api.confirmIntegration({ confirmationHandle: handle }); }
@@ -231,7 +248,7 @@
       }
       closeDialog();
       await refresh();
-      elements.integrationStatus.textContent = t('integration.success');
+      elements.integrationStatus.textContent = t(`integration.success.${action}`);
     }
     async function cancel() {
       await api.cancelIntegration().catch(() => {});

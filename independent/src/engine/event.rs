@@ -9,6 +9,7 @@ use crate::engine::control::{ControlResponse, encode_control_response};
 use crate::{Error, Result};
 use serde::{Serialize, Serializer};
 use std::io::Write;
+use std::net::Ipv4Addr;
 
 pub const ENGINE_API_VERSION: u8 = 1;
 pub const MAX_ENGINE_EVENT_BYTES: usize = 1024;
@@ -128,6 +129,7 @@ pub enum EngineEvent {
     },
     ClientIpAssigned {
         family: AddressFamily,
+        address: Ipv4Addr,
     },
     DnsMode {
         mode: DnsMode,
@@ -257,8 +259,9 @@ mod tests {
             (
                 EngineEvent::ClientIpAssigned {
                     family: AddressFamily::Ipv4,
+                    address: Ipv4Addr::new(10, 20, 30, 40),
                 },
-                json!({"type": "client_ip_assigned", "family": 4}),
+                json!({"type": "client_ip_assigned", "family": 4, "address": "10.20.30.40"}),
             ),
             (
                 EngineEvent::DnsMode {
@@ -416,11 +419,12 @@ mod tests {
     }
 
     #[test]
-    fn machine_events_have_no_sensitive_values_or_secret_bearing_fields() {
+    fn machine_events_expose_only_bounded_display_metadata_and_no_credentials() {
         let events = [
             EngineEvent::hello(),
             EngineEvent::ClientIpAssigned {
                 family: AddressFamily::Ipv4,
+                address: Ipv4Addr::new(10, 20, 30, 40),
             },
             EngineEvent::FatalError {
                 code: EngineErrorCode::AuthFailed,
@@ -439,7 +443,7 @@ mod tests {
         }
         for event in serde_json::from_str::<Vec<Value>>(&encoded).unwrap() {
             let object = event.as_object().unwrap();
-            for forbidden_key in ["username", "password", "token", "session", "address", "ip"] {
+            for forbidden_key in ["username", "password", "token", "session"] {
                 assert!(!object.contains_key(forbidden_key));
             }
         }

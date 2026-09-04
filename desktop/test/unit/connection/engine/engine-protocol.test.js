@@ -67,10 +67,13 @@ test('oversized or unterminated input is discarded and recovery starts at a line
   ]);
 });
 
-test('event schema never forwards IP addresses or human error messages', () => {
+test('event schema forwards only a validated tunnel IP and never human error messages', () => {
   assert.deepEqual(normalizeEngineEvent({
     type: 'client_ip_assigned', family: 4, address: '10.20.30.40',
-  }), { type: 'client_ip_assigned', family: 4 });
+  }), { type: 'client_ip_assigned', family: 4, address: '10.20.30.40' });
+  assert.equal(normalizeEngineEvent({
+    type: 'client_ip_assigned', family: 4, address: 'not-an-ip',
+  }), null);
   assert.deepEqual(normalizeEngineEvent({
     type: 'network_unhealthy', reason: 'receive_channel_closed', message: 'token=private',
   }), { type: 'network_unhealthy', reason: 'receive_channel_closed' });

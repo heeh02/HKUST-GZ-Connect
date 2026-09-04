@@ -8,17 +8,18 @@ const {
 } = require('./generic-export-adapters');
 
 class GenericExportCoordinator {
-  constructor({ transactionOwner, fileTransaction, writeClipboard } = {}) {
+  constructor({ transactionOwner, fileTransaction, writeClipboard, beforePerform = () => {} } = {}) {
     if (!transactionOwner || typeof transactionOwner.prepare !== 'function' ||
         typeof transactionOwner.execute !== 'function' ||
         typeof transactionOwner.cancel !== 'function' ||
         !fileTransaction || typeof fileTransaction.apply !== 'function' ||
-        typeof writeClipboard !== 'function') {
+        typeof writeClipboard !== 'function' || typeof beforePerform !== 'function') {
       throw new TypeError('generic export coordinator dependencies are invalid');
     }
     this.transactionOwner = transactionOwner;
     this.fileTransaction = fileTransaction;
     this.writeClipboard = writeClipboard;
+    this.beforePerform = beforePerform;
   }
 
   prepare(value) {
@@ -33,6 +34,7 @@ class GenericExportCoordinator {
         if (!validateGenericExportPayload(adapterId, payload)) {
           throw new Error('generated integration payload failed validation');
         }
+        await this.beforePerform({ adapterId, action });
         if (action === 'copy') {
           let text = payload.toString('utf8');
           try {
@@ -61,11 +63,14 @@ function createGenericExportCoordinator({
   randomBytes,
   now,
   ttlMs,
+  beforePerform,
 } = {}) {
   const transactionOwner = new GenericExportTransactionOwner({
     fileTransaction, randomBytes, now, ttlMs,
   });
-  return new GenericExportCoordinator({ transactionOwner, fileTransaction, writeClipboard });
+  return new GenericExportCoordinator({
+    transactionOwner, fileTransaction, writeClipboard, beforePerform,
+  });
 }
 
 module.exports = {

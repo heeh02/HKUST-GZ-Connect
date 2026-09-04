@@ -19,7 +19,10 @@ function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 async function waitForMarker(file, child, output) {
   const deadline = Date.now() + WAIT_MS;
   while (Date.now() < deadline) {
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (fs.existsSync(file)) {
+      try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+      catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+    }
     if (child.exitCode !== null && !fs.existsSync(file)) {
       // The first process exits after relaunch. Keep waiting for its successor.
     }

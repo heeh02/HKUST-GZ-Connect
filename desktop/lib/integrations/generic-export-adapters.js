@@ -48,8 +48,8 @@ function clashRuleLines(rulesValue, proxyName) {
     ['userExact', 'DOMAIN'],
     ['userSubdomains', 'DOMAIN-SUFFIX'],
     ['customExact', 'DOMAIN'],
-    ['builtinSubdomains', 'DOMAIN-SUFFIX'],
     ['serverExact', 'DOMAIN'],
+    ['builtinSubdomains', 'DOMAIN-SUFFIX'],
   ]) {
     for (const entry of rules.domainPolicy[source]) {
       add(kind, entry.host, entry.route === 'campus' ? proxyName : 'DIRECT');

@@ -29,6 +29,9 @@ test('shared Clash / Mihomo export has one Profile-bound node and precedence-ord
       { host: 'direct.example.edu', includeSubdomains: false, route: 'direct', updatedAt: 2 },
       { host: 'campus.example.edu', includeSubdomains: true, route: 'campus', updatedAt: 1 },
     ],
+    serverResources: [{
+      url: 'https://library.hkust-gz.edu.cn/', route: 'direct',
+    }],
     campusCidrs: ['10.90.0.0/16'],
   });
   const lines = clashRuleLines(rules, 'Campus Connect - hkustgz');
@@ -36,6 +39,9 @@ test('shared Clash / Mihomo export has one Profile-bound node and precedence-ord
   assert.ok(lines.indexOf('DOMAIN,direct.example.edu,DIRECT') <
     lines.indexOf('DOMAIN-SUFFIX,hkust-gz.edu.cn,Campus Connect - hkustgz'));
   assert.ok(lines.includes('DOMAIN-SUFFIX,campus.example.edu,Campus Connect - hkustgz'));
+  assert.ok(lines.indexOf('DOMAIN,library.hkust-gz.edu.cn,DIRECT') <
+    lines.indexOf('DOMAIN-SUFFIX,hkust-gz.edu.cn,Campus Connect - hkustgz'),
+  'reviewed exact routes must precede the generic school suffix in first-match exports');
   assert.equal(lines.at(-1), 'IP-CIDR,10.90.0.0/16,Campus Connect - hkustgz,no-resolve');
 
   const adapterId = 'clash_mihomo_yaml';

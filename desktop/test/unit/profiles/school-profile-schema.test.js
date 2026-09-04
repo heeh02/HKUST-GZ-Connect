@@ -45,6 +45,7 @@ function reviewedProfile(overrides = {}) {
     },
     browser: {
       homeUrl: 'https://www.hkust-gz.edu.cn/',
+      officialPortalResourceId: 'official-portal',
       campusDomains: ['hkust-gz.edu.cn', 'hkust.edu.hk'],
       directPartnerDomains: ['office.com', 'instructure.com'],
       builtinResourcesRef: 'hkustgz-builtin-resources',
@@ -66,6 +67,7 @@ test('normalizes one reviewed profile without I/O or runtime wiring', () => {
   assert.equal(profile.gateway.origin.origin, 'https://remote.hkust-gz.edu.cn');
   assert.equal(profile.gateway.origin.port, 443);
   assert.equal(profile.browser.builtinResourcesRef, 'hkustgz-builtin-resources');
+  assert.equal(profile.browser.officialPortalResourceId, 'official-portal');
   assert.equal(Object.isFrozen(profile), true);
   assert.equal(Object.isFrozen(profile.browser), true);
 });
@@ -153,7 +155,7 @@ test('custom-local profile cannot inherit reviewed assets, DNS, routes or proact
       engineConfigRef: null,
     },
     browser: {
-      homeUrl: null, campusDomains: [], directPartnerDomains: [],
+      homeUrl: null, officialPortalResourceId: null, campusDomains: [], directPartnerDomains: [],
       builtinResourcesRef: null, healthTargets: [],
     },
     policy: { reviewedPrivateGatewayAllowed: false, reviewedDnsFallback: [] },
@@ -174,8 +176,9 @@ test('SchoolProfileView redacts config, DNS, health and provider internals', () 
   assert.deepEqual(Object.keys(view).sort(), [
     'bundledAssetKey', 'evidenceClass', 'normalizedGatewayOrigin', 'profileId',
     'profileRevision', 'sanitizedCompatibility', 'schemaVersion', 'schoolName', 'shortName',
-    'unverified',
+    'unverified', 'officialPortalResourceId',
   ].sort());
+  assert.equal(view.officialPortalResourceId, 'official-portal');
   assert.equal(view.schoolName, '香港科技大学（广州）');
   const encoded = JSON.stringify(view);
   for (const privateValue of ['10.90.63.2', 'engine-config.json', 'healthTargets', 'protocolFamily']) {

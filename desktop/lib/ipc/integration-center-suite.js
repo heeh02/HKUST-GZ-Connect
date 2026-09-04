@@ -57,8 +57,7 @@ function createExternalIntegrationRuntime({
   getAuthority,
   withProfileDocument,
   getSettings,
-  getUserRules,
-  getServerResources,
+  getDomainPolicy,
   getCampusCidrs = () => [],
   getProxyCredential,
   getPacSource,
@@ -73,7 +72,7 @@ function createExternalIntegrationRuntime({
 } = {}) {
   if (enabled !== true) return createDisabledIntegrationCenterRuntime();
   for (const dependency of [
-    getAuthority, withProfileDocument, getSettings, getUserRules, getServerResources,
+    getAuthority, withProfileDocument, getSettings, getDomainPolicy,
     getCampusCidrs, getProxyCredential, getPacSource, ensureSidecar, writeClipboard, selectTarget,
   ]) {
     if (typeof dependency !== 'function') {
@@ -90,15 +89,15 @@ function createExternalIntegrationRuntime({
     fileSystem,
     platform,
     windowsAcl,
-    getContext: () => withProfileDocument((profileDocument) => createIntegrationRuntimeContext({
+    getContext: (adapterId) => withProfileDocument((profileDocument) => createIntegrationRuntimeContext({
+      adapterId,
       authority: getAuthority(),
       profileDocument,
       settings: getSettings(),
-      userRules: getUserRules(),
-      serverResources: getServerResources(),
-      campusCidrs: getCampusCidrs(),
+      domainPolicy: adapterId === 'clash_mihomo_yaml' ? getDomainPolicy() : null,
+      campusCidrs: adapterId === 'clash_mihomo_yaml' ? getCampusCidrs() : [],
       proxyCredential: getProxyCredential(),
-      pacSource: getPacSource(),
+      pacSource: adapterId === 'clash_mihomo_yaml' ? getPacSource() : '',
       engineGeneration: null,
     })),
   });

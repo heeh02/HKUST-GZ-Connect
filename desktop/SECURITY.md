@@ -71,6 +71,12 @@ changes can be supported without review.
   separately own window/tray/quit policy, browser/vault construction, and
   Network health evidence. Main injects callbacks and contains no Chromium
   manager state, process-enumeration parser, SOCKS probe or telemetry timer.
+- Public-egress observation is an explicit connection-page diagnostic. Main
+  sends one credential-free HTTPS request per bounded local source address to
+  a fixed external lookup service, using source-address binding and a hard
+  deadline. Results remain in memory, expire quickly, and never enter settings,
+  logs, telemetry or crash metadata. The UI must not infer proxy use or a
+  specific physical/TUN path from this observation.
 - Core control IPC validation is centralized beside settings/data IPC. CI also
   scans every Git-tracked text file for common private-key/cloud-token shapes;
   runtime-specific credential vocabulary remains covered by redaction/DTO tests.

@@ -16,12 +16,12 @@ const {
   campusProxyConfig,
   campusWindowChrome,
   nextZoomFactor,
-  neutralHomePage,
   workspaceHomeResources,
   normalizeCampusUrl,
   errorPage,
   redactedFailedUrl,
   safePopupUrl,
+  workspaceSearchQuery,
 } = require('../../../../lib/browser/session/campus-browser');
 const {
   DIRECT_PARTITION,
@@ -49,40 +49,97 @@ test('campus URLs reject executable schemes and embedded credentials', () => {
   assert.equal(safePopupUrl('file:///etc/passwd'), false);
 });
 
-test('neutral Browser Home is app-owned, profile-aware, and groups resources without duplicates', () => {
+test('address input distinguishes local workspace queries from URLs', () => {
+  assert.equal(workspaceSearchQuery('SIS'), 'SIS');
+  assert.equal(workspaceSearchQuery('科研 与 实验'), '科研 与 实验');
+  assert.equal(workspaceSearchQuery('请假'), '请假');
+  assert.equal(workspaceSearchQuery('https://sis.example.edu/'), null);
+  assert.equal(workspaceSearchQuery('sis.example.edu'), null);
+  assert.equal(workspaceSearchQuery('10.0.0.8'), null);
+  assert.equal(workspaceSearchQuery('x'.repeat(81)), null);
+});
+
+test('toolbar favorite derives current-page authority in Main and refreshes Workspace Home', async () => {
+  const toggles = [];
+  const resources = [{
+    id: 'portal', name: 'Portal', description: '',
+    url: 'https://portal.example.edu/', route: ROUTE_CAMPUS, favorite: false,
+    lastOpenedAt: null,
+  }];
+  const { browser, scripts, workspaceStates } = createFakeBrowser({
+    homeUrl: BLANK_CAMPUS_HOME,
+    getWorkspaceResources: () => resources,
+    onTogglePageFavorite: async (candidate) => {
+      toggles.push(candidate);
+      resources[0] = { ...resources[0], favorite: true };
+      return { ok: true, favorite: true, resourceId: 'portal' };
+    },
+  });
+  await browser.open('https://portal.example.edu/?ticket=opaque', 1080, ROUTE_CAMPUS);
+  await nextImmediate();
+  assert.equal(browser.handleToolbarCommand({ command: 'toggle-favorite', value: '' }), true);
+  await nextImmediate();
+  assert.deepEqual(toggles, [{
+    url: 'https://portal.example.edu/?ticket=opaque', title: 'Test', route: ROUTE_CAMPUS,
+  }]);
+  assert.equal(toolbarState(scripts).favorite, true);
+
+  browser.createTab(BLANK_CAMPUS_HOME, ROUTE_DIRECT);
+  await nextImmediate();
+  assert.ok(workspaceStates.length > 0);
+});
+
+test('toolbar bookmark bar exposes only IDs names and user folders and opens through Main', async () => {
+  const opened = [];
+  const focused = [];
+  const menus = [];
   const resources = [
-    { id: 'favorite', name: 'Favorite & Site', description: 'Pinned',
-      url: 'https://favorite.example.edu/', route: ROUTE_CAMPUS, favorite: true,
-      lastOpenedAt: 100 },
-    { id: 'recent', name: 'Recent', description: 'Opened',
-      url: 'https://recent.example.edu/', route: ROUTE_DIRECT, favorite: false,
-      lastOpenedAt: 200 },
-    { id: 'service', name: 'Service', description: '',
-      url: 'https://service.example.edu/', route: ROUTE_CAMPUS, favorite: false,
-      lastOpenedAt: null },
+    { id: 'portal', name: 'Official Portal', description: '', url: 'https://portal.example.edu/',
+      route: ROUTE_CAMPUS, category: 'gateway', favorite: false, lastOpenedAt: null },
+    { id: 'canvas', name: 'Canvas', description: '', url: 'https://canvas.example.edu/',
+      route: ROUTE_DIRECT, category: 'courses', favorite: true, lastOpenedAt: null },
+    { id: 'library', name: 'Library', description: '', url: 'https://library.example.edu/',
+      route: ROUTE_CAMPUS, category: 'tools', favorite: true, lastOpenedAt: null },
   ];
-  const labels = {
-    'browser.workspace': 'Workspace', 'browser.neutralHomeUnverified': 'Unverified',
-    'browser.neutralHomeBody': 'Choose a service', 'browser.homeFavorites': 'Favorites',
-    'browser.homeRecent': 'Recent', 'browser.homeServices': 'Services',
-    'browser.homeEmpty': 'Empty', 'route.campus': 'Campus', 'route.direct': 'Direct',
+  const workspaceController = {
+    createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+    load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+    sendState: () => true,
+    focus: (_contents, target) => { focused.push(target); return true; },
   };
-  const html = neutralHomePage(
-    { schoolName: 'Example <University>', unverified: true },
-    (key) => labels[key] || key,
-    resources,
-  );
-  assert.match(html, /Example &lt;University&gt;/u);
-  assert.doesNotMatch(html, /hkust-gz\.edu\.cn|vpn\.example/u);
-  assert.match(html, /warning/u);
-  assert.match(html, /Favorites[\s\S]*Favorite &amp; Site[\s\S]*Recent[\s\S]*Services/u);
-  assert.match(html, /https:\/\/recent\.example\.edu\/[\s\S]*Direct/u);
-  for (const resource of resources) {
-    const escapedName = resource.name.replace('&', '&amp;');
-    assert.equal(html.match(new RegExp(`<strong>${escapedName}</strong>`, 'gu'))?.length,
-      1, `${resource.id} appears once`);
-  }
-  assert.match(html, /prefers-reduced-motion:reduce/u);
+  const { browser } = createFakeBrowser({
+    profilePresentation: {
+      schoolName: 'Example University', unverified: false, officialPortalResourceId: 'portal',
+    },
+    getWorkspaceResources: () => resources,
+    getWorkspaceGroups: () => [{
+      id: 'group_abcdefghijkl', name: '学习', resourceIds: ['canvas'],
+    }],
+    onOpenResource: async (resourceId) => { opened.push(resourceId); return { ok: true }; },
+    showBookmarkMenu: (entries) => menus.push(entries),
+    workspaceController,
+  });
+  assert.deepEqual(browser.bookmarkBarState(), [
+    { type: 'bookmark', id: 'portal', name: 'Official Portal', official: true },
+    { type: 'bookmark', id: 'library', name: 'Library', official: false },
+    { type: 'folder', id: 'group_abcdefghijkl', name: '学习', children: [
+      { id: 'canvas', name: 'Canvas' },
+    ] },
+  ]);
+  assert.equal(browser.handleToolbarCommand({ command: 'open-resource', value: 'canvas' }), true);
+  await nextImmediate();
+  assert.deepEqual(opened, ['canvas']);
+  assert.equal(browser.handleToolbarCommand({
+    command: 'open-bookmark-folder', value: 'group_abcdefghijkl',
+  }), true);
+  assert.deepEqual(menus.at(-1), [{ id: 'canvas', name: 'Canvas' }]);
+  assert.equal(browser.handleToolbarCommand({ command: 'open-bookmark-menu', value: '' }), true);
+  assert.equal(menus.at(-1).length, 3);
+  assert.equal(JSON.stringify(menus).includes('https://'), false);
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  assert.equal(browser.handleToolbarCommand({ command: 'manage-bookmarks', value: '' }), true);
+  await nextImmediate();
+  assert.deepEqual(focused, ['manage']);
 });
 
 test('Workspace Home resource projection rejects unsafe, duplicate and unbounded input', () => {
@@ -463,6 +520,35 @@ test('a transactional routing policy owns the live Session update exactly once',
     'the main-process transaction already activated or safely suspended the Session');
 });
 
+test('following rules removes only the exact personal override and recomputes the route', async () => {
+  let fixed = null;
+  const mutations = [];
+  const routingPolicy = {
+    appliesLiveSession: true,
+    resolve: () => fixed
+      ? { route: fixed, source: 'user-exact', matchedRule: {
+        host: 'portal.example.internal', includeSubdomains: false,
+      } }
+      : { route: ROUTE_CAMPUS, source: 'builtin', matchedRule: null },
+    proxyConfig: async () => ({ mode: 'pac_script',
+      pacScript: `data:application/x-ns-proxy-autoconfig;base64,${Buffer.from(
+        'function FindProxyForURL(){return "DIRECT";}',
+      ).toString('base64')}`, proxyBypassRules: '<-loopback>' }),
+    upsert: async (payload) => { fixed = payload.route; mutations.push(['upsert', payload]); },
+    remove: async (payload) => { fixed = null; mutations.push(['remove', payload]); },
+  };
+  const { browser } = createFakeBrowser({ routingPolicy, ensureCampusReady: async () => true });
+  await browser.open('portal.example.internal', 1080);
+  assert.equal(await browser.setTabRoute(browser.activeTabId, ROUTE_DIRECT), true);
+  assert.equal(browser.activeTab().routeSource, 'user-exact');
+  assert.equal(await browser.setTabRoute(browser.activeTabId, 'auto'), true);
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS);
+  assert.equal(browser.activeTab().routeSource, 'builtin');
+  assert.deepEqual(mutations.at(-1), ['remove', {
+    host: 'portal.example.internal', includeSubdomains: false,
+  }]);
+});
+
 test('a provisional load failure keeps the failed URL and shows an error page', async () => {
   function makeSession(name) {
     return {
@@ -564,9 +650,13 @@ function createFakeBrowser(extra = {}) {
   const calls = [];
   const scripts = [];
   const homeScripts = [];
+  const workspaceStates = [];
   function makeSession(name) {
     const routeSession = new EventEmitter();
     routeSession.name = name;
+    routeSession.webRequest = {
+      onBeforeRequest: (_filter, handler) => { routeSession.beforeRequest = handler; },
+    };
     routeSession.setProxy = async () => {};
     routeSession.forceReloadProxyConfig = async () => {};
     routeSession.closeAllConnections = async () => {};
@@ -585,6 +675,9 @@ function createFakeBrowser(extra = {}) {
       if (typeof script === 'string' && script.includes('document.write')) {
         homeScripts.push(script);
       }
+      if (typeof script === 'string' && script.includes('workspaceSearch')) {
+        this.workspaceFocused = true;
+      }
       return Promise.resolve();
     }
     send(channel, payload) {
@@ -597,7 +690,7 @@ function createFakeBrowser(extra = {}) {
     isDestroyed() { return false; }
     canGoBack() { return false; }
     canGoForward() { return false; }
-    reload() {}
+    reload() { this.reloadCount = (this.reloadCount || 0) + 1; }
     close() {}
     focus() { this.focused = true; }
     getZoomFactor() { return this.zoom || 1; }
@@ -608,6 +701,7 @@ function createFakeBrowser(extra = {}) {
     }
     stopFindInPage(action) { (this.stopFindCalls ||= []).push(action); }
     async loadURL(url) { this.url = url; }
+    async loadFile(file) { this.file = file; this.url = `file://${file}`; }
   }
   class FakeWebContentsView {
     constructor(options) {
@@ -629,7 +723,17 @@ function createFakeBrowser(extra = {}) {
     constructor() {
       super();
       this.webContents = new FakeWebContents();
-      this.contentView = { addChildView: () => {}, removeChildView: () => {} };
+      const children = [];
+      this.contentView = {
+        children,
+        addChildView: (view) => {
+          if (!children.includes(view)) children.push(view);
+        },
+        removeChildView: (view) => {
+          const index = children.indexOf(view);
+          if (index !== -1) children.splice(index, 1);
+        },
+      };
       this.destroyed = false;
     }
     isDestroyed() { return this.destroyed; }
@@ -641,6 +745,12 @@ function createFakeBrowser(extra = {}) {
     async loadFile() {}
     close() { this.destroyed = true; }
   }
+  const workspaceController = extra.workspaceController || {
+    createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+    load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+    sendState: (contents) => { workspaceStates.push({ contents }); return true; },
+    focusSearch: (contents) => { contents.workspaceFocused = true; return true; },
+  };
   const browser = new CampusBrowser({
     BrowserWindow: FakeBrowserWindow,
     WebContentsView: FakeWebContentsView,
@@ -648,10 +758,11 @@ function createFakeBrowser(extra = {}) {
     parentWindow: () => null,
     toolbarFile: '/app/campus-browser.html',
     campusPreload: '/app/campus-preload.js',
+    workspaceController,
     partition: CAMPUS_PARTITION,
     ...extra,
   });
-  return { browser, calls, scripts, homeScripts, sessions };
+  return { browser, calls, scripts, homeScripts, workspaceStates, sessions };
 }
 
 function nextImmediate() {
@@ -668,14 +779,98 @@ function loadingState(scripts) {
   return { loading: state.loading, slow: state.slow };
 }
 
-test('a custom local blank home keeps every new tab on the non-network direct route', async () => {
-  const { browser } = createFakeBrowser({ homeUrl: 'about:blank' });
+test('the plus button opens a genuine blank tab on the non-network direct route', async () => {
+  const { browser } = createFakeBrowser({
+    homeUrl: 'about:blank',
+    getNewTabUrl: () => BLANK_CAMPUS_HOME,
+  });
   await browser.open('about:blank', 1080, ROUTE_DIRECT);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
   browser.handleToolbarCommand({ command: 'new-tab', value: '' });
   assert.equal(browser.tabs.length, 2);
-  assert.equal(browser.activeTab().view.webContents.getURL(), 'about:blank');
+  assert.equal(browser.activeTab().kind, 'blank');
+  assert.equal(browser.currentUrl(browser.activeTab()), BLANK_CAMPUS_HOME);
   assert.equal(browser.activeTab().route, ROUTE_DIRECT);
+});
+
+test('a reviewed portal remains Home while the plus page follows the live PAC policy', async () => {
+  const portal = 'https://portal.example.edu/';
+  let newTabUrl = 'www.bing.com';
+  const { browser } = createFakeBrowser({
+    homeUrl: portal,
+    getNewTabUrl: () => newTabUrl,
+  });
+  await browser.open(portal, 1080, ROUTE_CAMPUS);
+  assert.equal(browser.tabs.length, 1);
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  await nextImmediate();
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.activeTab().kind, undefined);
+  assert.equal(browser.currentUrl(browser.activeTab()), 'https://www.bing.com/');
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS,
+    'an unknown configured homepage uses the same fail-safe default as the PAC');
+  assert.equal(browser.activeTab().routeSource, 'default');
+  browser.activeTab().view.webContents.emit(
+    'did-navigate', {}, browser.activeTab().view.webContents.getURL(), 200,
+  );
+  assert.equal(browser.activeTab().route, ROUTE_CAMPUS,
+    'a real navigation commit cannot flip the toolbar from a requested fake route');
+  browser.handleToolbarCommand({ command: 'home', value: '' });
+  await nextImmediate();
+  assert.equal(browser.currentUrl(browser.activeTab()), portal);
+  newTabUrl = BLANK_CAMPUS_HOME;
+  browser.handleToolbarCommand({ command: 'new-tab', value: '' });
+  await nextImmediate();
+  assert.equal(browser.activeTab().kind, 'blank', 'a saved preference applies without restart');
+  assert.equal(await browser.openWorkspace(1080), BLANK_CAMPUS_HOME);
+  assert.equal(browser.activeTab().kind, 'workspace');
+});
+
+test('the toolbar settings button delegates one value-free action to Main', () => {
+  let opens = 0;
+  const { browser } = createFakeBrowser({ onOpenSettings: () => { opens++; } });
+  assert.equal(browser.handleToolbarCommand({ command: 'open-settings', value: '' }), true);
+  assert.equal(opens, 1);
+});
+
+test('Command-K opens one local Workspace Home tab and focuses its search', async () => {
+  const { browser } = createFakeBrowser({ homeUrl: BLANK_CAMPUS_HOME });
+  await browser.open('https://portal.example.edu/', 1080, ROUTE_CAMPUS);
+  const page = browser.activeTab().view.webContents;
+  let prevented = false;
+  const commandModifier = process.platform === 'darwin'
+    ? { meta: true, control: false }
+    : { meta: false, control: true };
+  page.emit('before-input-event', { preventDefault: () => { prevented = true; } }, {
+    key: 'k', type: 'keyDown', ...commandModifier,
+  });
+  await nextImmediate();
+  const workspace = browser.activeTab();
+  assert.equal(prevented, true);
+  assert.equal(workspace.kind, 'workspace');
+  assert.equal(workspace.route, ROUTE_DIRECT);
+  assert.equal(workspace.view.webContents.workspaceFocused, true);
+  browser.switchTab(browser.tabs[0].id);
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  assert.equal(browser.tabs.filter((tab) => tab.kind === 'workspace').length, 1,
+    'opening the Workspace again focuses its existing tab');
+});
+
+test('address keywords open one Workspace and retain only a bounded local query', async () => {
+  let focused = null;
+  const workspaceController = {
+    createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+    load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+    sendState: () => true,
+    focus: (contents, target, query) => { focused = { contents, target, query }; return true; },
+  };
+  const { browser } = createFakeBrowser({ homeUrl: BLANK_CAMPUS_HOME, workspaceController });
+  await browser.open('https://portal.example.edu/', 1080, ROUTE_CAMPUS);
+  assert.equal(browser.handleToolbarCommand({ command: 'navigate', value: 'SIS' }), true);
+  await nextImmediate();
+  assert.equal(browser.activeTab().kind, 'workspace');
+  assert.equal(focused.target, 'search');
+  assert.equal(focused.query, 'SIS');
 });
 
 test('local Workspace Home refreshes favorites and recent resources without a network home', async () => {
@@ -692,23 +887,42 @@ test('local Workspace Home refreshes favorites and recent resources without a ne
     'browser.windowTitleForSchool': 'Workspace', 'browser.unverifiedSuffix': '',
   };
   const translate = (key) => labels[key] || key;
-  const { browser, homeScripts } = createFakeBrowser({
+  const workspaceStates = [];
+  const { browser } = createFakeBrowser({
     homeUrl: BLANK_CAMPUS_HOME,
     profilePresentation: { schoolName: 'Example University', unverified: false },
     getWorkspaceResources: () => resources,
+    workspaceController: {
+      createView: (View, browserSession) => new View({ webPreferences: { session: browserSession } }),
+      load: async (view) => view.webContents.loadFile('/app/campus-workspace.html'),
+      sendState: () => { workspaceStates.push(resources.map(({ id }) => id)); return true; },
+      focusSearch: () => true,
+    },
     t: translate,
   });
   await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
   await nextImmediate();
-  assert.match(homeScripts.at(-1), /Favorites[\s\S]*Library/u);
+  assert.deepEqual(workspaceStates.at(-1), ['library']);
   resources = [{
     id: 'recent', name: 'Recent Site', description: '',
     url: 'https://recent.example.edu/', route: ROUTE_DIRECT, favorite: false,
     lastOpenedAt: 300,
   }];
   browser.setLocale('en', translate);
-  assert.match(homeScripts.at(-1), /Recent Site[\s\S]*Direct/u);
-  assert.doesNotMatch(homeScripts.at(-1), /Library/u);
+  assert.deepEqual(workspaceStates.at(-1), ['recent']);
+});
+
+test('card board layout changes are broadcast only to open Workspace tabs', async () => {
+  const { browser } = createFakeBrowser({ homeUrl: BLANK_CAMPUS_HOME });
+  await browser.open(BLANK_CAMPUS_HOME, 1080, ROUTE_DIRECT);
+  await nextImmediate();
+  const workspace = browser.activeTab();
+  const messages = [];
+  workspace.view.webContents.send = (channel, payload) => messages.push({ channel, payload });
+  const document = { schemaVersion: 1, revision: 4, placements: [], decks: [] };
+  assert.equal(browser.refreshCardBoardLayout(document), true);
+  assert.deepEqual(messages, [{ channel: 'card-board-layout-changed', payload: document }]);
+  assert.equal(browser.refreshCardBoardLayout(null), false);
 });
 
 test('context switch close waits for the real BrowserWindow closed event', async () => {
@@ -795,6 +1009,119 @@ test('resize work is coalesced and only the visible tab is laid out', async () =
   assert.equal(second.view.visible, false);
   assert.equal(first.view.boundsCalls.length, firstLayouts + 1,
     'a hidden tab receives current bounds immediately before it becomes visible');
+});
+
+test('only the selected WebContentsView is attached to the native accessibility tree', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const first = browser.activeTab();
+  const second = browser.createTab('library.example.internal', ROUTE_CAMPUS);
+
+  assert.deepEqual(browser.window.contentView.children, [second.view]);
+  assert.equal(first.view.webContents.isDestroyed(), false,
+    'detaching an inactive tab retains its renderer and browsing state');
+  assert.equal(first.view.webContents.getURL(), 'https://portal.example.internal/');
+
+  assert.equal(browser.switchTab(first.id), true);
+  assert.deepEqual(browser.window.contentView.children, [first.view]);
+  assert.equal(second.view.webContents.isDestroyed(), false);
+  assert.equal(second.view.webContents.getURL(), 'https://library.example.internal/');
+
+  assert.equal(browser.closeTab(first.id), true);
+  assert.deepEqual(browser.window.contentView.children, [second.view]);
+});
+
+test('address navigation and reload resume a suspended fail-closed Session first', async () => {
+  let readyCalls = 0;
+  const { browser } = createFakeBrowser({
+    ensureCampusReady: async () => { readyCalls++; return true; },
+  });
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+
+  await browser.suspendRoutingPolicy();
+  assert.equal(browser.routingSuspended, true);
+  assert.equal(browser.routingRequestsBlocked, true);
+  browser.handleToolbarCommand({ command: 'navigate', value: 'library.example.internal' });
+  for (let index = 0; index < 4; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assert.equal(tab.view.webContents.getURL(), 'https://library.example.internal/');
+
+  await browser.suspendRoutingPolicy();
+  const reloads = tab.view.webContents.reloadCount || 0;
+  browser.handleToolbarCommand({ command: 'reload', value: '' });
+  for (let index = 0; index < 4; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, false);
+  assert.equal(browser.routingRequestsBlocked, false);
+  assert.equal(tab.view.webContents.reloadCount, reloads + 1);
+  assert.ok(readyCalls >= 3, 'open, address navigation, and reload establish Campus readiness');
+});
+
+test('concurrent Browser opens single-flight one routing activation', async () => {
+  const { browser, sessions } = createFakeBrowser();
+  let configureCalls = 0;
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  browser.configure = async (port) => {
+    configureCalls += 1;
+    await pending;
+    browser.browserSessionManager.configuredPort = port;
+    browser.browserSessionManager.campusSession = sessions.get(CAMPUS_PARTITION);
+    browser.browserSessionManager.suspended = false;
+    return browser.browserSessionManager.campusSession;
+  };
+
+  const first = browser.activateRoutingPolicy(1080);
+  const second = browser.activateRoutingPolicy(1080);
+  await nextImmediate();
+  assert.equal(configureCalls, 1);
+  release();
+  const [left, right] = await Promise.all([first, second]);
+  assert.equal(left, right);
+  assert.equal(configureCalls, 1);
+});
+
+test('a failed readiness check leaves suspended navigation fail closed', async () => {
+  let ready = true;
+  const { browser } = createFakeBrowser({ ensureCampusReady: async () => ready });
+  await browser.open('portal.example.internal', 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+  const originalUrl = tab.view.webContents.getURL();
+  await browser.suspendRoutingPolicy();
+  ready = false;
+
+  browser.handleToolbarCommand({ command: 'navigate', value: 'library.example.internal' });
+  for (let index = 0; index < 3; index++) await nextImmediate();
+  assert.equal(browser.routingSuspended, true);
+  assert.equal(browser.routingRequestsBlocked, true);
+  assert.equal(tab.view.webContents.getURL(), originalUrl);
+});
+
+test('a newer Home action invalidates an older address navigation waiting for readiness', async () => {
+  let releaseDelayedReadiness;
+  let delayNextReadiness = false;
+  const delayedReadiness = new Promise((resolve) => { releaseDelayedReadiness = resolve; });
+  const homeUrl = 'https://home.example.internal/';
+  const { browser } = createFakeBrowser({
+    homeUrl,
+    ensureCampusReady: async () => delayNextReadiness ? delayedReadiness : true,
+  });
+  await browser.open(homeUrl, 1080, ROUTE_CAMPUS);
+  const tab = browser.activeTab();
+
+  delayNextReadiness = true;
+  browser.handleToolbarCommand({ command: 'navigate', value: 'older.example.internal' });
+  await nextImmediate();
+  delayNextReadiness = false;
+  browser.handleToolbarCommand({ command: 'home', value: '' });
+  for (let index = 0; index < 3; index += 1) await nextImmediate();
+  assert.equal(tab.view.webContents.getURL(), homeUrl);
+
+  releaseDelayedReadiness(true);
+  for (let index = 0; index < 3; index += 1) await nextImmediate();
+  assert.equal(tab.view.webContents.getURL(), homeUrl,
+    'the older address navigation must not overwrite the newer Home action');
 });
 
 test('toolbar events are coalesced, deduplicated, and cancelled during teardown', async () => {

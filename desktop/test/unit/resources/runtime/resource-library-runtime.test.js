@@ -16,6 +16,7 @@ class FakeActivityStore {
     return this.favorites;
   }
   replaceFavorites(document) { this.favorites = document; return document; }
+  replaceRecent(document) { this.recent = document; return document; }
   recordOpen(resourceId) {
     this.recent = { schemaVersion: 1, entries: [{ resourceId, openedAt: 10 }] };
   }
@@ -42,11 +43,62 @@ test('ID-only open resolves inside Main ownership and records activity after suc
     ActivityStoreClass: FakeActivityStore,
   });
   const result = await runtime.openById('outlook');
-  assert.deepEqual(requests, [{ url: 'https://outlook.office.com/owa/', route: 'direct' }]);
+  assert.deepEqual(requests, [{
+    url: 'https://outlook.office.com/owa/', route: 'direct', displayName: 'Outlook',
+  }]);
   assert.equal(result.resourceId, 'outlook');
   assert.equal(result.resources[0].lastOpenedAt, 10);
   assert.equal(result.resources[0].name, '邮箱');
   assert.equal(Object.hasOwn(result, 'url'), false);
+  const effective = runtime.resolveRoutes(resources, () => ({
+    route: 'campus', source: 'user-exact',
+  }));
+  assert.equal(effective[0].route, 'campus');
+  assert.equal(effective[0].routeSource, 'user-exact',
+    'resource labels must show the same effective route used by the browser');
+});
+
+test('reviewed URL additions migrate favorite recent and group IDs without losing activity', () => {
+  class AliasedActivityStore extends FakeActivityStore {
+    constructor(options) {
+      super(options);
+      this.favorites = { schemaVersion: 1, entries: ['custom-old'] };
+      this.recent = {
+        schemaVersion: 1,
+        entries: [{ resourceId: 'custom-old', openedAt: 20 }],
+      };
+    }
+  }
+  class GroupStore {
+    constructor() {
+      this.document = {
+        schemaVersion: 2,
+        collections: [{ id: 'group_abcdefghijkl', name: '学习', createdAt: 1, updatedAt: 1 }],
+        placements: [{ collectionId: 'group_abcdefghijkl', resourceId: 'custom-old', order: 0, pinned: false }],
+      };
+    }
+    snapshot() { return structuredClone(this.document); }
+    replace(document) { this.document = structuredClone(document); return this.document; }
+    groups() { return this.document.collections.map(({ id, name }) => ({ id, name,
+      resourceIds: this.document.placements.filter(({ collectionId }) => collectionId === id)
+        .sort((left, right) => left.order - right.order).map(({ resourceId }) => resourceId),
+    })); }
+  }
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json', recentFile: '/fixture/recent.json',
+    platform: 'darwin', loadResources: () => resources,
+    loadAliases: () => [{ from: 'custom-old', to: 'outlook' }],
+    captureContext: () => ({ epoch: 1 }), isContextCurrent: () => true,
+    openRequest: async () => ({ ok: true }), ActivityStoreClass: AliasedActivityStore,
+    GroupStoreClass: GroupStore,
+  });
+  assert.equal(runtime.list()[0].favorite, true);
+  assert.equal(runtime.list()[0].lastOpenedAt, 20);
+  assert.deepEqual(runtime.listGroups()[0].resourceIds, ['outlook']);
+  assert.deepEqual(runtime.snapshot(), {
+    favorites: { schemaVersion: 1, entries: ['outlook'] },
+    recent: { schemaVersion: 1, entries: [{ resourceId: 'outlook', openedAt: 20 }] },
+  });
 });
 
 test('resource presentation selects reviewed text for the active locale', () => {
@@ -63,6 +115,24 @@ test('resource presentation selects reviewed text for the active locale', () => 
   assert.equal(runtime.listLocalized(null, 'zh')[0].name, '邮箱');
   assert.equal(runtime.listLocalized(null, 'en')[0].name, 'Outlook');
   assert.equal(runtime.listLocalized(null, 'en')[0].description, 'Mail and calendar');
+});
+
+test('Browser navigation records a known resource by canonical URL without retaining SSO state', () => {
+  const runtime = new ResourceLibraryRuntime({
+    favoritesFile: '/fixture/favorites.json',
+    recentFile: '/fixture/recent.json',
+    platform: 'darwin',
+    loadResources: () => resources,
+    captureContext: () => ({ epoch: 1 }),
+    isContextCurrent: () => true,
+    openRequest: async () => ({ ok: true }),
+    ActivityStoreClass: FakeActivityStore,
+  });
+  assert.equal(runtime.recordOpenByUrl(
+    'https://outlook.office.com/owa/?code=opaque#fragment',
+  ), true);
+  assert.deepEqual(runtime.snapshot().recent.entries, [{ resourceId: 'outlook', openedAt: 10 }]);
+  assert.equal(runtime.recordOpenByUrl('https://unlisted.example/'), false);
 });
 
 test('failed or stale opens never record recent activity', async () => {

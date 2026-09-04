@@ -17,8 +17,18 @@ test('browser toolbar exposes the active tab network route', () => {
   assert.match(html, /value="campus"/);
   assert.match(html, /value="direct"/);
   assert.match(js, /command\('set-route'/);
-  assert.match(html, /id="routeRules"/);
-  assert.match(js, /command\('manage-routing-rules'/);
+  assert.doesNotMatch(html, /id="routeRules"/);
+  assert.doesNotMatch(js, /command\('manage-routing-rules'/);
+  assert.match(html, /id="addressForm"[\s\S]*id="routeSelector"[\s\S]*<\/form>/u);
+  assert.match(fs.readFileSync(path.join(renderer, 'campus-browser.css'), 'utf8'),
+    /\.route-badge\[hidden\][^{]*\{\s*display:\s*none/u);
+  assert.match(html, /id="browserSettings"/u);
+  assert.match(js, /command\('open-settings'/u);
+  assert.doesNotMatch(html, /id="openExternal"/u);
+  assert.match(html, /id="favoritePage"[^>]*disabled/u);
+  assert.match(js, /command\('toggle-favorite'/u);
+  assert.match(js, /favoritePage\.classList\.toggle\('active'/u);
+  assert.match(js, /key\.toLowerCase\(\) === 'k'[\s\S]*command\('focus-workspace'/u);
 });
 
 test('browser toolbar uses a typed preload channel and never encodes commands in its URL', () => {

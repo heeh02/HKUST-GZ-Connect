@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, webContents } = require('electron');
 const { ProfileWorkspaceStartupRuntime } = require('../lib/persistence/runtime/profile-workspace-startup-runtime');
 const { projectRuntimeSettings } = require('../lib/persistence/settings/profile-workspace-settings-bundle');
 const { saveSettings } = require('../lib/persistence/settings/settings-store');
@@ -54,6 +54,25 @@ async function invoke(window, expression) {
   return window.webContents.executeJavaScript(`(async () => (${expression}))()`);
 }
 
+async function waitFor(condition, message, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = condition();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+}
+
+async function waitForRenderer(window, expression, message) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (await window.webContents.executeJavaScript(expression)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+}
+
 async function run() {
   await app.whenReady();
   const control = await waitForControlWindow();
@@ -61,6 +80,35 @@ async function run() {
   const initial = await invoke(control, 'window.api.getState()');
   assert.equal(initial.settings.port, 1080);
   assert.equal(initial.dnsMode, 'unknown');
+  const initialCardBoard = await invoke(control, 'window.api.getCardBoardLayout()');
+  assert.equal(initialCardBoard.document.schemaVersion, 1);
+  const cataloguePlacement = initialCardBoard.document.placements.find(({ boardId, card }) => (
+    boardId === 'browser-catalog' && card.kind === 'official-category'
+  ));
+  assert.ok(cataloguePlacement, 'reviewed categories must receive a default card placement');
+  const pinnedCardBoard = await invoke(control, `window.api.commitCardBoardLayout(${JSON.stringify({
+    baseRevision: 0,
+    operations: [{
+      type: 'pin-to-board',
+      sourcePlacementId: '__SOURCE__',
+      boardId: 'connect',
+      index: 1,
+      size: 'medium',
+    }],
+  }).replace('__SOURCE__', cataloguePlacement.placementId)})`);
+  assert.equal(pinnedCardBoard.changed, true);
+  assert.ok(pinnedCardBoard.document.placements.some(({ boardId, card }) => (
+    boardId === 'browser-catalog' && card.id === cataloguePlacement.card.id
+  )), 'pinning must retain the source card');
+  assert.ok(pinnedCardBoard.document.placements.some(({ boardId, card }) => (
+    boardId === 'connect' && card.id === cataloguePlacement.card.id
+  )), 'pinning must add a connect-board reference');
+  const cardBoardFile = path.join(path.dirname(persistence.paths.resourceFavorites), 'card-board-layout.json');
+  const storedCardBoard = await waitFor(() => {
+    try { return JSON.parse(fs.readFileSync(cardBoardFile, 'utf8')); } catch { return null; }
+  }, 'card board layout was not persisted');
+  assert.equal(storedCardBoard.revision, 1);
+  assert.doesNotMatch(JSON.stringify(storedCardBoard), /https?:|<[^>]+>/u);
 
   const usernameWithoutPassword = await invoke(control, `window.api.save({
     username: 'e2e-user',
@@ -141,6 +189,47 @@ async function run() {
   assert.equal(BrowserWindow.getAllWindows().some((candidate) => (
     candidate.webContents.getURL().includes('/renderer/campus-browser.html')
   )), true);
+  const campusWindow = BrowserWindow.getAllWindows().find((candidate) => (
+    candidate.webContents.getURL().includes('/renderer/campus-browser.html')
+  ));
+  await campusWindow.webContents.executeJavaScript(
+    `document.getElementById('browserSettings').click()`,
+  );
+  await waitForRenderer(control,
+    `document.querySelector('.page[data-page="settings"]')?.hidden === false`,
+    'Campus Browser settings button did not open Settings');
+  const portalOpen = await invoke(control, 'window.api.openCampusBrowser({})');
+  assert.equal(portalOpen.ok, true,
+    'the reviewed Direct official portal must remain usable without the campus Engine');
+  const workspaceOpen = await invoke(control, 'window.api.openBookmarkManager()');
+  assert.deepEqual(workspaceOpen, { ok: true, url: 'about:blank', route: 'direct' });
+  const workspace = await waitFor(() => webContents.getAllWebContents().find((contents) => (
+    contents.getURL().endsWith('/renderer/campus-workspace.html') && !contents.isLoading()
+  )), 'Campus Workspace renderer did not start');
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('toggle-favorite', { resourceId: 'canvas' })`,
+  ), true);
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('create-group', { name: '学习' })`,
+  ), true);
+  const groupFile = path.join(path.dirname(persistence.paths.resourceFavorites), 'favorite-groups.json');
+  const groupDocument = await waitFor(() => {
+    try { return JSON.parse(fs.readFileSync(groupFile, 'utf8')); } catch { return null; }
+  }, 'Campus Workspace group was not persisted');
+  assert.equal(groupDocument.schemaVersion, 2);
+  assert.equal(groupDocument.collections[0].name, '学习');
+  assert.equal(await workspace.executeJavaScript(
+    `window.campusWorkspace.command('move-resource', {
+      resourceId: 'canvas', groupId: '${groupDocument.collections[0].id}', index: 0,
+    })`,
+  ), true);
+  const movedGroup = await waitFor(() => {
+    const document = JSON.parse(fs.readFileSync(groupFile, 'utf8'));
+    return document.placements.some(({ collectionId, resourceId }) => (
+      collectionId === document.collections[0].id && resourceId === 'canvas'
+    )) ? document : null;
+  }, 'Campus Workspace favorite was not moved into its group');
+  assert.deepEqual(movedGroup.placements.map(({ resourceId }) => resourceId), ['canvas']);
 
   const settings = projectRuntimeSettings(persistence.reloadAuthority());
   assert.equal(settings.username, '');

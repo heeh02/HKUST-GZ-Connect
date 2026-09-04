@@ -49,8 +49,12 @@ async function waitForMarker(userData, child, output) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (fs.existsSync(file)) {
-      const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (String(marker.profileId).startsWith('custom-')) return marker;
+      try {
+        const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (String(marker.profileId).startsWith('custom-')) return marker;
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+      }
     }
     if (child.exitCode !== null && !fs.existsSync(file)) {
       throw new Error(`Onboarding stage exited before relaunch: ${output.value}`);

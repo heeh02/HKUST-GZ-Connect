@@ -15,15 +15,12 @@ let settings = {};
 let connectedAt = null;
 let durTimer = null;
 let campusActionBusy = false;
-let campusResources = [];
-let resourcesExpanded = false;
-let resourceQuery = '';
-let resourceView = 'all';
+let campusResources = [], resourceGroups = [], resourceQuery = '', resourceLayoutFeature = null;
 let towerDirty = false;
 let towerSaving = false;
 let loginPending = false;
-let resourceEditorManager = null;
-let proxyAuthFeature = null;
+let resourceEditorManager = null, usabilityFeature = null;
+let proxyAuthFeature = null, browserNewTabSettings = null;
 
 function activeLoginProfileId() {
   return window.schoolProfileSelectorFeature?.credentialProfileId?.() || null;
@@ -49,10 +46,12 @@ function setPage(page) {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n.dataset.page === page));
   document.querySelectorAll('.page').forEach((p) => { const on = p.dataset.page === page; p.classList.toggle('active', on); p.hidden = !on; });
   const content = document.querySelector('.content');
-  if (content) content.scrollTop = 0;
-  if (page === 'notif') loadLogs();
+  if (content) { content.classList.toggle('tower-scroll', page === 'tower'); content.classList.remove('user-scrolling'); content.scrollTop = 0; }
+  if (page === 'browser') renderResources();
   if (page === 'settings') runUpdateCheck(false);
+  if (page === 'connect') window.connectionOverview.refreshEnvironment(st.loggedIn === true);
 }
+window.api.onOpenSettings?.(() => { show('dash'); setPage('settings'); refreshState(); });
 function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
 function startDur() { stopDur(); durTimer = setInterval(() => { if (connectedAt) $('stDur').textContent = fmtDur(Date.now() - connectedAt); }, 1000); }
 function stopDur() { if (durTimer) clearInterval(durTimer); durTimer = null; }
@@ -83,10 +82,13 @@ function renderConnect(s) {
   // Status pushes carry the effective locale so a language switch re-renders
   // live; locally constructed state has no locale and keeps the current one.
   if (typeof s.locale === 'string') applyLocale(s.locale);
-  st = s;
+  st = { ...st, ...s };
+  usabilityFeature?.updateConnection(s);
   connectedAt = s.connected ? (s.connectedAt || connectedAt) : null;
   $('power').classList.toggle('on', s.connected);
   $('power').classList.toggle('busy', s.connecting);
+  const powerText = t(s.connecting ? 'connect.actionConnecting' : s.connected ? 'connect.actionDisconnect' : 'connect.actionConnect');
+  $('power').disabled = s.connecting; $('powerLabel').textContent = powerText; $('power').setAttribute('aria-label', powerText); $('power').setAttribute('aria-checked', String(s.connected));
   const wrap = document.querySelector('.conn-status');
   wrap.classList.toggle('on', s.connected); wrap.classList.toggle('busy', s.connecting);
   $('connStatus').textContent = s.connecting
@@ -97,14 +99,17 @@ function renderConnect(s) {
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('settingsNotice').hidden = !s.notice;
   $('settingsNotice').textContent = s.notice || ''; window.notificationView.render({ card: $('notificationCard'), title: $('notificationTitle'), summary: $('notificationSummary'), action: $('notificationAction'), state: s, translate: t });
+  window.connectionOverview.renderStatus(s, t);
   $('quickCampus').disabled = campusActionBusy;
   $('quickAddCampus').disabled = campusActionBusy;
   $('quickCampus').textContent = campusActionBusy
     ? (s.connected ? t('quick.opening') : t('quick.connectThenOpen'))
     : (s.connected ? t('quick.open') : t('quick.connectOpen'));
-  $('statGrid').hidden = !s.connected;
+  $('statGrid').hidden = false;
   $('appsCard').hidden = !s.connected;
   $('stIp').textContent = s.clientIp || '—';
+  $('latencyMetric').classList.toggle('is-empty', !s.connected);
+  $('latencyHint').hidden = s.connected || s.connecting;
   $('stDns').textContent = dnsModeLabel(s.dnsMode);
   if (s.connected && connectedAt) { startDur(); $('stDur').textContent = fmtDur(Date.now() - connectedAt); }
   else { stopDur(); $('stDur').textContent = '0:00'; $('stPing').textContent = '—'; $('stConn').textContent = '0'; $('appList').innerHTML = ''; }
@@ -112,8 +117,12 @@ function renderConnect(s) {
 }
 
 function renderTelemetry(tele) {
+  window.connectionOverview.renderTelemetry(tele, t);
   if (tele.connectedAt) connectedAt = tele.connectedAt;
-  $('stPing').textContent = (tele.latencyMs != null) ? Math.round(tele.latencyMs) + ' ms' : '—';
+  const latencyAvailable = tele.latencyMs != null;
+  $('stPing').textContent = latencyAvailable ? Math.round(tele.latencyMs) + ' ms' : '—';
+  $('latencyMetric').classList.toggle('is-empty', !latencyAvailable);
+  $('latencyHint').hidden = latencyAvailable;
   $('stConn').textContent = tele.connCount || 0;
   const list = $('appList');
   if (!tele.apps || !tele.apps.length) { list.innerHTML = `<div class="app-empty">${esc(t('stats.appsEmpty'))}</div>`; return; }
@@ -122,19 +131,10 @@ function renderTelemetry(tele) {
 }
 
 function renderResources() {
-  const rendered = window.studentHome.renderStudentHome({
-    resources: campusResources,
-    query: resourceQuery,
-    view: resourceView,
-    expanded: resourcesExpanded,
-    translate: t,
-    escapeHtml: esc,
-  });
-  $('campusResources').innerHTML = rendered.html;
-  const toggle = $('toggleResources');
-  toggle.hidden = !rendered.hasMore;
-  toggle.textContent = resourcesExpanded ? t('resources.collapse') : t('resources.expandAll');
-  toggle.setAttribute('aria-expanded', String(resourcesExpanded));
+  const presentation = resourceLayoutFeature?.snapshot() || { layout: window.resourceLayoutPolicy.layoutForWidth(0) };
+  $('resourceShelf').dataset.resourceLayout = presentation.layout.mode;
+  window.campusCategoryStacks.render({ container: $('campusResources'), resources: campusResources, groups: resourceGroups, query: resourceQuery, translate: t, escapeHtml: esc });
+  resourceLayoutFeature?.syncControls();
 }
 
 function setResourceSaved(message) {
@@ -152,21 +152,28 @@ async function saveCampusResource(payload) {
 
 function populateTowerForm() {
   $('towerPort').value = settings.port || 1080;
-  $('routeDomains').value = (settings.routeDomains || []).join('\n');
   $('strictProxyAuth').checked = settings.strictProxyAuth === true;
   $('autoReconnect').checked = settings.autoReconnect !== false;
   $('maxAttempts').value = settings.maxAttempts ?? 3;
   $('startAtLogin').checked = !!settings.startAtLogin;
   $('autoConnect').checked = settings.autoConnect !== false;
   proxyAuthFeature?.render();
+  if (!towerDirty && !$('towerSaved').textContent) $('towerActions').hidden = true;
+}
+
+function setTowerDirty(value) {
+  towerDirty = value === true;
+  if (towerDirty) $('towerActions').hidden = false;
+  else if (!$('towerSaved').textContent) $('towerActions').hidden = true;
 }
 
 async function refreshState({ preserveTower = false } = {}) {
   const s = await window.api.getState();
   applyLocale(s.locale);
-  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn, capabilitySnapshot: s.capabilitySnapshot } }));
+  document.dispatchEvent(new CustomEvent('app-state-refreshed', { detail: { schoolProfile: s.schoolProfile, loggedIn: s.loggedIn } }));
   settings = s.settings || {};
   campusResources = Array.isArray(s.campusResources) ? s.campusResources : [];
+  resourceGroups = Array.isArray(s.resourceGroups) ? s.resourceGroups : [];
   renderConnect(s);
   renderResources();
   $('socksEndpoint').textContent = '127.0.0.1:' + (Number(settings.port) || 1080);
@@ -176,6 +183,8 @@ async function refreshState({ preserveTower = false } = {}) {
   if (s.update) renderUpdateResult(s.update);
   $('closeAction').value = ['ask', 'minimize', 'quit'].includes(settings.closeAction) ? settings.closeAction : 'ask';
   $('language').value = ['auto', 'zh', 'en'].includes(settings.language) ? settings.language : 'auto';
+  browserNewTabSettings?.render(settings);
+  if (document.querySelector('.page.active')?.dataset.page === 'connect') window.connectionOverview.refreshEnvironment(s.loggedIn === true);
   return s;
 }
 
@@ -251,6 +260,9 @@ $('lgBtn').addEventListener('click', async () => {
     return;
   }
   if (!saved.ok) { $('lgErr').textContent = saved.error || t('login.passwordSaveFailed'); return; }
+  if (saved.outcome === 'saved_memory_only' && saved.warning) {
+    usabilityFeature?.toast(saved.warning, 'info');
+  }
   loginPending = true;
   $('lgBtn').disabled = true;
   $('lgBtn').textContent = t('connect.connecting');
@@ -342,7 +354,7 @@ $('quickAddCampus').addEventListener('click', async () => {
     renderConnect(st);
   }
 });
-$('campusResources').addEventListener('click', (event) => {
+function handleCardBoardResourceAction(event) {
   const target = event.target.closest('[data-campus-id]');
   const resource = campusResources.find((item) => item.id === target?.dataset.campusId);
   if (!resource) return;
@@ -355,25 +367,20 @@ $('campusResources').addEventListener('click', (event) => {
       }
       campusResources = result.resources || campusResources;
       renderResources();
+      usabilityFeature?.toast(t(resource.favorite ? 'resources.unfavoriteSaved' : 'resources.favoriteSaved'));
     }).catch(() => { $('quickErr').textContent = t('resources.favoriteFailed'); });
     return;
   }
   if (action === 'open') openCampus(resource);
-});
+}
+$('campusResources').addEventListener('click', handleCardBoardResourceAction);
+$('connectCardBoardHost').addEventListener('click', handleCardBoardResourceAction);
 $('campusUrl').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') openCampus();
 });
 
-$('toggleResources').addEventListener('click', () => {
-  resourcesExpanded = !resourcesExpanded;
-  renderResources();
-});
 $('resourceSearch').addEventListener('input', (event) => {
   resourceQuery = event.target.value.trim();
-  renderResources();
-});
-$('resourceView').addEventListener('change', (event) => {
-  resourceView = event.target.value;
   renderResources();
 });
 
@@ -395,23 +402,22 @@ async function saveTower() {
 
   towerSaving = true;
   $('towerSave').disabled = true;
-  $('towerReconnect').disabled = true;
   $('strictProxyAuth').disabled = true;
   try {
     const result = await window.api.save({
       port,
+      strictProxyAuth: $('strictProxyAuth').checked,
       autoReconnect: $('autoReconnect').checked,
       maxAttempts,
       startAtLogin: $('startAtLogin').checked,
       autoConnect: $('autoConnect').checked,
-      routeDomains: $('routeDomains').value,
     });
     if (!result?.ok) {
       flashSaved(result?.error || t('tower.saveFailed'), true);
       return result || { ok: false };
     }
     settings = result.settings || settings;
-    towerDirty = false;
+    setTowerDirty(false);
     await refreshState();
     return result;
   } catch (error) {
@@ -420,7 +426,6 @@ async function saveTower() {
   } finally {
     towerSaving = false;
     $('towerSave').disabled = false;
-    $('towerReconnect').disabled = false;
     $('strictProxyAuth').disabled = false;
     proxyAuthFeature?.render();
   }
@@ -428,36 +433,33 @@ async function saveTower() {
 let flashTimer = null;
 function flashSaved(msg, isError = false) {
   clearTimeout(flashTimer);
+  $('towerActions').hidden = false;
   $('towerSaved').textContent = msg || t('tower.saved');
   $('towerSaved').classList.toggle('error', isError);
   flashTimer = setTimeout(() => {
     $('towerSaved').textContent = '';
     $('towerSaved').classList.remove('error');
+    if (!towerDirty && !towerSaving) $('towerActions').hidden = true;
   }, isError ? 3500 : 1800);
 }
 $('towerSave').addEventListener('click', async () => {
   const result = await saveTower();
   if (result?.ok) {
+    const reconnectWarning = result.outcome === 'saved_reconnect_failed'
+      ? `${t('tower.saved')} · ${result.warning || ''}`.replace(/\s*·\s*$/u, '')
+      : null;
     flashSaved(
-      result.warning || (result.reconnected ? t('tower.savedApplied') : t('tower.saved')),
+      reconnectWarning || result.warning ||
+        (result.reconnected ? t('tower.savedApplied') : t('tower.saved')),
       !!result.warning,
     );
   }
 });
-$('towerReconnect').addEventListener('click', async () => {
-  const result = await saveTower();
-  if (!result?.ok) return;
-  if (!result.reconnected) {
-    flashSaved(t('tower.reconnecting'));
-    await window.api.reconnect();
-  }
-  flashSaved(result.warning || t('tower.savedReconnected'), !!result.warning);
-});
 for (const id of [
-  'towerPort', 'routeDomains', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
+  'towerPort', 'strictProxyAuth', 'autoReconnect', 'maxAttempts', 'startAtLogin', 'autoConnect',
 ]) {
-  $(id).addEventListener('input', () => { towerDirty = true; });
-  $(id).addEventListener('change', () => { towerDirty = true; });
+  $(id).addEventListener('input', () => setTowerDirty(true));
+  $(id).addEventListener('change', () => setTowerDirty(true));
 }
 $('closeAction').addEventListener('change', async () => {
   await window.api.save({ closeAction: $('closeAction').value });
@@ -471,7 +473,7 @@ $('language').addEventListener('change', async () => {
   await refreshState();
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) refreshState({ preserveTower: true });
+  if (!document.hidden) refreshState({ preserveTower: true }).then(() => window.connectionOverview.refreshEnvironment(st.loggedIn === true));
 });
 
 // copy + tools
@@ -492,9 +494,7 @@ $('openBrowser').addEventListener('click', openCampus);
 $('openLog2').addEventListener('click', () => window.api.openLog());
 $('openAdvancedSettings').addEventListener('click', () => setPage('tower'));
 
-// notifications / settings
-$('logRefresh').addEventListener('click', loadLogs);
-$('notificationAction').addEventListener('click', () => window.notificationView.runAction($('notificationAction').dataset.action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }));
+// settings
 $('logoutBtn').addEventListener('click', async () => {
   loginPending = false;
   const result = await window.api.logout();
@@ -527,7 +527,7 @@ $('checkUpdateBtn').addEventListener('click', async () => {
 });
 
 window.api.onStatus((s) => {
-  renderConnect(s); document.dispatchEvent(new CustomEvent('app-status-updated', { detail: { capabilitySnapshot: s.capabilitySnapshot } }));
+  renderConnect(s);
   if (s.update) renderUpdateResult(s.update);
 });
 window.api.onTelemetry(renderTelemetry);
@@ -544,14 +544,21 @@ proxyAuthFeature.start();
 window.routingManager.start({
   openTower: () => { show('dash'); setPage('tower'); },
 });
-window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) });
+window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) }); browserNewTabSettings = window.browserNewTabSettings.start({ api: window.api, document, translate: (key) => t(key), getSettings: () => settings, setSettings: (next) => { settings = next; } });
 resourceEditorManager = window.resourceManager.start({
   getResources: () => campusResources,
-  setResources: (resources) => {
-    campusResources = resources;
-    renderResources();
-  },
+  setResources: (resources) => { campusResources = resources; renderResources(); },
   saveResource: saveCampusResource,
   setSaved: setResourceSaved,
+  launcherId: 'legacyResourceManager',
 });
+window.addEventListener('card-board-toast', (event) => {
+  const { message, tone } = event.detail || {};
+  if (message) usabilityFeature?.toast(message, tone);
+});
+window.addWebsiteDialog.start({ api: window.api, document, translate: (key, vars) => t(key, vars), getResources: () => campusResources, setResources: (resources) => { campusResources = resources; renderResources(); }, getGroups: () => resourceGroups, setGroups: (groups) => { resourceGroups = groups; renderResources(); }, toast: (message, tone) => usabilityFeature?.toast(message, tone) });
+resourceLayoutFeature = window.resourceLayoutController.create({ window, document, policy: window.resourceLayoutPolicy, onChange: renderResources });
+resourceLayoutFeature.start();
+window.campusCategoryStacks.start({ document }); window.connectionOverview.start({ translate: (key, vars) => t(key, vars), copy: (value) => window.api.copy(value), save: (patch) => window.api.save(patch), refresh: () => refreshState({ preserveTower: true }), getEnvironment: () => window.api.getNetworkEnvironment(), subscribeEnvironment: (callback) => window.api.onNetworkEnvironment?.(callback) }); window.notificationDrawer.start({ document, loadLogs, runAction: (action) => window.notificationView.runAction(action, { openPage: setPage, reconnect: () => (!st.connected && !st.connecting ? window.api.connect() : null) }) });
+usabilityFeature = window.usabilityController.create({ window, document, translate: (key) => t(key), openPage: setPage, clearResourceFilter: () => { resourceQuery = ''; $('resourceSearch').value = ''; if (!resourceLayoutFeature.select('all')) renderResources(); }, openResourceManager: () => $('manageResources').click(), openCampusWorkspace: () => window.api.openCampusBrowser() }); usabilityFeature.start();
 init();

@@ -93,6 +93,18 @@ function mergeWebResourceLibrary(builtIns, custom, hiddenBuiltinResourceIds = []
   return projectWebResourceLibrary(builtIns, custom, hiddenBuiltinResourceIds).resources;
 }
 
+function resourceActivityAliases(builtIns, custom) {
+  const reviewed = validateRuntimeBuiltinResources(builtIns);
+  const local = validateCustomResourceDocument(custom);
+  const builtinByUrl = new Map(reviewed.map((resource) => [resource.url, resource.id]));
+  return Object.freeze(local.flatMap((resource) => {
+    const target = builtinByUrl.get(resource.url);
+    return target && target !== resource.id
+      ? [Object.freeze({ from: resource.id, to: target })]
+      : [];
+  }));
+}
+
 function resourceRoute(resource) {
   return resource?.route === ROUTE_DIRECT ? ROUTE_DIRECT : ROUTE_CAMPUS;
 }
@@ -121,6 +133,7 @@ module.exports = {
   normalizeResource,
   projectCampusResources,
   projectWebResourceLibrary,
+  resourceActivityAliases,
   resourceRoute,
   resolveResourceById,
   visibleBuiltinResources,

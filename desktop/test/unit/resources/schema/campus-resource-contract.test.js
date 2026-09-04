@@ -37,18 +37,47 @@ function resource(index, overrides = {}) {
 
 test('the sole reviewed resource document is bounded, frozen and route-compatible', () => {
   const resources = parseBuiltinResourceDocument(fs.readFileSync(sourceFile));
-  assert.equal(resources.length, 15);
-  assert.equal(resources[0].route, 'campus');
-  assert.equal(resources[4].route, 'direct');
-  assert.equal(resources[0].category, 'campus-service');
-  assert.deepEqual(resources[5].keywords, ['Canvas', '课程', '作业', '教学']);
-  assert.equal(resources[0].schemaVersion, 1);
-  assert.equal(resources[0].reviewed, true);
-  assert.deepEqual(resources[0].localizedName, { zh: '学校主页', en: 'School Homepage' });
-  assert.equal(resources[0].iconKey, null);
+  assert.equal(resources.length, 45);
+  const byId = new Map(resources.map((resource) => [resource.id, resource]));
+  assert.equal(byId.get('official-portal').url, 'https://myportal.hkust-gz.edu.cn/');
+  assert.equal(byId.get('home').route, 'direct');
+  assert.equal(byId.get('outlook').route, 'direct');
+  assert.equal(byId.get('home').category, 'tools');
+  assert.equal(byId.get('new-student').category, 'newcomer');
+  assert.equal(byId.get('sis').category, 'courses');
+  assert.equal(byId.get('canvas').category, 'courses');
+  assert.equal(byId.get('lims').category, 'labs');
+  assert.equal(byId.get('instrument-sharing').category, 'labs');
+  assert.equal(byId.get('student-finance').category, 'student-finance');
+  assert.equal(byId.get('pbms').category, 'expenses');
+  assert.equal(byId.get('career-center').category, 'career');
+  assert.equal(byId.get('one-stop').category, 'gateway');
+  assert.equal(byId.get('e-form').category, 'gateway');
+  assert.equal(byId.get('student-request-guide').category, 'documents');
+  assert.equal(byId.get('grade-reporting').category, 'staff');
+  assert.equal(byId.get('ug-credit-transfer').category, 'courses');
+  assert.equal(byId.get('thesis-exam').category, 'research');
+  assert.deepEqual(resources.filter(({ route }) => route === 'campus').map(({ id }) => id), [
+    'lims', 'rpms', 'hpc-login', 'pbms', 'e-tender',
+  ]);
+  assert.equal(resources.every(({ route }) => route === 'direct' || route === 'campus'), true);
+  assert.deepEqual(byId.get('canvas').keywords, ['Canvas', '上课', '课程', '作业', '教学', '课件']);
+  assert.equal(byId.get('student-finance').keywords.includes('PGS'), true);
+  assert.equal(byId.get('thesis-exam').keywords.includes('PhD'), true);
+  assert.equal(byId.get('home').schemaVersion, 1);
+  assert.equal(byId.get('home').reviewed, true);
+  assert.deepEqual(byId.get('home').localizedName, { zh: '学校主页', en: 'School Homepage' });
+  assert.equal(byId.get('home').iconKey, null);
   for (const id of [
     'sis', 'class-schedule', 'grade-reporting', 'exam-scheduling', 'room-booking',
     'class-enrollment-request', 'thesis-exam', 'academic-edoc', 'ug-major-selection',
+    'ug-credit-transfer', 'academic-calendar', 'academic-tools', 'lims',
+    'instrument-sharing', 'rpms', 'student-finance', 'pbms', 'e-tender',
+    'career-center', 'student-request-guide', 'e-form', 'edoc-verification', 'itd',
+    'my-account', 'klms', 'final-exam-schedule', 'annual-progress',
+    'quarterly-progress', 'aigc', 'hpc-docs', 'hpc-login', 'student-aid',
+    'student-dorm', 'rpg-handbook', 'pg-graduation-guide', 'microsoft-365',
+    'onedrive-sharepoint', 'teams',
   ]) assert.equal(resources.some((resource) => resource.id === id), true, id);
   assert.equal(Object.isFrozen(resources), true);
   assert.equal(Object.isFrozen(resources[0]), true);
@@ -101,4 +130,22 @@ test('legacy custom resources are projected without persisted query material', (
     url: 'https://resource.example.edu/start?ticket=temporary&view=student',
   })]);
   assert.equal(projected.url, 'https://resource.example.edu/start');
+  assert.equal(Object.hasOwn(projected, 'routePreference'), false,
+    'legacy resources retain their previous fixed route without a schema rewrite');
+  const [automatic] = normalizeCustomResources([resource(2, { route: 'campus',
+    routePreference: 'auto' })]);
+  assert.equal(automatic.routePreference, 'auto');
+});
+
+test('browser-only favorite lifecycle is optional bounded and round-trips locally', () => {
+  const [captured] = normalizeCustomResources([resource(1, { favoriteOnly: true })]);
+  assert.equal(captured.favoriteOnly, true);
+  const [manual] = normalizeCustomResources([resource(2)]);
+  assert.equal(Object.hasOwn(manual, 'favoriteOnly'), false);
+  assert.throws(() => validateCustomResourceDocument([
+    resource(3, { favoriteOnly: 'yes' }),
+  ]), /lifecycle/u);
+  assert.throws(() => validateBuiltinResourceDocument([
+    resource(4, { favoriteOnly: true }),
+  ]), /schema/u);
 });

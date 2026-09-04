@@ -56,14 +56,18 @@ test('the most-specific matching subdomain rule wins', () => {
   });
 });
 
-test('custom websites, school defaults, and server suggestions share one precedence chain', () => {
+test('custom websites, reviewed exact routes, and school defaults share one precedence chain', () => {
   const target = 'https://outlook.office.com/owa/';
   const customResources = [{ url: target, route: 'campus' }];
   const serverResources = [{ url: target, route: 'direct' }];
   assert.equal(resolveRouteForUrl(target, { customResources, serverResources }).source, 'custom-resource');
   assert.equal(resolveRouteForUrl(target, {
+    customResources: [{ url: target, route: 'campus', routePreference: 'auto' }],
+    serverResources,
+  }).source, 'server-resource');
+  assert.equal(resolveRouteForUrl(target, {
     serverResources, directPartnerDomains: ['office.com'],
-  }).source, 'builtin');
+  }).source, 'server-resource');
   assert.equal(resolveRouteForUrl('https://library.hkust-gz.edu.cn/', {
     schoolDomains: ['hkust-gz.edu.cn'],
   }).source, 'builtin');
@@ -80,4 +84,17 @@ test('invalid and non-web targets fail closed to campus', () => {
       route: 'campus', source: 'default', matchedRule: null,
     });
   }
+});
+
+test('WebSocket requests reuse the same reviewed and partner route as their page', () => {
+  const options = {
+    serverResources: [{ url: 'https://myportal.hkust-gz.edu.cn/', route: 'direct' }],
+    schoolDomains: ['hkust-gz.edu.cn'],
+    directPartnerDomains: ['office.com'],
+  };
+  assert.deepEqual(resolveRouteForUrl('wss://myportal.hkust-gz.edu.cn/realtime', options), {
+    route: 'direct', source: 'server-resource', matchedRule: null,
+  });
+  assert.equal(resolveRouteForUrl('wss://outlook.office.com/socket', options).route, 'direct');
+  assert.equal(resolveRouteForUrl('ws://internal.hkust-gz.edu.cn/socket', options).route, 'campus');
 });

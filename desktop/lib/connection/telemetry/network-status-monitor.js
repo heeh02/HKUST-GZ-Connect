@@ -2,6 +2,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { NetworkEnvironmentService } = require('../../network-environment/runtime/network-environment-service');
+const { PublicEgressProbe } = require('../../network-environment/egress/public-egress-probe');
 
 const DEFAULT_NETWORK_POLL_MS = 4000;
 const MIN_NETWORK_POLL_MS = 1000;
@@ -170,6 +172,7 @@ function createNetworkStartupSystem({
   resumeInitialOffline,
   connect,
   isQuitting,
+  onPublicEgress = () => {},
 } = {}) {
   if (typeof appIsPackaged !== 'boolean' || !environment ||
       typeof dataDirectory !== 'string' || !path.isAbsolute(dataDirectory) ||
@@ -197,7 +200,13 @@ function createNetworkStartupSystem({
     monitor, shouldAutoConnect, pauseOffline, resumeOffline: resumeInitialOffline,
     connect, isQuitting,
   });
-  return Object.freeze({ monitor, startup, syntheticStateFile: synthetic ? stateFile : null });
+  const environmentService = new NetworkEnvironmentService({
+    platform: process.platform, environment,
+    publicEgressProbe: synthetic ? null : new PublicEgressProbe(),
+  });
+  environmentService.setPublicEgressListener(onPublicEgress);
+  return Object.freeze({ monitor, startup, environment: environmentService,
+    syntheticStateFile: synthetic ? stateFile : null });
 }
 
 class NetworkStatusMonitor {

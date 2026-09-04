@@ -75,6 +75,49 @@ test('stopping invalidates an in-flight collector before it can emit stale state
   assert.deepEqual(emissions, []);
 });
 
+test('a slow health probe never blocks latency pumps or their retry timer', async () => {
+  let now = 0;
+  let resolveHealth;
+  let healthCalls = 0;
+  let latencyCalls = 0;
+  const timers = [];
+  const emissions = [];
+  const service = new TelemetryService({
+    collectApps: async () => ({ connCount: 0, apps: [] }),
+    collectLatency: async () => { latencyCalls += 1; return 7; },
+    collectHealth: () => {
+      healthCalls += 1;
+      return new Promise((resolve) => { resolveHealth = resolve; });
+    },
+    emit: (snapshot) => emissions.push(snapshot),
+    isVisible: () => true,
+    isGenerationCurrent: () => true,
+    now: () => now,
+    setTimeoutFn: (callback, delay) => {
+      const timer = { callback, delay, unref() {} };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeoutFn: () => {},
+  });
+  service.start(4);
+  await flush();
+  assert.equal(healthCalls, 1);
+  assert.equal(latencyCalls, 1);
+  assert.equal(timers.length, 1, 'the normal pump schedules while health remains pending');
+
+  now = VISIBLE_PUMP_MS;
+  timers[0].callback();
+  await flush();
+  assert.equal(healthCalls, 1, 'an in-flight health round is single-flight');
+  assert.equal(timers.length, 2, 'a second pump schedules without awaiting health');
+
+  resolveHealth({ kind: 'healthy', failedTargets: [] });
+  await flush();
+  assert.equal(emissions.at(-1).tunnelHealth, 'healthy');
+  service.stop();
+});
+
 test('collector failures are reported without becoming unhandled rejections', async () => {
   const failure = new Error('telemetry unavailable');
   const reported = [];

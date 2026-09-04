@@ -145,15 +145,8 @@ async function run() {
   assert.equal(connected.phase, 'connected');
   assert.equal(connected.dnsMode, 'gateway');
   assert.ok(connected.clientIp);
-  assert.equal(connected.capabilitySnapshot.profileId, 'hkustgz');
-  assert.equal(connected.capabilitySnapshot.effective['auth.password'], 'supported');
-  assert.equal(connected.capabilitySnapshot.effective['transport.l3'], 'supported');
-  assert.equal(connected.capabilitySnapshot.effective['auth.sms'], 'unsupported');
-  assert.equal(
-    connected.capabilitySnapshot.accountHandle,
-    connected.campusAccount.accountHandle,
-  );
-  assert.equal(JSON.stringify(connected.capabilitySnapshot).includes('accountKey'), false);
+  assert.equal(Object.hasOwn(connected, 'capabilitySnapshot'), false,
+    'Engine capability diagnostics must not be projected into the Control Renderer');
   assert.equal(await loopbackConnects(port), true,
     'listener_ready must correspond to a real owned loopback listener');
   const opened = await opening;
@@ -176,8 +169,7 @@ async function run() {
   control = await controlWindow(oldContentsId);
   const recovered = await invoke(control, 'window.api.getState()');
   assert.equal(recovered.connected, true, 'renderer recovery must not stop the healthy Engine');
-  assert.equal(recovered.capabilitySnapshot.engineGeneration,
-    connected.capabilitySnapshot.engineGeneration);
+  assert.equal(Object.hasOwn(recovered, 'capabilitySnapshot'), false);
 
   const stopped = await invoke(control, 'window.api.disconnect()');
   assert.equal(stopped.ok, true);
@@ -186,7 +178,7 @@ async function run() {
     return !state.connected && !state.connecting ? state : null;
   }, 'graceful disconnect');
   assert.equal(disconnected.phase, 'idle');
-  assert.equal(disconnected.capabilitySnapshot, null);
+  assert.equal(Object.hasOwn(disconnected, 'capabilitySnapshot'), false);
   await waitFor(async () => !await loopbackConnects(port), 'loopback listener release');
 
   const events = observations();

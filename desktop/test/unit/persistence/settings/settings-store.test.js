@@ -43,6 +43,8 @@ test('settings normalization drops obsolete keys and bounds values', () => {
       proxyAuthMigrationPending: false,
       closeAction: 'minimize',
       language: 'en',
+      browserNewTabUrl: 'https://www.bing.com/',
+      underlaySourceAddress: '',
       updateCheckedAt: 0,
       routeDomains: [],
       customResources: [],
@@ -51,11 +53,28 @@ test('settings normalization drops obsolete keys and bounds values', () => {
   );
 });
 
+test('underlay source selection is a bounded IP address or automatic', () => {
+  assert.equal(normalizeSettings({}).underlaySourceAddress, '');
+  assert.equal(normalizeSettings({ underlaySourceAddress: '192.0.2.15' }).underlaySourceAddress,
+    '192.0.2.15');
+  assert.equal(normalizeSettings({ underlaySourceAddress: 'adapter-name' }).underlaySourceAddress, '');
+});
+
 test('the language override is whitelisted to auto/zh/en', () => {
   assert.equal(normalizeSettings({}).language, 'auto');
   assert.equal(normalizeSettings({ language: 'zh' }).language, 'zh');
   assert.equal(normalizeSettings({ language: 'en' }).language, 'en');
   assert.equal(normalizeSettings({ language: 'fr' }).language, 'auto');
+});
+
+test('new tabs default to Bing while safe custom and blank pages remain canonical', () => {
+  assert.equal(normalizeSettings({}).browserNewTabUrl, 'https://www.bing.com/');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'example.com/start' }).browserNewTabUrl,
+    'https://example.com/start');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'about:blank' }).browserNewTabUrl,
+    'about:blank');
+  assert.equal(normalizeSettings({ browserNewTabUrl: 'file:///etc/passwd' }).browserNewTabUrl,
+    'https://www.bing.com/');
 });
 
 test('profile route defaults apply only when settings do not contain a valid user value', () => {
