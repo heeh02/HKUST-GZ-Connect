@@ -1,7 +1,10 @@
 # ADR-0017: P3 production migration runtime composition
 
-- Status: Accepted as a non-activating P3k composition
-- Production Main activation: deferred to the next gate
+- Status: Accepted
+- Owner: Desktop maintainers
+- Last verified: 2026-09-04
+- Applies to: `desktop/lib/persistence/migration/legacy-hkust/` and the 2.0 upgrade path
+- Production Main activation: released in 2.0.0
 - Parent contracts: [`ADR-0010`](0010-p3-destination-and-retirement.md),
   [`ADR-0030`](0030-p3-runtime-storage-path-seam.md)
 
@@ -42,6 +45,13 @@ A committed journal makes partial source retirement restart-safe. A second run r
 already migrated. Orphaned legacy files without `settings.json`, dual authority, changed receipts, invalid
 credentials or incomplete destination state block rather than choosing an authority.
 
+Windows uses two deliberately different ACL operations. Newly created private files may assign ownership to the
+current SID before applying one protected FullControl rule. A legacy migration source may only be tightened when
+the current SID already owns the exact regular single-link file; migration never takes ownership of a foreign
+source. After tightening, the runtime re-identifies the file and only then hashes it into the migration receipt.
+This admits 1.x files that merely inherited broader Windows rules without weakening the link, size, identity or
+receipt checks.
+
 An empty first launch remains in legacy-compatible mode for this gate because direct initialization of a new P3
 Account has not yet been connected to the login flow. The next activation gate must either initialize an empty P3
 Account or migrate immediately after first credential commit; it may not leave two writable authorities.
@@ -54,11 +64,12 @@ Gateway object back into a raw-document validator.
 
 Tests cover real flat-file migration with and without credentials, envelope decrypt round-trip, payload and
 credential zeroization/redaction, changed/unexpected/symlink source rejection, empty first launch, orphaned legacy
-authority, interrupted source retirement recovery and simulated Windows source/destination ACL enforcement.
+authority, interrupted source retirement recovery, simulated Windows source/destination ACL enforcement, and a
+real Windows current-owner file whose deliberately broadened DACL is tightened before use.
 
-## Next gate
+## Release maintenance
 
-P3l must run this composition only after Electron safeStorage is ready and before constructing any path-bound
-service. It must reconcile settings and credential redo intents, choose one immutable runtime mode, create every
-service from that mode and prevent Engine/Browser/UI startup on ambiguous recovery. Packaged migration/restart
-tests are required before replacing the installed App.
+Main runs this composition only after Electron safeStorage is ready and before constructing any path-bound
+service. It reconciles settings and credential redo intents, chooses one immutable runtime mode, creates every
+service from that mode and prevents Engine/Browser/UI startup on ambiguous recovery. Packaged migration/restart
+tests remain required before replacing an installed App.
