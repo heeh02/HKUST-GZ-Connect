@@ -253,7 +253,7 @@ function normalizeGateway(value) {
 function normalizeBrowser(value) {
   const browser = exactKeys(value,
     ['homeUrl', 'officialPortalResourceId', 'campusDomains', 'directPartnerDomains',
-      'builtinResourcesRef', 'healthTargets'],
+      'builtinResourcesRef', 'serviceDeskRef', 'healthTargets'],
     ['campusDomains', 'directPartnerDomains', 'healthTargets'], 'browser');
   const officialPortalResourceId = browser.officialPortalResourceId == null
     ? null
@@ -269,6 +269,9 @@ function normalizeBrowser(value) {
     builtinResourcesRef: browser.builtinResourcesRef == null
       ? null
       : validateBuiltinResourcesRef(browser.builtinResourcesRef),
+    serviceDeskRef: browser.serviceDeskRef == null
+      ? null
+      : validateBuiltinResourcesRef(browser.serviceDeskRef),
     healthTargets: normalizeHealthTargets(browser.healthTargets),
   });
 }
@@ -332,6 +335,7 @@ function validateSchoolProfileDocument(value) {
     normalized.browser.homeUrl || normalized.browser.officialPortalResourceId ||
     normalized.browser.campusDomains.length ||
     normalized.browser.directPartnerDomains.length || normalized.browser.builtinResourcesRef ||
+    normalized.browser.serviceDeskRef ||
     normalized.browser.healthTargets.length)) {
     throw new TypeError('custom-local profiles must start with minimal unreviewed policy');
   }

@@ -23,6 +23,7 @@ const { CAMPUS_PARTITION, ROUTE_CAMPUS, ROUTE_DIRECT } = require('../lib/routing
 const DEAD_URL = 'http://route-switch.example.invalid:1/x';
 const CONFIGURED_HOME = 'https://configured-home.test/start';
 const CONFIGURED_NEXT = 'https://configured-home.test/after-resume';
+let activeStage = 'boot';
 
 async function waitFor(window, expression, description) {
   const deadline = Date.now() + 5000;
@@ -63,6 +64,15 @@ async function waitForPage(contents, expression, description) {
     body: document.body?.innerText?.slice(0, 500) || '',
   }))()`);
   throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(diagnostic)}`);
+}
+
+async function runStage(name, operation) {
+  activeStage = name;
+  try { return await operation(); }
+  catch (error) {
+    error.message = `${name}: ${error.message}`;
+    throw error;
+  }
 }
 
 function toolbarCommand(browser, command, value = '') {
@@ -137,7 +147,7 @@ async function assertBookmarkOrganizer(browser) {
   await waitForMain(() => browser.activeTab()?.kind === 'workspace',
     'bookmark organizer Workspace tab');
   await waitForPage(browser.activeTab().view.webContents,
-    "document.querySelector('#workspacePersonalBoardHost [data-card-board]')?.dataset.editing === 'true' && document.getElementById('manageScreen').hidden === true",
+    "document.querySelector('#workspacePersonalBoardHost [data-card-board]')?.dataset.editing === 'true' && document.getElementById('workspaceCardBoardPersonal').hidden === false && document.querySelector('[data-primary-view].active')?.dataset.primaryView === 'workspace'",
     'inline bookmark organizer');
 }
 
@@ -309,7 +319,7 @@ async function assertWorkspaceHome(browser) {
     duplicateHeader: document.querySelectorAll('.workspace-header').length,
     duplicateSearch: document.querySelectorAll('#workspaceSearch').length,
     activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
-    favoriteNames: [...document.querySelectorAll('#workspacePersonalBoardHost .cb-site-copy strong')]
+    favoriteNames: [...document.querySelectorAll('#workspacePersonalBoardHost .cb-site-name')]
       .map((value) => value.textContent).sort(),
     primaryTabs: [...document.querySelectorAll('[data-primary-view]')].map((value) => value.textContent),
     organizerEntry: document.getElementById('openManage')?.textContent,
@@ -462,29 +472,34 @@ async function main() {
   });
 
   try {
-    await browser.open(BLANK_CAMPUS_HOME, 11080, ROUTE_DIRECT);
+    await runStage('initial browser open', () =>
+      browser.open(BLANK_CAMPUS_HOME, 11080, ROUTE_DIRECT));
     browser.window.hide();
-    await waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization');
-    await assertWorkspaceHome(browser);
-    assertOnlyActiveTabAttached(browser);
-    await assertBlankNewTab(browser);
-    await assertConfiguredHomeAndSuspendedRecovery(browser, newTabPreference, committedUrls);
-    await assertSettingsButton(browser, settingsOpens);
-    const workspaceContents = browser.activeTab().view.webContents;
-    await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'k', bubbles: true, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true,
-    }))`);
-    await waitFor(browser.window,
-      "document.activeElement === document.getElementById('address')",
-      'Workspace Command-K to focus the browser address');
-    await assertBookmarkBar(browser, openedResources, bookmarkMenus);
-    await assertBookmarkOrganizer(browser);
-    await browser.open(DEAD_URL, 11080, 'campus');
+    await runStage('toolbar initialization', () =>
+      waitFor(browser.window, '!!window.campusBrowserUI', 'toolbar initialization'));
+    await runStage('workspace home', () => assertWorkspaceHome(browser));
+    await runStage('active tab attachment', () => assertOnlyActiveTabAttached(browser));
+    await runStage('blank new tab', () => assertBlankNewTab(browser));
+    await runStage('configured home recovery', () =>
+      assertConfiguredHomeAndSuspendedRecovery(browser, newTabPreference, committedUrls));
+    await runStage('settings button', () => assertSettingsButton(browser, settingsOpens));
+    await runStage('workspace Command-K', async () => {
+      const workspaceContents = browser.activeTab().view.webContents;
+      await workspaceContents.executeJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'k', bubbles: true, ${process.platform === 'darwin' ? 'metaKey' : 'ctrlKey'}: true,
+      }))`);
+      await waitFor(browser.window,
+        "document.activeElement === document.getElementById('address')",
+        'Workspace Command-K to focus the browser address');
+    });
+    await runStage('bookmark bar', () => assertBookmarkBar(browser, openedResources, bookmarkMenus));
+    await runStage('bookmark organizer', () => assertBookmarkOrganizer(browser));
+    await runStage('dead URL tab', () => browser.open(DEAD_URL, 11080, 'campus'));
 
-    await assertDragRegions(browser);
-    await assertRouteSwitch(browser);
-    await assertFindBar(browser);
-    await captureBrowserChrome(browser);
+    await runStage('drag regions', () => assertDragRegions(browser));
+    await runStage('route switch', () => assertRouteSwitch(browser));
+    await runStage('find bar', () => assertFindBar(browser));
+    await runStage('browser screenshots', () => captureBrowserChrome(browser));
     assert.deepEqual(errors, [], `unexpected campus browser errors: ${errors.join('; ')}`);
     process.stdout.write('campus browser toolbar: PASS\n');
   } finally {
@@ -499,7 +514,7 @@ async function main() {
 main().then(
   () => app.quit(),
   (error) => {
-    process.stderr.write(`${error.stack || error}\n`);
+    process.stderr.write(`[${activeStage}] ${error.stack || error}\n`);
     app.exit(1);
   },
 );

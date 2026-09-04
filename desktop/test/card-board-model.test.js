@@ -28,76 +28,6 @@ test('website density follows card content width and never expands beyond two co
   ]) assert.equal(boardModel.resourceColumnsForWidth(width), expected, `${width}px card width`);
 });
 
-test('six cards are dealt into three two-card stacks when only three slots fit', () => {
-  const cards = Array.from({ length: 6 }, (_, index) => card('official-category', `category-${index}`));
-  const document = boardModel.defaultDocument({ 'browser-catalog': cards });
-  const compact = boardModel.presentationUnits(document, 'browser-catalog', {
-    columns: 3,
-    availableHeight: 560,
-  });
-  assert.equal(compact.capacity.rows, 1);
-  assert.equal(compact.capacity.slotCount, 3);
-  assert.deepEqual(compact.units.map(({ placements }) => placements.length), [2, 2, 2]);
-  assert.equal(compact.units.every(({ automatic }) => automatic === true), true);
-  assert.deepEqual(compact.units.flatMap(({ placements }) => placements.map(({ card: ref }) => ref.id)),
-    cards.map(({ id }) => id), 'automatic stacks changed the logical card order');
-  assert.equal(document.decks.length, 0, 'responsive stacking leaked into persisted layout data');
-});
-
-test('automatic stacks never exceed three cards even when the viewport has one slot', () => {
-  const cards = Array.from({ length: 12 }, (_, index) => card('official-category', `category-${index}`));
-  const document = boardModel.defaultDocument({ 'browser-catalog': cards });
-  for (const columns of [1, 2, 4]) {
-    const projected = boardModel.presentationUnits(document, 'browser-catalog', {
-      columns,
-      availableHeight: 560,
-    });
-    assert.equal(projected.units.length, 4, `${columns} columns must keep four shallow decks`);
-    assert.deepEqual(projected.units.map(({ placements }) => placements.length), [3, 3, 3, 3]);
-    assert.equal(Math.max(...projected.units.map(({ placements }) => placements.length)), 3);
-  }
-  assert.equal(document.decks.length, 0, 'shallow responsive decks must remain presentation-only');
-});
-
-test('vertical expansion deals automatic stacks back into independent slots', () => {
-  const document = boardModel.defaultDocument({
-    'browser-catalog': Array.from({ length: 6 }, (_, index) => (
-      card('official-category', `category-${index}`)
-    )),
-  });
-  const expanded = boardModel.presentationUnits(document, 'browser-catalog', {
-    columns: 3,
-    availableHeight: 720,
-  });
-  assert.deepEqual(expanded.capacity, { columns: 3, rows: 2, slotCount: 6 });
-  assert.deepEqual(expanded.units.map(({ placements }) => placements.length), [1, 1, 1, 1, 1, 1]);
-  assert.equal(expanded.units.every(({ automatic }) => automatic === false), true);
-});
-
-test('responsive dealing treats a persisted manual deck as one logical unit without rewriting it', () => {
-  const initial = boardModel.defaultDocument({
-    'browser-catalog': Array.from({ length: 5 }, (_, index) => (
-      card('official-category', `category-${index}`)
-    )),
-  });
-  const first = initial.placements[0];
-  const second = initial.placements[1];
-  const manual = boardModel.applyDraftOperation(initial, {
-    type: 'create-deck', boardId: 'browser-catalog',
-    placementIds: [first.placementId, second.placementId],
-    activePlacementId: second.placementId, index: 0,
-  });
-  const before = boardModel.cloneDocument(manual);
-  const presentation = boardModel.presentationUnits(manual, 'browser-catalog', {
-    columns: 2, availableHeight: 500,
-  });
-  assert.equal(presentation.units.length, 2);
-  assert.deepEqual(presentation.units.map(({ placements }) => placements.length), [3, 2]);
-  assert.deepEqual(manual, before, 'responsive projection rewrote the persisted manual deck');
-  assert.equal(manual.decks.length, 1);
-  assert.deepEqual(manual.decks[0].placementIds, [first.placementId, second.placementId]);
-});
-
 test('official, personal, and connect cards remain separate logical boards', () => {
   const document = boardModel.defaultDocument({
     'browser-catalog': [card('official-category', 'courses'), card('official-category', 'research')],
@@ -127,27 +57,6 @@ test('custom Profile fallback can expose personal cards with an empty official b
   assert.deepEqual(boardModel.boardUnits(document, 'browser-catalog'), []);
   assert.equal(boardModel.boardUnits(document, 'browser-personal').length, 1);
   assert.equal(boardModel.boardUnits(document, 'connect').length, 1);
-});
-
-test('one expanded placement is tracked independently per deck and toggles closed', () => {
-  const first = boardModel.toggleExpandedPlacement({}, 'deck-a', 'placement-a');
-  assert.deepEqual(first, { 'deck-a': 'placement-a' });
-  const second = boardModel.toggleExpandedPlacement(first, 'deck-b', 'placement-b');
-  assert.deepEqual(second, { 'deck-a': 'placement-a', 'deck-b': 'placement-b' });
-  const replacement = boardModel.toggleExpandedPlacement(second, 'deck-a', 'placement-c');
-  assert.deepEqual(replacement, { 'deck-a': 'placement-c', 'deck-b': 'placement-b' });
-  const collapsed = boardModel.toggleExpandedPlacement(replacement, 'deck-a', 'placement-c');
-  assert.deepEqual(collapsed, { 'deck-b': 'placement-b' });
-  assert.equal(Object.isFrozen(collapsed), true);
-});
-
-test('ordinary browsing keeps only one expanded card across automatic decks', () => {
-  let expanded = boardModel.toggleExclusiveExpandedPlacement({}, 'auto-deck-0', 'placement-a');
-  assert.deepEqual(expanded, { 'auto-deck-0': 'placement-a' });
-  expanded = boardModel.toggleExclusiveExpandedPlacement(expanded, 'auto-deck-1', 'placement-b');
-  assert.deepEqual(expanded, { 'auto-deck-1': 'placement-b' });
-  expanded = boardModel.toggleExclusiveExpandedPlacement(expanded, 'auto-deck-1', 'placement-b');
-  assert.deepEqual(expanded, {});
 });
 
 test('draft drop operations distinguish insertion, stacking, and extraction', () => {
@@ -211,4 +120,25 @@ test('pinning to connect creates a layout reference and preserves the browser ca
   });
   assert.ok(placementFor(removed, 'official-category', 'courses', 'browser-catalog'));
   assert.equal(placementFor(removed, 'official-category', 'courses', 'connect'), undefined);
+});
+
+test('a deck is capped at three cards and cards never auto-stack', () => {
+  assert.equal(boardModel.MAX_DECK_DEPTH, 3);
+  const cards = Array.from({ length: 6 }, (_, index) => card('official-category', `category-${index}`));
+  const document = boardModel.defaultDocument({ 'browser-catalog': cards });
+  const units = boardModel.boardUnits(document, 'browser-catalog');
+  assert.equal(units.length, 6, 'window size must never merge categories into automatic decks');
+  assert.equal(units.every((unit) => unit.placements.length === 1), true);
+  assert.equal(typeof boardModel.dealUnits, 'undefined');
+  assert.equal(typeof boardModel.toggleExclusiveExpandedPlacement, 'undefined');
+});
+
+test('the personal board can restore bounded automatic stacks without changing model defaults', () => {
+  const cards = Array.from({ length: 7 }, (_, index) => card('user-collection', `folder-${index}`));
+  const document = boardModel.defaultDocument({ 'browser-personal': cards });
+  const stacked = boardModel.autoStackBoard(document, 'browser-personal');
+  const units = boardModel.boardUnits(stacked, 'browser-personal');
+  assert.deepEqual(units.map(({ placements }) => placements.length), [3, 3, 1]);
+  assert.equal(stacked.decks.every(({ placementIds }) => placementIds.length <= 3), true);
+  assert.equal(document.decks.length, 0, 'automatic presentation stacking mutated its input');
 });

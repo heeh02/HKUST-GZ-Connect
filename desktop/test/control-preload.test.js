@@ -90,6 +90,21 @@ test('browser-data clearing is a value-free workspace operation', async () => {
   }]);
 });
 
+test('campus data uses value-free snapshot and refresh operations', async () => {
+  const { api, invocations } = loadPreload();
+  await api.getCampusData();
+  await api.refreshCampusData();
+  await api.refreshCampusSchedule();
+  assert.deepEqual(invocations.map(({ channel, argumentCount }) => ({ channel, argumentCount })), [
+    { channel: 'get-campus-data', argumentCount: 1 },
+    { channel: 'refresh-campus-data', argumentCount: 1 },
+    { channel: 'refresh-campus-schedule', argumentCount: 1 },
+  ]);
+  for (const forbidden of ['getPortalCookie', 'getPortalPassword', 'getPortalToken']) {
+    assert.equal(typeof api[forbidden], 'undefined');
+  }
+});
+
 test('control preload exposes narrow certificate-pin IPC methods', async () => {
   const { api, invocations } = loadPreload();
   const identity = { origin: 'https://legacy-campus.example:4433' };

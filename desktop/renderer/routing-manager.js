@@ -1,13 +1,39 @@
 (function initializeRoutingManager(root, factory) {
-  const shared = typeof module !== 'undefined' && module.exports
-    ? require('./manager-view') : root.managerView;
-  const stackLayout = typeof module !== 'undefined' && module.exports
-    ? require('./stacked-card-layout') : root.stackedCardLayout;
-  const api = factory(root, shared, stackLayout);
+  const api = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.routingManager = api;
-})(typeof self !== 'undefined' ? self : globalThis, function routingManagerFactory(root, shared, stackLayout) {
+})(typeof self !== 'undefined' ? self : globalThis, function routingManagerFactory(root) {
   'use strict';
+
+  // Shared view helpers, local to this manager (the legacy shared module is gone).
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"]/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+    }[character]));
+  }
+
+  function operationError(result, fallback) {
+    const message = typeof result?.error === 'string' ? result.error.trim() : '';
+    return message ? message.slice(0, 300) : fallback;
+  }
+
+  function collectionFromResult(result, key) {
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result?.[key]) ? result[key] : null;
+  }
+
+  function balancedPartitions(items, count) {
+    const safe = Array.isArray(items) ? items : [];
+    const partitions = [];
+    const slots = Math.max(1, Math.min(safe.length || 1, Number(count) || 1));
+    let cursor = 0;
+    for (let index = 0; index < slots; index += 1) {
+      const size = Math.ceil((safe.length - cursor) / (slots - index));
+      partitions.push(safe.slice(cursor, cursor + size));
+      cursor += size;
+    }
+    return partitions;
+  }
 
   function normalizeRoutingHostInput(value, translate) {
     const source = String(value || '').trim();
@@ -59,8 +85,7 @@
     api, document: doc, i18n, openTower = () => {},
     setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout,
   } = {}) {
-    if (!api || !doc || !i18n || typeof openTower !== 'function' ||
-        !shared || !stackLayout?.balancedPartitions) {
+    if (!api || !doc || !i18n || typeof openTower !== 'function') {
       throw new TypeError('routing manager dependencies are required');
     }
     const $ = (id) => doc.getElementById(id);
@@ -122,7 +147,7 @@
     }
 
     function ruleRows(items) {
-      const esc = shared.escapeHtml;
+      const esc = escapeHtml;
       if (!items.length) return `<p class="category-empty">${esc(translate('routing.emptyGroup'))}</p>`;
       return items.map((rule) => {
         const index = rules.indexOf(rule);
@@ -136,7 +161,7 @@
     }
 
     function renderStack(stack, index) {
-      const esc = shared.escapeHtml;
+      const esc = escapeHtml;
       const active = stack.find(({ id }) => id === preferredRoute) || stack[0];
       const panelId = `routing-stack-panel-${index}`;
       const headingId = `routing-stack-heading-${index}`;
@@ -164,7 +189,7 @@
       const container = $('routingRuleStacks');
       const groups = routingGroups(rules, translate);
       const slots = routeStackSlots(container.getBoundingClientRect().width);
-      const markup = stackLayout.balancedPartitions(groups, slots)
+      const markup = balancedPartitions(groups, slots)
         .map(renderStack).join('');
       const nextSignature = `${slots}\u0000${busy ? 'busy' : 'ready'}\u0000${markup}`;
       container.style.setProperty('--stack-columns', String(slots));
@@ -232,8 +257,8 @@
       $('routingRuleStackStatus').textContent = translate('routing.loading');
       try {
         const result = await api.listRoutingRules();
-        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.loadFailed')));
-        const next = shared.collectionFromResult(result, 'rules');
+        if (result?.ok === false) throw new Error(operationError(result, translate('routing.loadFailed')));
+        const next = collectionFromResult(result, 'rules');
         if (!next) throw new Error(translate('routing.loadFailed'));
         rules = routingRulesForView(next);
         if (!routePreferenceChosen && !rules.some((rule) => rule.route === preferredRoute)) {
@@ -278,8 +303,8 @@
         const result = await api.deleteRoutingRule({
           host: rule.host, includeSubdomains: rule.includeSubdomains,
         });
-        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.deleteFailed')));
-        const next = shared.collectionFromResult(result, 'rules');
+        if (result?.ok === false) throw new Error(operationError(result, translate('routing.deleteFailed')));
+        const next = collectionFromResult(result, 'rules');
         if (next) rules = routingRulesForView(next); else await load();
         clearForm({ keepMessages: true });
         $('routingRuleSaved').textContent = translate('routing.deleted');
@@ -316,8 +341,8 @@
       setBusy(true);
       try {
         const result = await api.saveRoutingRule(payload);
-        if (result?.ok === false) throw new Error(shared.operationError(result, translate('routing.saveFailed')));
-        const next = shared.collectionFromResult(result, 'rules');
+        if (result?.ok === false) throw new Error(operationError(result, translate('routing.saveFailed')));
+        const next = collectionFromResult(result, 'rules');
         if (next) rules = routingRulesForView(next); else await load();
         preferredRoute = route;
         routePreferenceChosen = true;

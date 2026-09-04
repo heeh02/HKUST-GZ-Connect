@@ -61,7 +61,25 @@ function fixture() {
         replaceFavorites: (document) => { favorites = document; return favorites; },
         groupsSnapshot: () => groups,
         replaceGroups: (document) => { groups = document; return groups; },
-        listGroups: () => [],
+        createGroup: (name) => {
+          groups = {
+            ...groups,
+            collections: [...groups.collections,
+              { id: `group_${name}`, name, createdAt: 1, updatedAt: 1 }],
+          };
+          return groups;
+        },
+        renameGroup: (groupId, name) => {
+          groups = {
+            ...groups,
+            collections: groups.collections.map((collection) => (
+              collection.id === groupId ? { ...collection, name } : collection
+            )),
+          };
+          return groups;
+        },
+        moveResource: () => groups,
+        listGroups: () => groups.collections.map(({ id, name }) => ({ id, name, resourceIds: [] })),
         addResourcesToGroup: () => groups,
       },
     },
@@ -112,6 +130,9 @@ test('facade registers exact routing certificate resource and school channels', 
     'restore-builtin-resources',
     'reorder-resources',
     'toggle-resource-favorite',
+    'create-favorite-group',
+    'rename-favorite-group',
+    'move-favorite-resource',
     'get-card-board-layout',
     'commit-card-board-layout',
     'reset-card-board-layout',
@@ -227,6 +248,9 @@ test('built-in resources can be hidden persistently and restored without editing
       replaceFavorites: () => {},
       groupsSnapshot: () => ({ schemaVersion: 2, collections: [], placements: [] }),
       replaceGroups: () => {},
+      createGroup: () => {},
+      renameGroup: () => {},
+      moveResource: () => {},
       listGroups: () => [],
       addResourcesToGroup: () => {},
     },
@@ -268,6 +292,9 @@ test('add website rolls settings and favorites back when category placement fail
       replaceFavorites: (next) => { favorites = structuredClone(next); },
       groupsSnapshot: () => emptyGroups,
       replaceGroups: () => {},
+      createGroup: () => {},
+      renameGroup: () => {},
+      moveResource: () => {},
       listGroups: () => [{ id: 'group_abcdefghijkl', name: 'HPC', resourceIds: [] }],
       addResourcesToGroup: () => { throw new Error('placement write failed'); },
     },
@@ -284,4 +311,24 @@ test('add website rolls settings and favorites back when category placement fail
   assert.match(result.error, /placement write failed/u);
   assert.deepEqual(settings.customResources, []);
   assert.deepEqual(favorites.entries, []);
+});
+
+test('favorite group channels create rename and move with bounded payloads', async () => {
+  const f = fixture();
+  const created = await f.handlers.get('create-favorite-group')({}, { name: '科研计算' });
+  assert.equal(created.ok, true);
+  assert.deepEqual(created.groups, [{ id: 'group_科研计算', name: '科研计算', resourceIds: [] }]);
+  const renamed = await f.handlers.get('rename-favorite-group')(
+    {}, { groupId: 'group_科研计算', name: '科研' },
+  );
+  assert.equal(renamed.ok, true);
+  assert.equal(renamed.groups[0].name, '科研');
+  const moved = await f.handlers.get('move-favorite-resource')(
+    {}, { resourceId: 'site-1', groupId: 'group_科研计算', index: 0 },
+  );
+  assert.equal(moved.ok, true);
+  const invalid = await f.handlers.get('create-favorite-group')({}, { name: '', extra: 1 });
+  assert.equal(invalid.ok, false);
+  const invalidRename = await f.handlers.get('rename-favorite-group')({}, { groupId: 'g' });
+  assert.equal(invalidRename.ok, false);
 });

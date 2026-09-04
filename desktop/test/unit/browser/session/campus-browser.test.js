@@ -681,6 +681,7 @@ function createFakeBrowser(extra = {}) {
       return Promise.resolve();
     }
     send(channel, payload) {
+      (this.sent ||= []).push([channel, payload]);
       if (channel === 'campus-toolbar-state') {
         scripts.push(`window.campusBrowserUI&&window.campusBrowserUI.setState(${JSON.stringify(payload)})`);
       }
@@ -719,10 +720,17 @@ function createFakeBrowser(extra = {}) {
       calls.push(['visible', visible]);
     }
   }
+  let browserWindowCount = 0;
   class FakeBrowserWindow extends EventEmitter {
-    constructor() {
+    constructor(options = {}) {
       super();
+      if (browserWindowCount > 0 && extra.failPopupWindow) {
+        throw new Error('synthetic native popup failure');
+      }
+      browserWindowCount++;
+      this.options = options;
       this.webContents = new FakeWebContents();
+      this.webContents.session = options.webPreferences?.session;
       const children = [];
       this.contentView = {
         children,
@@ -740,6 +748,7 @@ function createFakeBrowser(extra = {}) {
     isMinimized() { return false; }
     getContentSize() { return [1200, 820]; }
     setTitle(value) { this.title = value; }
+    setMenuBarVisibility() {}
     show() {}
     focus() {}
     async loadFile() {}
@@ -764,6 +773,40 @@ function createFakeBrowser(extra = {}) {
   });
   return { browser, calls, scripts, homeScripts, workspaceStates, sessions };
 }
+
+test('shared connection credential is sent once to the exact ready login document and then destroyed', async () => {
+  let destroyed = 0;
+  let requestedOrigin = '';
+  const { browser } = createFakeBrowser({
+    homeUrl: 'https://myportal.hkust-gz.edu.cn/',
+    getSharedPortalCredential: (origin) => {
+      requestedOrigin = origin;
+      return {
+        withStrings: (callback) => callback('student001', 'one-time-secret'),
+        destroy: () => { destroyed += 1; },
+      };
+    },
+  });
+  await browser.open('https://sso.hkust-gz.edu.cn/Account/Login', 1080, ROUTE_DIRECT);
+  const tab = browser.activeTab();
+  tab.view.webContents.emit('dom-ready');
+  await nextImmediate();
+  const fills = tab.view.webContents.sent.filter(([channel]) => channel === 'campus-credential-fill');
+  assert.equal(requestedOrigin, 'https://sso.hkust-gz.edu.cn');
+  assert.equal(fills.length, 1);
+  assert.deepEqual(fills[0][1], {
+    origin: 'https://sso.hkust-gz.edu.cn',
+    username: 'student001',
+    password: 'one-time-secret',
+    source: 'connection-credential',
+    autoSubmit: true,
+  });
+  assert.equal(destroyed, 1);
+  tab.view.webContents.emit('dom-ready');
+  await nextImmediate();
+  assert.equal(tab.view.webContents.sent.filter(([channel]) => channel === 'campus-credential-fill').length, 1,
+    'one login document must not receive repeated password submissions');
+});
 
 function nextImmediate() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -1403,6 +1446,21 @@ test('same-document SPA login uses the existing explicit credential prompt', asy
   ]]);
 });
 
+test('ordinary web popups remain isolated Campus Browser tabs', async () => {
+  const { browser } = createFakeBrowser();
+  await browser.open('portal.example.edu/home', 1080);
+  const owner = browser.activeTab();
+  const response = owner.view.webContents.popupHandler({
+    url: 'https://help.example.edu/article',
+  });
+
+  assert.deepEqual(response, { action: 'deny' });
+  await nextImmediate();
+  assert.equal(browser.tabs.length, 2);
+  assert.equal(browser.activeTab().view.webContents.url, 'https://help.example.edu/article');
+  assert.equal(browser.managedCredentialPopups.size, 0);
+});
+
 test('popup MFA shares only flow ownership and blocks the originating tab', async () => {
   const prompts = [];
   const saved = [];
@@ -1429,24 +1487,27 @@ test('popup MFA shares only flow ownership and blocks the originating tab', asyn
   ownerContents.url = 'https://sso.example.edu/waiting';
   ownerContents.emit('did-navigate', {}, ownerContents.url, 200);
 
-  assert.deepEqual(ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' }), {
-    action: 'deny',
-  });
+  const response = ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' });
+  assert.equal(response.action, 'allow');
+  assert.equal(response.outlivesOpener, false);
+  const popupContents = response.createWindow({ webPreferences: {} });
   ownerContents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://sso.example.edu', hasLoginForm: false, hasChallengeForm: false,
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(prompts.length, 0, 'the popup reservation blocks a racing opener result');
 
-  const popup = browser.activeTab();
-  assert.notEqual(popup.id, owner.id);
+  assert.equal(browser.tabs.length, 1, 'the native challenge window does not consume a tab');
+  const popup = [...browser.managedCredentialPopups][0];
   assert.equal(popup.pendingCredential, null, 'the popup never receives a password copy');
   assert.equal(
-    popup.view.options.webPreferences.session,
+    popup.window.options.webPreferences.session,
     owner.view.options.webPreferences.session,
     'SSO and SameSite behavior use the same persistent Electron Session',
   );
-  const popupContents = popup.view.webContents;
+  assert.equal(browser.ownsWebContents(popupContents), true,
+    'proxy auth and certificate policy continue to recognize the child window');
+  popupContents.url = 'https://mfa.example.edu/challenge';
   popupContents.emit('did-navigate', {}, popupContents.url, 200);
   popupContents.emit('ipc-message', {}, 'campus-credential-page-state', {
     origin: 'https://mfa.example.edu', hasLoginForm: false, hasChallengeForm: true,
@@ -1468,11 +1529,12 @@ test('popup MFA shares only flow ownership and blocks the originating tab', asyn
   ]]);
 });
 
-test('popup creation failure releases its reservation and rolls back the partial tab', async () => {
+test('popup creation failure releases its reservation without disturbing the opener', async () => {
   const errors = [];
   const { browser } = createFakeBrowser({
     credentialVault: { get: async () => null, save: async () => {} },
     onError: (message) => errors.push(message),
+    failPopupWindow: true,
   });
   await browser.open('sso.example.edu/login', 1080);
   const owner = browser.activeTab();
@@ -1484,16 +1546,13 @@ test('popup creation failure releases its reservation and rolls back the partial
   });
   assert.ok(owner.pendingCredential);
 
-  browser.window.contentView.addChildView = () => {
-    throw new Error('synthetic native view failure');
-  };
-  assert.deepEqual(ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' }), {
-    action: 'deny',
-  });
-  await nextImmediate();
-  await nextImmediate();
+  const response = ownerContents.popupHandler({ url: 'https://mfa.example.edu/challenge' });
+  assert.equal(response.action, 'allow');
+  assert.throws(() => response.createWindow({ webPreferences: {} }),
+    /synthetic native popup failure/);
 
   assert.equal(browser.tabs.length, 1);
+  assert.equal(browser.managedCredentialPopups.size, 0);
   assert.equal(browser.activeTab(), owner);
   assert.equal(owner.pendingCredential.password, 'local-secret');
   const flow = browser.credentialController.flowFor(owner);

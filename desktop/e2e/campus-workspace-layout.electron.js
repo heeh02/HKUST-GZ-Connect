@@ -64,13 +64,14 @@ async function inspect(window) {
       boardId: board?.dataset.boardId || null,
       boardColumns: Number(board?.dataset.boardColumns || 0),
       cards: board?.querySelectorAll('[data-card-placement-id]').length || 0,
+      decks: board?.querySelectorAll('.cb-deck[data-stack-count="2"]').length || 0,
       dragHandles: board?.querySelectorAll('[data-card-drag-handle]').length || 0,
       nestedScrollers: [...(board?.querySelectorAll('.cb-card-body, .cb-site-list') || [])]
         .filter((node) => ['auto', 'scroll'].includes(getComputedStyle(node).overflowY)).length,
       primaryTabs: document.querySelectorAll('[data-primary-view]').length,
-      secondaryHidden: document.getElementById('secondaryNavigation').hidden,
+      secondaryGone: !document.getElementById('secondaryNavigation'),
       serviceGridHidden: grid.hidden,
-      manageScreenVisible: !document.getElementById('manageScreen').hidden,
+      manageScreenGone: !document.getElementById('manageScreen'),
     };
   })()`);
 }
@@ -86,7 +87,19 @@ async function main() {
   await app.whenReady();
   const commands = [];
   const layoutCommits = [];
-  let cardBoardDocument = createDefaultCardBoardLayout(cardBoardAuthority);
+  let cardBoardDocument;
+{
+  // Stack the first two catalog categories into one deck for draw coverage.
+  const base = createDefaultCardBoardLayout(cardBoardAuthority);
+  const catalog = base.placements.filter(({ boardId }) => boardId === 'browser-catalog');
+  cardBoardDocument = applyCardBoardOperations(base, [{
+    type: 'create-deck',
+    boardId: 'browser-catalog',
+    placementIds: [catalog[0].placementId, catalog[1].placementId],
+    activePlacementId: catalog[0].placementId,
+    index: 0,
+  }], cardBoardAuthority);
+}
   ipcMain.handle('get-card-board-layout', () => ({ document: cardBoardDocument }));
   ipcMain.handle('commit-card-board-layout', (_event, request) => {
     if (request.baseRevision !== cardBoardDocument.revision) {
@@ -130,6 +143,12 @@ async function main() {
     getLocale: () => 'zh',
     onCommand: async (command) => { commands.push(command); return { ok: true }; },
   });
+  window.webContents.on('console-message', (event) => {
+    if (event.level === 'error') process.stderr.write(`[renderer] ${event.message} ${event.sourceId}:${event.line}\n`);
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    process.stderr.write(`[renderer gone] ${JSON.stringify(details)}\n`);
+  });
   controller.attach(window.webContents);
   await window.loadFile(path.join(__dirname, '..', 'renderer', 'campus-workspace.html'));
   controller.sendState(window.webContents);
@@ -153,12 +172,13 @@ async function main() {
     assert.equal(home.boardId, 'browser-catalog', `${label} projected the wrong board`);
     assert.equal(home.boardColumns, expectedColumns, `${label} card-board columns`);
     assert.equal(home.cards, 12, `${label} official task categories are incomplete`);
+    assert.ok(home.decks >= 1, `${label} the seeded deck is missing`);
     assert.equal(home.dragHandles, 0, `${label} browsing exposed edit-only drag handles`);
     assert.equal(home.nestedScrollers, 0, `${label} card board added an inner scrollbar`);
     assert.equal(home.primaryTabs, 3, `${label} primary product modes are incomplete`);
-    assert.equal(home.secondaryHidden, true, `${label} duplicated category navigation remains visible`);
+    assert.equal(home.secondaryGone, true, `${label} duplicated category navigation remains in the markup`);
     assert.equal(home.serviceGridHidden, true, `${label} legacy resource grid remains visible`);
-    assert.equal(home.manageScreenVisible, false, `${label} detached organizer is visible`);
+    assert.equal(home.manageScreenGone, true, `${label} the detached organizer is back in the markup`);
     await capture(window, `${label}-home`);
     await capture(window, `${label}-services`);
   }
@@ -210,12 +230,13 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 80));
   const groupSearch = await window.webContents.executeJavaScript(`({
     title: document.querySelector('#workspacePersonalBoardHost [data-card-ref-id="group_abcdefghijkl"] .cb-card-title')?.textContent,
+    front: document.querySelector('#workspacePersonalBoardHost [data-card-ref-id="group_abcdefghijkl"]')?.dataset.cardFront,
     homeVisible: !document.getElementById('homeScreen').hidden,
     activePrimary: document.querySelector('[data-primary-view].active')?.dataset.primaryView,
     createCategoryVisible: !document.getElementById('quickCreateGroup').hidden,
   })`);
   assert.deepEqual(groupSearch, {
-    title: '学习', homeVisible: true, activePrimary: 'workspace', createCategoryVisible: true,
+    title: '学习', front: 'true', homeVisible: true, activePrimary: 'workspace', createCategoryVisible: true,
   });
   const recentView = await window.webContents.executeJavaScript(`(() => {
     document.getElementById('primaryRecent').click();
@@ -230,39 +251,86 @@ async function main() {
     'recent resources do not show their opened time');
   assert.equal(recentView.timestamps.every((value) => value.includes('打开于')), true);
 
-  const courses = await window.webContents.executeJavaScript(`(() => {
+  const courses = await window.webContents.executeJavaScript(`(async () => {
     document.getElementById('primaryCatalog').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const card = document.querySelector(
       '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
     );
-    card.querySelector('[data-card-action="toggle"]').click();
+    // A front title click never collapses anything; drawing is only for back layers.
+    card.querySelector('[data-card-action="draw"]').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     let updated = document.querySelector(
       '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
     );
+    const frontUnchanged = updated.dataset.cardFront === 'true';
     const previewCount = updated.querySelectorAll('[data-card-resource-id]').length;
-    const expandAll = updated.querySelector('[data-card-action="expand-all"]');
-    expandAll?.click();
+    const showAll = updated.querySelector('[data-card-action="show-all"]');
+    showAll?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const overlay = document.querySelector('#workspaceCatalogBoardHost .cb-overlay');
+    const overlayIds = [...(overlay?.querySelectorAll('[data-card-resource-id]') || [])]
+      .map((item) => item.dataset.cardResourceId);
+    overlay?.querySelector('[data-card-resource-id="sis"] [data-resource-action="open"]').click();
+    overlay?.querySelector('[data-card-resource-id="sis"] [data-resource-action="favorite"]').click();
+    overlay?.querySelector('.cb-overlay-close')?.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     updated = document.querySelector(
       '#workspaceCatalogBoardHost [data-card-ref-kind="official-category"][data-card-ref-id="courses"]',
     );
-    updated.querySelector('[data-card-resource-id="sis"] [data-resource-action="open"]').click();
-    updated.querySelector('[data-card-resource-id="sis"] [data-resource-action="favorite"]').click();
     return {
-      ids: [...updated.querySelectorAll('[data-card-resource-id]')]
-        .map((item) => item.dataset.cardResourceId),
+      ids: overlayIds,
       previewCount,
-      expandedAll: !!expandAll,
+      frontUnchanged,
+      overlayOpened: !!overlay,
+      overlayClosed: !document.querySelector('#workspaceCatalogBoardHost .cb-overlay'),
+      slotUnchanged: updated.dataset.cardFront === 'true',
       serviceScreenVisible: !document.getElementById('homeScreen').hidden,
       selectedCategory: updated.querySelector('.cb-card-title')?.textContent,
     };
   })()`);
+  assert.equal(courses.frontUnchanged, true, 'clicking the front title must not collapse the card');
+  assert.equal(courses.previewCount, 4);
+  assert.equal(courses.overlayOpened, true, 'show-all did not open the bounded overlay');
   assert.equal(courses.ids.includes('sis'), true);
   assert.equal(courses.ids.includes('canvas'), true);
-  assert.equal(courses.previewCount, 4);
-  assert.equal(courses.expandedAll, true);
   assert.equal(courses.ids.includes('new-student'), false);
+  assert.equal(courses.overlayClosed, true, 'the overlay did not close back into the fixed slot');
+  assert.equal(courses.slotUnchanged, true, 'the overlay changed the slot content');
   assert.equal(courses.serviceScreenVisible, true);
   assert.match(courses.selectedCategory, /课程、选课与成绩/u);
+
+  const deckDraw = await window.webContents.executeJavaScript(`(async () => {
+    document.getElementById('primaryCatalog').click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const deck = document.querySelector('#workspaceCatalogBoardHost .cb-deck[data-stack-count="2"]');
+    if (!deck) return { deck: false };
+    const slotBefore = deck.getBoundingClientRect().toJSON();
+    const back = [...deck.querySelectorAll(':scope > [data-card-placement-id]')]
+      .find((card) => card.dataset.cardFront === 'false');
+    const backId = back.dataset.cardRefId;
+    const drawn = new Promise((resolve) => document.getElementById('workspaceCatalogBoardHost')
+      .addEventListener('card-board-drawn', (event) => resolve(event.detail), { once: true }));
+    back.querySelector('[data-card-action="draw"]').click();
+    const detail = await drawn;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const updated = document.querySelector('#workspaceCatalogBoardHost [data-card-ref-id="' + backId + '"]');
+    const updatedSlot = document.querySelector('#workspaceCatalogBoardHost .cb-deck[data-stack-count="2"]');
+    return {
+      deck: true,
+      drawnFront: updated.dataset.cardFront === 'true',
+      aria: updated.querySelector('[data-card-action="draw"]').getAttribute('aria-selected'),
+      slotUnchanged: Math.abs(slotBefore.top - updatedSlot.getBoundingClientRect().top) <= 1
+        && Math.abs(slotBefore.height - updatedSlot.getBoundingClientRect().height) <= 1,
+      duration: detail.duration,
+    };
+  })()`);
+  assert.equal(deckDraw.deck, true, 'the seeded deck is missing from the workspace board');
+  assert.equal(deckDraw.drawnFront, true, 'the back layer did not draw to the front');
+  assert.equal(deckDraw.aria, 'true', 'aria-selected did not follow the drawn card');
+  assert.equal(deckDraw.slotUnchanged, true, 'drawing changed the slot geometry');
+  assert.ok(deckDraw.duration >= 200 && deckDraw.duration <= 500,
+    `workspace draw lasted ${deckDraw.duration}ms outside the 240ms window`);
 
   assert.equal(controller.focus(window.webContents, 'search', '请假'), true);
   await new Promise((resolve) => setTimeout(resolve, 80));
@@ -317,7 +385,7 @@ async function main() {
     }
     return {
       homeVisible: !document.getElementById('homeScreen').hidden,
-      detachedManagerVisible: !document.getElementById('manageScreen').hidden,
+      detachedManagerGone: !document.getElementById('manageScreen'),
       editing,
       editingAfterSave: host.querySelector('[data-card-board]').dataset.editing,
       ordinaryHandles,
@@ -330,8 +398,8 @@ async function main() {
     };
   })()`);
   assert.equal(managementView.homeVisible, true, 'Organize navigated away from the current board');
-  assert.equal(managementView.detachedManagerVisible, false,
-    'Organize reopened the detached list manager');
+  assert.equal(managementView.detachedManagerGone, true,
+    'the detached list manager is back in the markup');
   assert.equal(managementView.editing, 'true', 'Organize did not enter inline editing');
   assert.equal(managementView.editingAfterSave, 'false', 'Done did not leave inline editing');
   assert.equal(managementView.ordinaryHandles, 0, 'ordinary browsing exposed drag handles');

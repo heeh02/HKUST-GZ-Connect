@@ -42,7 +42,7 @@ bash desktop/scripts/rebuild-mac.sh    # macOS：打包、校验并安装到 /Ap
 cd desktop
 npm test                          # node --test 单元测试
 npm run test:renderer-layout      # Electron 界面布局 e2e 测试
-npm audit --audit-level=high
+npm run audit:ci                  # npm audit；仅网络故障时用 OSV 精确锁文件兜底
 node --check main.js preload.js campus-preload.js lib/browser/session/campus-browser.js \
   renderer/campus-browser.js renderer/app.js
 
@@ -61,6 +61,10 @@ Gateway、DNS或校园目标，也不能替代真实环境canary。
 
 production命令与`.github/workflows/build.yml`一致；test feature检查与普通
 `.github/workflows/ci.yml`一致。
+
+`audit:ci`优先使用npm官方审计结果。只有npm未返回结构化报告（例如审计接口超时）时，
+才会把`package-lock.json`中的全部精确npm包版本提交给OSV批量查询；OSV兜底对任何已知
+漏洞都失败，而不是只拦截high/critical。两个服务都不可用时同样失败关闭。
 
 ## 版本号
 
@@ -158,7 +162,7 @@ open it once via right-click → **Open** and approve the Keychain prompt.
 cd desktop
 npm test                          # node --test unit tests
 npm run test:renderer-layout      # Electron renderer layout e2e test
-npm audit --audit-level=high
+npm run audit:ci                  # npm audit; exact-lock OSV fallback only on network failure
 node --check main.js preload.js campus-preload.js lib/browser/session/campus-browser.js \
   renderer/campus-browser.js renderer/app.js
 
@@ -178,6 +182,12 @@ campus target and cannot replace a real-environment canary.
 
 The production commands match `.github/workflows/build.yml`; the test-feature
 checks match the ordinary `.github/workflows/ci.yml` gate.
+
+`audit:ci` prefers npm's structured advisory report. Only when npm returns no
+report (for example, an audit-endpoint timeout) does it query OSV with every
+exact npm package version in `package-lock.json`; that fallback fails on any
+known vulnerability, not only high/critical findings. If both services are
+unavailable, the gate fails closed.
 
 ## Version numbers
 

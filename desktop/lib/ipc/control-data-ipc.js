@@ -8,8 +8,7 @@ const { registerRoutingRuleIpc } = require('./routing-rule-ipc');
 const { registerSchoolProfileOnboardingIpc } = require('./school-profile-onboarding-ipc');
 const { registerSchoolProfileSwitchIpc } = require('./school-profile-switch-ipc');
 const { registerIntegrationCenterIpc } = require('./integration-center-ipc');
-
-function registerControlDataIpc({ register, routing, certificates, resources, cardBoard, schools, integrations, browser } = {}) {
+function registerControlDataIpc({ register, routing, certificates, resources, cardBoard, schools, integrations, browser, campusData } = {}) {
   registerRoutingRuleIpc({ register, ...routing });
   registerCertificatePinIpc({ register, ...certificates });
   registerCampusResourceIpc({ register, ...resources });
@@ -17,7 +16,7 @@ function registerControlDataIpc({ register, routing, certificates, resources, ca
   registerSchoolProfileOnboardingIpc({ register, ...schools });
   registerSchoolProfileSwitchIpc({ register, switchProfile: schools?.switchProfile });
   registerIntegrationCenterIpc({ register, runtime: integrations });
-  registerBrowserDataIpc({ register, ...browser });
+  registerBrowserDataIpc({ register, ...browser, campusData });
 }
 
 module.exports = {

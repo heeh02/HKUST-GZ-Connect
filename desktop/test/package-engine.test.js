@@ -246,36 +246,21 @@ test('package verification rejects a build without the custom website manager', 
     /custom resource manager is incomplete:.*manage button.*save handler/m,
   );
 
-  assert.doesNotThrow(() => assertCustomResourceManager({
-    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
-    renderer: 'window.api.saveResource function suggestedResourceName',
-    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+  const complete = {
+    html: 'id="manageResources" id="addWebsiteDialog" id="groupDialog"',
+    renderer: 'window.addWebsiteDialog.start( window.categoryGroupDialog.start(',
+    preload: "createFavoriteResource: (resource) => ipcRenderer.invoke('create-favorite-resource', resource)",
     main: "ipcMain.handle('save-resource' app.on('certificate-error'",
-  }));
-
+  };
+  assert.doesNotThrow(() => assertCustomResourceManager(complete));
   assert.doesNotThrow(() => assertCustomResourceManager({
-    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
-    renderer: 'window.api.saveResource function suggestedResourceName',
-    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    ...complete,
     main: "trustedHandle('save-resource' app.on('certificate-error'",
   }));
-
   assert.doesNotThrow(() => assertCustomResourceManager({
-    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
-    renderer: 'window.api.saveResource function suggestedResourceName',
-    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
+    ...complete,
     main: "registerControlDataIpc({ app.on('certificate-error'",
     controlDataIpc: 'registerCampusResourceIpc({ register',
-    resourceIpc: "register('save-resource', handler)",
-  }));
-
-  assert.doesNotThrow(() => assertCustomResourceManager({
-    html: 'id="manageResources" id="resourceDialog" id="saveResource" id="quickAddCampus" id="resourceSaved"',
-    renderer: 'window.api.saveResource resourceManager.start(',
-    resourceRenderer: 'function suggestedResourceName',
-    preload: "saveResource: (resource) => ipcRenderer.invoke('save-resource', resource)",
-    main: "registerControlDataIpc({ app.on('certificate-error'",
-    controlDataIpc: 'registerCampusResourceIpc({ register',
-    resourceIpc: "register('save-resource', handler)",
+    resourceIpc: "register('save-resource' register('create-favorite-resource' register('create-favorite-group'",
   }));
 });

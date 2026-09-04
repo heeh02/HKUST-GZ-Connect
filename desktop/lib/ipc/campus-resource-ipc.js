@@ -33,6 +33,14 @@ function favoriteResourceRequest(value) {
   };
 }
 
+function favoriteGroupNameFromIpc(value) {
+  return boundedString(value, { minLength: 1, maxLength: 30, trim: true });
+}
+
+function favoriteGroupIdFromIpc(value) {
+  return boundedString(value, { minLength: 1, maxLength: 70, trim: true });
+}
+
 function rollbackEvery(operations) {
   const failures = [];
   for (const operation of operations) {
@@ -61,6 +69,9 @@ function registerCampusResourceIpc({
       typeof activityStore.replaceFavorites !== 'function' ||
       typeof activityStore.groupsSnapshot !== 'function' ||
       typeof activityStore.replaceGroups !== 'function' ||
+      typeof activityStore.createGroup !== 'function' ||
+      typeof activityStore.renameGroup !== 'function' ||
+      typeof activityStore.moveResource !== 'function' ||
       typeof activityStore.listGroups !== 'function' ||
       typeof activityStore.addResourcesToGroup !== 'function') {
     throw new TypeError('campus resource activity dependencies are incomplete');
@@ -302,6 +313,83 @@ function registerCampusResourceIpc({
         error: error.message,
         rollbackIncomplete: error.rollbackIncomplete === true,
         resources: safeResources(),
+      };
+    }
+  });
+  register('create-favorite-group', async (_event, payload) => {
+    try {
+      const request = allowedKeys(payload, ['name']);
+      const name = favoriteGroupNameFromIpc(request.name);
+      await runTransaction(() => {
+        const previousGroups = activityStore.groupsSnapshot();
+        return {
+          commit: () => activityStore.createGroup(name),
+          rollback: () => activityStore.replaceGroups(previousGroups),
+        };
+      });
+      onChanged();
+      return { ok: true, groups: activityStore.listGroups() };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message,
+        rollbackIncomplete: error.rollbackIncomplete === true,
+        groups: activityStore.listGroups(),
+      };
+    }
+  });
+  register('rename-favorite-group', async (_event, payload) => {
+    try {
+      const request = allowedKeys(payload, ['groupId', 'name']);
+      const groupId = favoriteGroupIdFromIpc(request.groupId);
+      const name = favoriteGroupNameFromIpc(request.name);
+      await runTransaction(() => {
+        const previousGroups = activityStore.groupsSnapshot();
+        return {
+          commit: () => activityStore.renameGroup(groupId, name),
+          rollback: () => activityStore.replaceGroups(previousGroups),
+        };
+      });
+      onChanged();
+      return { ok: true, groups: activityStore.listGroups() };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message,
+        rollbackIncomplete: error.rollbackIncomplete === true,
+        groups: activityStore.listGroups(),
+      };
+    }
+  });
+  register('move-favorite-resource', async (_event, payload) => {
+    try {
+      const request = allowedKeys(payload, ['resourceId', 'groupId', 'index']);
+      const resourceId = boundedString(request.resourceId, {
+        minLength: 1,
+        maxLength: 40,
+        trim: true,
+      });
+      const groupId = request.groupId == null || request.groupId === ''
+        ? null
+        : favoriteGroupIdFromIpc(request.groupId);
+      const index = Number.isSafeInteger(request.index) && request.index >= 0
+        ? Math.min(request.index, 64)
+        : 0;
+      await runTransaction(() => {
+        const previousGroups = activityStore.groupsSnapshot();
+        return {
+          commit: () => activityStore.moveResource(resourceId, groupId, index),
+          rollback: () => activityStore.replaceGroups(previousGroups),
+        };
+      });
+      onChanged();
+      return { ok: true, groups: activityStore.listGroups() };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error.message,
+        rollbackIncomplete: error.rollbackIncomplete === true,
+        groups: activityStore.listGroups(),
       };
     }
   });

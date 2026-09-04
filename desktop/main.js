@@ -45,7 +45,7 @@ const {
 const { ConnectionTelemetryCoordinator } = require('./lib/connection/telemetry/connection-telemetry-coordinator');
 const { DomainRoutePolicyStore } = require('./lib/routing/policy/domain-route-policy');
 const { savePacFile } = require('./lib/routing/pac/pac-file');
-const { pacDataUrl } = require('./lib/browser/session/browser-session-manager');
+const { MyPortalDataRuntime, hkustMyPortalSources, pacDataUrl } = require('./lib/browser/session/browser-session-manager');
 const { CampusBrowserManager, officialPortalHomeUrl } = require('./lib/browser/session/campus-browser-manager');
 const { createPreReadySchoolProfileController } = require('./lib/profiles/runtime/school-profile-controller');
 const {
@@ -1327,7 +1327,7 @@ campusBrowserManager = new CampusBrowserManager({
   getSocksPort: socksPort, getNewTabUrl: () => loadSettingsOrReport().browserNewTabUrl,
   getLocale: () => locale,
   getTranslator: () => t,
-  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(), getWorkspaceGroups: () => resourceLibraryRuntime.listGroups(),
+  getProfilePresentation: () => activeSchoolProfile.createPresentation({ locale }).schoolProfile, getWorkspaceResources: () => safeCampusResourceLibrary(), getWorkspaceGroups: () => resourceLibraryRuntime.listGroups(), getSharedPortalCredential: (origin) => origin === 'https://sso.hkust-gz.edu.cn' && activeSchoolProfile.activeContextBinding().profileId === 'hkustgz' ? persistenceRuntime.openCredential() : null,
   onTogglePageFavorite: (candidate) => pageFavoriteController.toggle(candidate).catch((error) => ({ ok: false, error: error.message })), onRecordPageOpen: (url) => (resourceLibraryRuntime.recordOpenByUrl(url) && (emit(), true)), onOpenResource: (resourceId) => openCampusResourceById({ resourceId }), onWorkspaceMutation: (command) => pageFavoriteController.handleWorkspaceCommand(command),
   showItemInFolder: (file) => shell.showItemInFolder(file), showSettings: () => { desktopShell?.showWindow(); desktopShell?.send('open-settings'); },
   showRoutingRules: () => {
@@ -1339,7 +1339,6 @@ campusBrowserManager = new CampusBrowserManager({
     emit();
   },
 });
-
 const integrationTargetSelector = createIntegrationTargetSelector({ dialog, getParentWindow: () => desktopShell?.window || null, homeDirectory: app.getPath('home') });
 const externalIntegrationRuntime = createExternalIntegrationRuntime({
   enabled: preReadyStorage.mode === 'profile-workspace', workspaceRoot: preReadyStorage.authority?.layout?.workspace?.root,
@@ -1442,6 +1441,7 @@ const controlStateSnapshot = createControlStateSnapshot({
   getVersion: () => app.getVersion(), getUpdate: () => updateInfo,
   getResources: safeCampusResourceLibrary, getResourceGroups: () => resourceLibraryRuntime.listGroups(), getFallbackResources: () => safeCampusResourceLibrary({ customResources: [] }),
   getProfilePresentation: (options) => activeSchoolProfile.createPresentation(options),
+  getServiceDesk: () => activeSchoolProfile.serviceDesk,
   getAuthChallenge: () => authChallengeCoordinator.snapshot(),
   getNetworkEnvironment: () => networkEnvironmentService.snapshot(loadSettingsOrReport().underlaySourceAddress, { probePublicEgress: false }),
 });
@@ -1469,7 +1469,7 @@ registerControlDataIpc({
     isCustomGatewayEnabled: () => customGatewayOnboardingEnabled,
     deleteProfile: (request) => customProfileDeletion.deleteProfile({ ...request, activeProfileId: activeSchoolProfile.activeContextBinding().profileId }),
     switchProfile: switchSchoolProfile },
-  integrations: externalIntegrationRuntime, browser: { clearSiteData: () => campusBrowserManager.clearSiteData(), translate: (key) => t(key) },
+  integrations: externalIntegrationRuntime, campusData: new MyPortalDataRuntime({ electronSession: session, getPartition: () => campusBrowserManager.browserPartition, getPortalUrl: () => activeSchoolProfile.browserHomeUrl, getSessionUrlHint: () => campusBrowserManager.portalSessionUrl(activeSchoolProfile.browserHomeUrl), getSources: () => activeSchoolProfile.activeContextBinding().profileId === 'hkustgz' ? hkustMyPortalSources : {} }), browser: { clearSiteData: () => campusBrowserManager.clearSiteData(), translate: (key) => t(key) },
 });
 registerSettingsCredentialIpc({
   register: trustedHandle,

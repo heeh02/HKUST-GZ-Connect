@@ -27,6 +27,12 @@ const loginPage = `<!doctype html>
     <button>Sign in</button>
   </form>
   <script>
+    window.addEventListener('message', (event) => {
+      if (event.origin === 'https://mfa.example.invalid' &&
+          event.data === 'synthetic-mfa-complete') {
+        document.body.innerHTML = '<main id="complete">Signed in</main>';
+      }
+    });
     document.getElementById('login').addEventListener('submit', (event) => {
       event.preventDefault();
       document.cookie = 'synthetic_sso=ready; Domain=example.invalid; Path=/; SameSite=Lax; Secure';
@@ -47,8 +53,8 @@ const challengePage = `<!doctype html>
     document.getElementById('cookie').textContent = document.cookie;
     document.getElementById('challenge').addEventListener('submit', (event) => {
       event.preventDefault();
-      document.title = 'Portal';
-      document.body.innerHTML = '<main id="complete">Signed in</main>';
+      window.opener.postMessage('synthetic-mfa-complete', 'https://sso.example.invalid');
+      window.close();
     });
   </script>`;
 
@@ -128,11 +134,17 @@ async function run() {
   );
   await ownerContents.executeJavaScript("document.getElementById('login').requestSubmit()");
 
-  await waitFor(() => browser.tabs.length === 2, 'popup conversion into a second tab');
-  const popup = browser.activeTab();
-  assert.notEqual(popup.id, owner.id);
-  assert.equal(popup.view.webContents.session, ownerContents.session,
+  await waitFor(
+    () => BrowserWindow.getAllWindows().some((window) => window !== browser.window),
+    'managed native MFA popup',
+  );
+  const popupWindow = BrowserWindow.getAllWindows().find((window) => window !== browser.window);
+  const popupContents = popupWindow.webContents;
+  assert.equal(browser.tabs.length, 1, 'an authentication popup is not flattened into a tab');
+  assert.equal(popupContents.session, ownerContents.session,
     'cross-origin SSO tabs must share one persistent Electron Session');
+  assert.equal(browser.managedCredentialPopups.size, 1);
+  const popup = [...browser.managedCredentialPopups][0];
   assert.equal(popup.pendingCredential, null, 'the popup must not receive the staged password');
   await waitFor(
     () => owner.pendingCredential?.challengeObserved === true,
@@ -140,7 +152,7 @@ async function run() {
   );
   assert.equal(prompts.length, 0, 'the waiting opener cannot prompt during popup MFA');
 
-  const popupState = await popup.view.webContents.executeJavaScript(`({
+  const popupState = await popupContents.executeJavaScript(`({
     otp: document.getElementById('otp').value,
     cookie: document.getElementById('cookie').textContent,
   })`);
@@ -148,10 +160,19 @@ async function run() {
   assert.match(popupState.cookie, /synthetic_sso=ready/,
     'the cross-origin popup must retain the shared SameSite session cookie');
 
-  await popup.view.webContents.executeJavaScript(`(() => {
+  await popupContents.executeJavaScript(`(() => {
     document.getElementById('otp').value = 'synthetic-otp';
     document.getElementById('challenge').requestSubmit();
   })()`);
+  await waitFor(() => popupWindow.isDestroyed(), 'MFA popup self-close');
+  assert.equal(browser.managedCredentialPopups.size, 0,
+    'a closed authentication popup must release its flow ownership');
+  assert.equal(browser.ownsWebContents(popupContents), false,
+    'a closed authentication popup must lose privileged browser ownership');
+  await waitFor(
+    () => ownerContents.executeJavaScript("Boolean(document.getElementById('complete'))"),
+    'opener completion message',
+  );
   await waitFor(() => prompts.length === 1, 'post-challenge credential prompt');
   assert.deepEqual(saved, [[
     'https://sso.example.invalid', 'synthetic-user', 'synthetic-campus-password',

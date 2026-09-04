@@ -18,6 +18,12 @@ const MAX_RESOURCE_KEYWORDS = 12;
 const MAX_RESOURCE_KEYWORD_LENGTH = 40;
 const SENSITIVE_RESOURCE_QUERY_KEY = /^(?:access_token|auth|authorization|code|id_token|relaystate|samlresponse|session|state|ticket|token)$/iu;
 const BUILTIN_RESOURCE_DOCUMENT_VERSION = 1;
+const SERVICE_DESK_DOCUMENT_VERSION = 1;
+const MAX_SERVICE_DESK_ENTRIES = 32;
+const MAX_SERVICE_DESK_USE_CASE_LENGTH = 60;
+const MAX_SERVICE_DESK_AUDIENCE_LENGTH = 40;
+const SERVICE_DESK_APPLICATION_GROUPS = Object.freeze(['collab', 'teach', 'life', 'ai']);
+const SERVICE_DESK_ITEM_GROUPS = Object.freeze(['academic', 'research', 'life']);
 const WEB_RESOURCE_SCHEMA_VERSION = 1;
 const ROUTE_PREFERENCES = Object.freeze(['auto', ROUTE_CAMPUS, ROUTE_DIRECT]);
 const RESOURCE_CATEGORIES = Object.freeze([
@@ -317,6 +323,109 @@ function parseBuiltinResourceDocument(value) {
   return validateBuiltinResourceDocument(document.resources);
 }
 
+function normalizedServiceDeskEntry(value, groups, name) {
+  const source = exactKeys(value, [
+    'id', 'name', 'localizedName', 'url', 'route', 'group',
+    'useCase', 'localizedUseCase', 'audience', 'localizedAudience', 'aliases',
+  ], ['id', 'name', 'url', 'route', 'group', 'useCase', 'audience', 'aliases'], name);
+  const id = boundedText(source.id, MAX_RESOURCE_ID_LENGTH, `${name} id`);
+  if (!SAFE_RESOURCE_ID.test(id)) throw new TypeError(`${name} id has an invalid value`);
+  if (!groups.includes(source.group)) throw new TypeError(`${name} group is unsupported`);
+  if (!Array.isArray(source.aliases) || !source.aliases.length ||
+      source.aliases.length > MAX_RESOURCE_KEYWORDS) {
+    throw new TypeError(`${name} aliases have an invalid count`);
+  }
+  const aliases = source.aliases.map((alias) => (
+    boundedText(alias, MAX_RESOURCE_KEYWORD_LENGTH, `${name} alias`)
+  ));
+  if (new Set(aliases).size !== aliases.length) {
+    throw new TypeError(`${name} aliases contain a duplicate`);
+  }
+  const localized = (field, fallback, maxLength, fieldName) => {
+    if (field == null) return deepFreeze({ zh: fallback, en: fallback });
+    const fieldSource = exactKeys(field, ['zh', 'en'], ['zh', 'en'], fieldName);
+    return deepFreeze({
+      zh: boundedText(fieldSource.zh, maxLength, `${fieldName}.zh`),
+      en: boundedText(fieldSource.en, maxLength, `${fieldName}.en`),
+    });
+  };
+  const entryName = boundedText(source.name, MAX_RESOURCE_NAME_LENGTH, `${name} name`);
+  const useCase = boundedText(
+    source.useCase, MAX_SERVICE_DESK_USE_CASE_LENGTH, `${name} useCase`,
+  );
+  const audience = boundedText(
+    source.audience, MAX_SERVICE_DESK_AUDIENCE_LENGTH, `${name} audience`,
+  );
+  const localizedName = localized(source.localizedName, entryName, MAX_RESOURCE_NAME_LENGTH, `${name} localizedName`);
+  const localizedUseCase = localized(
+    source.localizedUseCase, useCase, MAX_SERVICE_DESK_USE_CASE_LENGTH, `${name} localizedUseCase`,
+  );
+  const localizedAudience = localized(
+    source.localizedAudience, audience, MAX_SERVICE_DESK_AUDIENCE_LENGTH, `${name} localizedAudience`,
+  );
+  if (localizedName.zh !== entryName || localizedUseCase.zh !== useCase ||
+      localizedAudience.zh !== audience) {
+    throw new TypeError(`${name} Chinese compatibility text drifted`);
+  }
+  if (source.route !== ROUTE_CAMPUS && source.route !== ROUTE_DIRECT) {
+    throw new TypeError(`${name} route is unsupported`);
+  }
+  return deepFreeze({
+    id,
+    name: entryName,
+    localizedName,
+    url: normalizedWebUrl(source.url, { reviewed: true }),
+    route: source.route,
+    group: source.group,
+    useCase,
+    localizedUseCase,
+    audience,
+    localizedAudience,
+    aliases: deepFreeze(aliases),
+  });
+}
+
+function validateServiceDeskEntries(value, groups, name) {
+  if (!Array.isArray(value) || !value.length || value.length > MAX_SERVICE_DESK_ENTRIES) {
+    throw new TypeError(`${name} have an invalid entry count`);
+  }
+  const entries = value.map((entry, index) => normalizedServiceDeskEntry(
+    entry, groups, `${name}[${index}]`,
+  ));
+  if (new Set(entries.map(({ id }) => id)).size !== entries.length) {
+    throw new TypeError(`${name} contain a duplicate entry`);
+  }
+  return deepFreeze(entries);
+}
+
+function parseServiceDeskDocument(value) {
+  const data = Buffer.isBuffer(value) ? value : Buffer.from(String(value), 'utf8');
+  if (!data.length || data.length > MAX_RESOURCE_DOCUMENT_BYTES) {
+    throw new TypeError('service desk document has an invalid size');
+  }
+  let parsed;
+  try { parsed = JSON.parse(data.toString('utf8')); }
+  catch { throw new TypeError('service desk document is not valid JSON'); }
+  const document = exactKeys(
+    parsed,
+    ['schemaVersion', 'applications', 'serviceItems'],
+    ['schemaVersion', 'applications', 'serviceItems'],
+    'service desk document',
+  );
+  if (document.schemaVersion !== SERVICE_DESK_DOCUMENT_VERSION) {
+    throw new TypeError('service desk document version is unsupported');
+  }
+  return deepFreeze({
+    schemaVersion: SERVICE_DESK_DOCUMENT_VERSION,
+    applications: validateServiceDeskEntries(
+      document.applications, SERVICE_DESK_APPLICATION_GROUPS, 'service desk application',
+    ),
+    serviceItems: validateServiceDeskEntries(
+      document.serviceItems, SERVICE_DESK_ITEM_GROUPS, 'service desk item',
+    ),
+  });
+}
+
 function validateCustomResourceDocument(value) {
   if (!Array.isArray(value) || value.length > MAX_CUSTOM_RESOURCES) {
     throw new TypeError('custom resource document has an invalid resource count');
@@ -405,6 +514,9 @@ module.exports = {
   MAX_RESOURCE_KEYWORDS,
   MAX_RESOURCE_KEYWORD_LENGTH,
   RESOURCE_CATEGORIES,
+  SERVICE_DESK_APPLICATION_GROUPS,
+  SERVICE_DESK_DOCUMENT_VERSION,
+  SERVICE_DESK_ITEM_GROUPS,
   WEB_RESOURCE_SCHEMA_VERSION,
   normalizeCustomResources,
   normalizeLegacyCustomResource,
@@ -412,6 +524,7 @@ module.exports = {
   normalizeResource,
   sanitizeCustomResourceUrl,
   parseBuiltinResourceDocument,
+  parseServiceDeskDocument,
   validateBuiltinResourceDocument,
   validateBuiltinResourcesRef,
   validateCustomResourceDocument,

@@ -27,7 +27,8 @@
 
   function categoryIcon(kind, id) {
     if (kind === 'user-collection') {
-      return svg('folder', '<path d="M3.5 7.5h6l1.7 2H20.5v9.5h-17z"/>');
+      // A stack of cards, not a folder: personal categories are decks.
+      return svg('collection', '<rect x="6" y="8" width="12" height="12" rx="2"/><path d="M3.5 11v7a2 2 0 0 0 2 2h11"/><path d="M9.5 4h9a2 2 0 0 1 2 2v8.5"/>');
     }
     if (kind === 'system-widget') {
       return svg('widget', '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8M12 8v8"/>');

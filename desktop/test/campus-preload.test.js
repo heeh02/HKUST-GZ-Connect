@@ -296,3 +296,15 @@ test('SPA monitoring is restricted to the exact current HTTPS origin', () => {
   });
   assert.equal(httpMonitor.arm('http://sso.example.edu'), false);
 });
+
+test('shared connection credential auto-submit stays exact-origin and outside ordinary capture', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(
+    __dirname, '..', 'campus-preload.js',
+  ), 'utf8');
+  assert.match(source, /credential\.origin !== location\.origin/u);
+  assert.match(source, /credential\.source === 'connection-credential'/u);
+  assert.match(source, /credential\.autoSubmit === true/u);
+  assert.match(source, /automaticSubmissions\.add\(form\)/u);
+  assert.match(source, /automaticSubmissions\.delete\(event\.target\)/u);
+  assert.match(source, /credential\.username = ''; credential\.password = ''/u);
+});

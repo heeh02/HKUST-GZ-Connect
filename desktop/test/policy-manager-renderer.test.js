@@ -34,8 +34,8 @@ test('routing-rule manager is bounded, accessible, local-only CRUD UI', () => {
     'Control Tower must open the same routing manager directly');
   assert.match(routing, /api\.onOpenRoutingRules\?\.\(\(\) => \{[\s\S]{0,120}openTower\(\);[\s\S]{0,120}load\(\)/,
     'the campus browser opens the same inline rule stacks without sending page data');
-  assert.match(routing, /stackLayout\.balancedPartitions/u,
-    'routing rules and Campus Browser categories must share the stack partition core');
+  assert.match(routing, /function balancedPartitions\(/u,
+    'routing rule stacks keep their bounded local partition helper');
   assert.match(routing, /role="region" aria-labelledby="\$\{headingId\}"/u,
     'the active routing card must expose a labelled region');
   assert.match(routing, /tabindex="-1" data-routing-heading/u,

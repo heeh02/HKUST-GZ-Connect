@@ -53,6 +53,40 @@ let bookmarkManagerOpenCount = 0;
 let nextCustomId = 1;
 let pendingIntegration = null;
 let cardBoardRequests = { get: 0, commit: 0, reset: 0, lastOperations: [] };
+
+function serviceDeskFixture() {
+  const payload = process.env.HKUSTGZ_CONTROL_SERVICE_DESK_JSON || '';
+  if (payload) return JSON.parse(payload);
+  return {
+    schemaVersion: 1,
+    applications: [
+      { id: 'app-myportal', name: 'myPortal 官方门户', localizedName: { zh: 'myPortal 官方门户', en: 'myPortal' },
+        url: 'https://myportal.hkust-gz.edu.cn/', route: 'direct', group: 'collab',
+        useCase: '校园门户与通知', localizedUseCase: { zh: '校园门户与通知', en: 'Portal' },
+        audience: '全体师生', localizedAudience: { zh: '全体师生', en: 'All' }, aliases: ['门户', 'portal'] },
+      { id: 'app-sis', name: '学生信息系统 SIS', localizedName: { zh: '学生信息系统 SIS', en: 'SIS' },
+        url: 'https://sisn.hkust-gz.edu.cn/auth-sign', route: 'direct', group: 'teach',
+        useCase: '选课、成绩与学籍', localizedUseCase: { zh: '选课、成绩与学籍', en: 'Grades' },
+        audience: '全体学生', localizedAudience: { zh: '全体学生', en: 'Students' }, aliases: ['成绩', '选课'] },
+      { id: 'app-hpc2', name: 'HPC2 登录节点', localizedName: { zh: 'HPC2 登录节点', en: 'HPC2' },
+        url: 'https://hpc2login.hpc.hkust-gz.edu.cn/', route: 'campus', group: 'teach',
+        useCase: 'SSH 高性能计算入口', localizedUseCase: { zh: 'SSH 高性能计算入口', en: 'HPC over SSH' },
+        audience: '科研人员', localizedAudience: { zh: '科研人员', en: 'Researchers' }, aliases: ['hpc', 'hpc2', '超算'] },
+    ],
+    serviceItems: [
+      { id: 'svc-reimbursement', name: '采购与报销申请', localizedName: { zh: '采购与报销申请', en: 'Reimbursement' },
+        url: 'https://pbms.hkust-gz.edu.cn/', route: 'campus', group: 'research',
+        useCase: '科研项目经费报销与采购', localizedUseCase: { zh: '科研项目经费报销与采购', en: 'Expense claims' },
+        audience: '科研项目负责人 / 成员', localizedAudience: { zh: '科研项目负责人 / 成员', en: 'Project members' },
+        aliases: ['报销', '采购', 'pbms'] },
+      { id: 'svc-certificate', name: '在读证明', localizedName: { zh: '在读证明', en: 'Enrollment Certificate' },
+        url: 'https://acad-edoc.hkust-gz.edu.cn/index', route: 'direct', group: 'academic',
+        useCase: '开具在读身份证明', localizedUseCase: { zh: '开具在读身份证明', en: 'Enrollment certificate' },
+        audience: '本科生 / 研究生', localizedAudience: { zh: '本科生 / 研究生', en: 'Students' },
+        aliases: ['在读', '证明', '在读证明'] },
+    ],
+  };
+}
 let routingRules = [
   { host: 'login.example.com', includeSubdomains: false, route: 'direct', updatedAt: 2 },
 ];
@@ -113,6 +147,7 @@ const state = {
     selection: { mode: 'default', interfaceId: 'eth0', sourceAddress: '', available: true },
   },
   campusResources: resources,
+  serviceDesk: serviceDeskFixture(),
   resourceGroups: [
     { id: 'group_abcdefghijkl', name: '学习', resourceIds: ['fixture-0', 'fixture-1'] },
     { id: 'group_mnopqrstuvwx', name: '常用工具', resourceIds: ['fixture-2', 'fixture-3'] },
@@ -128,6 +163,24 @@ const state = {
   version: 'test',
   pacUrl: '',
 };
+
+function campusDataSnapshot() {
+  const checkedAt = Date.now();
+  const module = (source) => ({
+    state: 'not-authenticated', source, fetchedAt: checkedAt, stale: false, items: [],
+  });
+  return {
+    schemaVersion: 1,
+    checkedAt,
+    portalUrl: 'https://myportal.hkust-gz.edu.cn/',
+    sessionState: 'unauthenticated',
+    modules: {
+      schedule: module('myportal-session'),
+      loans: module('myportal-session'),
+      news: { ...module('official-api-not-configured'), state: 'source-unavailable' },
+    },
+  };
+}
 
 const officialCategoryIds = [...new Set(resources.filter(({ reviewed }) => reviewed)
   .map(({ category }) => category))];
@@ -161,25 +214,44 @@ if (firstDeck) {
   });
   catalogPlacements.slice(2).forEach((target, index) => { target.order = index + 1; });
 }
+const personalPlacements = state.resourceGroups.map(({ id }, order) => (
+  placement('browser-personal', 'user-collection', id, order)
+));
+const personalDeck = personalPlacements.length >= 2 ? {
+  deckId: 'fixture-deck-personal-primary',
+  boardId: 'browser-personal',
+  placementIds: personalPlacements.slice(0, 2).map(({ placementId }) => placementId),
+  activePlacementId: personalPlacements[1].placementId,
+  order: 0,
+} : null;
+if (personalDeck) {
+  personalDeck.placementIds.forEach((placementId, order) => {
+    const target = personalPlacements.find((candidate) => candidate.placementId === placementId);
+    target.deckId = personalDeck.deckId;
+    target.order = order;
+  });
+  personalPlacements.slice(2).forEach((target, index) => { target.order = index + 1; });
+}
 const initialCardBoardDocument = {
   schemaVersion: 1,
   revision: 0,
   placements: [
     ...catalogPlacements,
-    ...state.resourceGroups.map(({ id }, order) => (
-      placement('browser-personal', 'user-collection', id, order)
-    )),
+    ...personalPlacements,
     placement('connect', 'system-widget', 'connection-metrics', 0),
     placement('connect', 'system-widget', 'network-adapter', 1),
     placement('connect', 'system-widget', 'connection-details', 2),
   ],
-  decks: firstDeck ? [firstDeck] : [],
+  decks: [firstDeck, personalDeck].filter(Boolean),
 };
 let cardBoardDocument = cloneCardBoardDocument(initialCardBoardDocument);
 
 contextBridge.exposeInMainWorld('api', {
   getState: async () => state,
   getNetworkEnvironment: async () => state.networkEnvironment,
+  getCampusData: async () => campusDataSnapshot(),
+  refreshCampusData: async () => campusDataSnapshot(),
+  refreshCampusSchedule: async () => campusDataSnapshot(),
   save: async (patch) => {
     state.settings = { ...state.settings, ...(patch || {}) };
     if (Object.hasOwn(patch || {}, 'underlaySourceAddress')) {
@@ -294,7 +366,27 @@ contextBridge.exposeInMainWorld('api', {
     resources = resources.map((resource) => (
       resource.id === resourceId ? { ...resource, favorite: !resource.favorite } : resource
     ));
+    state.campusResources = resources;
     return { ok: true, resources };
+  },
+  createFavoriteGroup: async (name) => {
+    const group = { id: `group_mock${state.resourceGroups.length}xyzw`, name, resourceIds: [] };
+    state.resourceGroups = [...state.resourceGroups, group];
+    return { ok: true, groups: state.resourceGroups };
+  },
+  renameFavoriteGroup: async (groupId, name) => {
+    state.resourceGroups = state.resourceGroups.map((group) => (
+      group.id === groupId ? { ...group, name } : group));
+    return { ok: true, groups: state.resourceGroups };
+  },
+  moveFavoriteResource: async ({ resourceId, groupId }) => {
+    state.resourceGroups = state.resourceGroups.map((group) => ({
+      ...group,
+      resourceIds: group.id === groupId
+        ? [...group.resourceIds.filter((id) => id !== resourceId), resourceId]
+        : group.resourceIds.filter((id) => id !== resourceId),
+    }));
+    return { ok: true, groups: state.resourceGroups };
   },
   listRoutingRules: async () => ({ ok: true, rules: routingRules }),
   previewRoutingTarget: async (target) => {
@@ -362,9 +454,19 @@ contextBridge.exposeInMainWorld('api', {
     return { ok: true, cancelled: true };
   },
   resize: async () => ({ ok: true }),
+  respondAuthChallenge: async () => ({ ok: true }),
+  resendAuthChallenge: async () => ({ ok: true }),
+  cancelAuthChallenge: async () => ({ ok: true }),
+  listSchoolProfiles: async () => ({ ok: true, activeProfileId: 'hkustgz', profiles: [] }),
+  probeCustomGateway: async () => ({ ok: false, error: 'not available in fixture' }),
+  confirmCustomGateway: async () => ({ ok: false, error: 'not available in fixture' }),
+  cancelCustomGateway: async () => false,
+  deleteSchoolProfile: async () => ({ ok: false, error: 'not available in fixture' }),
+  switchSchoolProfile: async () => ({ ok: false, error: 'not available in fixture' }),
   onStatus: () => {},
   onTelemetry: () => {},
   onNetworkEnvironment: () => {},
+  onAuthChallenge: () => () => {},
   testState: () => ({ lastOpenRequest, workspaceOpenCount, bookmarkManagerOpenCount,
     resources, resourceGroups: state.resourceGroups, cardBoardRequests,
     cardBoardDocument: cloneCardBoardDocument(cardBoardDocument) }),

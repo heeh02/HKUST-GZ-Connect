@@ -69,7 +69,8 @@ test('editing labels are complete in Chinese and English', () => {
   const en = localeStrings({ documentElement: { lang: 'en' } });
   for (const key of [
     'edit', 'done', 'cancel', 'undo', 'redo', 'reset', 'saveFailed', 'stale',
-    'dragCard', 'resizeCard', 'pinToConnect', 'removeFromConnect', 'hideCard',
+    'dragCard', 'resizeCard', 'renameCard', 'pinToConnect', 'removeFromConnect', 'hideCard',
+    'showAll', 'cardAria', 'cardAriaFront', 'deckAria', 'addSite',
   ]) {
     assert.ok(zh[key], `missing Chinese ${key}`);
     assert.ok(en[key], `missing English ${key}`);
@@ -108,4 +109,31 @@ test('drop insertion compensates for a source removed before its target', () => 
     .flatMap(({ placements }) => placements.map(({ card: ref }) => ref.id)), [
     'research', 'labs', 'courses',
   ]);
+});
+
+test('stacking onto a full three-card deck degrades to an insertion', () => {
+  let document = model.defaultDocument({
+    'browser-catalog': [
+      card('official-category', 'courses'),
+      card('official-category', 'research'),
+      card('official-category', 'labs'),
+      card('official-category', 'tools'),
+      card('official-category', 'career'),
+    ],
+  });
+  const at = (id) => document.placements.find(({ card: ref }) => ref.id === id);
+  document = model.applyDraftOperation(document, {
+    type: 'create-deck', boardId: 'browser-catalog',
+    placementIds: ['courses', 'research', 'labs'].map((id) => at(id).placementId),
+    activePlacementId: at('labs').placementId, index: 0,
+  });
+  const full = dropOperationsForDocument(document, {
+    sourcePlacementId: at('tools').placementId,
+    targetPlacementId: at('labs').placementId,
+    position: 'stack',
+  });
+  assert.ok(full.every(({ type }) => type !== 'move-into-deck'),
+    'a fourth card must not enter a full deck (DESIGN.md §10: at most three per deck)');
+  const applied = model.applyDraftOperations(document, full);
+  assert.equal(applied.decks[0].placementIds.length, 3);
 });

@@ -8,6 +8,11 @@ const {
 const { buildDomainRoutePac, resolveDomainRouteForUrl } = require('../../routing/policy/domain-route-policy');
 const { isUnsafeBrowserTargetUrl } = require('../../routing/policy/host-safety');
 const { normalizeRuleHost } = require('../../routing/rules/routing-rule-store');
+const {
+  hkustPortalCatalogSource,
+  normalizePortalCatalog,
+  portalCatalogState,
+} = require('./myportal-catalog');
 
 const requestBoundaryGates = new WeakMap();
 const CAMPUS_REQUEST_FILTER = Object.freeze({
@@ -324,17 +329,535 @@ class BrowserSessionManager {
   }
 }
 
+// Personal campus-data reads deliberately share the Campus Browser partition.
+// Only bounded display projections cross IPC; credentials and raw responses
+// remain owned by Chromium's Session in Main.
+const CAMPUS_DATA_MODULES = Object.freeze(['schedule', 'loans', 'news']);
+const CAMPUS_DATA_DAILY_CACHE_MS = 24 * 60 * 60 * 1_000;
+const CAMPUS_DATA_MAX_CACHE_MS = 7 * CAMPUS_DATA_DAILY_CACHE_MS;
+const CAMPUS_DATA_STATES = Object.freeze([
+  'not-authenticated', 'authenticating', 'loading', 'ready', 'empty', 'forbidden',
+  'session-expired', 'source-unavailable', 'tunnel-required', 'failed',
+]);
+
+function campusDataText(value, name, { maxLength = 240, optional = false } = {}) {
+  if (optional && (value == null || value === '')) return null;
+  if (typeof value !== 'string') throw new TypeError(`${name} must be text`);
+  const result = value.trim();
+  if (!result || result.length > maxLength || /[\u0000-\u001f\u007f<>]/u.test(result)) {
+    throw new TypeError(`${name} has an invalid value`);
+  }
+  return result;
+}
+
+function campusDataUrl(value, name, { optional = false } = {}) {
+  if (optional && (value == null || value === '')) return null;
+  const text = campusDataText(value, name, { maxLength: 2048 });
+  let parsed;
+  try { parsed = new URL(text); } catch { throw new TypeError(`${name} is invalid`); }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new TypeError(`${name} must be a credential-free HTTPS URL`);
+  }
+  return parsed.href;
+}
+
+function campusDataTimestamp(value, name, { optional = false } = {}) {
+  if (optional && value == null) return null;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`${name} must be a positive millisecond timestamp`);
+  }
+  return value;
+}
+
+function campusDataItem(value, moduleId, index) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError(`${moduleId}.items[${index}] must be an object`);
+  }
+  const base = {
+    id: campusDataText(value.id, `${moduleId} item id`, { maxLength: 96 }),
+    title: campusDataText(value.title, `${moduleId} item title`),
+    url: campusDataUrl(value.url, `${moduleId} item URL`, { optional: true }),
+  };
+  if (moduleId === 'schedule') {
+    return Object.freeze({
+      ...base,
+      startsAt: campusDataTimestamp(value.startsAt, 'schedule startsAt'),
+      endsAt: campusDataTimestamp(value.endsAt, 'schedule endsAt'),
+      location: campusDataText(value.location, 'schedule location', { optional: true, maxLength: 120 }),
+      kind: campusDataText(value.kind || 'event', 'schedule kind', { maxLength: 40 }),
+    });
+  }
+  if (moduleId === 'loans') {
+    return Object.freeze({
+      ...base,
+      borrowedAt: campusDataTimestamp(value.borrowedAt, 'loan borrowedAt', { optional: true }),
+      dueAt: campusDataTimestamp(value.dueAt, 'loan dueAt'),
+      renewable: value.renewable === true,
+    });
+  }
+  return Object.freeze({
+    ...base,
+    publishedAt: campusDataTimestamp(value.publishedAt, 'news publishedAt'),
+    unread: value.unread === true,
+  });
+}
+
+function normalizeCampusDataModule(value, moduleId) {
+  if (!CAMPUS_DATA_MODULES.includes(moduleId) || !value || typeof value !== 'object' ||
+      Array.isArray(value) || !CAMPUS_DATA_STATES.includes(value.state) ||
+      !Array.isArray(value.items) || value.items.length > 64) {
+    throw new TypeError(`${moduleId} campus data projection is invalid`);
+  }
+  const items = value.items.map((item, index) => campusDataItem(item, moduleId, index));
+  if (value.state === 'ready' && items.length === 0) {
+    throw new TypeError(`${moduleId}.ready must contain at least one item`);
+  }
+  if (value.state !== 'ready' && items.length !== 0 && value.stale !== true) {
+    throw new TypeError(`${moduleId} non-ready data must be explicitly stale`);
+  }
+  return Object.freeze({
+    state: value.state,
+    source: campusDataText(value.source || 'none', `${moduleId}.source`, { maxLength: 80 }),
+    fetchedAt: campusDataTimestamp(value.fetchedAt, `${moduleId}.fetchedAt`, { optional: true }),
+    stale: value.stale === true,
+    items: Object.freeze(items),
+  });
+}
+
+function campusDataModuleState(state, moduleId, source, fetchedAt) {
+  return normalizeCampusDataModule({ state, source, fetchedAt, stale: false, items: [] }, moduleId);
+}
+
+function campusDataSnapshot(sessionState, checkedAt, portalUrl, modules, catalog) {
+  if (!['authenticated', 'unauthenticated', 'unknown'].includes(sessionState)) {
+    throw new TypeError('portal session state is unsupported');
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    checkedAt: campusDataTimestamp(checkedAt, 'checkedAt'),
+    portalUrl: campusDataUrl(portalUrl, 'portalUrl'),
+    sessionState,
+    catalog: normalizePortalCatalog(catalog),
+    modules: Object.freeze(Object.fromEntries(CAMPUS_DATA_MODULES.map((moduleId) => [
+      moduleId, normalizeCampusDataModule(modules[moduleId], moduleId),
+    ]))),
+  });
+}
+
+function campusDataStateModules(state, source, checkedAt) {
+  return Object.fromEntries(CAMPUS_DATA_MODULES.map((moduleId) => [
+    moduleId, campusDataModuleState(state, moduleId, source, checkedAt),
+  ]));
+}
+
+function campusDataSignedOutModules(checkedAt) {
+  return {
+    schedule: campusDataModuleState('not-authenticated', 'schedule', 'myportal-session', checkedAt),
+    loans: campusDataModuleState('not-authenticated', 'loans', 'myportal-session', checkedAt),
+    // Public campus news must not pretend to require a personal session while
+    // the school's feed contract is still pending.
+    news: campusDataModuleState('source-unavailable', 'news', 'official-api-not-configured', checkedAt),
+  };
+}
+
+function myPortalRoot(value) {
+  const parsed = new URL(campusDataUrl(value, 'portal URL'));
+  parsed.pathname = '/';
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.href;
+}
+
+function myPortalLoginRedirect(response, portalUrl) {
+  if (!response || response.status < 300 || response.status >= 400) return false;
+  const location = response.headers?.get?.('location');
+  if (!location) return true;
+  try {
+    const target = new URL(location, portalUrl);
+    return target.origin !== new URL(portalUrl).origin ||
+      /\/(?:account\/login|connect\/authorize)(?:[/?]|$)/iu.test(target.pathname);
+  } catch { return true; }
+}
+
+const HKUST_PORTAL_ORIGIN = 'https://myportal.hkust-gz.edu.cn';
+const MAX_PORTAL_RESPONSE_BYTES = 512 * 1024;
+
+function portalSourceError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function parsePortalJsonp(value) {
+  const text = String(value || '').trim();
+  if (!text || Buffer.byteLength(text, 'utf8') > MAX_PORTAL_RESPONSE_BYTES) {
+    throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal response is empty or oversized');
+  }
+  if (text.startsWith('{') || text.startsWith('[')) return JSON.parse(text);
+  const open = text.indexOf('(');
+  const close = text.lastIndexOf(')');
+  const callback = open > 0 ? text.slice(0, open).trim() : '';
+  if (!/^[A-Za-z_$][A-Za-z0-9_$.]{0,95}$/u.test(callback) || close <= open) {
+    throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal JSONP wrapper is invalid');
+  }
+  return JSON.parse(text.slice(open + 1, close));
+}
+
+function portalItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  const preferred = [
+    payload?.data?.list, payload?.data?.rows, payload?.data?.items,
+    payload?.data?.events, payload?.data, payload?.list, payload?.rows,
+    payload?.items, payload?.events,
+  ];
+  for (const value of preferred) {
+    if (Array.isArray(value)) return value;
+  }
+  const total = payload?.data?.total ?? payload?.data?.count ?? payload?.total ?? payload?.count;
+  if (Number(total) === 0) return [];
+  throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal response has no bounded item list');
+}
+
+function portalScheduleItems(payload) {
+  const roots = portalItems(payload);
+  const nested = roots.flatMap((item) => [
+    item?.list, item?.items, item?.events, item?.schedules, item?.calendarList,
+  ].filter(Array.isArray).flat());
+  if (nested.length) return nested;
+  const direct = roots.filter((item) => portalScheduleField(item,
+    ['title', 'subject', 'name', 'summary', 'eventTitle', 'eventName']));
+  if (direct.length) return direct;
+  if (roots.every((item) => typeof item?.day === 'string' &&
+      typeof item?.isHoliday === 'boolean' && Number.isFinite(item?.teachingWeek))) return [];
+  throw portalSourceError('PORTAL_RESPONSE_INVALID', 'calendar response has no event projection');
+}
+
+function portalField(item, names) {
+  for (const name of names) {
+    const value = item?.[name];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return null;
+}
+
+function portalScheduleField(item, names) {
+  return portalField(item, names) || portalField(item?.schedule, names);
+}
+
+function portalTimestamp(value) {
+  if (Number.isFinite(value)) {
+    const number = Number(value);
+    return number > 10_000_000_000 ? Math.trunc(number) : Math.trunc(number * 1000);
+  }
+  const source = String(value || '').trim();
+  if (!source) return null;
+  const parsed = Date.parse(source.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/u, '$1T$2'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function portalItemUrl(value, portalUrl) {
+  if (value == null || value === '') return null;
+  try {
+    const parsed = new URL(String(value), portalUrl);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch { return null; }
+}
+
+function portalSessionHint(value, portalUrl) {
+  if (typeof value !== 'string' || !value || value.length > 2_048) return null;
+  try {
+    const hint = new URL(value);
+    const portal = new URL(portalUrl);
+    if (hint.protocol !== 'https:' || hint.origin !== portal.origin ||
+        hint.username || hint.password) return null;
+    return hint.href;
+  } catch { return null; }
+}
+
+async function fetchPortalJsonp(context, pathname, query, callback) {
+  const target = new URL(pathname, context.portalUrl);
+  for (const [name, value] of Object.entries(query)) target.searchParams.set(name, String(value));
+  target.searchParams.set('callback', callback);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), context.timeoutMs || 8_000);
+  timer.unref?.();
+  let response;
+  try {
+    response = await context.session.fetch(target.href, {
+      method: 'GET', credentials: 'include', redirect: 'follow', cache: 'no-store',
+      headers: { Accept: '*/*' }, signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (response.status === 401) throw portalSourceError('PORTAL_SESSION_EXPIRED', 'portal session expired');
+  if (response.status === 403) throw portalSourceError('PORTAL_FORBIDDEN', 'portal source is forbidden');
+  if (response.status === 0 || (response.status >= 300 && response.status < 400)) {
+    throw portalSourceError('PORTAL_SESSION_EXPIRED', 'portal source redirected outside the portal');
+  }
+  if (response.status < 200 || response.status >= 300) {
+    throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal source returned an unsupported status');
+  }
+  const length = Number(response.headers?.get?.('content-length') || 0);
+  if (length > MAX_PORTAL_RESPONSE_BYTES) {
+    throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal response is oversized');
+  }
+  const text = await response.text();
+  if (Buffer.byteLength(text, 'utf8') > MAX_PORTAL_RESPONSE_BYTES) {
+    throw portalSourceError('PORTAL_RESPONSE_INVALID', 'portal response is oversized');
+  }
+  return parsePortalJsonp(text);
+}
+
+function scheduleProjection(payload, context) {
+  const items = portalScheduleItems(payload);
+  if (!items.length) {
+    return { state: 'empty', source: 'myportal-calendar', fetchedAt: context.checkedAt,
+      stale: false, items: [] };
+  }
+  const projected = items.slice(0, 64).map((item, index) => {
+    const title = portalScheduleField(item,
+      ['title', 'subject', 'name', 'summary', 'eventTitle', 'eventName']);
+    const startsAt = portalTimestamp(portalScheduleField(item,
+      ['startsAt', 'startTime', 'startDate', 'beginTime', 'beginDate', 'fromDate']));
+    const endsAt = portalTimestamp(portalScheduleField(item,
+      ['endsAt', 'endTime', 'endDate', 'finishTime', 'finishDate', 'toDate']));
+    if (!title || !startsAt || !endsAt || endsAt < startsAt) {
+      throw portalSourceError('PORTAL_RESPONSE_INVALID', 'calendar item schema is unsupported');
+    }
+    return {
+      id: String(portalScheduleField(item, ['id', 'eventId', 'calendarId', 'scheduleId']) || `schedule-${index + 1}`),
+      title: String(title), startsAt, endsAt,
+      location: portalScheduleField(item, ['location', 'place', 'room', 'address']),
+      kind: String(portalScheduleField(item, ['kind', 'type', 'categoryName', 'source']) ||
+        portalField(item?.schedule?.cateGory, ['name', 'shortName']) || 'event'),
+      url: portalItemUrl(portalScheduleField(item,
+        ['url', 'link', 'linkUrl', 'detailUrl']), context.portalUrl),
+    };
+  });
+  return { state: 'ready', source: 'myportal-calendar', fetchedAt: context.checkedAt,
+    stale: false, items: projected };
+}
+
+function newsProjection(payload, context) {
+  const items = portalItems(payload);
+  if (!items.length) {
+    return { state: 'empty', source: 'myportal-news', fetchedAt: context.checkedAt,
+      stale: false, items: [] };
+  }
+  const projected = items.slice(0, 3).map((item, index) => {
+    const title = portalField(item, ['title', 'subject', 'name']);
+    const publishedAt = portalTimestamp(portalField(item,
+      ['publishedAt', 'publishTime', 'publishDate', 'releaseTime', 'date', 'createTime']));
+    if (!title || !publishedAt) {
+      throw portalSourceError('PORTAL_RESPONSE_INVALID', 'news item schema is unsupported');
+    }
+    return {
+      id: String(portalField(item, ['id', 'articleId', 'infoId']) || `news-${index + 1}`),
+      title: String(title), publishedAt, unread: false,
+      url: portalItemUrl(portalField(item,
+        ['linkUrl', 'articleUrl', 'mobileArticleUrl', 'url', 'link']), context.portalUrl),
+    };
+  });
+  return { state: 'ready', source: 'myportal-news', fetchedAt: context.checkedAt,
+    stale: false, items: projected };
+}
+
+const hkustMyPortalSources = Object.freeze({
+  catalog: hkustPortalCatalogSource,
+  schedule: Object.freeze({
+    async read(context) {
+      const start = new Date(context.checkedAt);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      end.setMilliseconds(-1);
+      const payload = await fetchPortalJsonp(context,
+        '/calendar/mgr/api/hkust/calendarList.rst', {
+          _p: 'YXM9MiZ0PTUmZD05NyZwPTEmZj0yMiZtPU4m',
+          queryType: 2,
+          categoryIds: '-3,-2,1,-4',
+          fromDate: start.toISOString(),
+          endDate: end.toISOString(),
+          type: 0,
+          t: context.checkedAt,
+        }, 'hkustgzConnectSchedule');
+      return scheduleProjection(payload, context);
+    },
+  }),
+  news: Object.freeze({
+    async read(context) {
+      const payload = await fetchPortalJsonp(context,
+        '/sopplus/_web/customized/getHkustArticleList.jsp', {
+          _p: 'YXQ9NSZwPTEmbT1OJg__', page: 1, pageSize: 3, wybs: 'news',
+        }, 'hkustgzConnectNews');
+      return newsProjection(payload, context);
+    },
+  }),
+});
+
+class MyPortalDataRuntime {
+  constructor({ electronSession, getPartition, getPortalUrl, getSources = () => ({}),
+    getSessionUrlHint = () => null, now = Date.now,
+    cacheMs = CAMPUS_DATA_DAILY_CACHE_MS, timeoutMs = 8_000 } = {}) {
+    if (!electronSession || typeof electronSession.fromPartition !== 'function' ||
+        typeof getPartition !== 'function' || typeof getPortalUrl !== 'function' ||
+        typeof getSources !== 'function' || typeof getSessionUrlHint !== 'function' ||
+        typeof now !== 'function') {
+      throw new TypeError('myPortal data runtime dependencies are incomplete');
+    }
+    if (!Number.isSafeInteger(cacheMs) || cacheMs < 0 || cacheMs > CAMPUS_DATA_MAX_CACHE_MS ||
+        !Number.isSafeInteger(timeoutMs) || timeoutMs < 500 || timeoutMs > 30_000) {
+      throw new TypeError('myPortal data runtime timing is invalid');
+    }
+    Object.assign(this, { electronSession, getPartition, getPortalUrl, getSources, getSessionUrlHint,
+      now, cacheMs, timeoutMs });
+    this.cached = null;
+    this.inflight = null;
+  }
+
+  async probeSession(targetSession, portalUrl, signal) {
+    if (typeof targetSession?.fetch !== 'function') {
+      return Object.freeze({ state: 'unknown', sessionUrl: portalUrl });
+    }
+    const response = await targetSession.fetch(portalUrl, {
+      method: 'GET', credentials: 'include', redirect: 'follow', cache: 'no-store',
+      headers: { Accept: 'text/html,application/xhtml+xml' }, signal,
+    });
+    let finalUrl;
+    try { finalUrl = new URL(response.url || portalUrl); }
+    catch { return Object.freeze({ state: 'unknown', sessionUrl: portalUrl }); }
+    const portal = new URL(portalUrl);
+    if (response.status === 401 || /\/(?:account\/login)(?:[/?]|$)/iu.test(finalUrl.pathname)) {
+      return Object.freeze({ state: 'unauthenticated', sessionUrl: portalUrl });
+    }
+    if (response.status >= 200 && response.status < 300 && finalUrl.origin === portal.origin) {
+      return Object.freeze({ state: 'authenticated', sessionUrl: finalUrl.href });
+    }
+    if (myPortalLoginRedirect(response, portalUrl)) {
+      return Object.freeze({ state: 'unauthenticated', sessionUrl: portalUrl });
+    }
+    return Object.freeze({ state: 'unknown', sessionUrl: portalUrl });
+  }
+
+  async readNow({ moduleId = null } = {}) {
+    if (moduleId !== null && !CAMPUS_DATA_MODULES.includes(moduleId)) {
+      throw new TypeError('campus data module refresh is invalid');
+    }
+    const checkedAt = this.now();
+    const portalUrl = myPortalRoot(this.getPortalUrl());
+    const partition = this.getPartition();
+    if (typeof partition !== 'string' || partition.length > 96 ||
+        !/^persist:[a-z0-9-]+$/u.test(partition)) {
+      throw new TypeError('portal browser partition is invalid');
+    }
+    const targetSession = this.electronSession.fromPartition(partition);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    timer.unref?.();
+    let hint = null;
+    try { hint = portalSessionHint(this.getSessionUrlHint(), portalUrl); } catch {}
+    let probe = hint
+      ? Object.freeze({ state: 'authenticated', sessionUrl: hint })
+      : Object.freeze({ state: 'unknown', sessionUrl: portalUrl });
+    try { if (!hint) probe = await this.probeSession(targetSession, portalUrl, controller.signal); }
+    catch { probe = Object.freeze({ state: 'unknown', sessionUrl: portalUrl }); }
+    finally { clearTimeout(timer); }
+    const sessionState = probe.state;
+    if (sessionState === 'unauthenticated') {
+      return campusDataSnapshot(sessionState, checkedAt, portalUrl,
+        campusDataSignedOutModules(checkedAt), portalCatalogState('not-authenticated', checkedAt));
+    }
+    if (sessionState !== 'authenticated') {
+      return campusDataSnapshot(sessionState, checkedAt, portalUrl,
+        campusDataStateModules('source-unavailable', 'myportal-session', checkedAt),
+        portalCatalogState('source-unavailable', checkedAt));
+    }
+    const sources = this.getSources() || {};
+    // sessionUrl can carry the portal's short-lived routing nonce. It remains
+    // inside Main and is never included in the Renderer snapshot.
+    const context = Object.freeze({
+      session: targetSession, portalUrl, sessionUrl: probe.sessionUrl,
+      checkedAt, timeoutMs: this.timeoutMs,
+    });
+    const errorState = (error) => error?.code === 'PORTAL_SESSION_EXPIRED' ? 'session-expired'
+      : error?.code === 'PORTAL_FORBIDDEN' ? 'forbidden'
+        : error?.code === 'PORTAL_TUNNEL_REQUIRED' ? 'tunnel-required' : 'failed';
+    const requestedModules = moduleId ? [moduleId] : CAMPUS_DATA_MODULES;
+    const baseModules = moduleId && this.cached?.sessionState === 'authenticated'
+      ? { ...this.cached.modules }
+      : campusDataStateModules('source-unavailable', 'official-api-not-configured', checkedAt);
+    const entriesPromise = Promise.all(requestedModules.map(async (requestedModuleId) => {
+      const source = sources[requestedModuleId];
+      if (!source || typeof source.read !== 'function') {
+        return [requestedModuleId, campusDataModuleState('source-unavailable', requestedModuleId,
+          'official-api-not-configured', checkedAt)];
+      }
+      try {
+        return [requestedModuleId, normalizeCampusDataModule(
+          await source.read(Object.freeze({ ...context, moduleId: requestedModuleId })),
+          requestedModuleId,
+        )];
+      } catch (error) {
+        return [requestedModuleId, campusDataModuleState(
+          errorState(error), requestedModuleId, 'official-api', checkedAt,
+        )];
+      }
+    }));
+    const catalogPromise = (async () => {
+      if (moduleId) {
+        return this.cached?.sessionState === 'authenticated'
+          ? this.cached.catalog : portalCatalogState('source-unavailable', checkedAt);
+      }
+      if (!sources.catalog || typeof sources.catalog.read !== 'function') {
+        return portalCatalogState('source-unavailable', checkedAt);
+      }
+      try { return normalizePortalCatalog(await sources.catalog.read(context)); }
+      catch (error) { return portalCatalogState(errorState(error), checkedAt); }
+    })();
+    const [entries, catalog] = await Promise.all([entriesPromise, catalogPromise]);
+    return campusDataSnapshot(
+      sessionState, checkedAt, portalUrl, { ...baseModules, ...Object.fromEntries(entries) }, catalog,
+    );
+  }
+
+  async snapshot({ force = false } = {}) {
+    const now = this.now();
+    if (!force && this.cached && now - this.cached.checkedAt <= this.cacheMs) return this.cached;
+    if (!force && this.inflight) return this.inflight;
+    const operation = this.readNow().then((value) => (this.cached = value));
+    this.inflight = operation;
+    try { return await operation; }
+    finally { if (this.inflight === operation) this.inflight = null; }
+  }
+
+  async refreshSchedule() {
+    if (this.inflight) await this.inflight;
+    const operation = this.readNow({ moduleId: 'schedule' })
+      .then((value) => (this.cached = value));
+    this.inflight = operation;
+    try { return await operation; }
+    finally { if (this.inflight === operation) this.inflight = null; }
+  }
+
+  invalidate() { this.cached = null; }
+}
+
 module.exports = {
   BrowserSessionManager,
   CAMPUS_REQUEST_FILTER,
   FAIL_CLOSED_PAC,
   FAIL_CLOSED_PROXY,
+  MyPortalDataRuntime,
   applyCampusRequestBoundary,
   applyCampusSessionPolicy,
   campusRequestsBlocked,
   campusProxyConfig,
   createMemoryRoutingPolicy,
   failClosedProxyConfig,
+  hkustMyPortalSources,
   normalizeProxyPort,
   pacDataUrl,
   setCampusRequestBlocked,

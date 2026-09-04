@@ -157,7 +157,7 @@ jobs:
       - name: Enforce desktop architecture growth boundaries
         run: npm run check:architecture
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: npm run audit:ci
       - name: Audit dependency install scripts
         run: npm run check:install-scripts
       - name: Check syntax of every entry point

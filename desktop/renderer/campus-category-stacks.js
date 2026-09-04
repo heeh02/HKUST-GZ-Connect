@@ -1,27 +1,20 @@
 'use strict';
 
-(function initializeCampusCategoryBoard(globalScope, stackLayout, workspaceModel, cardBoardController, cardBoardModel) {
-  if (!stackLayout?.balancedPartitions || !workspaceModel?.catalogProjection ||
-      !workspaceModel?.categoryOf || !cardBoardController?.create || !cardBoardModel) {
+// The control window keeps two card boards: the personal deck board on the
+// Campus Workspace page ("我的分类") and the pinned copy on the Connection
+// page. Official catalog cards live in the Campus Browser window; the main
+// window shows the Official Service Desk instead (DESIGN.md §3–§9).
+(function initializeCampusCategoryBoard(globalScope, cardBoardController, cardBoardModel) {
+  if (!cardBoardController?.create || !cardBoardModel) {
     throw new TypeError('campus category board dependencies are required');
   }
 
-  const { balancedPartitions } = stackLayout;
   let current = null;
-  let currentView = 'catalog';
   let documentRef = null;
   let documentNode = null;
-  let catalogController = null;
   let personalController = null;
   let connectController = null;
-  let catalogWrap = null;
-  let personalWrap = null;
   let started = false;
-
-  function getLayoutCapacity(width, height) {
-    const columns = cardBoardModel.columnsForWidth(width);
-    return cardBoardModel.layoutCapacity(columns, height);
-  }
 
   function personalCategoryProjection(resources, groups, translate) {
     const favorites = (Array.isArray(resources) ? resources : []).filter(({ favorite }) => favorite === true);
@@ -45,7 +38,9 @@
     return `resources.category${value.charAt(0).toUpperCase()}${value.slice(1)}`;
   }
 
-  function officialCategoryProjection(resources, translate) {
+  // The pinned Connection copy can reference official categories, so its data
+  // still projects the reviewed catalog alongside the personal collections.
+  function officialCategoryProjection(resources, translate, workspaceModel) {
     const reviewed = (Array.isArray(resources) ? resources : []).filter(({ reviewed }) => reviewed === true);
     const gateways = reviewed.filter(({ category }) => category === 'gateway');
     const projection = workspaceModel.catalogProjection(reviewed);
@@ -66,46 +61,12 @@
     return categories;
   }
 
-  function hasOfficialCatalog(resources = current?.resources) {
-    return (Array.isArray(resources) ? resources : []).some(({ reviewed }) => reviewed === true);
-  }
-
-  function syncSourceTabs({ focus = false } = {}) {
-    const catalogAvailable = hasOfficialCatalog();
-    if (!catalogAvailable && currentView === 'catalog') currentView = 'personal';
-    const catalog = documentNode?.getElementById('categoryModeCatalog');
-    const personal = documentNode?.getElementById('categoryModePersonal');
-    if (!catalog || !personal) return currentView;
-    catalog.hidden = !catalogAvailable;
-    const editing = catalogController?.isEditing() || personalController?.isEditing();
-    for (const [button, view] of [[catalog, 'catalog'], [personal, 'personal']]) {
-      const active = currentView === view;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-selected', String(active));
-      button.tabIndex = active ? 0 : -1;
-      button.disabled = editing;
-    }
-    if (focus) (currentView === 'catalog' ? catalog : personal).focus();
-    if (catalogWrap && personalWrap) {
-      catalogWrap.hidden = currentView !== 'catalog';
-      personalWrap.hidden = currentView !== 'personal';
-    }
-    return currentView;
-  }
-
-  function activeController() {
-    return currentView === 'personal' ? personalController : catalogController;
-  }
-
   function syncManageButton(editing) {
     const button = documentNode?.getElementById('manageResources');
     if (!button) return;
-    const english = String(documentNode.documentElement.lang || '').toLowerCase().startsWith('en');
-    button.textContent = editing
-      ? (english ? 'Done' : '完成')
-      : (english ? 'Organize categories & sites' : '整理分类与网站');
     button.setAttribute('aria-pressed', String(editing));
-    syncSourceTabs();
+    button.textContent = current?.translate?.(editing ? 'workspace.organizeDone' : 'resources.manage')
+      || (editing ? '完成' : '整理分类与网站');
   }
 
   function adapterForMainWindow() {
@@ -122,7 +83,6 @@
   function syncDocument(nextDocument) {
     if (!nextDocument) return;
     documentRef = cardBoardModel.cloneDocument(nextDocument);
-    catalogController?.setDocument(documentRef);
     personalController?.setDocument(documentRef);
     connectController?.setDocument(documentRef);
     const connectBoard = documentNode?.getElementById('connectCardBoard');
@@ -132,30 +92,25 @@
     }
   }
 
-  function createBoardHost(className) {
-    const wrap = documentNode.createElement('div');
-    wrap.className = `cb-board-view ${className}`;
-    const toolbar = documentNode.createElement('div');
-    toolbar.className = 'cb-edit-toolbar';
-    toolbar.dataset.cardEditToolbar = '';
-    toolbar.hidden = true;
-    const host = documentNode.createElement('div');
-    host.className = 'cb-board-host';
-    wrap.append(toolbar, host);
-    return { wrap, toolbar, host };
-  }
-
-  function createController({ host, toolbar = null, boardId, autoPlace = true }) {
+  function createController({ host, toolbar = null, pager = null, boardId,
+    autoPlace = true, autoStack = false, pageSize = 0, pagerByCard = false }) {
     return cardBoardController.create({
       container: host,
       toolbar,
       boardId,
       autoPlace,
+      autoStack,
+      pager,
+      pageSize,
+      pagerByCard,
+      renameCards: boardId === 'browser-personal',
       adapter: adapterForMainWindow(),
       escapeHtml: current?.escapeHtml || ((value) => String(value)),
-      translate: (key) => current?.translate?.(key) || key,
+      translate: (key, vars) => current?.translate?.(key, vars) || key,
       onDocument: syncDocument,
       onEditingChange: syncManageButton,
+      onAddSite: () => current?.onAddSite?.(),
+      onRenameCard: (payload) => current?.onRenameCard?.(payload),
       externalDropTargets: boardId === 'connect' ? [] : [{
         selector: '.nav[data-page="connect"]',
         boardId: 'connect',
@@ -166,88 +121,81 @@
     });
   }
 
-  function ensureControllers(container) {
-    if (catalogController || !documentNode) return;
-    const catalog = createBoardHost('cb-catalog-board');
-    const personal = createBoardHost('cb-personal-board');
-    catalogWrap = catalog.wrap;
-    personalWrap = personal.wrap;
-    container.replaceChildren(catalog.wrap, personal.wrap);
-    catalogController = createController({ host: catalog.host, toolbar: catalog.toolbar, boardId: 'browser-catalog' });
-    personalController = createController({ host: personal.host, toolbar: personal.toolbar, boardId: 'browser-personal' });
+  function ensureControllers() {
+    if (personalController || !documentNode) return;
+    const personalWrap = documentNode.createElement('div');
+    personalWrap.className = 'cb-board-view cb-personal-board';
+    const toolbar = documentNode.createElement('div');
+    toolbar.className = 'cb-edit-toolbar';
+    toolbar.dataset.cardEditToolbar = '';
+    toolbar.hidden = true;
+    const host = documentNode.createElement('div');
+    host.className = 'cb-board-host';
+    const pager = documentNode.createElement('div');
+    pager.id = 'personalCategoryPager';
+    pager.className = 'portal-pager personal-category-pager';
+    pager.setAttribute('role', 'navigation');
+    pager.setAttribute('aria-label', current?.translate?.('workspace.personalPagination') || '我的分类分页');
+    pager.hidden = true;
+    personalWrap.append(toolbar, host, pager);
+    const container = documentNode.getElementById('campusResources');
+    container.replaceChildren(personalWrap);
+    personalController = createController({
+      host, toolbar, pager, boardId: 'browser-personal', autoStack: true,
+      pageSize: 2, pagerByCard: true,
+    });
     const connectHost = documentNode.getElementById('connectCardBoardHost');
     if (connectHost) connectController = createController({ host: connectHost, boardId: 'connect', autoPlace: false });
-    Promise.all([catalogController.load(), personalController.load(), connectController?.load()])
+    Promise.all([personalController.load(), connectController?.load()])
       .then((documents) => syncDocument(documents.find((document) => document?.schemaVersion === 1)))
       .catch(() => {});
   }
 
   function performRender() {
     if (!current || !started) return;
-    const { container, resources, groups, query, translate } = current;
-    ensureControllers(container);
-    const official = officialCategoryProjection(resources, translate);
-    const personal = personalCategoryProjection(resources, groups, translate);
-    catalogController.setData({ categories: official, query });
-    personalController.setData({ categories: personal, query });
-    connectController?.setData({ categories: [...official, ...personal], query: '' });
-    const categories = currentView === 'personal' ? personal : official;
-    const summary = documentNode.getElementById('categoryLayoutSummary');
-    if (summary) summary.textContent = categories.length
-      ? translate('browser.categoryCount', { count: categories.length }) : '';
-    syncSourceTabs();
-  }
-
-  function selectView(view, { focus = false } = {}) {
-    const requested = view === 'personal' ? 'personal' : 'catalog';
-    currentView = requested === 'catalog' && !hasOfficialCatalog() ? 'personal' : requested;
-    syncSourceTabs({ focus });
-    performRender();
-    return currentView;
+    ensureControllers();
+    const { resources, groups, translate } = current;
+    personalController.setData({ categories: personalCategoryProjection(resources, groups, translate) });
+    const official = officialCategoryProjection(
+      resources, translate, current.workspaceModel || globalScope?.campusWorkspaceModel,
+    );
+    connectController?.setData({
+      categories: [...official, ...personalCategoryProjection(resources, groups, translate)],
+    });
   }
 
   function render(options = {}) {
-    if (!options.container || typeof options.translate !== 'function' || typeof options.escapeHtml !== 'function') {
+    if (typeof options.translate !== 'function' || typeof options.escapeHtml !== 'function') {
       throw new TypeError('category board dependencies are incomplete');
     }
-    current = options;
+    current = { ...current, ...options };
     performRender();
   }
 
-  function start({ document } = {}) {
+  function start({ document, onAddSite = null, onRenameCard = null } = {}) {
     documentNode = document;
-    const container = documentNode?.getElementById('campusResources');
-    if (!container) throw new TypeError('category board container is missing');
+    if (!documentNode?.getElementById('campusResources')) {
+      throw new TypeError('category board container is missing');
+    }
+    current = { ...current, onAddSite, onRenameCard };
     started = true;
-    documentNode.getElementById('categoryModeCatalog')?.addEventListener('click', () => selectView('catalog'));
-    documentNode.getElementById('categoryModePersonal')?.addEventListener('click', () => selectView('personal'));
-    documentNode.querySelector('.category-source-tabs')?.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const catalogAvailable = hasOfficialCatalog();
-      const view = event.key === 'ArrowLeft' || event.key === 'Home' || !catalogAvailable
-        ? (catalogAvailable ? 'catalog' : 'personal') : 'personal';
-      selectView(view, { focus: true });
-    });
-    documentNode.getElementById('manageResources')?.addEventListener('click', () => activeController()?.toggleEdit());
     globalScope?.api?.onCardBoardLayoutChanged?.(syncDocument);
     performRender();
   }
 
   const api = Object.freeze({
-    activeController,
-    balancedPartitions,
-    getLayoutCapacity,
+    activeController: () => personalController,
+    cancelEdit: () => personalController?.cancelEdit(),
+    focusCard: (kind, id) => personalController?.focusCard(kind, id) === true,
+    isEditing: () => personalController?.isEditing() === true,
     officialCategoryProjection,
     personalCategoryProjection,
     render,
-    selectView,
     start,
+    toggleEdit: () => personalController?.toggleEdit(),
   });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (globalScope) globalScope.campusCategoryStacks = api;
 })(typeof window !== 'undefined' ? window : null,
-  typeof module !== 'undefined' && module.exports ? require('./stacked-card-layout') : globalThis.stackedCardLayout,
-  typeof module !== 'undefined' && module.exports ? require('./campus-workspace-model') : globalThis.campusWorkspaceModel,
   typeof module !== 'undefined' && module.exports ? require('./components/card-board/card-board-controller') : globalThis.cardBoardController,
   typeof module !== 'undefined' && module.exports ? require('./components/card-board/card-board-model') : globalThis.cardBoardModel);

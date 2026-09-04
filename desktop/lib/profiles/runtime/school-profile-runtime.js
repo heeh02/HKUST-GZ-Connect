@@ -128,6 +128,7 @@ function createActiveSchoolProfileContext({
     registry: profiles,
     profile,
     builtinResources: profiles.getBuiltinResources(profile.profileId),
+    serviceDesk: profiles.getServiceDesk(profile.profileId),
     gatewayHost: profile.gateway.origin.hostname.replace(/^\[|\]$/gu, ''),
     gatewayPort: profile.gateway.origin.port,
     engineConfigPath: initialConfig.path,

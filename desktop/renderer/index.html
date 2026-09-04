@@ -161,8 +161,8 @@
           </details>
           <section id="connectCardBoard" class="connect-card-board" aria-labelledby="connectCardBoardTitle" hidden>
             <div class="connect-card-board-heading">
-              <h2 id="connectCardBoardTitle">我的快捷卡片</h2>
-              <span>在校园浏览器中整理和固定</span>
+              <h2 id="connectCardBoardTitle" data-i18n="connect.boardTitle">固定的分类卡</h2>
+              <span data-i18n="connect.boardHint">在校园工作台整理和固定</span>
             </div>
             <div id="connectCardBoardHost" class="cb-board-host"></div>
           </section>
@@ -182,52 +182,62 @@
         </details>
       </section>
 
-      <!-- PERSONAL CAMPUS BROWSER -->
+      <!-- CAMPUS WORKSPACE -->
       <section class="page" data-page="browser" hidden>
-        <div class="browser-page-head">
-          <div>
-            <h2 class="page-h" data-i18n="browser.title">校园浏览器</h2>
-            <p class="page-sub" data-i18n="browser.subtitle">按自己的用途整理网站，一次点击即可打开。</p>
+        <header class="ws-header">
+          <div class="ws-title">
+            <h2 class="page-h" data-i18n="browser.title">校园工作台</h2>
+            <p class="page-sub" data-i18n="browser.subtitle">常用网站、校园事务和个人信息</p>
           </div>
-          <div class="browser-page-actions">
-            <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开校园浏览器</button>
-            <button id="addWebsite" class="mini browser-add-category" type="button" data-i18n="browser.addWebsite">添加网站</button>
-            <button id="manageResources" class="mini" type="button" data-i18n="resources.manage">整理分类与网站</button>
-            <button id="legacyResourceManager" type="button" hidden aria-hidden="true" tabindex="-1"></button>
+          <div class="ws-search" role="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
+            <input id="resourceSearch" type="search" maxlength="80" autocomplete="off" spellcheck="false"
+                   placeholder="搜索应用或办事事项，如：报销、在读证明、HPC2" aria-label="搜索网站、服务或我的分类"
+                   data-i18n-attr="placeholder:workspace.searchOfficial; aria-label:workspace.searchAria" />
+            <kbd>⌘K</kbd>
           </div>
+          <button id="openCampusWorkspace" class="workspace-launch" type="button" data-i18n="browser.openWindow">打开校园浏览器</button>
+        </header>
+
+        <div class="ws-tabs" role="tablist" aria-label="网站与服务" data-i18n-attr="aria-label:workspace.tabsLabel">
+          <button id="serviceTabOfficial" type="button" role="tab" aria-selected="true" aria-controls="serviceOfficialView" data-i18n="workspace.tabOfficial">官方服务台</button>
+          <button id="serviceTabPersonal" type="button" role="tab" aria-selected="false" aria-controls="servicePersonalView" tabindex="-1" data-i18n="workspace.tabPersonal">我的分类</button>
         </div>
-        <div class="browser-search-row">
-          <span class="browser-search-icon" aria-hidden="true">⌕</span>
-          <input id="resourceSearch" class="resource-search" type="search" maxlength="80"
-                 placeholder="搜索网站或分类" aria-label="搜索网站或分类"
-                 data-i18n-attr="placeholder:browser.search; aria-label:browser.search" />
-          <kbd>⌘K</kbd>
-        </div>
-        <div class="category-workspace" id="resourceShelf" data-resource-layout="compact">
-          <div class="category-workspace-heading">
-            <div class="category-source-tabs" role="tablist" aria-label="分类来源" data-i18n-attr="aria-label:browser.categorySource">
-              <button id="categoryModeCatalog" class="active" type="button" role="tab" aria-selected="true" aria-controls="campusResources" data-i18n="browser.catalogMode">校园服务</button>
-              <button id="categoryModePersonal" type="button" role="tab" aria-selected="false" aria-controls="campusResources" tabindex="-1" data-i18n="browser.personalMode">我的分类</button>
+
+        <section class="service-module" aria-label="网站与服务" data-i18n-attr="aria-label:workspace.tabsLabel">
+          <div id="serviceOfficialView" role="tabpanel" aria-labelledby="serviceTabOfficial">
+            <div class="official-main-deck" id="officialMainDeck" role="tablist" aria-label="我的应用与学生服务台" data-i18n-attr="aria-label:workspace.officialDeckLabel"></div>
+          </div>
+
+          <div id="servicePersonalView" role="tabpanel" aria-labelledby="serviceTabPersonal" hidden>
+            <div class="ptoolbar">
+              <button id="createCategory" class="pbtn" type="button" data-i18n="browser.addCategory">新建分类</button>
+              <button id="addWebsite" class="pbtn" type="button" data-i18n="browser.addWebsite">添加网站</button>
+              <button id="manageResources" class="pbtn pbtn-org" type="button" aria-pressed="false" data-i18n="resources.manage">整理分类与网站</button>
             </div>
-            <span id="categoryLayoutSummary" class="category-layout-summary"></span>
+            <div id="campusResources" class="card-board-mount" aria-label="网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
           </div>
-          <div class="resource-library-controls" hidden aria-hidden="true">
-            <select id="resourceView" class="resource-view-select" aria-label="网站分类" hidden aria-hidden="true" tabindex="-1">
-              <option value="all">全部</option><option value="favorites">已收藏</option><option value="recent">最近打开</option>
-            </select>
-            <div id="resourceViewChips" class="resource-view-chips" hidden aria-hidden="true"></div>
+
+          <div id="serviceSearchView" hidden aria-live="polite">
+            <div class="search-meta" id="searchMeta"></div>
+            <div id="searchResults"></div>
           </div>
-          <div id="campusResources" class="card-board-mount" role="tabpanel" aria-label="网站分类" data-i18n-attr="aria-label:browser.categoriesLabel"></div>
-          <details class="custom-url-details" hidden aria-hidden="true">
-            <summary data-i18n="resources.openOther">打开其他网址</summary>
-            <div class="custom-url-body">
-              <input id="campusUrl" class="inp" type="text" inputmode="url" spellcheck="false" />
-              <button id="quickCampus" class="primary quick-action">打开网址</button>
-              <button id="quickAddCampus" class="quick-add-action" type="button">添加并打开</button>
-              <p id="quickErr" class="quick-error"></p><p id="quickAddErr" class="quick-error"></p><p id="resourceSaved" class="quick-saved"></p>
-            </div>
-          </details>
-        </div>
+        </section>
+
+        <section class="data-grid" aria-label="我的数据">
+          <div class="module module-schedule" id="moduleSchedule">
+            <div class="module-head"><h3 data-i18n="workspace.schedule">我的周课表</h3><div class="module-head-actions"><span class="module-source">myPortal</span><button id="scheduleRefresh" class="module-refresh" type="button" data-i18n="workspace.scheduleRefresh" aria-label="刷新课表" data-i18n-attr="aria-label:workspace.scheduleRefresh">刷新</button></div></div>
+            <div class="module-body" id="scheduleBody"></div>
+          </div>
+          <div class="module" id="moduleLoans">
+            <div class="module-head"><h3 data-i18n="workspace.loans">图书借阅</h3><span class="module-source">Library</span></div>
+            <div class="module-body" id="loansBody"></div>
+          </div>
+          <div class="module module-news" id="moduleNews">
+            <div class="module-head"><h3 data-i18n="workspace.news">校园资讯</h3><span class="module-source" data-i18n="workspace.officialSource">学校官网</span></div>
+            <div class="module-body" id="newsBody"></div>
+          </div>
+        </section>
       </section>
 
       <!-- CONTROL TOWER -->
@@ -495,36 +505,24 @@
     </div>
   </dialog>
 
-  <dialog id="resourceDialog" class="resource-dialog">
-    <form method="dialog" id="resourceForm" class="resource-form">
+     <dialog id="groupDialog" class="manager-dialog group-dialog" aria-labelledby="groupDialogTitle">
+    <form id="groupForm" class="manager-shell group-shell" novalidate>
       <div class="dialog-head">
         <div>
-          <h3 data-i18n="dialog.title">管理常用网站</h3>
-          <p data-i18n="dialog.sub">快捷方式只保存在这台电脑上。</p>
+          <h3 id="groupDialogTitle" data-i18n="group.createTitle">新建分类</h3>
         </div>
-        <button id="closeResourceDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
+        <button id="closeGroupDialog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
       </div>
-      <div class="resource-dialog-body">
-        <div id="resourceEditorList" class="resource-editor-list"></div>
-        <div class="resource-editor-fields">
-          <input id="resourceId" type="hidden" />
-          <label><span data-i18n="dialog.name">名称</span><input id="resourceName" class="inp" maxlength="40" placeholder="留空时自动使用网址" data-i18n-attr="placeholder:dialog.namePlaceholder" /></label>
-          <label><span data-i18n="dialog.url">网址</span><input id="resourceUrl" class="inp" inputmode="url" maxlength="2048" required /></label>
-          <label><span data-i18n="dialog.description">说明</span><input id="resourceDescription" class="inp" maxlength="80" /></label>
-          <label><span data-i18n="dialog.route">网络路径</span><select id="resourceRoute" class="inp">
-            <option value="auto" data-i18n="addWebsite.routeAuto">自动（推荐）</option>
-            <option value="campus" data-i18n="resources.routeCampus">校园隧道</option>
-            <option value="direct" data-i18n="resources.routeDirect">直连</option>
-          </select></label>
-        </div>
-        <p id="resourceFormError" class="dialog-error"></p>
-        <p id="resourceFormSaved" class="dialog-saved" aria-live="polite"></p>
+      <div class="manager-body">
+        <label class="manager-field manager-field-wide">
+          <span data-i18n="group.name">分类名称</span>
+          <input id="groupName" class="inp" maxlength="30" autocomplete="off" data-i18n-attr="placeholder:group.namePlaceholder" placeholder="例如：课程平台" />
+        </label>
+        <p id="groupError" class="dialog-error manager-field-wide" role="alert"></p>
       </div>
       <div class="dialog-actions">
-        <button id="restoreBuiltinResources" class="mini" type="button" data-i18n="dialog.restoreBuiltins">恢复内置网站</button>
-        <span id="resourceEditHint" class="dialog-edit-hint"></span>
-        <button id="cancelResource" class="ghost sm" type="button">清空</button>
-        <button id="saveResource" class="primary sm" type="submit">添加网站</button>
+        <button id="cancelGroup" class="ghost sm" type="button" data-i18n="group.cancel">取消</button>
+        <button id="saveGroup" class="primary sm" type="submit" data-i18n="group.save">保存</button>
       </div>
     </form>
   </dialog>
@@ -568,6 +566,53 @@
       <div class="dialog-actions">
         <button id="cancelAddWebsite" class="ghost sm" type="button" data-i18n="addWebsite.cancel">取消</button>
         <button id="submitAddWebsite" class="primary sm" type="submit" data-i18n="addWebsite.submit">添加并打开</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="officialCatalogDialog" class="manager-dialog official-catalog-dialog" aria-labelledby="officialCatalogTitle">
+    <div class="manager-shell">
+      <div class="dialog-head">
+        <div>
+          <h3 id="officialCatalogTitle">我的应用</h3>
+          <p id="officialCatalogCount"></p>
+        </div>
+        <button id="closeOfficialCatalog" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
+      </div>
+      <div class="official-catalog-body">
+        <div id="officialCatalogChips" class="chips" role="group" aria-label="分类过滤"></div>
+        <div id="officialCatalogList" class="official-expanded-list"></div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="officialFavoriteDialog" class="manager-dialog official-favorite-dialog" aria-labelledby="officialFavoriteTitle" aria-describedby="officialFavoriteHint">
+    <form id="officialFavoriteForm" class="manager-shell" novalidate>
+      <div class="dialog-head">
+        <div>
+          <h3 id="officialFavoriteTitle" data-i18n="favoriteDialog.title">收藏到我的分类</h3>
+          <p id="officialFavoriteHint" data-i18n="favoriteDialog.hint">选择已有分类，或在这里新建一个分类。</p>
+        </div>
+        <button id="closeOfficialFavorite" class="icon-button" type="button" aria-label="关闭" data-i18n-attr="aria-label:dialog.close">×</button>
+      </div>
+      <div class="manager-body official-favorite-body">
+        <div class="official-favorite-preview">
+          <strong id="officialFavoriteName"></strong>
+          <span id="officialFavoriteDescription"></span>
+        </div>
+        <label class="manager-field manager-field-wide">
+          <span data-i18n="favoriteDialog.category">保存到</span>
+          <select id="officialFavoriteGroup" class="inp"></select>
+        </label>
+        <label id="officialFavoriteNewGroupField" class="manager-field manager-field-wide" hidden>
+          <span data-i18n="favoriteDialog.newGroup">新分类名称</span>
+          <input id="officialFavoriteNewGroup" class="inp" maxlength="30" autocomplete="off" data-i18n-attr="placeholder:group.namePlaceholder" />
+        </label>
+        <p id="officialFavoriteError" class="dialog-error manager-field-wide" role="alert"></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancelOfficialFavorite" class="ghost sm" type="button" data-i18n="favoriteDialog.cancel">取消</button>
+        <button id="saveOfficialFavorite" class="primary sm" type="submit" data-i18n="favoriteDialog.save">收藏</button>
       </div>
     </form>
   </dialog>
@@ -666,15 +711,11 @@
   <script src="i18n.js"></script>
   <script src="../lib/browser/auth/login-flow.js"></script>
   <script src="../lib/resources/presentation/resource-view.js"></script>
-  <script src="resource-layout-policy.js"></script>
-  <script src="resource-layout-controller.js"></script>
   <script src="usability-controller.js"></script>
-  <script src="student-home.js"></script>
   <script src="campus-search-presenter.js"></script>
   <script src="notification-view.js"></script>
   <script src="notification-drawer.js"></script>
   <script src="connection-overview.js"></script>
-  <script src="stacked-card-layout.js"></script>
   <script src="campus-workspace-model.js"></script>
   <script src="components/card-board/card-board-model.js"></script>
   <script src="components/card-board/card-board-icons.js"></script>
@@ -686,11 +727,13 @@
   <script src="campus-category-stacks.js"></script>
   <script src="browser-data-settings.js"></script>
   <script src="browser-new-tab-settings.js"></script>
-  <script src="manager-view.js"></script>
   <script src="routing-manager.js"></script>
   <script src="certificate-manager.js"></script>
-  <script src="resource-manager.js"></script>
+  <script src="group-dialog.js"></script>
+  <script src="official-favorite-dialog.js"></script>
   <script src="add-website-dialog.js"></script>
+  <script src="campus-service-workspace.js"></script>
+  <script src="campus-data-modules.js"></script>
   <script src="proxy-auth-migration.js"></script>
   <script src="school-profile-selector.js"></script>
   <script src="integration-center.js"></script>

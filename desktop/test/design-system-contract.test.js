@@ -50,21 +50,26 @@ test('control panel and Campus Browser share one bounded design-token vocabulary
   assert.match(browserCss, /var\(--motion-fast\)/u);
 });
 
-test('Campus Browser separates official and personal responsive card boards without website-card nesting', () => {
+test('Campus Workspace keeps one official main-card deck separate from personal decks', () => {
   assert.match(cardBoardCss, /\.cb-board-grid\s*\{[^}]*repeat\(var\(--cb-columns/u);
-  assert.match(cardBoardCss, /\.cb-card-header\s*\{[^}]*min-height:\s*43px/u);
-  assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*12px/u);
-  assert.match(cardBoardCss, /\.cb-site\s*\{[^}]*border-bottom:\s*1px solid/u);
+  assert.match(cardBoardCss, /\.cb-card-head\s*\{[^}]*height:\s*56px/u);
+  assert.match(cardBoardCss, /\.cb-card\s*\{[^}]*border-radius:\s*14px/u);
   assert.match(cardBoardCss, /@container\s+card-content\s*\(min-width:\s*360px\)[\s\S]*repeat\(2,/u);
-  assert.match(cardBoardCss, /\.cb-site-icon\s*\{[^}]*width:\s*28px[^}]*height:\s*28px/u);
+  assert.match(cardBoardCss, /\.cb-site-icon\s*\{[^}]*width:\s*22px[^}]*height:\s*22px/u);
   assert.match(controlHtml, /data-page="browser"/u);
   assert.match(controlHtml, /id="resourceSearch"/u);
-  assert.match(controlHtml, /id="categoryModeCatalog"/u);
-  assert.match(controlHtml, /id="categoryModePersonal"/u);
+  assert.match(controlHtml, /id="serviceTabOfficial"[^>]*role="tab"/u);
+  assert.match(controlHtml, /id="serviceTabPersonal"[^>]*role="tab"/u);
+  assert.match(controlHtml, /class="ws-tabs" role="tablist"/u);
+  assert.match(controlHtml, /id="officialMainDeck"[^>]*role="tablist"/u,
+    'My Applications and the Student Service Desk share one main-card deck');
+  assert.match(controlCss, /\.official-main-card\.is-back/u);
+  assert.match(controlCss, /\.official-main-card\.is-front/u);
   assert.match(controlHtml, /id="campusResources"[^>]*class="card-board-mount"/u);
   assert.match(controlHtml, /id="connectCardBoardHost"[^>]*class="cb-board-host"/u);
-  assert.doesNotMatch(controlHtml, /category-kicker/u);
-  assert.doesNotMatch(controlHtml, /data-page="connect"[\s\S]*id="resourceShelf"[\s\S]*data-page="browser"/u);
+  assert.doesNotMatch(controlHtml, /category-kicker|categoryModeCatalog|id="resourceShelf"/u);
+  assert.doesNotMatch(controlHtml, /data-page="connect"[\s\S]*id="moduleSchedule"[\s\S]*data-page="browser"/u,
+    'the data modules belong to the Campus Workspace page only');
 });
 
 test('auxiliary copy retains AA contrast and legible compact metadata sizes', () => {
@@ -78,7 +83,7 @@ test('auxiliary copy retains AA contrast and legible compact metadata sizes', ()
   assert.match(controlCss, /\.routing-rule-row \.category-site-copy small\s*\{[^}]*font-size:\s*10\.5px/u);
   assert.match(controlCss, /\.routing-rule-edit\s*\{[^}]*font-size:\s*10\.5px/u);
   assert.match(controlCss, /@media\s*\(max-width:\s*519px\)[\s\S]*\.category-site-copy small\s*\{[^}]*font-size:\s*10\.5px/u);
-  assert.match(workspaceCss, /\.resource-memberships\s*\{[^}]*font-size:\s*10\.5px/u);
+  assert.match(workspaceCss, /\.resource-route\s*\{[^}]*font-size:\s*12px/u);
 });
 
 test('connection-first shell preserves restrained brand controls and progressive disclosure', () => {

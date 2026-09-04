@@ -15,11 +15,14 @@ const BASELINE = Object.freeze({
   // HTTPS-only public-egress leaf. Main gained no direct dependency or lines.
   // Card Board adds one isolated App composition and four bounded layout
   // modules without adding another direct Main binding.
-  mainTransitiveDependencies: 169,
+  // The myPortal catalog is one isolated Browser-domain leaf behind the existing
+  // Main binding; no direct dependency, composition member, or Main line was added.
+  mainTransitiveDependencies: 170,
   // This transition cap includes the disconnected-session recovery, async
-  // platform discovery and one-shot credential security closures. Further
-  // feature work must extract responsibilities instead of growing Main again.
-  mainLines: 1719,
+  // platform discovery, one-shot credential security closures and the reviewed
+  // service-desk hand-off. Further feature work must extract responsibilities
+  // instead of growing Main again.
+  mainLines: 1720,
   rendererLines: 564,
   // Production-only fan-in. Test, E2E, build and maintenance imports are
   // reported separately and must not make the runtime graph look denser.
