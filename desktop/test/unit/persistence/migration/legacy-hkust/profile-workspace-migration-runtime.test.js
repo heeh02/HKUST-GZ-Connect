@@ -153,6 +153,7 @@ test('simulated Windows runtime protects destinations and verifies every private
   const verifiedFiles = [];
   const windowsAcl = {
     protect(file) { protectedFiles.push(file); return true; },
+    tighten(file) { protectedFiles.push(file); return true; },
     verify(file) { verifiedFiles.push(file); return fs.existsSync(file); },
   };
   const result = new ProfileWorkspaceMigrationRuntime({

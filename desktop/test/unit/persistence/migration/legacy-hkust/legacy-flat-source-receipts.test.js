@@ -10,6 +10,9 @@ const { createLegacyFlatSourcePaths } = require('../../../../../lib/persistence/
 const {
   collectLegacyFlatSourceReceipts,
 } = require('../../../../../lib/persistence/migration/legacy-hkust/legacy-flat-source-receipts');
+const {
+  protectWindowsFileOwnerOnly,
+} = require('../../../../../lib/platform/storage/windows-private-file');
 
 function fixture(t) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'campus-legacy-receipts-'));
@@ -19,6 +22,9 @@ function fixture(t) {
 
 function writePrivate(file, value) {
   fs.writeFileSync(file, value, { mode: 0o600 });
+  if (process.platform === 'win32') {
+    assert.equal(protectWindowsFileOwnerOnly(file), true);
+  }
 }
 
 function sha256(value) {
@@ -185,4 +191,34 @@ test('simulated Windows collection requires current-user-only ACL verification',
   });
   assert.equal(receipts.settings.present, true);
   assert.deepEqual(verified, [paths.settings]);
+});
+
+test('Windows migration can tighten a current-user legacy ACL before hashing', (t) => {
+  const { userData, paths } = fixture(t);
+  writePrivate(paths.settings, 'settings');
+  let protectedFile = null;
+  let protectedState = false;
+  const receipts = collectLegacyFlatSourceReceipts({
+    userData,
+    platform: 'win32',
+    repairWindowsAcl: true,
+    windowsAcl: {
+      tighten(file) { protectedFile = file; protectedState = true; return true; },
+      verify: () => protectedState,
+    },
+  });
+  assert.equal(protectedFile, paths.settings);
+  assert.equal(receipts.settings.present, true);
+  assert.equal(receipts.settings.sha256, sha256(Buffer.from('settings')));
+});
+
+test('Windows migration never proceeds when safe ACL tightening fails', (t) => {
+  const { userData, paths } = fixture(t);
+  writePrivate(paths.settings, 'settings');
+  assert.throws(() => collectLegacyFlatSourceReceipts({
+    userData,
+    platform: 'win32',
+    repairWindowsAcl: true,
+    windowsAcl: { tighten: () => false, verify: () => false },
+  }), /Windows ACL/u);
 });

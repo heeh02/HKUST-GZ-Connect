@@ -109,3 +109,21 @@ test('2.0 workspace upgrade keeps URLs favorites recents hidden sites and routin
     1700000002000);
   assert.deepEqual(loadRoutingRules(routingFile), fixture.routingRules.rules);
 });
+
+test('desktop package identities preserve in-place upgrades on every supported platform', () => {
+  assert.equal(packageDocument.build.appId, 'cn.edu.hkust-gz.connect');
+  assert.equal(packageDocument.build.productName, 'hkustgzconnect');
+  assert.deepEqual(packageDocument.build.nsis, {
+    oneClick: false,
+    allowToChangeInstallationDirectory: false,
+    perMachine: false,
+  });
+  assert.deepEqual(packageDocument.build.mac.target[0], {
+    target: 'dmg',
+    arch: ['arm64', 'x64'],
+  });
+  assert.deepEqual(packageDocument.build.linux.target[0], {
+    target: 'AppImage',
+    arch: ['x64'],
+  });
+});

@@ -6,6 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 const asar = require('@electron/asar');
 const { app } = require('electron');
+const {
+  MultiSchoolStartupRuntime,
+} = require('../lib/app/startup/multi-school-startup-runtime');
 const { SchoolProfileRegistry } = require('../lib/profiles/registry/school-profile-registry');
 
 const desktopRoot = path.join(__dirname, '..');
@@ -46,6 +49,23 @@ async function run() {
     'hkustgz-engine-config',
     'engine-config',
   ).length > 0, true);
+  const firstRun = new MultiSchoolStartupRuntime({
+    userData: path.join(temporaryRoot, 'user-data'),
+    packageRoot: archive,
+    desktopDir: desktopRoot,
+    resourcesPath: temporaryRoot,
+    isPackaged: true,
+  });
+  assert.equal(firstRun.initialize({ mode: 'legacy-flat' }).profileCount, 1);
+  assert.deepEqual(firstRun.listViews({ locale: 'zh' }).map((view) => ({
+    profileId: view.profileId,
+    schoolName: view.schoolName,
+    unverified: view.unverified,
+  })), [{
+    profileId: 'hkustgz',
+    schoolName: '香港科技大学(广州)',
+    unverified: false,
+  }]);
   process.stdout.write('school profile ASAR runtime: PASS\n');
 }
 

@@ -37,6 +37,7 @@ const {
 const { validateSchoolProfileDocument } = require('../../../profiles/schema/school-profile-schema');
 const {
   protectWindowsFileOwnerOnly,
+  tightenWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../platform/storage/windows-private-file');
 
@@ -78,6 +79,7 @@ class ProfileWorkspaceMigrationRuntime {
     platform = process.platform,
     windowsAcl = {
       protect: protectWindowsFileOwnerOnly,
+      tighten: tightenWindowsFileOwnerOnly,
       verify: verifyWindowsFileOwnerOnly,
     },
     randomBytes = crypto.randomBytes,
@@ -86,7 +88,9 @@ class ProfileWorkspaceMigrationRuntime {
     if (!safeStorage || !fileSystem || typeof fileSystem.openSync !== 'function' ||
         !['darwin', 'linux', 'win32'].includes(platform) ||
         (platform === 'win32' &&
-          (typeof windowsAcl?.protect !== 'function' || typeof windowsAcl?.verify !== 'function')) ||
+          (typeof windowsAcl?.protect !== 'function' ||
+            typeof windowsAcl?.tighten !== 'function' ||
+            typeof windowsAcl?.verify !== 'function')) ||
         typeof randomBytes !== 'function' || typeof now !== 'function') {
       throw new TypeError('Profile Workspace migration runtime dependencies are invalid');
     }
@@ -185,6 +189,11 @@ class ProfileWorkspaceMigrationRuntime {
       fileSystem: this.fileSystem,
       platform: this.platform,
       windowsAcl: this.windowsAcl,
+      // 1.x Windows files were created by the signed-in user but could retain
+      // inherited ACL entries. The ACL helper refuses foreign ownership, and
+      // receipts are collected only after the exact source has been tightened
+      // and re-identified.
+      repairWindowsAcl: this.platform === 'win32',
     });
   }
 

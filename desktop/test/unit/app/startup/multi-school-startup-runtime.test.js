@@ -52,16 +52,40 @@ test('Profile Workspace startup recovers provisioning before anchoring and enume
   assert.equal(runtime.initialize({}).profileCount, 2, 'startup ownership is idempotent');
 });
 
-test('legacy first-run remains behavior-compatible and does not construct multi-school stores', () => {
+test('legacy first-run lists the packaged HKUST profile without constructing persistent stores', () => {
   class Forbidden { constructor() { throw new Error('must not construct'); } }
+  class Registry {
+    load() { return this; }
+    listViews(options) {
+      assert.equal(options.compatibility, 'reviewed');
+      return [{ profileId: 'hkustgz' }];
+    }
+  }
   const runtime = new MultiSchoolStartupRuntime({
     ProvisioningRuntimeClass: Forbidden,
     CandidateDirectoryClass: Forbidden,
+    PackagedRegistryClass: Registry,
   });
   assert.deepEqual(runtime.initialize({ mode: 'legacy-flat' }), {
-    ready: true, mode: 'legacy-flat', provisioningStatus: 'not_applicable', profileCount: 0,
+    ready: true, mode: 'legacy-flat', provisioningStatus: 'not_applicable', profileCount: 1,
   });
-  assert.deepEqual(runtime.listViews(), []);
+  assert.deepEqual(runtime.listViews({ locale: 'zh' }), [{ profileId: 'hkustgz' }]);
+});
+
+test('real first-run registry exposes the reviewed HKUST option on every desktop platform', () => {
+  const runtime = new MultiSchoolStartupRuntime({
+    userData: path.resolve('/tmp/hkustgz-first-run'),
+    packageRoot: desktopRoot,
+    desktopDir: desktopRoot,
+    resourcesPath: '/unused',
+    isPackaged: false,
+  });
+  assert.equal(runtime.initialize({ mode: 'legacy-flat' }).profileCount, 1);
+  const views = runtime.listViews({ locale: 'zh' });
+  assert.equal(views.length, 1);
+  assert.equal(views[0].profileId, 'hkustgz');
+  assert.equal(views[0].schoolName, '香港科技大学(广州)');
+  assert.equal(views[0].unverified, false);
 });
 
 test('startup rejects asynchronous wrong or custom authority before ordinary services', () => {
