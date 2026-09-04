@@ -16,6 +16,7 @@ HKUST(GZ) Connect 2.0 brings the campus connection, myPortal services and person
 
 - 校园浏览器、myPortal 数据读取和 MFA 子窗口共用同一隔离浏览器 Session；只有经过边界裁剪的展示数据进入界面。
 - 普通网站弹窗仍在校园浏览器标签页中打开，只有正在进行的登录验证保留原生子窗口语义。
+- 打包依赖已更新到 `fast-uri 3.1.6` 与 `@xmldom/xmldom 0.8.15`，修复发布前审计发现的 URL/主机混淆、SSRF 与 XML 序列化问题。
 - 本版本支持浏览器侧 myPortal 短信 MFA；若学校未来在 VPN Gateway 本身启用新的 MFA 协议，需要单独验证并适配。
 - 升级会保留现有设置、收藏、校园浏览器数据和已安全保存的凭据。
 

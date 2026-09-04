@@ -7,6 +7,7 @@
   "license": "GPL-3.0-only",
   "scripts": {
     "check:architecture": "node scripts/check-architecture.js",
+    "audit:ci": "node ../.github/scripts/check-dependency-vulnerabilities.js",
     "check:install-scripts": "node scripts/check-install-scripts.js",
     "check:syntax": "node scripts/check-javascript-syntax.js",
     "check:secrets": "node scripts/check-sensitive-patterns.js",
@@ -46,7 +47,7 @@
   },
   "overrides": {
     "brace-expansion": "5.0.9",
-    "fast-uri": "3.1.5"
+    "fast-uri": "3.1.6"
   },
   "build": {
     "appId": "cn.edu.hkust-gz.connect",
