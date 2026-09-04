@@ -1,6 +1,10 @@
 'use strict';
 
 const fs = require('fs');
+const {
+  protectWindowsFileOwnerOnly,
+  verifyWindowsFileOwnerOnly,
+} = require('./windows-private-file');
 
 const MAX_PRIVATE_READ_BYTES = 64 * 1024 * 1024;
 
@@ -64,27 +68,54 @@ function readPrivateFileBounded(file, {
   }
 }
 
-function ensureOwnerOnly(file) {
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
+    left.mtimeMs === right.mtimeMs;
+}
+
+function ensureOwnerOnly(file, {
+  fileSystem = fs,
+  platform = process.platform,
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+} = {}) {
   let descriptor = null;
   try {
-    const before = fs.lstatSync(file);
+    if (!['darwin', 'linux', 'win32'].includes(platform) ||
+        (platform === 'win32' && (typeof windowsAcl?.protect !== 'function' ||
+          typeof windowsAcl?.verify !== 'function'))) return false;
+    const before = fileSystem.lstatSync(file);
     if (!before.isFile() || before.isSymbolicLink() ||
-        (process.platform !== 'win32' && before.nlink !== 1)) return false;
-    const noFollow = fs.constants.O_NOFOLLOW || 0;
-    descriptor = fs.openSync(file, fs.constants.O_RDONLY | noFollow);
-    const opened = fs.fstatSync(descriptor);
+        (Number.isSafeInteger(before.nlink) && before.nlink !== 1)) return false;
+    const constants = fileSystem.constants || fs.constants;
+    const noFollow = constants.O_NOFOLLOW || 0;
+    descriptor = fileSystem.openSync(file, constants.O_RDONLY | noFollow);
+    const opened = fileSystem.fstatSync(descriptor);
     // The descriptor, rather than the path, owns the permission change. The
     // inode comparison also catches a path replacement between lstat/open on
     // platforms where O_NOFOLLOW is unavailable.
-    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino ||
-        (process.platform !== 'win32' && opened.nlink !== 1)) return false;
-    fs.fchmodSync(descriptor, 0o600);
+    if (!opened.isFile() || !sameFileIdentity(opened, before) ||
+        (Number.isSafeInteger(opened.nlink) && opened.nlink !== 1)) return false;
+    if (platform === 'win32') {
+      // Older releases created these files as the current user but could leave
+      // inherited Windows access rules in place. Tightening is allowed only
+      // after the PowerShell boundary proves the current SID already owns the
+      // exact regular path; it never takes ownership of a foreign file.
+      if (!windowsAcl.protect(file) || !windowsAcl.verify(file)) return false;
+      const after = fileSystem.lstatSync(file);
+      return after.isFile() && !after.isSymbolicLink() &&
+        sameFileIdentity(after, opened) &&
+        (!Number.isSafeInteger(after.nlink) || after.nlink === 1);
+    }
+    fileSystem.fchmodSync(descriptor, 0o600);
     return true;
   } catch {
     return false;
   } finally {
     if (descriptor !== null) {
-      try { fs.closeSync(descriptor); } catch {}
+      try { fileSystem.closeSync(descriptor); } catch {}
     }
   }
 }

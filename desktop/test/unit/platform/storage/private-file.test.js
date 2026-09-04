@@ -32,6 +32,26 @@ test('owner-only hardening never follows a symbolic link', (t) => {
   assert.equal(fs.statSync(target).mode & 0o777, before);
 });
 
+test('simulated Windows hardening upgrades a current-user file and fails closed otherwise', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-private-windows-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'settings.json');
+  fs.writeFileSync(file, '{}', { mode: 0o600 });
+  const calls = [];
+  assert.equal(ensureOwnerOnly(file, {
+    platform: 'win32',
+    windowsAcl: {
+      protect(value) { calls.push(['protect', value]); return true; },
+      verify(value) { calls.push(['verify', value]); return true; },
+    },
+  }), true);
+  assert.deepEqual(calls, [['protect', file], ['verify', file]]);
+  assert.equal(ensureOwnerOnly(file, {
+    platform: 'win32',
+    windowsAcl: { protect: () => false, verify: () => true },
+  }), false);
+});
+
 test('bounded private reads use one no-follow regular-file descriptor', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-private-read-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

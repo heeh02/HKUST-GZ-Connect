@@ -11,6 +11,7 @@ const {
   protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../../lib/platform/storage/windows-private-file');
+const { ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
 const { atomicWritePrivateFile } = require('../../../../lib/platform/storage/atomic-private-file');
 
 test('Windows ACL commands keep paths out of scripts and require fixed verification output', () => {
@@ -40,6 +41,13 @@ test('Windows ACL commands keep paths out of scripts and require fixed verificat
     assert.match(script, /\[System\.IO\.File\]::GetAccessControl\(\$privatePath\)/u);
     if (index === 0) {
       assert.match(script, /\[System\.IO\.File\]::SetAccessControl\(\$privatePath, \$acl\)/u);
+      assert.match(script, /existingOwnerSid -ne \$currentSid/u,
+        'ACL hardening must refuse a file owned by another SID');
+      assert.ok(
+        script.indexOf('existingOwnerSid -ne $currentSid') <
+          script.indexOf('[System.IO.File]::SetAccessControl'),
+        'ownership is checked before any ACL mutation',
+      );
     }
     assert.equal(call.options.env[PRIVATE_FILE_ENV], file);
     assert.equal(call.options.windowsHide, true);
@@ -69,6 +77,17 @@ test('real Windows ACL is current-user-only and inheritance-protected', {
   const file = path.join(directory, 'proxy-helper-credential.txt');
   fs.writeFileSync(file, 'synthetic-sidecar');
   assert.equal(protectWindowsFileOwnerOnly(file), true);
+  assert.equal(verifyWindowsFileOwnerOnly(file), true);
+});
+
+test('real Windows upgrade tightens an inherited current-user legacy file', {
+  skip: process.platform !== 'win32',
+}, (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-windows-legacy-acl-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'settings.json');
+  fs.writeFileSync(file, '{"version":1}');
+  assert.equal(ensureOwnerOnly(file), true);
   assert.equal(verifyWindowsFileOwnerOnly(file), true);
 });
 

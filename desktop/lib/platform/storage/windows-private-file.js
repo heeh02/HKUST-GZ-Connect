@@ -35,6 +35,11 @@ if (-not $verified.AreAccessRulesProtected -or $ownerSid -ne $currentSid -or -no
 [Console]::Out.Write('owner_only')
 `;
 const PROTECT_SCRIPT = `${COMMON_PREFIX}
+$existing = [System.IO.File]::GetAccessControl($privatePath)
+$existingOwnerSid = $existing.GetOwner([Security.Principal.SecurityIdentifier])
+if ($existingOwnerSid -ne $currentSid) {
+  throw 'private path is not owned by the current user'
+}
 $acl = New-Object Security.AccessControl.FileSecurity
 $acl.SetOwner($currentSid)
 $acl.SetAccessRuleProtection($true, $false)

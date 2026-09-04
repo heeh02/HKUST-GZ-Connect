@@ -242,6 +242,8 @@ test('reviewed anchor and custom index form one restart-safe candidate directory
   candidates.withCandidate(custom.profileId, (record) => {
     assert.equal(record.kind, 'custom-local');
     assert.deepEqual(record.context, custom.context);
+    assert.deepEqual(record.builtInResources, []);
+    assert.equal(record.serviceDesk, null);
     assert.equal(JSON.parse(record.engineLaunchBinding.stdinFrame).profileId, custom.profileId);
   });
 
@@ -252,6 +254,9 @@ test('reviewed anchor and custom index form one restart-safe candidate directory
   });
   assert.equal(customController.browserHomeUrl, null);
   assert.deepEqual(customController.defaultRouteDomains, []);
+  assert.deepEqual(customController.mergeResourceLibrary(), []);
+  assert.equal(customController.serviceDesk, null);
+  assert.equal(customController.builtInResourceCount, 0);
   assert.equal(customController.browserPartition.startsWith('persist:campus-workspace-'), true);
   assert.equal(customController.activeContextBinding().activeContextEpoch, 1);
   assert.equal(JSON.parse(customController.verifyEngineLaunchBinding().stdinFrame).profileId,

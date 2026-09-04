@@ -186,3 +186,33 @@ test('simulated Windows collection requires current-user-only ACL verification',
   assert.equal(receipts.settings.present, true);
   assert.deepEqual(verified, [paths.settings]);
 });
+
+test('Windows migration can tighten a current-user legacy ACL before hashing', (t) => {
+  const { userData, paths } = fixture(t);
+  writePrivate(paths.settings, 'settings');
+  let protectedFile = null;
+  let protectedState = false;
+  const receipts = collectLegacyFlatSourceReceipts({
+    userData,
+    platform: 'win32',
+    repairWindowsAcl: true,
+    windowsAcl: {
+      protect(file) { protectedFile = file; protectedState = true; return true; },
+      verify: () => protectedState,
+    },
+  });
+  assert.equal(protectedFile, paths.settings);
+  assert.equal(receipts.settings.present, true);
+  assert.equal(receipts.settings.sha256, sha256(Buffer.from('settings')));
+});
+
+test('Windows migration never proceeds when safe ACL tightening fails', (t) => {
+  const { userData, paths } = fixture(t);
+  writePrivate(paths.settings, 'settings');
+  assert.throws(() => collectLegacyFlatSourceReceipts({
+    userData,
+    platform: 'win32',
+    repairWindowsAcl: true,
+    windowsAcl: { protect: () => false, verify: () => false },
+  }), /Windows ACL/u);
+});

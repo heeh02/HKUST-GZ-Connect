@@ -53,7 +53,8 @@ HKUST(GZ) Connect 用于在校外访问香港科技大学（广州）的校内�
 
 ### macOS 安装
 
-打开 dmg，把应用拖入“应用程序”。如果 macOS 提示“无法验证开发者”或应用
+打开 dmg，把应用拖入“应用程序”；升级时对同名应用选择“替换”，应用数据会保留。
+如果 macOS 提示“无法验证开发者”或应用
 “已损坏”，可以：
 
 1. 在 Finder 中右键点击应用，选择“打开”，然后再次确认；或
@@ -61,7 +62,8 @@ HKUST(GZ) Connect 用于在校外访问香港科技大学（广州）的校内�
 
 ### Windows 安装
 
-运行下载的 exe。如果 SmartScreen 出现提示，点击“更多信息”→“仍要运行”。
+运行下载的 exe。升级时直接运行新版安装器；它会复用已登记的当前用户安装目录并覆盖旧版程序，
+不会删除设置、收藏或凭据。如果 SmartScreen 出现提示，点击“更多信息”→“仍要运行”。
 
 ### Linux 使用
 
@@ -78,6 +80,7 @@ chmod +x hkustgzconnect-<版本>-linux-x86_64.AppImage
 
 Linux 只有在系统提供 Secret Service/密钥环时才会保存密码；没有安全密钥环时，
 应用会要求每次启动重新输入，不会把密码明文写入磁盘。
+AppImage 是独立文件，下载新版后请用它替换旧 AppImage；应用数据目录不会随文件替换而删除。
 
 ## 最简单的使用方法
 
@@ -269,16 +272,19 @@ Download the latest build from
 
 ### macOS
 
-Open the dmg and drag the app into Applications. If macOS says the developer
-cannot be verified or the app is damaged:
+Open the dmg and drag the app into Applications. When upgrading, choose
+**Replace** for the existing app; application data is preserved. If macOS says
+the developer cannot be verified or the app is damaged:
 
 1. Right-click the app in Finder, choose **Open**, and confirm; or
 2. Open **System Settings → Privacy & Security** and choose **Open Anyway**.
 
 ### Windows
 
-Run the downloaded exe. If SmartScreen appears, choose **More info → Run
-anyway**.
+Run the downloaded exe. For an upgrade, run the new installer directly: it
+reuses the registered per-user install directory and replaces the old program
+files without deleting settings, favorites, or credentials. If SmartScreen
+appears, choose **More info → Run anyway**.
 
 ### Linux
 
@@ -290,6 +296,8 @@ chmod +x hkustgzconnect-<version>-linux-x86_64.AppImage
 Without FUSE, use `--appimage-extract-and-run`. Linux saves passwords only when
 a Secret Service/keyring backend is available; otherwise the password must be
 entered on each start and is never persisted as plaintext.
+An AppImage is a standalone file, so replace the old AppImage with the newly
+downloaded one; replacing it does not remove the application data directory.
 
 ## Easiest setup
 

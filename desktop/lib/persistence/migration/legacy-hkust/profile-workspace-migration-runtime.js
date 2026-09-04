@@ -185,6 +185,11 @@ class ProfileWorkspaceMigrationRuntime {
       fileSystem: this.fileSystem,
       platform: this.platform,
       windowsAcl: this.windowsAcl,
+      // 1.x Windows files were created by the signed-in user but could retain
+      // inherited ACL entries. The ACL helper refuses foreign ownership, and
+      // receipts are collected only after the exact source has been tightened
+      // and re-identified.
+      repairWindowsAcl: this.platform === 'win32',
     });
   }
 

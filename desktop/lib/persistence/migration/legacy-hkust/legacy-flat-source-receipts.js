@@ -7,7 +7,10 @@ const {
   validateUserDataRoot,
 } = require('../../paths/profile-workspace-layout');
 const { LEGACY_SOURCE_IDS } = require('./profile-workspace-migration-journal');
-const { verifyWindowsFileOwnerOnly } = require('../../../platform/storage/windows-private-file');
+const {
+  protectWindowsFileOwnerOnly,
+  verifyWindowsFileOwnerOnly,
+} = require('../../../platform/storage/windows-private-file');
 
 const READ_CHUNK_BYTES = 64 * 1024;
 const LEGACY_SOURCE_MAX_BYTES = Object.freeze({
@@ -47,13 +50,20 @@ function collectPrivateFileReceipt({
   maxBytes,
   fileSystem = fs,
   platform = process.platform,
-  windowsAcl = { verify: verifyWindowsFileOwnerOnly },
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+  repairWindowsAcl = false,
   label = 'private file',
 } = {}) {
   if (typeof file !== 'string' || !Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
       !fileSystem || typeof fileSystem.lstatSync !== 'function' ||
       !['darwin', 'linux', 'win32'].includes(platform) ||
       (platform === 'win32' && typeof windowsAcl?.verify !== 'function') ||
+      (repairWindowsAcl === true && (platform !== 'win32' ||
+        typeof windowsAcl?.protect !== 'function')) ||
+      typeof repairWindowsAcl !== 'boolean' ||
       typeof label !== 'string' || !label) {
     throw new TypeError('private receipt dependencies are invalid');
   }
@@ -65,11 +75,26 @@ function collectPrivateFileReceipt({
     throw invalidSource(`${label} could not be inspected`, error);
   }
   if (!before.isFile() || before.isSymbolicLink() || before.size < 0 || before.size > maxBytes ||
-      (platform !== 'win32' && (before.nlink !== 1 || (before.mode & 0o077) !== 0))) {
+      (Number.isSafeInteger(before.nlink) && before.nlink !== 1) ||
+      (platform !== 'win32' && (before.mode & 0o077) !== 0)) {
     throw invalidSource(`${label} is not a bounded owner-only regular file`);
   }
   if (platform === 'win32' && !windowsAcl.verify(file)) {
-    throw invalidSource(`${label} Windows ACL is not current-user-only`);
+    if (!repairWindowsAcl || !windowsAcl.protect(file) || !windowsAcl.verify(file)) {
+      throw invalidSource(`${label} Windows ACL is not current-user-only`);
+    }
+    let tightened;
+    try { tightened = fileSystem.lstatSync(file); }
+    catch (error) { throw invalidSource(`${label} changed while tightening its Windows ACL`, error); }
+    if (!tightened.isFile() || tightened.isSymbolicLink() ||
+        tightened.dev !== before.dev || tightened.ino !== before.ino ||
+        tightened.size !== before.size || tightened.mtimeMs !== before.mtimeMs ||
+        (Number.isSafeInteger(tightened.nlink) && tightened.nlink !== 1)) {
+      throw invalidSource(`${label} changed while tightening its Windows ACL`);
+    }
+    // ACL updates can legitimately change ctime, so use the post-hardening
+    // snapshot as the exact version that the descriptor must open.
+    before = tightened;
   }
 
   const constants = fileSystem.constants || fs.constants;
@@ -83,7 +108,7 @@ function collectPrivateFileReceipt({
     }
     const opened = fileSystem.fstatSync(descriptor);
     if (!opened.isFile() || !sameFileVersion(opened, before) || opened.size > maxBytes ||
-        (platform !== 'win32' && opened.nlink !== 1)) {
+        (Number.isSafeInteger(opened.nlink) && opened.nlink !== 1)) {
       throw invalidSource(`${label} changed while opening`);
     }
 
@@ -100,7 +125,7 @@ function collectPrivateFileReceipt({
     }
     const after = fileSystem.fstatSync(descriptor);
     if (!after.isFile() || !sameFileVersion(after, opened) ||
-        (platform !== 'win32' && after.nlink !== 1)) {
+        (Number.isSafeInteger(after.nlink) && after.nlink !== 1)) {
       throw invalidSource(`${label} changed while reading`);
     }
     return Object.freeze({
@@ -120,11 +145,18 @@ function collectLegacyFlatSourceReceipts({
   userData,
   fileSystem = fs,
   platform = process.platform,
-  windowsAcl = { verify: verifyWindowsFileOwnerOnly },
+  windowsAcl = {
+    protect: protectWindowsFileOwnerOnly,
+    verify: verifyWindowsFileOwnerOnly,
+  },
+  repairWindowsAcl = false,
 } = {}) {
   if (!fileSystem || typeof fileSystem.lstatSync !== 'function' ||
       !['darwin', 'linux', 'win32'].includes(platform) ||
-      (platform === 'win32' && typeof windowsAcl?.verify !== 'function')) {
+      (platform === 'win32' && typeof windowsAcl?.verify !== 'function') ||
+      (repairWindowsAcl === true && (platform !== 'win32' ||
+        typeof windowsAcl?.protect !== 'function')) ||
+      typeof repairWindowsAcl !== 'boolean') {
     throw new TypeError('legacy receipt dependencies are invalid');
   }
   const root = validateUserDataRoot(userData);
@@ -151,6 +183,7 @@ function collectLegacyFlatSourceReceipts({
       fileSystem,
       platform,
       windowsAcl,
+      repairWindowsAcl,
       label: 'legacy source',
     }),
   ])));
