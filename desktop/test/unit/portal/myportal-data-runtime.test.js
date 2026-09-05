@@ -37,6 +37,51 @@ function headers(location = null) {
   return { get: (name) => name.toLowerCase() === 'location' ? location : null };
 }
 
+test('schedule ingress rejects impossible and non-positive intervals before renderer projection', async () => {
+  for (const [startsAt, endsAt] of [
+    [1_800_000_000_000, 1_800_000_000_000],
+    [1_800_000_000_001, 1_800_000_000_000],
+    [8_640_000_000_000_001, 8_640_000_000_000_002],
+  ]) {
+    const fixture = runtime({
+      response: { status: 200, url: 'https://myportal.hkust-gz.edu.cn/', headers: headers() },
+      source: { schedule: { read: async () => ({
+        state: 'ready', source: 'fixture', fetchedAt: 1_800_000_000_000, stale: false,
+        items: [{ id: 'invalid-event', title: 'Invalid fixture', startsAt, endsAt }],
+      }) } },
+    });
+    const snapshot = await fixture.subject.snapshot();
+    assert.equal(snapshot.modules.schedule.state, 'failed');
+    assert.deepEqual(snapshot.modules.schedule.items, []);
+    assert.equal(snapshot.sessionState, 'authenticated');
+    assert.equal(snapshot.modules.loans.state, 'source-unavailable');
+  }
+});
+
+test('reviewed calendar adapter rejects zero-length events instead of reporting ready', async () => {
+  await assert.rejects(hkustMyPortalSources.schedule.read({
+    session: { fetch: async () => ({ status: 200, headers: headers(),
+      text: async () => JSON.stringify([{ title: 'Invalid fixture',
+        startsAt: 1_800_000_000_000, endsAt: 1_800_000_000_000 }]),
+    }) },
+    portalUrl: 'https://myportal.hkust-gz.edu.cn/',
+    sessionUrl: 'https://myportal.hkust-gz.edu.cn/',
+    checkedAt: 1_800_000_000_000, timeoutMs: 500,
+  }), { code: 'PORTAL_RESPONSE_INVALID' });
+});
+
+test('calendar adapter rejects impossible calendar dates instead of rolling into another month', async () => {
+  await assert.rejects(hkustMyPortalSources.schedule.read({
+    session: { fetch: async () => ({ status: 200, headers: headers(),
+      text: async () => JSON.stringify([{ title: 'Invalid date fixture',
+        startsAt: '2027-02-30 10:00:00', endsAt: '2027-02-30 12:00:00' }]),
+    }) },
+    portalUrl: 'https://myportal.hkust-gz.edu.cn/',
+    sessionUrl: 'https://myportal.hkust-gz.edu.cn/',
+    checkedAt: 1_800_000_000_000, timeoutMs: 500,
+  }), { code: 'PORTAL_RESPONSE_INVALID' });
+});
+
 test('myPortal redirect produces an honest signed-out snapshot without reading APIs', async () => {
   let sourceReads = 0;
   const fixture = runtime({
