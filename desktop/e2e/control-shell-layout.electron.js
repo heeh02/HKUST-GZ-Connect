@@ -770,14 +770,18 @@ async function main() {
     // portal session. The ordinary layout fixture only renders signed-out data.
     await settle(window, 440, 540);
     await shellSnapshot(window, 'browser');
+    if (!window.webContents.debugger.isAttached()) window.webContents.debugger.attach('1.3');
+    await window.webContents.debugger.sendCommand('Emulation.setTimezoneOverride', {
+      timezoneId: 'America/Los_Angeles',
+    });
     const calendar = await window.webContents.executeJavaScript(`(async () => {
-      const range = window.campusDataModules.weekRange();
-      const start = new Date(range.days[1]); start.setHours(20);
-      const end = new Date(range.days[2]); end.setHours(10);
+      const range = window.campusDataModules.weekRange(Date.now(), true);
+      const start = new Date(range.days[1] + 20 * 3600000);
+      const end = new Date(range.days[2] + 10 * 3600000);
       const feature = window.campusDataModules.create({
         document,
         api: { getCampusData: async () => ({ sessionState: 'fixture', modules: {
-          schedule: { state: 'ready', items: [{ id: 'overnight', title: 'Fixture event',
+          schedule: { state: 'ready', source: 'myportal-calendar', items: [{ id: 'overnight', title: 'Fixture event',
             startsAt: start.getTime(), endsAt: end.getTime() }] },
         } }) },
         translate: (key, values) => key === 'workspace.scheduleWeekCount'

@@ -19,7 +19,17 @@
   const WEEK_SLOT_COUNT = 7;
   const SCHEDULE_AUTO_REFRESH_MS = 24 * 60 * 60 * 1_000;
 
-  function weekRange(now = Date.now()) {
+  function weekRange(now = Date.now(), campusTime = false) {
+    if (campusTime) {
+      const offset = 8 * 60 * 60 * 1000;
+      const day = new Date(now + offset);
+      if (!Number.isFinite(day.getTime())) throw new TypeError('week timestamp is invalid');
+      day.setUTCHours(0, 0, 0, 0);
+      day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+      const start = day.getTime() - offset;
+      return Object.freeze({ start, end: start + 7 * 86_400_000,
+        days: Object.freeze(Array.from({ length: 7 }, (_, i) => start + i * 86_400_000)) });
+    }
     const start = new Date(now);
     if (!Number.isFinite(start.getTime())) throw new TypeError('week timestamp is invalid');
     start.setHours(0, 0, 0, 0);
@@ -34,15 +44,17 @@
     return Object.freeze({ start: start.getTime(), end: end.getTime(), days: Object.freeze(days) });
   }
 
-  function sameLocalDay(left, right) {
+  function sameLocalDay(left, right, campusTime = false) {
+    if (campusTime) return Math.floor((left + 28_800_000) / 86_400_000) ===
+      Math.floor((right + 28_800_000) / 86_400_000);
     const a = new Date(left);
     const b = new Date(right);
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() &&
       a.getDate() === b.getDate();
   }
 
-  function scheduleWeekModel(entries, now = Date.now()) {
-    const range = weekRange(now);
+  function scheduleWeekModel(entries, now = Date.now(), campusTime = false) {
+    const range = weekRange(now, campusTime);
     const items = Array.isArray(entries) ? entries : [];
     const intersecting = items.filter((entry) => Number.isFinite(entry?.startsAt) &&
       Number.isFinite(entry?.endsAt) && entry.endsAt > entry.startsAt &&
@@ -54,11 +66,13 @@
       const segmentStart = Math.max(entry.startsAt, dayStart);
       const segmentEnd = Math.min(entry.endsAt, dayEnd);
       if (segmentEnd <= segmentStart) return [];
-      const start = new Date(segmentStart);
-      const end = new Date(segmentEnd);
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
+      const start = new Date(segmentStart + (campusTime ? 28_800_000 : 0));
+      const end = new Date(segmentEnd + (campusTime ? 28_800_000 : 0));
+      const minutes = (date) => campusTime ? date.getUTCHours() * 60 + date.getUTCMinutes()
+        : date.getHours() * 60 + date.getMinutes();
+      const startMinutes = minutes(start);
       const endMinutes = segmentEnd === dayEnd ? 24 * 60
-        : end.getHours() * 60 + end.getMinutes();
+        : minutes(end);
       return [{ entry, day, startMinutes, endMinutes, segmentStart, segmentEnd }];
     }));
     const slotStart = Math.floor(Math.min(WEEK_SLOT_START,
@@ -90,14 +104,8 @@
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
-    const formatTime = (value) => new Intl.DateTimeFormat(locale(), {
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date(value));
     const formatDate = (value) => new Intl.DateTimeFormat(locale(), {
       month: 'short', day: 'numeric',
-    }).format(new Date(value));
-    const formatWeekday = (value) => new Intl.DateTimeFormat(locale(), {
-      weekday: 'short',
     }).format(new Date(value));
 
     function validModule(module) {
@@ -149,19 +157,26 @@
 
     function scheduleHtml(module) {
       if (!['ready', 'empty'].includes(module.state)) return stateHtml(module, 'schedule');
-      const model = scheduleWeekModel(module.state === 'ready' ? module.items : []);
       const now = Date.now();
+      const campusTime = module.source === 'myportal-calendar';
+      const model = scheduleWeekModel(module.state === 'ready' ? module.items : [], now, campusTime);
+      const format = (value, options) => new Intl.DateTimeFormat(locale(), {
+        ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
+      }).format(new Date(value));
+      const formatDate = value => format(value, { month: 'short', day: 'numeric' });
+      const formatWeekday = value => format(value, { weekday: 'short' });
+      const formatTime = value => format(value, { hour: '2-digit', minute: '2-digit', hour12: false });
       const lastDay = model.days.at(-1);
       const weekLabel = translate('workspace.scheduleWeekRange', {
         start: formatDate(model.start), end: formatDate(lastDay),
       });
       const headers = model.days.map((day) => {
-        const today = sameLocalDay(day, now);
+        const today = sameLocalDay(day, now, campusTime);
         return `<div class="week-day-head${today ? ' is-today' : ''}" role="columnheader"${today ? ' aria-current="date"' : ''}>`
           + `<span>${escapeHtml(formatWeekday(day))}</span><strong>${escapeHtml(formatDate(day))}</strong></div>`;
       }).join('');
       const lanes = model.days.map((day, index) => (
-        `<div class="week-day-lane${sameLocalDay(day, now) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
+        `<div class="week-day-lane${sameLocalDay(day, now, campusTime) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
       )).join('');
       const times = Array.from({ length: model.slotCount }, (_, index) => {
         const hour = String(model.slotStart / 60 + index * 2).padStart(2, '0');

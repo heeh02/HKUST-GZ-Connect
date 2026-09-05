@@ -4,6 +4,25 @@ const assert = require('node:assert/strict');
 const { scheduleWeekModel } = require('../../../renderer/campus-data-modules');
 const date = (day, hour = 0) => new Date(2027, 0, day, hour).getTime();
 
+test('campus week and event slots stay stable when the host has not reached Monday', () => {
+  const original = process.env.TZ;
+  try {
+    for (const zone of ['UTC', 'America/Los_Angeles', 'Asia/Shanghai']) {
+      process.env.TZ = zone;
+      const model = scheduleWeekModel([{
+        startsAt: Date.parse('2027-01-18T10:00:00+08:00'),
+        endsAt: Date.parse('2027-01-18T12:00:00+08:00'),
+      }], Date.parse('2027-01-17T20:00:00Z'), true);
+      assert.equal(model.start, Date.parse('2027-01-17T16:00:00Z'), zone);
+      assert.equal(model.events[0].day, 0);
+      assert.equal(model.events[0].slot, 1);
+    }
+  } finally {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  }
+});
+
 test('cross-day events project only onto intersecting calendar dates', () => {
   const entry = { id: 'overnight', startsAt: date(12, 20), endsAt: date(13, 10) };
   const model = scheduleWeekModel([entry], date(13));
