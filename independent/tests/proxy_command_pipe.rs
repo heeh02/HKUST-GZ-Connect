@@ -17,8 +17,7 @@ impl Drop for ChildGuard {
     }
 }
 
-#[test]
-fn downstream_binary_data_is_visible_before_newline_or_eof() {
+fn connected_helper() -> (ChildGuard, std::net::TcpStream) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let path = std::env::temp_dir().join(format!(
         "ec-proxy-pipe-{}-{}",
@@ -38,7 +37,7 @@ fn downstream_binary_data_is_visible_before_newline_or_eof() {
     )
     .unwrap();
     drop(file);
-    let mut child = ChildGuard(
+    let child = ChildGuard(
         Command::new(env!("CARGO_BIN_EXE_ec-proxy-command"))
             .args(["--credential-file"])
             .arg(&path)
@@ -77,6 +76,36 @@ fn downstream_binary_data_is_visible_before_newline_or_eof() {
     peer.read_exact(&mut request).unwrap();
     assert_eq!(&request[..5], &[5, 1, 0, 3, 15]);
     peer.write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 22]).unwrap();
+    (child, peer)
+}
+
+fn expect_clean_exit(child: &mut ChildGuard) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(status) = child.0.try_wait().unwrap() {
+            assert!(status.success());
+            let mut diagnostics = Vec::new();
+            child
+                .0
+                .stderr
+                .take()
+                .unwrap()
+                .read_to_end(&mut diagnostics)
+                .unwrap();
+            assert!(
+                diagnostics.is_empty(),
+                "successful relay must have no diagnostics"
+            );
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "helper did not exit");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn downstream_binary_data_is_visible_before_newline_or_eof() {
+    let (mut child, mut peer) = connected_helper();
     let mut stdout = child.0.stdout.take().unwrap();
     let (tx, rx) = mpsc::channel();
     let reader = std::thread::spawn(move || {
@@ -94,4 +123,45 @@ fn downstream_binary_data_is_visible_before_newline_or_eof() {
         result.expect("binary data was buffered until EOF").unwrap(),
         [0, 255, 1, 128]
     );
+}
+
+#[test]
+fn stdin_eof_half_closes_upload_and_preserves_response() {
+    let (mut child, mut peer) = connected_helper();
+    let payload = [0, 255, 128, 1];
+    let mut stdin = child.0.stdin.take().unwrap();
+    stdin.write_all(&payload).unwrap();
+    drop(stdin);
+    let mut received = Vec::new();
+    peer.read_to_end(&mut received).unwrap();
+    assert_eq!(received, payload);
+    peer.write_all(&payload).unwrap();
+    drop(peer);
+    expect_clean_exit(&mut child);
+    let mut response = Vec::new();
+    child
+        .0
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut response)
+        .unwrap();
+    assert_eq!(response, payload);
+}
+
+#[test]
+fn remote_eof_exits_with_caller_stdin_still_open() {
+    let (mut child, peer) = connected_helper();
+    let _stdin = child.0.stdin.take().unwrap();
+    drop(peer);
+    expect_clean_exit(&mut child);
+    let mut response = Vec::new();
+    child
+        .0
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_end(&mut response)
+        .unwrap();
+    assert!(response.is_empty());
 }
