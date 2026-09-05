@@ -2,8 +2,17 @@
 
 - Status: Current migration procedure
 - Owner: Security and Release maintainers
-- Last verified: 2026-09-04
-- Applies to: transfer from `heeh02/HKUST-GZ-Connect` to a maintainer-selected Organization
+- Last verified: 2026-09-05
+- Applies to: transfer from `heeh02/HKUST-GZ-Connect` to `HKUSTGZ-OpenSource`
+
+## Current readiness
+
+The destination exists and `heeh02` has active admin membership, verified through GitHub on
+2026-09-05. The repository remains under `heeh02`. Stable v2.0.0 is published from
+`5287c86842a506cd595e22b95d023b6a7e02cbea`; PR #78's repository-ID updater is merged on
+main but has not been published in a bridge release. Restoring v2.0.0 closed Issue #76; it did
+not satisfy the updater bridge requirement below. Transfer and bridge publication require
+separate maintainer authorization. Offline development may proceed meanwhile.
 
 ## Why a bridge release is required
 

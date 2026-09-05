@@ -38,12 +38,14 @@ high-risk rules. No instruction file is treated as a substitute for review or te
    and `independent/src/bin/ec-engine.rs` are concurrency hot spots.
 3. Renderer feature files still depend on global `window.*` names and HTML script order that the
    CommonJS architecture graph cannot see.
-4. The immutable `v2.0.0` tag exists, but no stable GitHub Release is published for it and
-   `/releases/latest` still resolves to `v1.2.3`; Issue #76 owns the 2.0.1 repair release.
+4. Stable `v2.0.0` was rebuilt from `5287c86842a506cd595e22b95d023b6a7e02cbea` and
+   published with four platform assets. The repository-ID updater is merged through PR #78
+   on the 2.0.1 development line, but is not included in the published 2.0.0 packages.
 5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
    policies are active, but one administrator and no independent reviewer prevent full enforcement.
-6. The `heeh02` account currently has no GitHub Organization membership. Repository transfer is
-   blocked until the maintainer chooses or creates the destination organization.
+6. The maintainer selected `HKUSTGZ-OpenSource`. On 2026-09-05, GitHub reports the Organization
+   exists and `heeh02` has active admin membership. Transfer still needs separate authorization
+   and a published updater bridge; these do not block offline implementation and tests.
 
 ## Completion outcomes
 
@@ -127,7 +129,10 @@ The goal is complete only when:
 6. no secrets, generated packages, raw captures or vendor binaries entered the Git tree;
 7. unresolved risks and organization-level settings are recorded in a final governance receipt.
 
-## Progress receipt — 2026-09-04
+## Historical progress receipt — 2026-09-04
+
+This receipt describes the earlier plan. Current findings above supersede its destination and
+release assumptions.
 
 - G0 merged through PR #59: current release truth is aligned; obsolete tool-specific documents and
   completed product proposals are removed; original 2.0 vision documents are classified under
@@ -152,7 +157,8 @@ The goal is complete only when:
 
 ## Current external blocker
 
-The repository cannot be transferred safely until the destination Organization login is supplied.
-The maintainer must either create an Organization or name an existing one and confirm that
-`heeh02` is an owner there. No Organization name, team slug, billing plan or public identity will be
-invented by an agent.
+Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
+is still required for transfer, release, merge and protection changes. The published updater bridge,
+destination-name conflict check and governance receipt remain transfer preconditions. Continue
+ProxyCommand pipe regressions, Renderer seams, compact layouts and date-driven schedule contracts
+independently of these external actions.
