@@ -547,7 +547,7 @@ function portalScheduleField(item, names) {
   return portalField(item, names) || portalField(item?.schedule, names);
 }
 
-function portalTimestamp(value) {
+function portalTimestamp(value, localOffset = null) {
   if (Number.isFinite(value)) {
     const number = Number(value);
     return number > 10_000_000_000 ? Math.trunc(number) : Math.trunc(number * 1000);
@@ -562,7 +562,12 @@ function portalTimestamp(value) {
     if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 ||
         date.getUTCDate() !== day) return null;
   }
-  const parsed = Date.parse(source.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/u, '$1T$2'));
+  let normalized = source.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/u, '$1T$2');
+  if (localOffset && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)?$/u.test(normalized)) {
+    if (normalized.length === 10) normalized += 'T00:00:00';
+    normalized += localOffset;
+  }
+  const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
@@ -631,9 +636,9 @@ function scheduleProjection(payload, context) {
     const title = portalScheduleField(item,
       ['title', 'subject', 'name', 'summary', 'eventTitle', 'eventName']);
     const startsAt = portalTimestamp(portalScheduleField(item,
-      ['startsAt', 'startTime', 'startDate', 'beginTime', 'beginDate', 'fromDate']));
+      ['startsAt', 'startTime', 'startDate', 'beginTime', 'beginDate', 'fromDate']), '+08:00');
     const endsAt = portalTimestamp(portalScheduleField(item,
-      ['endsAt', 'endTime', 'endDate', 'finishTime', 'finishDate', 'toDate']));
+      ['endsAt', 'endTime', 'endDate', 'finishTime', 'finishDate', 'toDate']), '+08:00');
     if (!title || !startsAt || !endsAt || endsAt <= startsAt) {
       throw portalSourceError('PORTAL_RESPONSE_INVALID', 'calendar item schema is unsupported');
     }
@@ -679,12 +684,13 @@ const hkustMyPortalSources = Object.freeze({
   catalog: hkustPortalCatalogSource,
   schedule: Object.freeze({
     async read(context) {
-      const start = new Date(context.checkedAt);
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
-      const end = new Date(start);
-      end.setDate(end.getDate() + 7);
-      end.setMilliseconds(-1);
+      // Calendar weeks belong to the campus, independent of the host timezone.
+      const campusOffsetMs = 8 * 60 * 60 * 1000;
+      const campusDay = new Date(context.checkedAt + campusOffsetMs);
+      campusDay.setUTCHours(0, 0, 0, 0);
+      campusDay.setUTCDate(campusDay.getUTCDate() - ((campusDay.getUTCDay() + 6) % 7));
+      const start = new Date(campusDay.getTime() - campusOffsetMs);
+      const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
       const payload = await fetchPortalJsonp(context,
         '/calendar/mgr/api/hkust/calendarList.rst', {
           _p: 'YXM9MiZ0PTUmZD05NyZwPTEmZj0yMiZtPU4m',
