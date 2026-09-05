@@ -251,6 +251,12 @@ jobs:
           test/windows-platform-smoke.test.js
       - name: Verify current-user-only helper credential DACL
         run: node --test test/unit/integrations/external-proxy-config.test.js
+      - name: Install pinned Rust toolchain for pipe regression
+        working-directory: independent
+        run: rustup show active-toolchain
+      - name: Verify real Windows ProxyCommand pipes
+        working-directory: independent
+        run: cargo test --locked --no-default-features --test proxy_command_pipe
 
   engine:
     timeout-minutes: 20
