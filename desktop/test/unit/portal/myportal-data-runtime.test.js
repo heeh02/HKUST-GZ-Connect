@@ -331,9 +331,10 @@ test('reviewed HKUST sources map bounded JSONP data without copying the page non
   assert.match(calendarUrl.href, /categoryIds=-3%2C-2%2C1%2C-4/u);
   const from = new Date(calendarUrl.searchParams.get('fromDate'));
   const through = new Date(calendarUrl.searchParams.get('endDate'));
-  assert.equal(from.getDay(), 1);
-  assert.equal(through.getDay(), 0);
-  assert.ok(through.getTime() - from.getTime() >= 6 * 86_400_000);
+  const campusWeekday = new Intl.DateTimeFormat('en', { weekday: 'short', timeZone: 'Asia/Shanghai' });
+  assert.equal(campusWeekday.format(from), 'Mon');
+  assert.equal(campusWeekday.format(through), 'Sun');
+  assert.equal(through.getTime() - from.getTime(), 7 * 86_400_000 - 1);
   assert.equal(sourceOptions.every(({ redirect, headers }) => (
     redirect === 'follow' && headers.Accept === '*/*'
   )), true);
