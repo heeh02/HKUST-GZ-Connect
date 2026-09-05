@@ -766,6 +766,39 @@ async function main() {
       return { page: document.querySelector('.page.active').dataset.page, focused: document.activeElement.id };
     })()`);
     assert.deepEqual(shortcut, { page: 'browser', focused: 'resourceSearch' });
+    // Exercise the real timetable DOM with synthetic dates, independent of a
+    // portal session. The ordinary layout fixture only renders signed-out data.
+    await settle(window, 440, 540);
+    await shellSnapshot(window, 'browser');
+    const calendar = await window.webContents.executeJavaScript(`(async () => {
+      const range = window.campusDataModules.weekRange();
+      const start = new Date(range.days[1]); start.setHours(20);
+      const end = new Date(range.days[2]); end.setHours(10);
+      const feature = window.campusDataModules.create({
+        document,
+        api: { getCampusData: async () => ({ sessionState: 'fixture', modules: {
+          schedule: { state: 'ready', items: [{ id: 'overnight', title: 'Fixture event',
+            startsAt: start.getTime(), endsAt: end.getTime() }] },
+        } }) },
+        translate: (key, values) => key === 'workspace.scheduleWeekCount'
+          ? String(values.count) : key,
+        escapeHtml: (text) => String(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;'),
+        openDeepLink: () => {},
+      });
+      await feature.load();
+      document.getElementById('moduleSchedule').scrollIntoView();
+      return {
+        days: [...document.querySelectorAll('#scheduleBody .week-event')].map(el => el.dataset.day),
+        times: [...document.querySelectorAll('#scheduleBody .week-event time')].map(el => el.textContent),
+        count: document.querySelector('#scheduleBody .week-summary span').textContent,
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    })()`);
+    assert.deepEqual(calendar.days, ['1', '2']);
+    assert.deepEqual(calendar.times, ['20:00–24:00', '00:00–10:00']);
+    assert.equal(calendar.count, '1');
+    assert.ok(calendar.overflow <= 0);
+    await capture(window, output, 'narrow-calendar-segments');
     process.stdout.write('control shell layout: PASS\n');
   } finally {
     if (window.webContents.debugger.isAttached()) window.webContents.debugger.detach();
