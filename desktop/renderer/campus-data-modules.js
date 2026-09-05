@@ -182,15 +182,21 @@
         const hour = String(model.slotStart / 60 + index * 2).padStart(2, '0');
         return `<time class="week-time" data-slot="${index}" aria-hidden="true">${hour}:00</time>`;
       }).join('');
-      const events = model.events.map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
+      const events = model.days.map((_, index) => {
+        const dayEvents = model.events.filter(({ day }) => day === index)
+          .map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
         const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
         const content = `<time>${escapeHtml(`${formatTime(segmentStart)}–${endLabel}`)}</time>`
           + `<strong>${escapeHtml(entry.title)}</strong>`
           + (entry.location ? `<small>${escapeHtml(entry.location)}</small>` : '');
-        const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`;
+        const label = `${formatTime(segmentStart)}–${endLabel} ${entry.title}${entry.location ? ` · ${entry.location}` : ''}`;
+        const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`
+          + ` title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"`;
         return entry.url
           ? `<button type="button" ${attrs} data-entry-url="${escapeHtml(entry.url)}">${content}</button>`
           : `<div ${attrs} role="gridcell">${content}</div>`;
+          }).join('');
+        return `<div class="week-event-day" data-day="${index}">${dayEvents}</div>`;
       }).join('');
       const empty = model.events.length ? ''
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`

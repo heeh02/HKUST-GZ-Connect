@@ -782,7 +782,10 @@ async function main() {
         document,
         api: { getCampusData: async () => ({ sessionState: 'fixture', modules: {
           schedule: { state: 'ready', source: 'myportal-calendar', items: [{ id: 'overnight', title: 'Fixture event',
-            startsAt: start.getTime(), endsAt: end.getTime() }] },
+            startsAt: start.getTime(), endsAt: end.getTime() }, {
+              id: 'overlap', title: 'Concurrent fixture', startsAt: start.getTime(),
+              endsAt: start.getTime() + 2 * 3600000,
+            }] },
         } }) },
         translate: (key, values) => key === 'workspace.scheduleWeekCount'
           ? String(values.count) : key,
@@ -799,15 +802,23 @@ async function main() {
         rows: getComputedStyle(document.querySelector('#scheduleBody .week-body')).gridTemplateRows.split(' ').length,
         eventRows: [...document.querySelectorAll('#scheduleBody .week-event')]
           .map(el => [getComputedStyle(el).gridRowStart, getComputedStyle(el).gridRowEnd]),
+        eventRects: [...document.querySelectorAll('#scheduleBody .week-event')].map(el => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, width: r.width };
+        }),
         overflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     })()`);
-    assert.deepEqual(calendar.days, ['1', '2']);
-    assert.deepEqual(calendar.times, ['20:00–24:00', '00:00–10:00']);
-    assert.equal(calendar.count, '1');
+    assert.deepEqual(calendar.days, ['1', '1', '2']);
+    assert.deepEqual(calendar.times, ['20:00–24:00', '20:00–22:00', '00:00–10:00']);
+    assert.equal(calendar.count, '2');
     assert.equal(calendar.firstTime, '00:00');
     assert.equal(calendar.rows, 12);
-    assert.deepEqual(calendar.eventRows, [['11', 'span 2'], ['1', 'span 5']]);
+    assert.deepEqual(calendar.eventRows, [['11', 'span 2'], ['11', 'span 1'], ['1', 'span 5']]);
+    assert.equal(calendar.eventRects[0].top, calendar.eventRects[1].top);
+    assert.ok(calendar.eventRects[0].right <= calendar.eventRects[1].left,
+      'concurrent events must be side by side instead of covering one another');
+    assert.ok(calendar.eventRects.every(rect => rect.width > 0));
     assert.ok(calendar.overflow <= 0);
     await capture(window, output, 'narrow-calendar-segments');
     process.stdout.write('control shell layout: PASS\n');

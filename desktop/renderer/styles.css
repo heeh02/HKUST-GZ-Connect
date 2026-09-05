@@ -1750,25 +1750,26 @@ button.week-event:hover { border-color: #86a9d3; background: #dceafa; }
 }
 .week-empty strong { color: var(--ink); font-size: 12px; }
 .week-empty span { color: var(--muted); font-size: 10.5px; }
-.week-day-lane[data-day="0"], .week-event[data-day="0"] { grid-column: 2; }
-.week-day-lane[data-day="1"], .week-event[data-day="1"] { grid-column: 3; }
-.week-day-lane[data-day="2"], .week-event[data-day="2"] { grid-column: 4; }
-.week-day-lane[data-day="3"], .week-event[data-day="3"] { grid-column: 5; }
-.week-day-lane[data-day="4"], .week-event[data-day="4"] { grid-column: 6; }
-.week-day-lane[data-day="5"], .week-event[data-day="5"] { grid-column: 7; }
-.week-day-lane[data-day="6"], .week-event[data-day="6"] { grid-column: 8; }
-.week-body > [data-slot="0"] { grid-row-start: 1; }
-.week-body > [data-slot="1"] { grid-row-start: 2; }
-.week-body > [data-slot="2"] { grid-row-start: 3; }
-.week-body > [data-slot="3"] { grid-row-start: 4; }
-.week-body > [data-slot="4"] { grid-row-start: 5; }
-.week-body > [data-slot="5"] { grid-row-start: 6; }
-.week-body > [data-slot="6"] { grid-row-start: 7; }
-.week-body > [data-slot="7"] { grid-row-start: 8; }
-.week-body > [data-slot="8"] { grid-row-start: 9; }
-.week-body > [data-slot="9"] { grid-row-start: 10; }
-.week-body > [data-slot="10"] { grid-row-start: 11; }
-.week-body > [data-slot="11"] { grid-row-start: 12; }
+.week-event-day { display: grid; grid-row: 1 / -1; grid-template-rows: subgrid; grid-auto-flow: row dense; grid-auto-columns: minmax(0, 1fr); min-width: 0; }
+.week-day-lane[data-day="0"], .week-event-day[data-day="0"] { grid-column: 2; }
+.week-day-lane[data-day="1"], .week-event-day[data-day="1"] { grid-column: 3; }
+.week-day-lane[data-day="2"], .week-event-day[data-day="2"] { grid-column: 4; }
+.week-day-lane[data-day="3"], .week-event-day[data-day="3"] { grid-column: 5; }
+.week-day-lane[data-day="4"], .week-event-day[data-day="4"] { grid-column: 6; }
+.week-day-lane[data-day="5"], .week-event-day[data-day="5"] { grid-column: 7; }
+.week-day-lane[data-day="6"], .week-event-day[data-day="6"] { grid-column: 8; }
+.week-body [data-slot="0"] { grid-row-start: 1; }
+.week-body [data-slot="1"] { grid-row-start: 2; }
+.week-body [data-slot="2"] { grid-row-start: 3; }
+.week-body [data-slot="3"] { grid-row-start: 4; }
+.week-body [data-slot="4"] { grid-row-start: 5; }
+.week-body [data-slot="5"] { grid-row-start: 6; }
+.week-body [data-slot="6"] { grid-row-start: 7; }
+.week-body [data-slot="7"] { grid-row-start: 8; }
+.week-body [data-slot="8"] { grid-row-start: 9; }
+.week-body [data-slot="9"] { grid-row-start: 10; }
+.week-body [data-slot="10"] { grid-row-start: 11; }
+.week-body [data-slot="11"] { grid-row-start: 12; }
 .week-event[data-span="1"] { grid-row-end: span 1; }
 .week-event[data-span="2"] { grid-row-end: span 2; }
 .week-event[data-span="3"] { grid-row-end: span 3; }
