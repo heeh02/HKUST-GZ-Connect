@@ -44,22 +44,28 @@
   function scheduleWeekModel(entries, now = Date.now()) {
     const range = weekRange(now);
     const items = Array.isArray(entries) ? entries : [];
-    const events = items.filter((entry) => Number.isFinite(entry?.startsAt) &&
+    const intersecting = items.filter((entry) => Number.isFinite(entry?.startsAt) &&
       Number.isFinite(entry?.endsAt) && entry.endsAt > entry.startsAt &&
-      entry.startsAt < range.end && entry.endsAt > range.start).map((entry) => {
-      const start = new Date(entry.startsAt);
-      const end = new Date(entry.endsAt);
-      const day = range.days.findIndex((timestamp) => sameLocalDay(timestamp, entry.startsAt));
+      Number.isFinite(new Date(entry.startsAt).getTime()) &&
+      Number.isFinite(new Date(entry.endsAt).getTime()) &&
+      entry.startsAt < range.end && entry.endsAt > range.start);
+    const events = intersecting.flatMap((entry) => range.days.flatMap((dayStart, day) => {
+      const dayEnd = range.days[day + 1] ?? range.end;
+      const segmentStart = Math.max(entry.startsAt, dayStart);
+      const segmentEnd = Math.min(entry.endsAt, dayEnd);
+      if (segmentEnd <= segmentStart) return [];
+      const start = new Date(segmentStart);
+      const end = new Date(segmentEnd);
       const startMinutes = start.getHours() * 60 + start.getMinutes();
-      const endMinutes = sameLocalDay(entry.startsAt, entry.endsAt)
-        ? end.getHours() * 60 + end.getMinutes() : 24 * 60;
+      const endMinutes = segmentEnd === dayEnd ? 24 * 60
+        : end.getHours() * 60 + end.getMinutes();
       const slot = Math.max(0, Math.min(WEEK_SLOT_COUNT - 1,
         Math.floor((startMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
       const endSlot = Math.max(slot + 1, Math.min(WEEK_SLOT_COUNT,
         Math.ceil((endMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
-      return Object.freeze({ entry, day: Math.max(0, day), slot, span: endSlot - slot });
-    }).sort((left, right) => left.entry.startsAt - right.entry.startsAt);
-    return Object.freeze({ ...range, events: Object.freeze(events) });
+      return [Object.freeze({ entry, day, slot, span: endSlot - slot, segmentStart, segmentEnd })];
+    })).sort((left, right) => left.segmentStart - right.segmentStart);
+    return Object.freeze({ ...range, events: Object.freeze(events), eventCount: intersecting.length });
   }
 
   function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
@@ -154,8 +160,9 @@
         const hour = String(8 + index * 2).padStart(2, '0');
         return `<time class="week-time" data-slot="${index}" aria-hidden="true">${hour}:00</time>`;
       }).join('');
-      const events = model.events.map(({ entry, day, slot, span }) => {
-        const content = `<time>${escapeHtml(`${formatTime(entry.startsAt)}–${formatTime(entry.endsAt)}`)}</time>`
+      const events = model.events.map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
+        const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
+        const content = `<time>${escapeHtml(`${formatTime(segmentStart)}–${endLabel}`)}</time>`
           + `<strong>${escapeHtml(entry.title)}</strong>`
           + (entry.location ? `<small>${escapeHtml(entry.location)}</small>` : '');
         const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`;
@@ -167,7 +174,7 @@
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
       return `<div class="week-summary"><strong>${escapeHtml(weekLabel)}</strong>`
-        + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.events.length }))}</span></div>`
+        + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
         + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
