@@ -1,9 +1,9 @@
 //! Real child-process pipes: memory writers cannot detect stdout buffering.
-#![cfg(unix)]
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpListener;
+#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -24,12 +24,11 @@ fn connected_helper() -> (ChildGuard, std::net::TcpStream) {
         std::process::id(),
         listener.local_addr().unwrap().port()
     ));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)
-        .unwrap();
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options.open(&path).unwrap();
     writeln!(
         file,
         "{}\nfixture-user\nfixture-password",
