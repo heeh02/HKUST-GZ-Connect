@@ -77,6 +77,12 @@
 
 ## Git and release
 
+- Maintainer-directed agent iterations are local-first: complete relevant macOS tests and
+  exact-tree gates before batching remote pushes. Do not use repeated pushes, workflow dispatches,
+  or reruns as a debugging loop; they consume the maintainer's Actions allowance.
+- Release only after local validation and separate release authorization. Record Windows/Linux
+  gaps honestly; macOS results do not qualify those platforms. Saving minutes does not authorize
+  bypassing required checks, disabling workflows, or changing branch protections.
 - Never force-push `main`, rewrite public history or move/delete an existing release tag.
 - Agents do not merge, tag, publish, transfer the repository or change protections unless the
   maintainer explicitly assigns that exact operation.

@@ -38,6 +38,11 @@ bash desktop/scripts/rebuild-mac.sh    # macOS：打包、校验并安装到 /Ap
 
 ## 测试
 
+维护者主导的 AI 开发采用“本地先验、集中发布”：先在 Mac 完成相关单元测试、Electron
+回归和精确提交检查，再集中推送已验证的改动。不要靠反复推送、手动触发或重跑 Actions
+来调试。发布仍需单独授权；保留必要的平台构建和包验证，不为节省分钟数绕过必需检查、
+停用工作流或修改保护规则。Mac 通过不代表 Windows/Linux 已验证，遗漏项必须明确记录。
+
 ```bash
 cd desktop
 npm test                          # node --test 单元测试
@@ -115,7 +120,7 @@ workflow_dispatch 手动触发）：
   “安装”一节右键 → “打开”。
 - **Windows**：配置了 `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` 时签名；
   否则安装程序未签名，可能触发 SmartScreen。
-- 本地 `rebuild-mac.sh` 始终是 ad-hoc 签名。
+- 本地 `rebuild-mac.sh` 使用上述仓库签名身份选择，并记录实际签名类别。
 
 ## 发布说明
 
@@ -158,6 +163,13 @@ and falls back to ad-hoc only when no suitable local identity exists. Only the a
 normally requires the first right-click → **Open** flow.
 
 ## Tests
+
+Maintainer-directed AI iterations are local-first: run relevant unit tests, Electron regressions
+and exact-commit gates on macOS before batching validated remote changes. Do not debug through
+repeated pushes, workflow dispatches or reruns. Release requires separate authorization; retain
+necessary platform builds and package verification. Saving minutes never authorizes bypassing
+required checks, disabling workflows or changing protections. Record Windows/Linux validation
+gaps explicitly; passing on macOS does not qualify other platforms.
 
 ```bash
 cd desktop
