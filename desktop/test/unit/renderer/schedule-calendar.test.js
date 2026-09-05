@@ -12,6 +12,19 @@ test('cross-day events project only onto intersecting calendar dates', () => {
     [[date(12, 20), date(13)], [date(13), date(13, 10)]]);
   assert.equal(model.eventCount, 1);
   assert.equal(model.events[0].entry, entry);
+  assert.equal(model.slotStart, 0);
+  assert.equal(model.slotCount, 12);
+  assert.equal(model.events[0].slot, 10);
+  assert.equal(model.events[0].span, 2);
+  assert.equal(model.events[1].slot, 0);
+  assert.equal(model.events[1].span, 5);
+});
+
+test('ordinary daytime events retain the compact default time axis', () => {
+  const model = scheduleWeekModel([{ startsAt: date(12, 10), endsAt: date(12, 12) }], date(13));
+  assert.equal(model.slotStart, 480);
+  assert.equal(model.slotCount, 7);
+  assert.equal(model.events[0].slot, 1);
 });
 
 test('week clipping uses interval intersection, not the original weekday', () => {

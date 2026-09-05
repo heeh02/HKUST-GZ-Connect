@@ -49,7 +49,7 @@
       Number.isFinite(new Date(entry.startsAt).getTime()) &&
       Number.isFinite(new Date(entry.endsAt).getTime()) &&
       entry.startsAt < range.end && entry.endsAt > range.start);
-    const events = intersecting.flatMap((entry) => range.days.flatMap((dayStart, day) => {
+    const segments = intersecting.flatMap((entry) => range.days.flatMap((dayStart, day) => {
       const dayEnd = range.days[day + 1] ?? range.end;
       const segmentStart = Math.max(entry.startsAt, dayStart);
       const segmentEnd = Math.min(entry.endsAt, dayEnd);
@@ -59,13 +59,20 @@
       const startMinutes = start.getHours() * 60 + start.getMinutes();
       const endMinutes = segmentEnd === dayEnd ? 24 * 60
         : end.getHours() * 60 + end.getMinutes();
-      const slot = Math.max(0, Math.min(WEEK_SLOT_COUNT - 1,
-        Math.floor((startMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
-      const endSlot = Math.max(slot + 1, Math.min(WEEK_SLOT_COUNT,
-        Math.ceil((endMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
-      return [Object.freeze({ entry, day, slot, span: endSlot - slot, segmentStart, segmentEnd })];
-    })).sort((left, right) => left.segmentStart - right.segmentStart);
-    return Object.freeze({ ...range, events: Object.freeze(events), eventCount: intersecting.length });
+      return [{ entry, day, startMinutes, endMinutes, segmentStart, segmentEnd }];
+    }));
+    const slotStart = Math.floor(Math.min(WEEK_SLOT_START,
+      ...segments.map(({ startMinutes }) => startMinutes)) / WEEK_SLOT_MINUTES) * WEEK_SLOT_MINUTES;
+    const slotEnd = Math.ceil(Math.max(WEEK_SLOT_START + WEEK_SLOT_COUNT * WEEK_SLOT_MINUTES,
+      ...segments.map(({ endMinutes }) => endMinutes)) / WEEK_SLOT_MINUTES) * WEEK_SLOT_MINUTES;
+    const slotCount = (slotEnd - slotStart) / WEEK_SLOT_MINUTES;
+    const events = segments.map(({ startMinutes, endMinutes, ...segment }) => {
+      const slot = Math.floor((startMinutes - slotStart) / WEEK_SLOT_MINUTES);
+      const endSlot = Math.max(slot + 1, Math.ceil((endMinutes - slotStart) / WEEK_SLOT_MINUTES));
+      return Object.freeze({ ...segment, slot, span: endSlot - slot });
+    }).sort((left, right) => left.segmentStart - right.segmentStart);
+    return Object.freeze({ ...range, slotStart, slotCount,
+      events: Object.freeze(events), eventCount: intersecting.length });
   }
 
   function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
@@ -156,8 +163,8 @@
       const lanes = model.days.map((day, index) => (
         `<div class="week-day-lane${sameLocalDay(day, now) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
       )).join('');
-      const times = Array.from({ length: WEEK_SLOT_COUNT }, (_, index) => {
-        const hour = String(8 + index * 2).padStart(2, '0');
+      const times = Array.from({ length: model.slotCount }, (_, index) => {
+        const hour = String(model.slotStart / 60 + index * 2).padStart(2, '0');
         return `<time class="week-time" data-slot="${index}" aria-hidden="true">${hour}:00</time>`;
       }).join('');
       const events = model.events.map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
@@ -178,7 +185,7 @@
         + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
-        + `<div class="week-body">${lanes}${times}${events}${empty}</div></div></div>`
+        + `<div class="week-body" data-slot-count="${model.slotCount}">${lanes}${times}${events}${empty}</div></div></div>`
         + actionHtml('source', 'schedule');
     }
 
