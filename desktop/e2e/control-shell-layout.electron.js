@@ -791,12 +791,19 @@ async function main() {
         days: [...document.querySelectorAll('#scheduleBody .week-event')].map(el => el.dataset.day),
         times: [...document.querySelectorAll('#scheduleBody .week-event time')].map(el => el.textContent),
         count: document.querySelector('#scheduleBody .week-summary span').textContent,
+        firstTime: document.querySelector('#scheduleBody .week-time').textContent,
+        rows: getComputedStyle(document.querySelector('#scheduleBody .week-body')).gridTemplateRows.split(' ').length,
+        eventRows: [...document.querySelectorAll('#scheduleBody .week-event')]
+          .map(el => [getComputedStyle(el).gridRowStart, getComputedStyle(el).gridRowEnd]),
         overflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     })()`);
     assert.deepEqual(calendar.days, ['1', '2']);
     assert.deepEqual(calendar.times, ['20:00–24:00', '00:00–10:00']);
     assert.equal(calendar.count, '1');
+    assert.equal(calendar.firstTime, '00:00');
+    assert.equal(calendar.rows, 12);
+    assert.deepEqual(calendar.eventRows, [['11', 'span 2'], ['1', 'span 5']]);
     assert.ok(calendar.overflow <= 0);
     await capture(window, output, 'narrow-calendar-segments');
     process.stdout.write('control shell layout: PASS\n');
