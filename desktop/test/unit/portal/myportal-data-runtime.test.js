@@ -37,6 +37,37 @@ function headers(location = null) {
   return { get: (name) => name.toLowerCase() === 'location' ? location : null };
 }
 
+test('HKUST calendar local timestamps represent campus UTC+08 time on any host', async () => {
+  const original = process.env.TZ;
+  try {
+    for (const zone of ['UTC', 'America/Los_Angeles', 'Asia/Shanghai']) {
+      process.env.TZ = zone;
+      for (const [start, end] of [
+        ['2027-01-15 10:00:00', '2027-01-15 12:00:00'],
+        ['2027-01-15T10:00:00', '2027-01-15T12:00:00'],
+        ['2027-01-15T02:00:00Z', '2027-01-15T04:00:00Z'],
+        ['2027-01-15T03:00:00+01:00', '2027-01-15T05:00:00+01:00'],
+      ]) {
+        let requestUrl;
+        const value = await hkustMyPortalSources.schedule.read({
+          session: { fetch: async (url) => { requestUrl = new URL(url); return ({ status: 200, headers: headers(),
+            text: async () => JSON.stringify([{ title: 'Campus time fixture', startsAt: start, endsAt: end }]),
+          }); } },
+          portalUrl: 'https://myportal.hkust-gz.edu.cn/', sessionUrl: 'https://myportal.hkust-gz.edu.cn/',
+          checkedAt: Date.parse('2027-01-17T20:00:00Z'), timeoutMs: 500,
+        });
+        assert.equal(value.items[0].startsAt, Date.parse('2027-01-15T02:00:00Z'), zone);
+        assert.equal(value.items[0].endsAt, Date.parse('2027-01-15T04:00:00Z'), zone);
+        assert.equal(requestUrl.searchParams.get('fromDate'), '2027-01-17T16:00:00.000Z');
+        assert.equal(requestUrl.searchParams.get('endDate'), '2027-01-24T15:59:59.999Z');
+      }
+    }
+  } finally {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  }
+});
+
 test('schedule ingress rejects impossible and non-positive intervals before renderer projection', async () => {
   for (const [startsAt, endsAt] of [
     [1_800_000_000_000, 1_800_000_000_000],
