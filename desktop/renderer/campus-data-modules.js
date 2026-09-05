@@ -19,7 +19,17 @@
   const WEEK_SLOT_COUNT = 7;
   const SCHEDULE_AUTO_REFRESH_MS = 24 * 60 * 60 * 1_000;
 
-  function weekRange(now = Date.now()) {
+  function weekRange(now = Date.now(), campusTime = false) {
+    if (campusTime) {
+      const offset = 8 * 60 * 60 * 1000;
+      const day = new Date(now + offset);
+      if (!Number.isFinite(day.getTime())) throw new TypeError('week timestamp is invalid');
+      day.setUTCHours(0, 0, 0, 0);
+      day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+      const start = day.getTime() - offset;
+      return Object.freeze({ start, end: start + 7 * 86_400_000,
+        days: Object.freeze(Array.from({ length: 7 }, (_, i) => start + i * 86_400_000)) });
+    }
     const start = new Date(now);
     if (!Number.isFinite(start.getTime())) throw new TypeError('week timestamp is invalid');
     start.setHours(0, 0, 0, 0);
@@ -34,32 +44,49 @@
     return Object.freeze({ start: start.getTime(), end: end.getTime(), days: Object.freeze(days) });
   }
 
-  function sameLocalDay(left, right) {
+  function sameLocalDay(left, right, campusTime = false) {
+    if (campusTime) return Math.floor((left + 28_800_000) / 86_400_000) ===
+      Math.floor((right + 28_800_000) / 86_400_000);
     const a = new Date(left);
     const b = new Date(right);
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() &&
       a.getDate() === b.getDate();
   }
 
-  function scheduleWeekModel(entries, now = Date.now()) {
-    const range = weekRange(now);
+  function scheduleWeekModel(entries, now = Date.now(), campusTime = false) {
+    const range = weekRange(now, campusTime);
     const items = Array.isArray(entries) ? entries : [];
-    const events = items.filter((entry) => Number.isFinite(entry?.startsAt) &&
+    const intersecting = items.filter((entry) => Number.isFinite(entry?.startsAt) &&
       Number.isFinite(entry?.endsAt) && entry.endsAt > entry.startsAt &&
-      entry.startsAt < range.end && entry.endsAt > range.start).map((entry) => {
-      const start = new Date(entry.startsAt);
-      const end = new Date(entry.endsAt);
-      const day = range.days.findIndex((timestamp) => sameLocalDay(timestamp, entry.startsAt));
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-      const endMinutes = sameLocalDay(entry.startsAt, entry.endsAt)
-        ? end.getHours() * 60 + end.getMinutes() : 24 * 60;
-      const slot = Math.max(0, Math.min(WEEK_SLOT_COUNT - 1,
-        Math.floor((startMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
-      const endSlot = Math.max(slot + 1, Math.min(WEEK_SLOT_COUNT,
-        Math.ceil((endMinutes - WEEK_SLOT_START) / WEEK_SLOT_MINUTES)));
-      return Object.freeze({ entry, day: Math.max(0, day), slot, span: endSlot - slot });
-    }).sort((left, right) => left.entry.startsAt - right.entry.startsAt);
-    return Object.freeze({ ...range, events: Object.freeze(events) });
+      Number.isFinite(new Date(entry.startsAt).getTime()) &&
+      Number.isFinite(new Date(entry.endsAt).getTime()) &&
+      entry.startsAt < range.end && entry.endsAt > range.start);
+    const segments = intersecting.flatMap((entry) => range.days.flatMap((dayStart, day) => {
+      const dayEnd = range.days[day + 1] ?? range.end;
+      const segmentStart = Math.max(entry.startsAt, dayStart);
+      const segmentEnd = Math.min(entry.endsAt, dayEnd);
+      if (segmentEnd <= segmentStart) return [];
+      const start = new Date(segmentStart + (campusTime ? 28_800_000 : 0));
+      const end = new Date(segmentEnd + (campusTime ? 28_800_000 : 0));
+      const minutes = (date) => campusTime ? date.getUTCHours() * 60 + date.getUTCMinutes()
+        : date.getHours() * 60 + date.getMinutes();
+      const startMinutes = minutes(start);
+      const endMinutes = segmentEnd === dayEnd ? 24 * 60
+        : minutes(end);
+      return [{ entry, day, startMinutes, endMinutes, segmentStart, segmentEnd }];
+    }));
+    const slotStart = Math.floor(Math.min(WEEK_SLOT_START,
+      ...segments.map(({ startMinutes }) => startMinutes)) / WEEK_SLOT_MINUTES) * WEEK_SLOT_MINUTES;
+    const slotEnd = Math.ceil(Math.max(WEEK_SLOT_START + WEEK_SLOT_COUNT * WEEK_SLOT_MINUTES,
+      ...segments.map(({ endMinutes }) => endMinutes)) / WEEK_SLOT_MINUTES) * WEEK_SLOT_MINUTES;
+    const slotCount = (slotEnd - slotStart) / WEEK_SLOT_MINUTES;
+    const events = segments.map(({ startMinutes, endMinutes, ...segment }) => {
+      const slot = Math.floor((startMinutes - slotStart) / WEEK_SLOT_MINUTES);
+      const endSlot = Math.max(slot + 1, Math.ceil((endMinutes - slotStart) / WEEK_SLOT_MINUTES));
+      return Object.freeze({ ...segment, slot, span: endSlot - slot });
+    }).sort((left, right) => left.segmentStart - right.segmentStart);
+    return Object.freeze({ ...range, slotStart, slotCount,
+      events: Object.freeze(events), eventCount: intersecting.length });
   }
 
   function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
@@ -77,14 +104,8 @@
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
-    const formatTime = (value) => new Intl.DateTimeFormat(locale(), {
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date(value));
     const formatDate = (value) => new Intl.DateTimeFormat(locale(), {
       month: 'short', day: 'numeric',
-    }).format(new Date(value));
-    const formatWeekday = (value) => new Intl.DateTimeFormat(locale(), {
-      weekday: 'short',
     }).format(new Date(value));
 
     function validModule(module) {
@@ -136,42 +157,56 @@
 
     function scheduleHtml(module) {
       if (!['ready', 'empty'].includes(module.state)) return stateHtml(module, 'schedule');
-      const model = scheduleWeekModel(module.state === 'ready' ? module.items : []);
       const now = Date.now();
+      const campusTime = module.source === 'myportal-calendar';
+      const model = scheduleWeekModel(module.state === 'ready' ? module.items : [], now, campusTime);
+      const format = (value, options) => new Intl.DateTimeFormat(locale(), {
+        ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
+      }).format(new Date(value));
+      const formatDate = value => format(value, { month: 'short', day: 'numeric' });
+      const formatWeekday = value => format(value, { weekday: 'short' });
+      const formatTime = value => format(value, { hour: '2-digit', minute: '2-digit', hour12: false });
       const lastDay = model.days.at(-1);
       const weekLabel = translate('workspace.scheduleWeekRange', {
         start: formatDate(model.start), end: formatDate(lastDay),
       });
       const headers = model.days.map((day) => {
-        const today = sameLocalDay(day, now);
+        const today = sameLocalDay(day, now, campusTime);
         return `<div class="week-day-head${today ? ' is-today' : ''}" role="columnheader"${today ? ' aria-current="date"' : ''}>`
           + `<span>${escapeHtml(formatWeekday(day))}</span><strong>${escapeHtml(formatDate(day))}</strong></div>`;
       }).join('');
       const lanes = model.days.map((day, index) => (
-        `<div class="week-day-lane${sameLocalDay(day, now) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
+        `<div class="week-day-lane${sameLocalDay(day, now, campusTime) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
       )).join('');
-      const times = Array.from({ length: WEEK_SLOT_COUNT }, (_, index) => {
-        const hour = String(8 + index * 2).padStart(2, '0');
+      const times = Array.from({ length: model.slotCount }, (_, index) => {
+        const hour = String(model.slotStart / 60 + index * 2).padStart(2, '0');
         return `<time class="week-time" data-slot="${index}" aria-hidden="true">${hour}:00</time>`;
       }).join('');
-      const events = model.events.map(({ entry, day, slot, span }) => {
-        const content = `<time>${escapeHtml(`${formatTime(entry.startsAt)}–${formatTime(entry.endsAt)}`)}</time>`
+      const events = model.days.map((_, index) => {
+        const dayEvents = model.events.filter(({ day }) => day === index)
+          .map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
+        const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
+        const content = `<time>${escapeHtml(`${formatTime(segmentStart)}–${endLabel}`)}</time>`
           + `<strong>${escapeHtml(entry.title)}</strong>`
           + (entry.location ? `<small>${escapeHtml(entry.location)}</small>` : '');
-        const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`;
+        const label = `${formatTime(segmentStart)}–${endLabel} ${entry.title}${entry.location ? ` · ${entry.location}` : ''}`;
+        const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`
+          + ` title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"`;
         return entry.url
           ? `<button type="button" ${attrs} data-entry-url="${escapeHtml(entry.url)}">${content}</button>`
           : `<div ${attrs} role="gridcell">${content}</div>`;
+          }).join('');
+        return `<div class="week-event-day" data-day="${index}">${dayEvents}</div>`;
       }).join('');
       const empty = model.events.length ? ''
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
       return `<div class="week-summary"><strong>${escapeHtml(weekLabel)}</strong>`
-        + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.events.length }))}</span></div>`
+        + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
         + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
-        + `<div class="week-body">${lanes}${times}${events}${empty}</div></div></div>`
+        + `<div class="week-body" data-slot-count="${model.slotCount}">${lanes}${times}${events}${empty}</div></div></div>`
         + actionHtml('source', 'schedule');
     }
 
