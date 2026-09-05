@@ -77,6 +77,24 @@
     let snapshot = null;
     let lastLoadedAt = 0;
     let scheduleRefreshTimer = null;
+    let started = false;
+    let disposed = false;
+    const listeners = [];
+
+    function listen(target, type, handler) {
+      if (!target) return;
+      target.addEventListener(type, handler);
+      listeners.push(() => target.removeEventListener(type, handler));
+    }
+
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (scheduleRefreshTimer !== null) cancelTimer(scheduleRefreshTimer);
+      scheduleRefreshTimer = null;
+      for (const remove of listeners.splice(0)) remove();
+      snapshot = null;
+    }
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
@@ -200,6 +218,7 @@
     }
 
     function renderModule(moduleId, module) {
+      if (disposed) return;
       const config = MODULES[moduleId];
       const body = $(config.body);
       const shell = body?.closest('.module');
@@ -220,6 +239,7 @@
     }
 
     function setScheduleRefreshBusy(busy) {
+      if (disposed) return;
       const button = $('scheduleRefresh');
       if (!button) return;
       button.disabled = busy;
@@ -230,7 +250,7 @@
     function scheduleNextRefresh() {
       if (scheduleRefreshTimer !== null) cancelTimer(scheduleRefreshTimer);
       scheduleRefreshTimer = null;
-      if (!loaded || snapshot?.sessionState !== 'authenticated') return;
+      if (disposed || !loaded || snapshot?.sessionState !== 'authenticated') return;
       const fetchedAt = snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || clockNow();
       const delay = Math.max(1_000, SCHEDULE_AUTO_REFRESH_MS - (clockNow() - fetchedAt));
       scheduleRefreshTimer = scheduleTimer(() => {
@@ -240,6 +260,7 @@
     }
 
     async function load(force = false) {
+      if (disposed) return null;
       if (inflight) return inflight;
       const method = force ? api.refreshCampusData : api.getCampusData;
       if (typeof method !== 'function') {
@@ -253,6 +274,7 @@
       setScheduleRefreshBusy(true);
       render();
       inflight = Promise.resolve(method.call(api)).then((value) => {
+        if (disposed) return null;
         snapshot = value;
         loaded = true;
         lastLoadedAt = clockNow();
@@ -260,6 +282,7 @@
         render();
         return value;
       }).catch(() => {
+        if (disposed) return null;
         snapshot = { modules: Object.fromEntries(Object.keys(MODULES).map((id) => [id, {
           state: 'failed', items: [],
         }])) };
@@ -277,6 +300,7 @@
 
     async function refreshSchedule() {
       if (inflight) await inflight;
+      if (disposed) return null;
       if (typeof api.refreshCampusSchedule !== 'function') return load(true);
       const previous = snapshot;
       snapshot = {
@@ -289,12 +313,14 @@
       setScheduleRefreshBusy(true);
       renderModule('schedule', snapshot.modules.schedule);
       const operation = Promise.resolve(api.refreshCampusSchedule()).then((value) => {
+        if (disposed) return null;
         snapshot = value;
         loaded = true;
         lastLoadedAt = clockNow();
         render();
         return value;
       }).catch(() => {
+        if (disposed) return null;
         snapshot = {
           ...(previous || {}),
           modules: {
@@ -316,6 +342,7 @@
     }
 
     function activate(target) {
+      if (disposed) return;
       const entryUrl = target.closest('[data-entry-url]')?.dataset.entryUrl;
       if (entryUrl) { openDeepLink(null, entryUrl); return; }
       const action = target.closest('[data-campus-data-action]');
@@ -334,16 +361,21 @@
     }
 
     function start() {
+      if (disposed) return false;
+      if (started) return true;
+      started = true;
       for (const { body } of Object.values(MODULES)) {
-        $(body)?.closest('.module')?.addEventListener('click', (event) => activate(event.target));
+        listen($(body)?.closest('.module'), 'click', (event) => activate(event.target));
       }
-      $('scheduleRefresh')?.addEventListener('click', () => { void refreshSchedule(); });
-      doc.addEventListener('app-locale-changed', render);
+      listen($('scheduleRefresh'), 'click', () => { void refreshSchedule(); });
+      listen(doc, 'app-locale-changed', render);
+      listen(doc.defaultView, 'unload', dispose);
       render();
       return true;
     }
 
     function ensureLoaded() {
+      if (disposed) return Promise.resolve(null);
       if (!loaded) return load(false);
       const scheduleState = snapshot?.modules?.schedule?.state;
       const sessionRecovery = snapshot?.sessionState !== 'authenticated' ||
@@ -356,6 +388,7 @@
     }
 
     return Object.freeze({
+      dispose,
       ensureLoaded,
       load,
       refreshSchedule,
