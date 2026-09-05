@@ -251,6 +251,8 @@ jobs:
           test/windows-platform-smoke.test.js
       - name: Verify current-user-only helper credential DACL
         run: node --test test/unit/integrations/external-proxy-config.test.js
+      - name: Verify native configuration export roundtrip
+        run: node --test test/unit/integrations/native-export-roundtrip.test.js
 
   engine:
     timeout-minutes: 20
