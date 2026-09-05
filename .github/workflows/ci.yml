@@ -198,6 +198,8 @@ jobs:
         run: npm run test:main-profile-switch
       - name: Exercise control renderer crash-loop recovery
         run: npm run test:control-renderer-recovery
+      - name: Exercise campus-data Renderer lifecycle
+        run: ./node_modules/.bin/electron e2e/campus-data-lifecycle.electron.js
       - name: Exercise Main with a synthetic Engine lifecycle
         run: npm run test:main-engine-lifecycle
       - name: Exercise initially-offline Main startup recovery
