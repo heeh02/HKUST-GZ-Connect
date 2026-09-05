@@ -62,9 +62,12 @@
     return Object.freeze({ ...range, events: Object.freeze(events) });
   }
 
-  function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
+  function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null,
+    now: clockNow = Date.now, setTimeout: scheduleTimer = setTimeout,
+    clearTimeout: cancelTimer = clearTimeout } = {}) {
     if (!doc || !api || typeof translate !== 'function' || typeof escapeHtml !== 'function' ||
-        typeof openDeepLink !== 'function') {
+        typeof openDeepLink !== 'function' || typeof clockNow !== 'function' ||
+        typeof scheduleTimer !== 'function' || typeof cancelTimer !== 'function') {
       throw new TypeError('campus data module dependencies are incomplete');
     }
     const $ = (id) => doc.getElementById(id);
@@ -136,8 +139,8 @@
 
     function scheduleHtml(module) {
       if (!['ready', 'empty'].includes(module.state)) return stateHtml(module, 'schedule');
-      const model = scheduleWeekModel(module.state === 'ready' ? module.items : []);
-      const now = Date.now();
+      const now = clockNow();
+      const model = scheduleWeekModel(module.state === 'ready' ? module.items : [], now);
       const lastDay = model.days.at(-1);
       const weekLabel = translate('workspace.scheduleWeekRange', {
         start: formatDate(model.start), end: formatDate(lastDay),
@@ -177,7 +180,7 @@
 
     function loansHtml(module) {
       if (module.state !== 'ready') return stateHtml(module, 'loans');
-      const now = Date.now();
+      const now = clockNow();
       const dueSoon = module.items.filter(({ dueAt }) => dueAt >= now && dueAt - now <= 3 * 86_400_000).length;
       return `<div class="data-summary"><strong>${escapeHtml(translate('workspace.loansSummary', { count: module.items.length }))}</strong>`
         + (dueSoon ? `<span>${escapeHtml(translate('workspace.loansDueSoon', { count: dueSoon }))}</span>` : '') + '</div>'
@@ -225,12 +228,12 @@
     }
 
     function scheduleNextRefresh() {
-      if (scheduleRefreshTimer !== null) clearTimeout(scheduleRefreshTimer);
+      if (scheduleRefreshTimer !== null) cancelTimer(scheduleRefreshTimer);
       scheduleRefreshTimer = null;
       if (!loaded || snapshot?.sessionState !== 'authenticated') return;
-      const fetchedAt = snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || Date.now();
-      const delay = Math.max(1_000, SCHEDULE_AUTO_REFRESH_MS - (Date.now() - fetchedAt));
-      scheduleRefreshTimer = setTimeout(() => {
+      const fetchedAt = snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || clockNow();
+      const delay = Math.max(1_000, SCHEDULE_AUTO_REFRESH_MS - (clockNow() - fetchedAt));
+      scheduleRefreshTimer = scheduleTimer(() => {
         scheduleRefreshTimer = null;
         void refreshSchedule();
       }, delay);
@@ -252,7 +255,7 @@
       inflight = Promise.resolve(method.call(api)).then((value) => {
         snapshot = value;
         loaded = true;
-        lastLoadedAt = Date.now();
+        lastLoadedAt = clockNow();
         publishCatalog(value?.catalog || null);
         render();
         return value;
@@ -261,7 +264,7 @@
           state: 'failed', items: [],
         }])) };
         loaded = true;
-        lastLoadedAt = Date.now();
+        lastLoadedAt = clockNow();
         render();
         return null;
       }).finally(() => {
@@ -288,7 +291,7 @@
       const operation = Promise.resolve(api.refreshCampusSchedule()).then((value) => {
         snapshot = value;
         loaded = true;
-        lastLoadedAt = Date.now();
+        lastLoadedAt = clockNow();
         render();
         return value;
       }).catch(() => {
@@ -300,7 +303,7 @@
           },
         };
         loaded = true;
-        lastLoadedAt = Date.now();
+        lastLoadedAt = clockNow();
         render();
         return null;
       }).finally(() => {
@@ -347,7 +350,7 @@
         ['not-authenticated', 'session-expired'].includes(scheduleState);
       if (sessionRecovery) return load(true);
       const fetchedAt = snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt;
-      if (Date.now() - fetchedAt >= SCHEDULE_AUTO_REFRESH_MS) return refreshSchedule();
+      if (clockNow() - fetchedAt >= SCHEDULE_AUTO_REFRESH_MS) return refreshSchedule();
       scheduleNextRefresh();
       return Promise.resolve(snapshot);
     }
