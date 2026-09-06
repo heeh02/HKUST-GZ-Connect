@@ -61,7 +61,7 @@ iced-x86 = { version = "1.21", default-features = false, features = ["decoder", 
 libc = "0.2"
 md-5 = "0.10"
 object = { version = "0.37", default-features = false, features = ["read_core", "elf", "macho", "pe"] }
-rand = "0.8"
+rand = "0.10"
 rc4 = { version = "0.1", features = ["zeroize"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "cookies", "rustls-tls"] }
 roxmltree = "0.20"
