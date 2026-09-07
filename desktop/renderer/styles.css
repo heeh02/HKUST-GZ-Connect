@@ -1610,7 +1610,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .module-refresh:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .module-refresh:disabled { color: var(--muted); cursor: wait; opacity: .72; }
 .module-body { min-height: 98px; }
-.module-schedule .module-body { min-height: 304px; }
+.module-schedule .module-body { min-height: 0; }
+.module-schedule .week-refresh-notice { margin: 6px 0; color: var(--muted); font-size: 12px; }
+.module-schedule[data-state="loading"] .module-state { padding: 12px 0; min-height: 0; }
 .module-state { min-height: 98px; display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: start; gap: 11px; padding-top: 9px; }
 .module-state-mark { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #9aa8ba; }
 .module[data-state="not-authenticated"] .module-state-mark,

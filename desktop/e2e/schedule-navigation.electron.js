@@ -38,6 +38,7 @@ async function run() {
         api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
           getCampusScheduleWeek: async query => {
             window.fixtureCalls.push(query);
+            if(window.fixtureHold) await new Promise((resolve,reject)=>{window.fixtureResolve=resolve;window.fixtureReject=reject;});
             const monday = window.campusDataModules.weekRange(Date.parse(query.date+'T12:00:00+08:00'), true).start;
             return snapshot([
               { id:'a', title:'Synthetic Research Group Meeting', startsAt:monday+15*3600000, endsAt:monday+16.5*3600000, location:'Room A' },
@@ -59,7 +60,7 @@ async function run() {
     })()`);
     const settle = async () => {
       for (let i=0;i<100;i++) {
-        if (await window.webContents.executeJavaScript(`document.getElementById('moduleSchedule').dataset.state === 'ready'`)) return;
+        if (await window.webContents.executeJavaScript(`['ready','empty'].includes(document.getElementById('moduleSchedule').dataset.state) && !document.getElementById('scheduleRefresh').disabled`)) return;
         await new Promise(r=>setTimeout(r,20));
       }
       throw new Error('calendar did not become ready');
@@ -115,8 +116,15 @@ async function run() {
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="1"]').click()`); await settle();
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'),'2027-01-20');
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="-1"]').click()`); await settle();
-    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'),'2027-01-13');
-    await window.webContents.executeJavaScript(`document.getElementById('scheduleRefresh').click()`); await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.length'),2,'cached week needs no new request');
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('scheduleDate').value`),'2027-01-13');
+    await window.webContents.executeJavaScript(`window.fixtureHold=true;window.fixtureTable=document.querySelector('.week-table');document.getElementById('scheduleRefresh').click()`);
+    await new Promise(r=>setTimeout(r,80));
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.week-table')===window.fixtureTable`),true,'refresh leaves the existing timetable in place');
+    await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureReject(new Error('synthetic offline'))`);await settle();
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event').length`),3);
+    assert.ok(await window.webContents.executeJavaScript(`!!document.querySelector('.week-refresh-notice')`));
+    await window.webContents.executeJavaScript(`document.getElementById('scheduleRefresh').click()`);await settle();
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).force'),true);
     await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event')[1].click()`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelector('dialog').open`),true);
@@ -149,7 +157,12 @@ async function run() {
     await new Promise(r=>setTimeout(r,80));
     assert.equal(await window.webContents.executeJavaScript(`document.querySelector('dialog').open`),false);
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-today]').click()`); await settle();
-    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'), new Date(Date.now()+28800000).toISOString().slice(0,10));
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('scheduleDate').value`), new Date(Date.now()+28800000).toISOString().slice(0,10));
+    await window.webContents.executeJavaScript(`window.fixtureHold=true;document.querySelector('[data-week-move="1"]').click()`);
+    await new Promise(r=>setTimeout(r,80));
+    const loading=await window.webContents.executeJavaScript(`({height:document.getElementById('moduleSchedule').getBoundingClientRect().height,events:document.querySelectorAll('.week-event').length})`);
+    assert.ok(loading.height<280,'uncached week does not create a tall blank card');assert.equal(loading.events,0);
+    await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureResolve()`);await settle();
     process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom)\n');
   } finally { window.destroy(); }
 }

@@ -755,6 +755,33 @@ class MyPortalDataRuntime {
     this.inflight = null;
     this.calendarCache = new Map();
     this.calendarEpoch = 0;
+    this.calendarInflight = new Map();
+    this.contextKey = null;
+  }
+
+  captureContext() {
+    const portalUrl = myPortalRoot(this.getPortalUrl());
+    const partition = this.getPartition();
+    if (typeof partition !== 'string' || partition.length > 96 || !/^persist:[a-z0-9-]+$/u.test(partition)) {
+      throw new TypeError('portal browser partition is invalid');
+    }
+    const key = JSON.stringify([partition, portalUrl]);
+    if (key !== this.contextKey) { this.invalidate(); this.contextKey = key; }
+    return Object.freeze({ key, partition, portalUrl, epoch: this.calendarEpoch });
+  }
+
+  assertContext(context) {
+    let current = false;
+    try {
+      current = context.epoch === this.calendarEpoch && context.partition === this.getPartition() &&
+        context.portalUrl === myPortalRoot(this.getPortalUrl());
+    } catch {}
+    if (!current) throw Object.assign(new Error('portal data context changed'), { code: 'PORTAL_CONTEXT_CHANGED' });
+  }
+
+  cacheFresh(value) {
+    const age = this.now() - value?.checkedAt;
+    return Number.isFinite(age) && age >= 0 && age < this.cacheMs;
   }
 
   async probeSession(targetSession, portalUrl, signal) {
@@ -786,12 +813,9 @@ class MyPortalDataRuntime {
       throw new TypeError('campus data module refresh is invalid');
     }
     const checkedAt = this.now();
-    const portalUrl = myPortalRoot(this.getPortalUrl());
-    const partition = this.getPartition();
-    if (typeof partition !== 'string' || partition.length > 96 ||
-        !/^persist:[a-z0-9-]+$/u.test(partition)) {
-      throw new TypeError('portal browser partition is invalid');
-    }
+    const requestContext = this.captureContext();
+    const { portalUrl, partition } = requestContext;
+    const cachedBase = this.cached;
     const targetSession = this.electronSession.fromPartition(partition);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -804,6 +828,7 @@ class MyPortalDataRuntime {
     try { if (!hint) probe = await this.probeSession(targetSession, portalUrl, controller.signal); }
     catch { probe = Object.freeze({ state: 'unknown', sessionUrl: portalUrl }); }
     finally { clearTimeout(timer); }
+    this.assertContext(requestContext);
     const sessionState = probe.state;
     if (sessionState === 'unauthenticated') {
       return campusDataSnapshot(sessionState, checkedAt, portalUrl,
@@ -825,8 +850,8 @@ class MyPortalDataRuntime {
       : error?.code === 'PORTAL_FORBIDDEN' ? 'forbidden'
         : error?.code === 'PORTAL_TUNNEL_REQUIRED' ? 'tunnel-required' : 'failed';
     const requestedModules = moduleId ? [moduleId] : CAMPUS_DATA_MODULES;
-    const baseModules = moduleId && this.cached?.sessionState === 'authenticated'
-      ? { ...this.cached.modules }
+    const baseModules = moduleId && cachedBase?.sessionState === 'authenticated'
+      ? { ...cachedBase.modules }
       : campusDataStateModules('source-unavailable', 'official-api-not-configured', checkedAt);
     const entriesPromise = Promise.all(requestedModules.map(async (requestedModuleId) => {
       const source = sources[requestedModuleId];
@@ -847,8 +872,8 @@ class MyPortalDataRuntime {
     }));
     const catalogPromise = (async () => {
       if (moduleId) {
-        return this.cached?.sessionState === 'authenticated'
-          ? this.cached.catalog : portalCatalogState('source-unavailable', checkedAt);
+        return cachedBase?.sessionState === 'authenticated'
+          ? cachedBase.catalog : portalCatalogState('source-unavailable', checkedAt);
       }
       if (!sources.catalog || typeof sources.catalog.read !== 'function') {
         return portalCatalogState('source-unavailable', checkedAt);
@@ -857,27 +882,36 @@ class MyPortalDataRuntime {
       catch (error) { return portalCatalogState(errorState(error), checkedAt); }
     })();
     const [entries, catalog] = await Promise.all([entriesPromise, catalogPromise]);
+    this.assertContext(requestContext);
     return campusDataSnapshot(
       sessionState, checkedAt, portalUrl, { ...baseModules, ...Object.fromEntries(entries) }, catalog,
     );
   }
 
   async snapshot({ force = false } = {}) {
+    const context = this.captureContext();
     const now = this.now();
     const weekKey = timestamp => calendarWeekQuery({ date: new Date(timestamp + 28_800_000).toISOString().slice(0, 10) }).start;
-    if (!force && this.cached && now - this.cached.checkedAt <= this.cacheMs &&
+    if (!force && this.cached && this.cacheFresh(this.cached) &&
         weekKey(now) === weekKey(this.cached.checkedAt)) return this.cached;
     if (!force && this.inflight) return this.inflight;
-    const operation = this.readNow().then((value) => (this.cached = value));
-    this.inflight = operation;
-    try { return await operation; }
-    finally { if (this.inflight === operation) this.inflight = null; }
+    return this.readSnapshot(context);
   }
 
   async refreshSchedule() {
+    const context = this.captureContext();
     if (this.inflight) await this.inflight;
-    const operation = this.readNow({ moduleId: 'schedule' })
-      .then((value) => (this.cached = value));
+    this.assertContext(context);
+    return this.readSnapshot(context, 'schedule');
+  }
+
+  async readSnapshot(context, moduleId = null) {
+    this.calendarCache.clear(); this.calendarInflight.clear();
+    const operation = this.readNow({ moduleId }).then(value => {
+      this.assertContext(context);
+      if (this.inflight === operation) this.cached = value;
+      return value;
+    });
     this.inflight = operation;
     try { return await operation; }
     finally { if (this.inflight === operation) this.inflight = null; }
@@ -885,36 +919,42 @@ class MyPortalDataRuntime {
 
   async scheduleWeek(selection) {
     const query = calendarWeekQuery(selection);
-    const epoch = this.calendarEpoch;
-    const partition = this.getPartition();
-    const portal = this.getPortalUrl();
-    const key = JSON.stringify([partition, portal, query.start]);
+    const context = this.captureContext();
+    const key = JSON.stringify([context.key, query.start]);
     const cached = this.calendarCache.get(key);
-    if (!query.force && cached && this.now() - cached.checkedAt < this.cacheMs) return cached;
+    if (!query.force && cached && this.cacheFresh(cached)) return cached;
+    if (!query.force && this.calendarInflight.has(key)) return this.calendarInflight.get(key);
+    const operation = this.readWeek(context, query).then(value => {
+      this.assertContext(context);
+      if (this.calendarInflight.get(key) === operation && ['ready', 'empty'].includes(value.modules.schedule.state)) {
+        this.calendarCache.delete(key); this.calendarCache.set(key, value);
+        if (this.calendarCache.size > 12) this.calendarCache.delete(this.calendarCache.keys().next().value);
+      }
+      return value;
+    });
+    this.calendarInflight.set(key, operation);
+    try { return await operation; }
+    finally { if (this.calendarInflight.get(key) === operation) this.calendarInflight.delete(key); }
+  }
+
+  async readWeek(context, query) {
     if (this.inflight) await this.inflight;
-    if (epoch !== this.calendarEpoch || partition !== this.getPartition() || portal !== this.getPortalUrl()) {
-      throw new Error('calendar context changed');
-    }
+    this.assertContext(context);
     if (!query.force && this.cached?.sessionState === 'authenticated' &&
         ['ready', 'empty'].includes(this.cached.modules.schedule.state) &&
-        this.now() - this.cached.checkedAt < this.cacheMs &&
+        this.cacheFresh(this.cached) &&
         calendarWeekQuery({ date: new Date(this.cached.checkedAt + 28_800_000).toISOString().slice(0, 10) }).start === query.start) {
       return Object.freeze({ ...this.cached, scheduleWeek: { start: query.start, end: query.end } });
     }
     const result = await this.readNow({ moduleId: 'schedule', scheduleWeekStart: query.start });
-    if (epoch !== this.calendarEpoch || partition !== this.getPartition() || portal !== this.getPortalUrl()) {
-      throw new Error('calendar context changed');
-    }
-    const value = Object.freeze({ ...result, scheduleWeek: { start: query.start, end: query.end } });
-    if (['ready', 'empty'].includes(result.modules.schedule.state)) {
-      this.calendarCache.delete(key);
-      this.calendarCache.set(key, value);
-      if (this.calendarCache.size > 12) this.calendarCache.delete(this.calendarCache.keys().next().value);
-    }
-    return value;
+    this.assertContext(context);
+    return Object.freeze({ ...result, scheduleWeek: { start: query.start, end: query.end } });
   }
 
-  invalidate() { this.cached = null; this.calendarCache.clear(); this.calendarEpoch++; }
+  invalidate() {
+    this.cached = null; this.inflight = null;
+    this.calendarCache.clear(); this.calendarInflight.clear(); this.calendarEpoch++;
+  }
 }
 
 module.exports = {

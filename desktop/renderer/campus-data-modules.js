@@ -137,6 +137,28 @@
     let visibleEvents = [];
     let miniature = false;
     let sizeObserver = null;
+    const weekCache = new Map();
+    let displayEpoch = 0;
+    let clearing = false;
+    let scheduleNotice = '';
+    let lastScheduleAttempt = 0;
+    let scheduleViewKey = null;
+    const weekKey = date => weekRange(Date.parse(`${date}T12:00:00+08:00`), true).start;
+    const reusable = module => validModule(module) && ['ready', 'empty'].includes(module.state);
+    function remember(date, module) {
+      if (!reusable(module)) return;
+      const key = weekKey(date);
+      weekCache.delete(key);
+      weekCache.set(key, module);
+      if (weekCache.size > 12) weekCache.delete(weekCache.keys().next().value);
+    }
+    function clearDisplay(pending = false) {
+      displayEpoch++; scheduleRequest++; clearing = pending;
+      clearTimeout(scheduleRefreshTimer); scheduleRefreshTimer = null;
+      weekCache.clear(); inflight = null; snapshot = null; loaded = false; visibleEvents = [];
+      scheduleNotice = ''; scheduleViewKey = null; $('scheduleDetail')?.close?.();
+      render(); setScheduleRefreshBusy(pending); publishCatalog(null);
+    }
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
@@ -197,6 +219,7 @@
         + `<label><span class="week-date-label">${escapeHtml(translate('workspace.scheduleChooseWeek'))}</span><input id="scheduleDate" type="date" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}" min="0001-01-01" max="9999-12-31" value="${selectedDate}"></label>`
         + `<button type="button" data-week-move="1" aria-label="${escapeHtml(translate('workspace.scheduleNext'))}">›</button>`
         + `<button type="button" data-week-today>${escapeHtml(translate('workspace.scheduleToday'))}</button></div>`;
+      visibleEvents = [];
       if (!['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
       const now = Date.now();
       const campusTime = module.source === 'myportal-calendar';
@@ -250,7 +273,7 @@
       const empty = model.events.length ? ''
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
-      return navigation + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
+      return navigation + (scheduleNotice ? `<p class="week-refresh-notice" role="status">${escapeHtml(translate(scheduleNotice))}</p>` : '') + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
         + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
         + `<div class="week-scroll" role="region" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid"><div class="week-head" role="row">`
@@ -291,6 +314,9 @@
         const width = body.clientWidth || Math.max(1, (doc.defaultView?.innerWidth || 960) - 128);
         miniature = width < 620;
         shell.dataset.weekSize = miniature ? 'mini' : 'full';
+        const key = JSON.stringify([selectedDate, miniature, locale(), safe.state, safe.source, safe.items, scheduleNotice]);
+        if (key === scheduleViewKey) return;
+        scheduleViewKey = key;
       }
       const focus = doc.activeElement;
       const restoreFocus = focus?.id === 'scheduleDate' ? '#scheduleDate'
@@ -334,41 +360,49 @@
       if (scheduleRefreshTimer !== null) clearTimeout(scheduleRefreshTimer);
       scheduleRefreshTimer = null;
       if (!loaded || snapshot?.sessionState !== 'authenticated') return;
-      const fetchedAt = snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || Date.now();
+      const fetchedAt = Math.max(snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || Date.now(), lastScheduleAttempt);
       const delay = Math.max(1_000, SCHEDULE_AUTO_REFRESH_MS - (Date.now() - fetchedAt));
       scheduleRefreshTimer = setTimeout(() => {
         scheduleRefreshTimer = null;
         void refreshSchedule();
       }, delay);
+      scheduleRefreshTimer.unref?.();
     }
 
     async function load(force = false) {
+      if (clearing) return null;
       if (inflight) return inflight;
+      const epoch = displayEpoch;
+      const previous = snapshot;
       const method = force ? api.refreshCampusData : api.getCampusData;
       if (typeof method !== 'function') {
         loaded = true;
         render();
         return null;
       }
-      snapshot = { modules: Object.fromEntries(Object.keys(MODULES).map((id) => [id, {
+      snapshot ||= { modules: Object.fromEntries(Object.keys(MODULES).map((id) => [id, {
         state: 'loading', items: [],
       }])) };
       setScheduleRefreshBusy(true);
       render();
       inflight = Promise.resolve(method.call(api)).then((value) => {
+        if (epoch !== displayEpoch) return null;
         snapshot = value;
+        if (value?.sessionState === 'unauthenticated' || ['not-authenticated', 'session-expired', 'forbidden'].includes(value?.modules?.schedule?.state)) weekCache.clear();
         loaded = true;
         lastLoadedAt = Date.now();
         publishCatalog(value?.catalog || null);
+        remember(campusDate(value?.checkedAt || Date.now()), value?.modules?.schedule);
         if (weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
             typeof api.getCampusScheduleWeek === 'function') {
-          snapshot = { ...value, modules: { ...value.modules, schedule: { state: 'loading', items: [] } } };
+          snapshot = { ...value, modules: { ...value.modules, schedule: weekCache.get(weekKey(selectedDate)) || { state: 'loading', items: [] } } };
           queueMicrotask(() => { void refreshSchedule(false); });
         }
         render();
         return value;
       }).catch(() => {
-        snapshot = { modules: Object.fromEntries(Object.keys(MODULES).map((id) => [id, {
+        if (epoch !== displayEpoch) return null;
+        snapshot = previous || { modules: Object.fromEntries(Object.keys(MODULES).map((id) => [id, {
           state: 'failed', items: [],
         }])) };
         loaded = true;
@@ -376,6 +410,7 @@
         render();
         return null;
       }).finally(() => {
+        if (epoch !== displayEpoch) return;
         inflight = null;
         setScheduleRefreshBusy(false);
         scheduleNextRefresh();
@@ -384,37 +419,58 @@
     }
 
     async function refreshSchedule(force = true) {
+      if (clearing) return null;
       if (followCurrentWeek) selectedDate = campusDate(Date.now());
       const date = selectedDate;
       const request = ++scheduleRequest;
       if (inflight) await inflight;
-      if (request !== scheduleRequest) return null;
+      if (request !== scheduleRequest || clearing) return null;
       if (typeof api.refreshCampusSchedule !== 'function') return load(true);
       const previous = snapshot;
+      const cached = weekCache.get(weekKey(date));
+      scheduleNotice = '';
       snapshot = {
         ...(previous || {}),
         modules: {
           ...(previous?.modules || {}),
-          schedule: { state: 'loading', source: 'myportal-calendar', items: [] },
+          schedule: cached || { state: 'loading', source: 'myportal-calendar', items: [] },
         },
       };
-      setScheduleRefreshBusy(true);
+      const age = Date.now() - cached?.fetchedAt;
       renderModule('schedule', snapshot.modules.schedule);
-      const operation = Promise.resolve(typeof api.getCampusScheduleWeek === 'function'
-        ? api.getCampusScheduleWeek({ date, force }) : api.refreshCampusSchedule()).then((value) => {
+      if (!force && cached && age >= 0 && age < SCHEDULE_AUTO_REFRESH_MS) {
+        setScheduleRefreshBusy(false); scheduleNextRefresh(); return snapshot;
+      }
+      setScheduleRefreshBusy(true);
+      lastScheduleAttempt = Date.now();
+      const operation = Promise.resolve().then(() => {
         if (request !== scheduleRequest) return null;
-        snapshot = value;
+        return typeof api.getCampusScheduleWeek === 'function'
+          ? api.getCampusScheduleWeek({ date, force }) : api.refreshCampusSchedule();
+      }).then((value) => {
+        if (request !== scheduleRequest) return null;
+        const module = value?.modules?.schedule;
+        const revoked = ['not-authenticated', 'session-expired', 'forbidden'].includes(module?.state);
+        if (revoked) weekCache.clear();
+        if (!reusable(module) && !revoked && cached) {
+          scheduleNotice = 'workspace.scheduleRefreshFailed';
+          snapshot = { ...value, modules: { ...value?.modules, schedule: cached } };
+        } else {
+          remember(date, module);
+          snapshot = { ...previous, ...value, modules: { ...previous?.modules, ...value?.modules } };
+        }
         loaded = true;
         lastLoadedAt = Date.now();
         render();
         return value;
       }).catch(() => {
         if (request !== scheduleRequest) return null;
+        scheduleNotice = cached ? 'workspace.scheduleRefreshFailed' : '';
         snapshot = {
           ...(previous || {}),
           modules: {
             ...(previous?.modules || {}),
-            schedule: { state: 'failed', source: 'myportal-calendar', items: [] },
+            schedule: cached || { state: 'failed', source: 'myportal-calendar', items: [] },
           },
         };
         loaded = true;
@@ -422,10 +478,8 @@
         render();
         return null;
       }).finally(() => {
-        if (inflight === operation) inflight = null;
         if (request === scheduleRequest) { setScheduleRefreshBusy(false); scheduleNextRefresh(); }
       });
-      inflight = operation;
       return operation;
     }
 
@@ -499,6 +553,7 @@
     }
 
     function ensureLoaded() {
+      if (clearing) return Promise.resolve(null);
       if (!loaded) return load(false);
       if (followCurrentWeek && weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !==
           weekRange(Date.now(), true).start) return refreshSchedule(false);
@@ -513,6 +568,7 @@
     }
 
     return Object.freeze({
+      clearDisplay,
       ensureLoaded,
       load,
       refreshSchedule,

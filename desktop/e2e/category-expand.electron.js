@@ -29,8 +29,16 @@ async function main() {
       });
     })()`);
     await new Promise(r=>setTimeout(r,120));
-    for(const width of [440,1000]) {
+    for(const width of [440,1000,1440,440,1000]) {
       window.setSize(width,740); await new Promise(r=>setTimeout(r,220));
+      const layout=await window.webContents.executeJavaScript(`(()=>{
+        const host=document.querySelector('#campusResources .cb-board-host');
+        return {front:host.querySelectorAll('.cb-card.is-front').length,back:host.querySelectorAll('.cb-card.is-back').length,
+          columns:host.style.getPropertyValue('--cb-columns')};
+      })()`);
+      assert.equal(layout.front,width>=980?2:1,'wide personal categories spread into two cards');
+      assert.equal(layout.back,width>=980?0:1,'narrow categories return to one shared deck');
+      assert.equal(Number(layout.columns),width>=980?2:1);
       const expected = await window.webContents.executeJavaScript(`(()=>{
         const card=document.querySelector('#campusResources .cb-card.is-front');
         const count=Number(card.querySelector('.cb-card-count').textContent);
@@ -53,6 +61,7 @@ async function main() {
       await new Promise(r=>setTimeout(r,80));
       assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.cb-service-overlay').open`),false);
     }
+    window.setSize(440,740); await new Promise(r=>setTimeout(r,220));
     const drawn = await window.webContents.executeJavaScript(`new Promise(resolve=>{
       const host=document.querySelector('#campusResources .cb-board-host');
       host.addEventListener('card-board-drawn',event=>resolve(event.detail),{once:true});

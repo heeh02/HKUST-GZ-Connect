@@ -112,7 +112,12 @@
     let editing = false;
     let resetRequested = false;
     let frontByDeck = {};
-    let columns = model.columnsForWidth(container.getBoundingClientRect().width);
+    // Service-style personal cards follow the official desk's viewport breakpoint.
+    // Only the projection changes: resizing never rewrites a saved deck or ordering.
+    const serviceLayout = autoStack && switchStyle === 'service';
+    const responsiveModel = serviceLayout ? { columnsForWidth: () =>
+      container.ownerDocument.defaultView.innerWidth >= 980 ? 2 : 1 } : model;
+    let columns = responsiveModel.columnsForWidth(container.getBoundingClientRect().width);
     let page = 0;
     let activePagerPlacementId = null;
     let destroyed = false;
@@ -141,10 +146,14 @@
 
     function visibleUnits() {
       const current = reconcile(liveDocument());
-      return model.boardUnits(current, boardId).map((unit) => ({
+      const units = model.boardUnits(current, boardId).map((unit) => ({
         ...unit,
         placements: unit.placements.filter((placement) => cardsByKey.has(model.cardKey(placement.card))),
       })).filter(({ placements }) => placements.length);
+      return serviceLayout && columns > 1 && !editing ? units.flatMap(unit =>
+        unit.deck?.deckId.startsWith(`auto_${boardId}_`) ? unit.placements.map(placement => ({
+          unitId: placement.placementId, kind: 'placement', deck: null, placements: [placement],
+        })) : [unit]) : units;
     }
 
     // Positions every card inside its fixed slot. This is the only place that
@@ -185,7 +194,7 @@
 
     function renderPager(units) {
       if (!pager) return;
-      if (pagerByCard) {
+      if (pagerByCard && !(serviceLayout && columns > 1 && !editing)) {
         const targets = units.flatMap((unit, unitIndex) => unit.placements.map((placement) => ({
           placement,
           unit,
@@ -732,7 +741,7 @@
     });
     responsiveFeature = motion.observeResponsive({
       container,
-      model,
+      model: responsiveModel,
       current: () => ({ columns }),
       onChange: (next) => {
         columns = next.columns;

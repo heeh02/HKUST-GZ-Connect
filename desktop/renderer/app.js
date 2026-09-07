@@ -499,7 +499,7 @@ proxyAuthFeature.start();
 window.routingManager.start({
   openTower: () => { show('dash'); setPage('tower'); },
 });
-window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key) }); browserNewTabSettings = window.browserNewTabSettings.start({ api: window.api, document, translate: (key) => t(key), getSettings: () => settings, setSettings: (next) => { settings = next; } });
+window.certificateManager.start(); window.browserDataSettings.start({ api: window.api, document, translate: (key) => t(key), onClearState: pending => campusDataFeature?.clearDisplay(pending) }); browserNewTabSettings = window.browserNewTabSettings.start({ api: window.api, document, translate: (key) => t(key), getSettings: () => settings, setSettings: (next) => { settings = next; } });
 window.addEventListener('card-board-toast', (event) => {
   const { message, tone } = event.detail || {};
   if (message) usabilityFeature?.toast(message, tone);
