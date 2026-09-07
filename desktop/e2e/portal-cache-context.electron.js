@@ -48,5 +48,8 @@ async function run() {
 }
 Promise.race([run(),new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('portal context fixture timed out')),15000);})])
   .then(()=>0).catch(error=>{console.error(error);return 1;}).then(code=>{
-    clearTimeout(deadline); fs.rmSync(root,{recursive:true,force:true}); app.exit(code);
+    // Chromium keeps its Session files open until this process exits on Windows.
+    // Let the external runner retire this isolated synthetic profile afterwards;
+    // deleting it here can throw EPERM and turn a passing test into a hung child.
+    clearTimeout(deadline); app.exit(code);
   });
