@@ -42,12 +42,18 @@ async function run() {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
     const auth = await window.api.testEmitAuthChallenge(null);
+    const favorite = document.querySelector('#appsList [data-favorite-entry]');
+    favorite?.click();
+    const chooser = document.getElementById('officialFavoriteDialog');
     return { dashboard: !document.getElementById('dash').hidden,
       days: document.querySelectorAll('#scheduleBody .week-day-head').length,
       legacyGlobal: Object.hasOwn(window, 'campusDataModules'), authListeners: auth.listeners,
+      favoriteChooser: chooser.open,
+      favoriteFactoryGlobal: typeof window.officialFavoriteDialog?.create,
       archive: location.pathname.includes('app.asar') };
   })()`);
-  assert.deepEqual(state, { dashboard: true, days: 7, legacyGlobal: false, authListeners: 1, archive: true });
+  assert.deepEqual(state, { dashboard: true, days: 7, legacyGlobal: false, authListeners: 1,
+    favoriteChooser: true, favoriteFactoryGlobal: 'undefined', archive: true });
   console.log('renderer native modules in ASAR: PASS');
 }
 
