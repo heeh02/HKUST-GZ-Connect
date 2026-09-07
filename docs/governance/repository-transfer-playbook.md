@@ -2,17 +2,22 @@
 
 - Status: Current migration procedure
 - Owner: Security and Release maintainers
-- Last verified: 2026-09-05
+- Last verified: 2026-09-07
 - Applies to: transfer from `heeh02/HKUST-GZ-Connect` to `HKUSTGZ-OpenSource`
 
 ## Current readiness
 
-The destination exists and `heeh02` has active admin membership, verified through GitHub on
-2026-09-05. The repository remains under `heeh02`. Stable v2.0.0 is published from
-`5287c86842a506cd595e22b95d023b6a7e02cbea`; PR #78's repository-ID updater is merged on
-main but has not been published in a bridge release. Restoring v2.0.0 closed Issue #76; it did
-not satisfy the updater bridge requirement below. Transfer and bridge publication require
-separate maintainer authorization. Offline development may proceed meanwhile.
+The destination exists and `heeh02` has active Owner membership, reverified on 2026-09-07.
+Repository ID `1279507615` remains under `heeh02`. Stable v2.0.1 is published from
+`9e1135c05dc21998c66627e25477d4bd799cd5d7` and contains the repository-ID updater.
+The original designated-host artifacts and the release's CI/test-only source delta are recorded
+in `BUILD_RECEIPT.json` and `RELEASE_SOURCE_RECEIPT.json`; this is not a fresh cloud build.
+Both installed 2.0.0 and verified 2.0.1 package update modules successfully queried the live
+stable channel. Installed 2.0.1 GUI acceptance and post-transfer checks are still pending.
+The Organization currently has no teams, no conflicting repository name, and default repository
+permission `write`. Confirm that permission decision before transfer; do not change it implicitly.
+See the [dated readiness receipt](2026-09-07-transfer-readiness.md). Transfer and protection
+changes require separate maintainer authorization; offline development continues independently.
 
 ## Why a bridge release is required
 
@@ -23,7 +28,9 @@ future update notices.
 
 Version 2.0.1 resolves repository metadata through immutable GitHub repository ID `1279507615`,
 then validates the exact current owner/name/API/Web/Release identity. It must be published from the
-personal repository before transfer.
+personal repository before transfer. This publication gate is satisfied by the stable 2.0.1
+release. Publication alone does not upgrade existing 2.0.0 installations: notify users to install
+the bridge before transfer and keep a manual download path for clients that have not upgraded.
 
 ## Phase A — Destination readiness
 
@@ -33,13 +40,17 @@ personal repository before transfer.
 4. Confirm the destination has no conflicting `HKUST-GZ-Connect` repository.
 5. Record Organization plan and policy constraints without purchasing or upgrading a plan unless
    separately authorized.
+6. Read the Organization's default repository permission. A `write` default grants broad member
+   access after transfer; recommend a reviewed read-only base with explicit team grants. Obtain
+   authorization before changing Organization-wide permissions or team membership.
 
 ## Phase B — Bridge release under the current owner
 
 1. Merge the independently reviewed Windows/Profile upgrade repair tracked by Issue #74 and PR #75;
    do not republish its known-buggy 2.0.0 predecessor.
 2. Merge the repository-ID update through ordinary required CI.
-3. Publish `v2.0.1` from the exact reviewed `main` commit.
+3. Publish `v2.0.1` from the exact reviewed `main` commit. Completed via the maintainer-authorized
+   one-time #104 administrator merge; this does not waive ordinary future review/check requirements.
 4. Verify all four package assets, digests, signing state and release notes.
 5. Install the published macOS artifact and verify the application still reports 2.0.1.
 6. From the published code, query the repository-ID endpoint and confirm that 2.0.1 is the selected
