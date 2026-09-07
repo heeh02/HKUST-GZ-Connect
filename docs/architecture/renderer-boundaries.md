@@ -3,7 +3,7 @@
 - Status: Proposed review candidate; not merged to main or executed in remote CI
 - Owner: Architecture and Desktop maintainers; policy changes require independent review
 - Verified: 2026-09-08
-- Applies to: Renderer JavaScript, the two explicitly shared browser helpers and control-page modules
+- Applies to: Renderer JavaScript, the two explicitly shared browser helpers and static Renderer HTML
 
 ## Enforcement
 
@@ -20,8 +20,10 @@ Native owners may not read unbound browser DOM/network globals. Their dependenci
 and peer imports must use approved public entrypoints. Undeclared sources, API drift, stale global
 exceptions and import cycles fail the existing architecture command.
 
-Control-page `type=module` tags may point only at registered bootstrap or existing legacy owners.
-A direct tag for a feature-private module cannot bypass the import policy. The manifest does not
+Static HTML script tags may point only at registered bootstrap or existing legacy owners.
+The inventory discovers Renderer HTML recursively, including new nested pages. Classic and module
+entries must agree with source ownership and loading mode. A direct tag for a feature-private module
+or an unregistered Main-side helper cannot bypass the import policy. The manifest does not
 claim a runtime mount/dispose registry exists: that lifecycle work remains separate.
 
 ## Bounds and limitations
@@ -31,8 +33,15 @@ claim a runtime mount/dispose registry exists: that lifecycle work remains separ
 - This is a static collaboration guard, not a JavaScript security sandbox or complete whole-program
   proof. Arbitrary reflection, DOM-derived capabilities, generated scripts and every possible alias
   are not modeled. Review still owns capability/behavior correctness and malicious-code detection.
-- HTML entrypoint checking currently concerns literal module declarations in the control page;
-  it is not a full HTML/CSP audit of every surface.
+- HTML uses a deliberately restricted repository source grammar, not a general HTML parser: empty
+  external script tags, quoted literal relative JS/MJS paths, and optional module or JavaScript MIME
+  type. Inline code, duplicate/ambiguous attributes, encoded/query/remote sources, base overrides,
+  incomplete tags/comments and mixed modes are rejected rather than interpreted permissively.
+- The inventory bounds HTML files to 64, traversal entries to 4096, each page to 2 MiB and scripts
+  per page to 256. Symlinks fail closed. The exact-tree syntax gate shares the same source parser
+  and accounts for module declarations outside the main page.
+- This still does not audit all HTML recovery rules, event-handler attributes, CSP semantics or
+  dynamically generated pages/scripts. Those remain review and runtime-security responsibilities.
 - Localization ownership, runtime lifecycle, Main/Rust modularization and real-platform/package
   acceptance remain separate requirements. Passing this gate does not imply those are complete.
 

@@ -37,7 +37,32 @@ not present in this base. They were aligned to the two actual entrypoints and pu
 no runtime registry or localization migration was fabricated to make them pass. The additional
 HTML-bypass regression failed before the new check and passed afterwards.
 
-## Limits and rollback
+## Static HTML coverage follow-up (2026-09-08)
+
+- Base: `99cf9ffbf0c2fffc55061b11f5526245b9d490e6`.
+- Code: `7bd8e423dd5ac476fc018fb681cfd0202686a116`.
+- Tested tree: `a1a9bbdc5c77268be7ec7dd4225b2ba680aa670b`.
+
+The original gate knew only control-page module tags. The new inventory covers all three current
+Renderer HTML files and their 41 script declarations, including classic scripts and the two shared
+helpers. New nested pages are discovered automatically. Missing/unowned script targets, private
+feature tags and inconsistent loading modes are rejected. The syntax gate reads the same grammar
+from its exact Git tree, including secondary-page .js module declarations.
+
+The accepted grammar is explicitly restrictive: quoted relative script paths with empty bodies and
+only src/type attributes. It does not pretend to implement the browser's complete HTML parser.
+Tests cover comments, inline/remote/encoded/query sources, duplicate attributes/loads, incomplete tags,
+base overrides and classic/module conflicts. An actual CLI fixture injects a Main helper through the
+secondary browser page and a private module through a new nested page; both return exit 1.
+
+- Mac and native Windows combined syntax/HTML/boundary suite: 34 passed each.
+- Native Windows architecture CLI: PASS.
+- 5070 Linux full Desktop on exact source under umask 022: 1313 pass / 6 platform skips / 0 fail.
+- Architecture, exact-tree syntax (485 sources), secrets, install-script and governance gates pass.
+- Existing application HTML, Renderer implementation, APIs, packages/dependencies and workflows
+  are unchanged by this follow-up. No legacy exception or runtime budget was expanded.
+
+## Overall limits and rollback
 
 No GUI/runtime source changed. UI, installer, native Engine, live-school and signing gates were not
 rerun for this dev-only guard; prior parent evidence is not relabeled as a run on this commit.
