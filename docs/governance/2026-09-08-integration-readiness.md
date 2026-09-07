@@ -80,6 +80,10 @@ Neither branch alone proves the combination. Integrate owned domains selectively
 contracts; do not resolve these conflicts by wholesale choosing an older side or regenerating
 exceptions. No checkout or branch was merged by this simulation.
 
+The local/native-first and Actions-budget instruction existed in earlier local revision `fbf1048`
+but was absent from the current #89 head `69d9f85`. This update restores that instruction while
+preserving the separate review, package-acceptance and release-authorization requirements.
+
 Git metadata currently lists 69 local worktrees. This is not a deletion list: unmerged refs,
 uncommitted work and necessary receipts must survive. Avoid new duplicate worktrees where an owned
 clean branch suffices. Any retirement needs an exact target/owner/status inventory, not broad cleanup.
