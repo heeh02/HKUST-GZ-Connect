@@ -459,11 +459,12 @@ async function main() {
       __dirname, '..', 'assets', 'profiles', 'hkustgz', 'builtin-service-desk.json',
     ), 'utf8');
   }
+  // These hidden fixtures measure foreground animation timing, not background throttling.
   const window = new BrowserWindow({
-    show: false,
+    show: true,
     width: preview ? 1024 : 480,
     height: preview ? 576 : 854,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload } });
+    webPreferences: { contextIsolation: true, nodeIntegration: false, preload, backgroundThrottling: false } });
   try {
     await window.loadFile(renderer);
     await window.webContents.executeJavaScript("new Promise((resolve) => { const done = () => document.getElementById('dash').hidden ? setTimeout(done, 20) : resolve(); done(); })");

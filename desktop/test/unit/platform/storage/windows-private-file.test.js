@@ -137,3 +137,28 @@ test('real Windows ACL survives the atomic temporary-file commit boundary', {
   assert.equal(verifyWindowsFileOwnerOnly(file), true);
   assert.equal(fs.readFileSync(file, 'utf8'), '{"schemaVersion":1}\n');
 });
+
+test('native Windows helper preserves private ACL policy without PowerShell startup', {
+  skip: process.platform !== 'win32',
+}, (t) => {
+  const helper = path.resolve(__dirname, '../../../../engine/ec-private-file-windows-amd64.exe');
+  assert.ok(fs.existsSync(helper), 'build the native Windows helper before this suite');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-native-acl-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "private unicode 文 ' $value.json");
+  fs.writeFileSync(file, 'synthetic');
+  assert.equal(verifyWindowsFileOwnerOnly(file), false, 'inherited ACL must be rejected');
+  assert.equal(tightenWindowsFileOwnerOnly(file), true);
+  assert.equal(verifyWindowsFileOwnerOnly(file, { nativeHelper: false }), true,
+    'the independent PowerShell verifier must accept the native ACL');
+  assert.equal(protectWindowsFileOwnerOnly(directory), false);
+  assert.equal(verifyWindowsFileOwnerOnly(path.join(directory, 'absent')), false);
+  const link = path.join(directory, 'hard-link.json');
+  fs.linkSync(file, link);
+  assert.equal(verifyWindowsFileOwnerOnly(file), false);
+  assert.equal(tightenWindowsFileOwnerOnly(file), false);
+  assert.equal(protectWindowsFileOwnerOnly(file), false, 'hardlinks cannot be mutated');
+  fs.unlinkSync(link);
+  assert.equal(verifyWindowsFileOwnerOnly(file), true);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'synthetic');
+});
