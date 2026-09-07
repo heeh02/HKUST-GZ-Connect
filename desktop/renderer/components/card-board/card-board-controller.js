@@ -255,7 +255,7 @@
       const units = boundedPageSize
         ? allUnits.slice(page * boundedPageSize, (page + 1) * boundedPageSize)
         : allUnits;
-      container.innerHTML = view.renderBoard({
+      const markup = view.renderBoard({
         boardId,
         units,
         cardsByKey,
@@ -270,6 +270,19 @@
           .map((placement) => model.cardKey(placement.card))),
         renameCards,
       });
+      if (overlay?.open && overlay.parentNode === container) {
+        // Keep the modal connected to the top layer while replacing only the card projection.
+        // Detaching/reinserting the dialog would lose modal state and keyboard focus.
+        const template = container.ownerDocument.createElement('template');
+        template.innerHTML = markup;
+        for (const child of [...container.childNodes]) {
+          if (child !== overlay) child.remove();
+        }
+        container.insertBefore(template.content, overlay);
+      } else {
+        closeOverlay();
+        container.innerHTML = markup;
+      }
       container.style.setProperty('--cb-columns', String(columns));
       renderPager(allUnits);
       layoutBoard();
@@ -438,6 +451,7 @@
 
     function enterEdit() {
       if (editing) return;
+      closeOverlay();
       editing = true;
       baseDocument = reconcile(documentState);
       draftDocument = model.cloneDocument(baseDocument);
@@ -665,6 +679,8 @@
     }
 
     function setData(next = {}) {
+      // Data/context changes retire old detail actions; only geometry-only redraws preserve them.
+      closeOverlay();
       categories = (Array.isArray(next.categories) ? next.categories : []).map((category) => ({
         ...category,
         kind: category.kind || 'official-category',
@@ -681,6 +697,7 @@
 
     function setDocument(nextDocument) {
       if (!nextDocument || editing) return false;
+      closeOverlay();
       documentState = reconcile(nextDocument);
       render();
       return true;
@@ -692,6 +709,7 @@
         const result = await adapter.get();
         const loaded = resultDocument(result);
         if (loaded && !editing) {
+          closeOverlay();
           documentState = reconcile(loaded);
           onDocument?.(model.cloneDocument(documentState));
           render({ preserveFocus: false });

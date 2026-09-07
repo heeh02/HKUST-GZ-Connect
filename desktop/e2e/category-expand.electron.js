@@ -39,13 +39,22 @@ async function main() {
       assert.equal(layout.front,width>=980?2:1,'wide personal categories spread into two cards');
       assert.equal(layout.back,width>=980?0:1,'narrow categories return to one shared deck');
       assert.equal(Number(layout.columns),width>=980?2:1);
-      const expected = await window.webContents.executeJavaScript(`(()=>{
+      const expanded = await window.webContents.executeJavaScript(`(()=>{
         const card=document.querySelector('#campusResources .cb-card.is-front');
         const count=Number(card.querySelector('.cb-card-count').textContent);
         const expand=card.querySelector('[data-card-action="expand"]');
         if(!expand)throw new Error('small category has no expand control');
-        expand.focus();expand.click();return count;
+        expand.focus();expand.click();
+        const dialog = document.querySelector('.cb-service-overlay');
+        const focus = document.activeElement;
+        window.campusCategoryStacks.activeController().render();
+        return { count, connected: dialog.isConnected, open: dialog.open,
+          focusRetained: document.activeElement === focus };
       })()`);
+      const expected = expanded.count;
+      assert.equal(expanded.connected, true, 'layout redraw detached the category dialog');
+      assert.equal(expanded.open, true, 'layout redraw closed the category dialog');
+      assert.equal(expanded.focusRetained, true, 'layout redraw moved focus out of the dialog');
       await new Promise(r=>setTimeout(r,260));
       const result=await window.webContents.executeJavaScript(`(()=>{
         const dialog=document.querySelector('.cb-service-overlay');
@@ -61,7 +70,19 @@ async function main() {
       await new Promise(r=>setTimeout(r,80));
       assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.cb-service-overlay').open`),false);
     }
+    await window.webContents.executeJavaScript(`(()=>{
+      document.querySelector('#campusResources .cb-card.is-front [data-card-action="expand"]').click();
+      window.resizeDetail = document.querySelector('.cb-service-overlay');
+      window.resizeDetailFocus = document.activeElement;
+    })()`);
     window.setSize(440,740); await new Promise(r=>setTimeout(r,220));
+    assert.deepEqual(await window.webContents.executeJavaScript(`(()=>{
+      const dialog=window.resizeDetail;
+      const result={connected:dialog.isConnected,open:dialog.open,
+        focus:document.activeElement===window.resizeDetailFocus};
+      dialog.querySelector('.cb-overlay-close').click();
+      return result;
+    })()`),{connected:true,open:true,focus:true},'cross-breakpoint resize preserves the open modal and focus');
     const drawn = await window.webContents.executeJavaScript(`new Promise(resolve=>{
       const host=document.querySelector('#campusResources .cb-board-host');
       host.addEventListener('card-board-drawn',event=>resolve(event.detail),{once:true});
@@ -136,10 +157,22 @@ async function main() {
       assert.equal(manual.count,2,'a user-created deck is never automatically unstacked');
       assert.equal(manual.stable,true);
     }
-    assert.equal(await window.webContents.executeJavaScript(`(()=>{
-      const controller=window.campusCategoryStacks.activeController();controller.setData({categories:[]});
-      return controller.focusCard('user-collection','many-1');
-    })()`),false,'a filtered or removed category cannot report false focus success');
+    assert.deepEqual(await window.webContents.executeJavaScript(`(()=>{
+      const controller=window.campusCategoryStacks.activeController();
+      controller.setData({categories:[{kind:'user-collection',id:'many-1',name:'Detail retirement',
+        items:[{id:'retirement-site',name:'Synthetic site',url:'https://example.invalid/retire',favorite:true}]}]});
+      controller.focusCard('user-collection','many-1');
+      document.querySelector('#campusResources .cb-card.is-front [data-card-action="expand"]').click();
+      const dialog=document.querySelector('.cb-service-overlay');
+      const wasOpen=dialog.open;
+      controller.setDocument(controller.snapshot());
+      const layoutRetired=!dialog.isConnected && !dialog.open;
+      document.querySelector('#campusResources .cb-card.is-front [data-card-action="expand"]').click();
+      const replacement=document.querySelector('.cb-service-overlay');
+      controller.setData({categories:[]});
+      return { wasOpen, layoutRetired, retired: !replacement.isConnected && !replacement.open,
+        focused: controller.focusCard('user-collection','many-1') };
+    })()`),{wasOpen:true,layoutRetired:true,retired:true,focused:false},'context changes retire detail actions and cannot report focus success');
     process.stdout.write('personal category: PASS (small-list expansion, all rows, Escape, narrow/wide, deck and pager shared motion, reduced motion)\n');
   } finally { if(window.webContents.debugger.isAttached())window.webContents.debugger.detach();window.destroy(); }
 }
