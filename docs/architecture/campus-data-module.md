@@ -3,7 +3,7 @@
 - Status: Proposed; not merged, installed or released
 - Owner: Desktop Renderer maintainers
 - Last verified: 2026-09-08
-- Applies to: Issue #79, structural follow-up to PR #106 at `48140fd`
+- Applies to: Issue #79, structural follow-up to PR #106 at `aeb691a`
 
 ## Public contract
 
@@ -29,7 +29,8 @@ architecture graph includes their literal imports. No new dependencies or budget
 ## Review and rollback
 
 This is a stacked structural contribution on PR #106, not another release request. Review its
-diff against `codex/2.0.2-workspace-cache`; it must be rebased/revalidated if that base changes.
+diff against `codex/2.0.2-workspace-cache`; its working branch must be synchronized and revalidated
+if that base changes, without rewriting public history.
 Do not merge it before its base. Reverting the structural commit restores the global facade;
 no data migration or installed-app change is involved.
 
