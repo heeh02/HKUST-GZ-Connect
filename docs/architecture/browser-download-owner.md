@@ -26,6 +26,8 @@ independently reviewable seam, not completion of the 600-line Browser ownership 
 
 The legacy algorithm awaits `showSaveDialog` before `DownloadItem.setSavePath`. This extraction
 preserves that algorithm; EventEmitter tests do not prove Electron's native callback timing.
+The [Electron DownloadItem contract](https://www.electronjs.org/docs/latest/api/download-item#downloaditemsetsavepathpath)
+limits save-path and save-dialog configuration to the Session's `will-download` callback.
 Native save-picker configuration must be validated and corrected as a separate behavior change.
 Session listener retirement and deferred completion effects after a context switch likewise
 remain separate lifecycle work. Do not claim that this seam fixes either issue.
@@ -41,7 +43,35 @@ Tests cover existing Browser behavior, session deduplication, presentation bound
 explicit reveal choice and call-time injected UI effects. A 1,804-line Browser ratchet prevents
 this extraction being silently absorbed back into the composition file.
 
-Local focused tests and architecture gate pass. Full native validation remains to be recorded
-before this candidate is offered for review. No installed application or release is replaced.
+Exact runtime candidate: `b48480934df09b2100dac842ddd87aa2058cb040`.
+
+| Check | Evidence |
+| --- | --- |
+| Mac Node 24.19, Browser unit command above | 155 passed |
+| Windows Node 24.20, same command over RBMS native SSH | 154 passed, 1 platform skip |
+| Linux 5070 Node 24.20, `node --test` from Desktop | 1,243 passed, 6 platform skips |
+| `node scripts/check-architecture.js` | pass; Main direct/transitive 36/170 unchanged |
+| `node scripts/check-install-scripts.js` | pass |
+| `node ../.github/scripts/check-repository-governance.js` | pass |
+| `node scripts/check-sensitive-patterns.js --staged` | pass on the exact runtime index |
+| `node scripts/check-javascript-syntax.js --tree 9a936804b7deb1d9e3ffbe88ea64242040301db2` | 463 files passed |
+| Native Electron `e2e/campus-browser-toolbar.electron.js` | Mac and Windows passed |
+| Native Electron `e2e/campus-popup-mfa-safety.electron.js` | Mac and Linux/xvfb passed; Windows assertions passed but cleanup failed, NOT a clean E2E pass |
+
+The initial Linux full run lacked `electron`/`@electron/asar` resolution; the rerun used only
+`NODE_PATH` pointing to the existing designated-host dependency cache. No dependency was installed.
+The initial Windows run launched from WSL interop failed two symlink fixtures with EPERM; rerunning
+via verified RBMS administrator SSH resolved those test failures without changing permissions.
+Admin group membership alone does not prove the security token of every interop launch.
+
+Windows Electron still emitted GPU process exit 34 warnings. The MFA fixture printed PASS and exited
+zero even though its asynchronous profile removal then threw EPERM. Its temporary synthetic profile
+was retained for diagnosis; no user browser data was accessed. This harness teardown must become
+parent-owned with cleanup failures propagated before claiming complete native acceptance.
+
+No native download timing reproduction, real-school test, performance/soak run, exact package
+verification, Mac x64 device test or complete Windows unit run was performed in this phase.
+No installed application or release is replaced, no Actions run is triggered, and this local
+candidate is not yet offered as another PR. The existing review queue remains unchanged.
 Reverting this isolated change restores the original methods and private policy path without a
 data migration. Existing UI PRs are not imported into or overwritten by this main-based branch.
