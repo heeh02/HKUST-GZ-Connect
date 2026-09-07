@@ -12,7 +12,8 @@ const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8')
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const categoryStacksJs = fs.readFileSync(path.join(rendererDir, 'campus-category-stacks.js'), 'utf8');
 const serviceWorkspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-service-workspace.js'), 'utf8');
-const campusDataModulesJs = fs.readFileSync(path.join(rendererDir, 'features/campus-data/controller.mjs'), 'utf8');
+const campusDataModulesJs = fs.readFileSync(path.join(rendererDir, 'features/campus-data/controller.mjs'), 'utf8')
+  + fs.readFileSync(path.join(rendererDir, 'features/campus-data/calendar-view.mjs'), 'utf8');
 const campusDataModules = require(path.join(rendererDir, 'features/campus-data/index.mjs'));
 const usabilityControllerJs = fs.readFileSync(path.join(rendererDir, 'usability-controller.js'), 'utf8');
 
