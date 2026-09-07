@@ -117,7 +117,38 @@ To repeat the A/B proof, set `HKUSTGZ_CALENDAR_CSS_BASELINE` to the exact base c
 option the ordinary fixture still checks feature isolation and the existing UI contracts, but does
 not claim before/after computed-style equivalence. Baseline files stay in ignored test output.
 
-## Original extraction rollback
+## Calendar view ownership (2026-09-08)
+
+- Base: `ae8516bf5ecfa434e13db70c5bedfe3222dd335b`.
+- Code: `76a898fb17157fdcedb74fb73762e3218cfd1055`.
+- Tested tree: `ddf34bc3ba904b7b5e60bdc4939459939da75067`.
+
+The controller shrinks from 472 to 411 lines; a 71-line internal view owns the timetable markup.
+Clock, translations, escaping, selected date/size, state/source markup and group publication are
+explicit inputs. The controller still clears old detail bindings and owns cache, requests and
+DOM effects. Public feature exports remain unchanged. Calendar algorithms, CSS, category controller,
+IPC and persisted state are byte-identical to this phase's base.
+
+Before extraction the new direct-view tests failed because the view entrypoint did not exist.
+The completed tests verify escaped text, original immutable group bindings, seven-day empty/miniature
+output and non-ready state delegation without clock access or detail-group publication. A fixed-clock
+Mac comparison loaded the exact base feature from a Git archive and compared full schedule-body HTML
+against this feature: all 40 combinations matched (ready/empty/loading/failed/session-expired,
+360/440/960/1440 content widths, zh-CN/en). It used synthetic concurrent entries and cleared timers
+after each render; this proves those rendering cases, not live-school behavior.
+
+Mac focused contracts: 34 pass; native Windows same contracts: 34 pass. 5070 Linux full Desktop on
+the exact commit: 1277 pass / 6 platform skips / 0 fail. Mac Electron schedule, module-ASAR, category,
+full control-shell, resource-manager and campus-workspace fixtures pass. Native Windows schedule
+and full control-shell fixtures pass; existing GPU warnings remain. Architecture, syntax (476
+sources), staged secret, install-script and governance gates pass without budget changes.
+
+No installer, real-school authentication, signing, release or installed-app changes occurred.
+The view module is internal to this first feature; full Renderer registry/global-export enforcement
+and other feature migrations remain separate M1 work. Revert this view-only commit to inline the
+markup again without reverting the base's cache/category/dialog repairs.
+
+## Extraction rollback
 
 Revert the structural commit on its stated base. No persisted format or user data changes.
 Temporary dependency links reuse the existing cache; removing a link does not remove that cache.

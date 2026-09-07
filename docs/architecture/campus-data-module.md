@@ -17,6 +17,13 @@ The controller retains the existing rendering, in-memory 12-week cache, 24-hour 
 manual refresh, last-good rendering, authentication expiry and clear-display behavior.
 No algorithm or lifecycle changes are included in this extraction.
 
+The internal `calendar-view.mjs` owns table/navigation/summary markup. It receives the selected
+date, size mode, clock callback, localization/escaping functions, state/source rendering callbacks
+and detail-group publication callback explicitly. It has no document, Preload, storage or timer
+access. The controller resets and owns visible detail bindings and applies the resulting HTML;
+the view is not exported from the feature's public entrypoint. Detail activation and other campus
+data surfaces remain controller responsibilities, not a claim that every UI concern is extracted.
+
 Calendar presentation is owned by `features/campus-data/view.css`, loaded once after the shared
 shell. Descendant rules use `:where(.module-schedule)` to constrain scope without increasing
 specificity. Existing root-qualified loading/miniature rules retain their selectors. The parent
