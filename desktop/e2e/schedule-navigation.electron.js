@@ -33,6 +33,10 @@ async function run() {
     const compareBaseline = async label => {
       if (!process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) return;
       const snapshot = () => window.webContents.executeJavaScript(`(() => {
+        // Compare identical animation phases rather than two wall-clock instants of the loading pulse.
+        for (const animation of document.getElementById('moduleSchedule').getAnimations({subtree:true})) {
+          animation.pause(); animation.currentTime = 0;
+        }
         return [...document.querySelectorAll('#moduleSchedule, #moduleSchedule *')].map(el => {
           const style=getComputedStyle(el), rect=el.getBoundingClientRect();
           return { tag:el.tagName, class:el.className,
@@ -53,7 +57,12 @@ async function run() {
       try {
         await switchStyles(true);
         assert.deepEqual(await snapshot(), current, `computed styles and geometry match before extraction: ${label}`);
-      } finally { await switchStyles(false); }
+      } finally {
+        await switchStyles(false);
+        await window.webContents.executeJavaScript(`
+          document.getElementById('moduleSchedule').getAnimations({subtree:true}).forEach(animation=>animation.play())
+        `);
+      }
     };
     await window.webContents.executeJavaScript(`(async () => {
       const campusData = await import(${JSON.stringify(uri('features/campus-data/index.mjs'))});
