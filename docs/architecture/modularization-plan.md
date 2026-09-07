@@ -47,6 +47,10 @@ The proposed [campus-data boundary](campus-data-module.md) and
 native entrypoints in separate stacked review candidates. Their local/native evidence does not
 complete the registry, global-export enforcement, localization or release gates below.
 
+The proposed [static Renderer policy](renderer-boundaries.md) separately adds frozen-export and
+public-entrypoint checks to the architecture command. It is not the runtime lifecycle registry
+and does not replace independent review or claim remote CI has executed.
+
 1. Add an explicit Renderer bootstrap and a checked feature registry.
 2. Freeze the list of existing `window.*` feature exports; CI rejects new ones.
 3. Give each feature one public entrypoint with injected dependencies.
