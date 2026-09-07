@@ -68,3 +68,25 @@ Windows/Linux native execution, real school arbitrary-week API responses and pos
 discovery were not tested in this batch. No push, remote merge, new Release, repository transfer,
 protection change or live-school canary was performed. The wider governance/modularization goal
 remains incomplete.
+
+## Follow-up: miniature week and centered details
+
+Code `8fe3c4cd28a4fca314e230839efdf46116924eb0` adds a width-responsive miniature week.
+All seven weekday columns fit the actual card width; the narrow view keeps start time and
+abbreviated title/count, and the full detail remains available on click. Its 140–180 CSS-pixel
+body replaces the normal 180–300-pixel view at narrow widths. Resizing does not query the portal.
+The Electron regression asserts seven nonzero-width header columns, correct Monday alignment,
+no horizontal content overflow, and narrow/wide/zoom transitions, rather than merely hiding bars.
+
+Code `5a67fcb` fixes the modal margin reset: week details and personal-category overlays explicitly
+use fixed inset positioning, auto margins and content height. The centering assertion failed
+before this fix. Afterward, 360/440/960/1440-width, zoom, long-content, viewport-margin and
+category centering checks passed. Full Desktop tests: 1,255 passed, 6 platform skips, 0 failures;
+architecture, governance, exact-tree syntax/secrets, package and signature checks passed.
+
+The final local App was normally quit, replaced, reopened and verified at the same installed
+path. Its ASAR SHA-256 is `d4b3139ed22a5dcb5c92124ab51ee958bd7b2316986059fcadf4f35993e3f956`.
+This supersedes the earlier installed payload above, not its historical acceptance record.
+User data remained untouched. This task's temporary App outputs and rollback copies were removed
+after validation; published packages and committed source remain available for rollback.
+No new public release, remote merge, transfer or native Windows/Linux claim was made.
