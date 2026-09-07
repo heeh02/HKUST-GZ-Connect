@@ -25,6 +25,16 @@ test('compact full-day and empty weeks stay bounded without hiding event records
   assert.ok(scheduleWeekLayout(scheduleWeekModel([],date(13))).height<=300);
 });
 
+test('miniature week reduces height and preserves every calendar segment', () => {
+  const model = scheduleWeekModel([{ startsAt: date(13,15), endsAt: date(13,17), title: 'Core' }], date(13));
+  const full = scheduleWeekLayout(model);
+  const mini = scheduleWeekLayout(model, true);
+  assert.ok(mini.height < full.height);
+  assert.ok(mini.height <= 180);
+  assert.equal(mini.groups.flatMap(group=>group.members).length, model.events.length);
+  assert.ok(mini.groups.every(group=>group.bottom-group.top>=28));
+});
+
 test('campus week and event slots stay stable when the host has not reached Monday', () => {
   const original = process.env.TZ;
   try {

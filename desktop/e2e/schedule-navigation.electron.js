@@ -48,7 +48,8 @@ async function run() {
             ]);
           } },
         translate: (key, values) => key === 'workspace.scheduleWeekRange' ? values.start+'–'+values.end
-          : key === 'workspace.scheduleWeekCount' || key === 'workspace.scheduleGrouped' ? values.count+' 项安排' : (labels[key] || key),
+          : key === 'workspace.scheduleGroupedCompact' ? values.count+'项'
+            : key === 'workspace.scheduleWeekCount' || key === 'workspace.scheduleGrouped' ? values.count+' 项安排' : (labels[key] || key),
         escapeHtml: text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
         openDeepLink: () => {},
       });
@@ -65,26 +66,34 @@ async function run() {
     };
     await settle();
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'), '2027-01-13');
-    for (const [width, zoom] of [[440,1], [960,1], [1440,1], [960,1.5]]) {
+    for (const [width, zoom] of [[360,1], [440,1], [960,1], [1440,1], [960,1.5]]) {
       window.setSize(width,850); window.webContents.setZoomFactor(zoom);
       await new Promise(r=>setTimeout(r,80));
       const result = await window.webContents.executeJavaScript(`(() => {
         const rect = el => { const r=el.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
         return { overflow:document.documentElement.scrollWidth-innerWidth,
-          bodyHeight:document.querySelector('.week-body').clientHeight,
+          miniature:document.querySelector('.week-table').classList.contains('is-mini'),
+          bodyHeight:Number(document.querySelector('.week-body').dataset.height),
+          horizontalOverflow:document.querySelector('.week-scroll').scrollWidth-document.querySelector('.week-scroll').clientWidth,
+          weekBounds:rect(document.querySelector('.week-scroll')),
+          dayHeads:[...document.querySelectorAll('.week-day-head')].map(rect),
           verticalOverflow:document.querySelector('.week-scroll').scrollHeight-document.querySelector('.week-scroll').clientHeight,
           cards:[...document.querySelectorAll('.week-event')].map(el=>({rect:rect(el), title:rect(el.querySelector('strong')),
-            inline:el.classList.contains('is-inline'), count:Number(el.dataset.count),
+            inline:getComputedStyle(el).flexDirection==='row', count:Number(el.dataset.count),
             time:getComputedStyle(el.querySelector('time')).display==='none'?null:rect(el.querySelector('time')),
             location:el.querySelector('small') && getComputedStyle(el.querySelector('small')).display!=='none'?rect(el.querySelector('small')):null,
             offset:parseFloat(el.style.top), height:parseFloat(el.style.height)})) };
       })()`);
       assert.ok(result.overflow<=1, `no page overflow at ${width}/${zoom}`);
-      assert.equal(result.bodyHeight,216, 'only occupied hours, compactly scaled');
+      assert.ok(result.bodyHeight <= (result.miniature ? 180 : 300), 'small windows use a smaller timetable');
+      assert.ok(result.horizontalOverflow<=1, 'no horizontal scroll, rather than just a hidden scrollbar');
+      assert.equal(result.dayHeads.length,7);
+      assert.ok(result.dayHeads.every(day=>day.left>=result.weekBounds.left && day.right<=result.weekBounds.right+1), 'all seven days fit inside the card');
+      assert.ok(result.dayHeads.every(day=>day.right-day.left>(result.weekBounds.right-result.weekBounds.left)/9), 'no weekday is collapsed into the hidden time-axis column');
+      assert.ok(result.cards.every(card=>card.rect.left>=result.dayHeads[0].left && card.rect.right<=result.dayHeads[0].right), 'Monday events remain below Monday, not Tuesday');
       assert.ok(result.verticalOverflow<=1, 'week must not have a nested vertical scrollbar');
-      assert.equal(result.cards[0].offset, 38, '15:00 is one hour after the fitted 14:00 start');
-      assert.equal(result.cards[1].offset, 92);
-      assert.equal(result.cards[0].height, 50);
+      assert.ok(Math.abs(result.cards[0].offset-(60*result.bodyHeight/360+2))<.01, '15:00 retains its relative time position');
+      assert.ok(Math.abs(result.cards[1].offset-(150*result.bodyHeight/360+2))<.01);
       assert.deepEqual(result.cards.map(card=>card.count),[1,3,1]);
       for (let i=0;i<result.cards.length;i++) {
         const card=result.cards[i];
@@ -102,6 +111,7 @@ async function run() {
         fs.writeFileSync(path.join(output,`schedule-${width}-${zoom}.png`),(await window.webContents.capturePage()).toPNG());
       }
     }
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.length'),1,'resizing only changes presentation, not remote queries');
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="1"]').click()`); await settle();
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'),'2027-01-20');
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="-1"]').click()`); await settle();

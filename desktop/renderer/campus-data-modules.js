@@ -89,18 +89,19 @@
       events: Object.freeze(events.map(Object.freeze)), eventCount: intersecting.length });
   }
 
-  function scheduleWeekLayout(model) {
+  function scheduleWeekLayout(model, miniature = false) {
     let start = model.events.length ? Math.floor(Math.min(...model.events.map(e => e.startMinutes)) / 120) * 120 : 480;
     let end = model.events.length ? Math.ceil(Math.max(...model.events.map(e => e.endMinutes)) / 120) * 120 : 1200;
     if (end - start < 240) { start = Math.max(0, start - 120); end = Math.min(1440, start + 240); start = end - 240; }
-    const height = Math.min(300, Math.max(180, (end - start) * .6));
+    const height = Math.min(miniature ? 180 : 300, Math.max(miniature ? 140 : 180, (end - start) * (miniature ? .42 : .6)));
     const scale = height / (end - start);
     const groups = [];
     for (let day = 0; day < 7; day++) {
       let previous = null;
       for (const event of model.events.filter(e => e.day === day)) {
-        const top = Math.min(height - 30, (event.startMinutes - start) * scale);
-        const bottom = Math.min(height, Math.max(top + 30, (event.endMinutes - start) * scale));
+        const minimumHeight = miniature ? 28 : 30;
+        const top = Math.min(height - minimumHeight, (event.startMinutes - start) * scale);
+        const bottom = Math.min(height, Math.max(top + minimumHeight, (event.endMinutes - start) * scale));
         // Group intersecting visual intervals instead of creating unreadable narrow columns.
         // Very short adjacent entries can share a group too; the detail view retains exact times.
         if (previous && top < previous.bottom) {
@@ -134,6 +135,8 @@
     let followCurrentWeek = true;
     let scheduleRequest = 0;
     let visibleEvents = [];
+    let miniature = false;
+    let sizeObserver = null;
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
@@ -191,7 +194,7 @@
     function scheduleHtml(module) {
       const navigation = `<div class="week-navigation" role="group" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}">`
         + `<button type="button" data-week-move="-1" aria-label="${escapeHtml(translate('workspace.schedulePrevious'))}">‹</button>`
-        + `<label>${escapeHtml(translate('workspace.scheduleChooseWeek'))}<input id="scheduleDate" type="date" min="0001-01-01" max="9999-12-31" value="${selectedDate}"></label>`
+        + `<label><span class="week-date-label">${escapeHtml(translate('workspace.scheduleChooseWeek'))}</span><input id="scheduleDate" type="date" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}" min="0001-01-01" max="9999-12-31" value="${selectedDate}"></label>`
         + `<button type="button" data-week-move="1" aria-label="${escapeHtml(translate('workspace.scheduleNext'))}">›</button>`
         + `<button type="button" data-week-today>${escapeHtml(translate('workspace.scheduleToday'))}</button></div>`;
       if (!['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
@@ -199,7 +202,7 @@
       const campusTime = module.source === 'myportal-calendar';
       const model = scheduleWeekModel(module.state === 'ready' ? module.items : [],
         Date.parse(`${selectedDate}T12:00:00+08:00`), campusTime);
-      const layout = scheduleWeekLayout(model);
+      const layout = scheduleWeekLayout(model, miniature);
       visibleEvents = layout.groups;
       const format = (value, options) => new Intl.DateTimeFormat(locale(), {
         ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
@@ -209,13 +212,13 @@
       const formatTime = value => format(value, { hour: '2-digit', minute: '2-digit', hour12: false });
       const lastDay = model.days.at(-1);
       const weekLabel = translate('workspace.scheduleWeekRange', {
-        start: format(model.start, { year: 'numeric', month: 'short', day: 'numeric' }),
-        end: format(lastDay, { year: 'numeric', month: 'short', day: 'numeric' }),
+        start: format(model.start, { ...(miniature ? {} : { year: 'numeric' }), month: miniature ? 'numeric' : 'short', day: 'numeric' }),
+        end: format(lastDay, { ...(miniature ? {} : { year: 'numeric' }), month: miniature ? 'numeric' : 'short', day: 'numeric' }),
       });
-      const headers = model.days.map((day) => {
+      const headers = model.days.map((day, index) => {
         const today = sameLocalDay(day, now, campusTime);
-        return `<div class="week-day-head${today ? ' is-today' : ''}" role="columnheader"${today ? ' aria-current="date"' : ''}>`
-          + `<span>${escapeHtml(formatWeekday(day))}</span><strong>${escapeHtml(formatDate(day))}</strong></div>`;
+        return `<div class="week-day-head${today ? ' is-today' : ''}" data-day="${index}" role="columnheader" aria-label="${escapeHtml(`${formatWeekday(day)} ${formatDate(day)}`)}"${today ? ' aria-current="date"' : ''}>`
+          + `<span>${escapeHtml(formatWeekday(day))}</span><strong>${escapeHtml(miniature ? format(day, { day: 'numeric' }) : formatDate(day))}</strong></div>`;
       }).join('');
       const lanes = model.days.map((day, index) => (
         `<div class="week-day-lane${sameLocalDay(day, now, campusTime) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
@@ -231,8 +234,10 @@
         const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
         const cardHeight = bottom - top - 4;
         const grouped = members.length > 1;
-        const title = grouped ? translate('workspace.scheduleGrouped', { count: members.length }) : members[0].entry.title;
-        const content = `<time>${escapeHtml(cardHeight < 40 ? formatTime(segmentStart) : `${formatTime(segmentStart)}–${endLabel}`)}</time>`
+        const fullTitle = members[0].entry.title;
+        const shortTitle = /[\u3400-\u9fff]/u.test(fullTitle) ? fullTitle.slice(0, 3) : fullTitle.trim().split(/[\s–—-]+/u)[0].slice(0, 8);
+        const title = grouped ? translate(miniature ? 'workspace.scheduleGroupedCompact' : 'workspace.scheduleGrouped', { count: members.length }) : miniature ? shortTitle : fullTitle;
+        const content = `<time>${escapeHtml(miniature || cardHeight < 40 ? formatTime(segmentStart) : `${formatTime(segmentStart)}–${endLabel}`)}</time>`
           + `<strong>${escapeHtml(title)}</strong>`;
         const label = `${formatTime(segmentStart)}–${endLabel} ${members.map(e => e.entry.title).join(' · ')}`;
         const attrs = `class="week-event${cardHeight < 40 ? ' is-inline' : ''}${cardHeight >= 48 ? ' is-tall' : ''}${grouped ? ' is-group' : ''}" data-day="${day}" data-count="${members.length}"`
@@ -247,8 +252,8 @@
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
       return navigation + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
         + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
-        + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
-        + `<div class="week-table" role="grid"><div class="week-head" role="row">`
+        + `<div class="week-scroll" role="region" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
+        + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
         + `<div class="week-body" data-slot-count="${layout.slotCount}" data-height="${layout.height}">${lanes}${times}${events}${empty}</div></div></div>`
         + `<dialog id="scheduleDetail" class="week-detail"></dialog>` + actionHtml('source', 'schedule');
@@ -282,6 +287,11 @@
       if (!body || !shell) return;
       const safe = validModule(module) ? module : { state: 'source-unavailable', items: [] };
       shell.dataset.state = safe.state;
+      if (moduleId === 'schedule') {
+        const width = body.clientWidth || Math.max(1, (doc.defaultView?.innerWidth || 960) - 128);
+        miniature = width < 620;
+        shell.dataset.weekSize = miniature ? 'mini' : 'full';
+      }
       const focus = doc.activeElement;
       const restoreFocus = focus?.id === 'scheduleDate' ? '#scheduleDate'
         : focus?.dataset?.weekMove ? `[data-week-move="${focus.dataset.weekMove}"]`
@@ -475,6 +485,15 @@
         followCurrentWeek = false; selectedDate = event.target.value; void refreshSchedule(false);
       });
       doc.addEventListener('app-locale-changed', render);
+      const Observer = doc.defaultView?.ResizeObserver;
+      if (Observer && !sizeObserver && $('scheduleBody')) {
+        sizeObserver = new Observer(entries => {
+          const width = entries[0]?.contentRect?.width;
+          if (width > 0 && (width < 620) !== miniature) renderModule('schedule', snapshot?.modules?.schedule);
+        });
+        sizeObserver.observe($('scheduleBody'));
+        doc.defaultView.addEventListener('pagehide', () => sizeObserver?.disconnect(), { once: true });
+      }
       render();
       return true;
     }

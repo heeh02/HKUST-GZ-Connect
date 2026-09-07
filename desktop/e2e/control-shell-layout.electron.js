@@ -811,7 +811,7 @@ async function main() {
       };
     })()`);
     assert.deepEqual(calendar.days, ['1', '2']);
-    assert.deepEqual(calendar.times, ['20:00–24:00', '00:00–10:00']);
+    assert.deepEqual(calendar.times, ['20:00', '00:00']);
     assert.equal(calendar.count, '2');
     assert.equal(calendar.firstTime, '00:00');
     assert.equal(calendar.rows, 12);
