@@ -39,7 +39,11 @@
     "dist": "electron-builder --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "dist:win": "electron-builder --win --x64 --publish never",
-    "dist:linux": "electron-builder --linux AppImage --x64 --publish never"
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
+    "build:windows-private-file": "node scripts/build-windows-private-file.js",
+    "predist:win": "npm run build:windows-private-file",
+    "test:login-responsive": "electron e2e/login-responsive.electron.js",
+    "pretest:windows": "npm run build:windows-private-file"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
@@ -67,7 +71,8 @@
       "renderer/**/*",
       "assets/**/*",
       "build/icon.ico",
-      "build/icon.png"
+      "build/icon.png",
+      "!lib/**/*.c"
     ],
     "extraResources": [
       {
@@ -80,7 +85,8 @@
           "ec-proxy-command.exe",
           "ec-gateway-probe-*",
           "ec-gateway-probe.exe",
-          "*.json"
+          "*.json",
+          "ec-private-file-windows-*.exe"
         ]
       }
     ],

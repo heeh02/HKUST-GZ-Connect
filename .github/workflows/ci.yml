@@ -86,6 +86,10 @@ jobs:
         if: matrix.platform == 'linux'
         run: node build/verify-package.js release/linux-unpacked/resources linux x64
 
+      - name: Build Windows private-file helper
+        if: matrix.platform == 'windows'
+        run: npm run build:windows-private-file
+
       - name: Build unpacked Windows application
         if: matrix.platform == 'windows'
         run: node node_modules/electron-builder/out/cli/cli.js --win dir --x64 --publish never
