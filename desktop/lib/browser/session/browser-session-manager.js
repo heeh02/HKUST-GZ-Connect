@@ -15,6 +15,26 @@ const {
 } = require('./myportal-catalog');
 
 const requestBoundaryGates = new WeakMap();
+const DAY_MS = 86_400_000;
+const CAMPUS_OFFSET_MS = 28_800_000;
+
+function calendarWeekQuery(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Object.keys(value).some(key => !['date', 'force'].includes(key)) ||
+      typeof value.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value.date) ||
+      (value.force !== undefined && typeof value.force !== 'boolean')) {
+    throw new TypeError('calendar selection must contain only a valid date and optional force');
+  }
+  const date = new Date(`${value.date}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value.date) {
+    throw new TypeError('calendar date is invalid');
+  }
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  const start = date.getTime() - CAMPUS_OFFSET_MS;
+  return Object.freeze({ date: value.date, force: value.force === true,
+    start, end: start + 7 * DAY_MS });
+}
+
 const CAMPUS_REQUEST_FILTER = Object.freeze({
   // Deliberately omit `types`: the boundary applies to main frames and every
   // subresource type, including fetch/XHR, WebSocket upgrades, media, and CSP.
@@ -686,7 +706,7 @@ const hkustMyPortalSources = Object.freeze({
     async read(context) {
       // Calendar weeks belong to the campus, independent of the host timezone.
       const campusOffsetMs = 8 * 60 * 60 * 1000;
-      const campusDay = new Date(context.checkedAt + campusOffsetMs);
+      const campusDay = new Date((context.scheduleWeekStart ?? context.checkedAt) + campusOffsetMs);
       campusDay.setUTCHours(0, 0, 0, 0);
       campusDay.setUTCDate(campusDay.getUTCDate() - ((campusDay.getUTCDay() + 6) % 7));
       const start = new Date(campusDay.getTime() - campusOffsetMs);
@@ -733,6 +753,8 @@ class MyPortalDataRuntime {
       now, cacheMs, timeoutMs });
     this.cached = null;
     this.inflight = null;
+    this.calendarCache = new Map();
+    this.calendarEpoch = 0;
   }
 
   async probeSession(targetSession, portalUrl, signal) {
@@ -759,7 +781,7 @@ class MyPortalDataRuntime {
     return Object.freeze({ state: 'unknown', sessionUrl: portalUrl });
   }
 
-  async readNow({ moduleId = null } = {}) {
+  async readNow({ moduleId = null, scheduleWeekStart = null } = {}) {
     if (moduleId !== null && !CAMPUS_DATA_MODULES.includes(moduleId)) {
       throw new TypeError('campus data module refresh is invalid');
     }
@@ -797,7 +819,7 @@ class MyPortalDataRuntime {
     // inside Main and is never included in the Renderer snapshot.
     const context = Object.freeze({
       session: targetSession, portalUrl, sessionUrl: probe.sessionUrl,
-      checkedAt, timeoutMs: this.timeoutMs,
+      checkedAt, timeoutMs: this.timeoutMs, scheduleWeekStart,
     });
     const errorState = (error) => error?.code === 'PORTAL_SESSION_EXPIRED' ? 'session-expired'
       : error?.code === 'PORTAL_FORBIDDEN' ? 'forbidden'
@@ -842,7 +864,9 @@ class MyPortalDataRuntime {
 
   async snapshot({ force = false } = {}) {
     const now = this.now();
-    if (!force && this.cached && now - this.cached.checkedAt <= this.cacheMs) return this.cached;
+    const weekKey = timestamp => calendarWeekQuery({ date: new Date(timestamp + 28_800_000).toISOString().slice(0, 10) }).start;
+    if (!force && this.cached && now - this.cached.checkedAt <= this.cacheMs &&
+        weekKey(now) === weekKey(this.cached.checkedAt)) return this.cached;
     if (!force && this.inflight) return this.inflight;
     const operation = this.readNow().then((value) => (this.cached = value));
     this.inflight = operation;
@@ -859,7 +883,38 @@ class MyPortalDataRuntime {
     finally { if (this.inflight === operation) this.inflight = null; }
   }
 
-  invalidate() { this.cached = null; }
+  async scheduleWeek(selection) {
+    const query = calendarWeekQuery(selection);
+    const epoch = this.calendarEpoch;
+    const partition = this.getPartition();
+    const portal = this.getPortalUrl();
+    const key = JSON.stringify([partition, portal, query.start]);
+    const cached = this.calendarCache.get(key);
+    if (!query.force && cached && this.now() - cached.checkedAt < this.cacheMs) return cached;
+    if (this.inflight) await this.inflight;
+    if (epoch !== this.calendarEpoch || partition !== this.getPartition() || portal !== this.getPortalUrl()) {
+      throw new Error('calendar context changed');
+    }
+    if (!query.force && this.cached?.sessionState === 'authenticated' &&
+        ['ready', 'empty'].includes(this.cached.modules.schedule.state) &&
+        this.now() - this.cached.checkedAt < this.cacheMs &&
+        calendarWeekQuery({ date: new Date(this.cached.checkedAt + 28_800_000).toISOString().slice(0, 10) }).start === query.start) {
+      return Object.freeze({ ...this.cached, scheduleWeek: { start: query.start, end: query.end } });
+    }
+    const result = await this.readNow({ moduleId: 'schedule', scheduleWeekStart: query.start });
+    if (epoch !== this.calendarEpoch || partition !== this.getPartition() || portal !== this.getPortalUrl()) {
+      throw new Error('calendar context changed');
+    }
+    const value = Object.freeze({ ...result, scheduleWeek: { start: query.start, end: query.end } });
+    if (['ready', 'empty'].includes(result.modules.schedule.state)) {
+      this.calendarCache.delete(key);
+      this.calendarCache.set(key, value);
+      if (this.calendarCache.size > 12) this.calendarCache.delete(this.calendarCache.keys().next().value);
+    }
+    return value;
+  }
+
+  invalidate() { this.cached = null; this.calendarCache.clear(); this.calendarEpoch++; }
 }
 
 module.exports = {
@@ -868,6 +923,7 @@ module.exports = {
   FAIL_CLOSED_PAC,
   FAIL_CLOSED_PROXY,
   MyPortalDataRuntime,
+  calendarWeekQuery,
   applyCampusRequestBoundary,
   applyCampusSessionPolicy,
   campusRequestsBlocked,

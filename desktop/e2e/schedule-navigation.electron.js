@@ -1,0 +1,116 @@
+'use strict';
+
+const { app, BrowserWindow } = require('electron');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-week-fixture-'));
+app.setPath('userData', path.join(root, 'profile'));
+const renderer = path.join(__dirname, '..', 'renderer');
+const uri = name => pathToFileURL(path.join(renderer, name)).href;
+fs.writeFileSync(path.join(root, 'index.html'), `<!doctype html><html lang="zh-CN"><head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+<link rel="stylesheet" href="${uri('design-tokens.css')}"><link rel="stylesheet" href="${uri('styles.css')}"><link rel="stylesheet" href="fixture.css">
+</head><body><main><section class="module" id="moduleSchedule"><h2>我的周课表</h2>
+<button id="scheduleRefresh">刷新</button><div id="scheduleBody"></div></section></main>
+<script src="${uri('campus-data-modules.js')}"></script></body></html>`);
+fs.writeFileSync(path.join(root, 'fixture.css'), 'body { display:block; overflow:auto; padding:20px; } main { min-width:0; } .module { padding:16px; }');
+
+async function run() {
+  await app.whenReady();
+  const window = new BrowserWindow({ width: 960, height: 850, show: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false } });
+  window.webContents.session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_details, reply) => reply({ cancel: true }));
+  try {
+    await window.loadFile(path.join(root, 'index.html'));
+    await window.webContents.executeJavaScript(`(async () => {
+      window.fixtureCalls = [];
+      const snapshot = items => ({ sessionState: 'authenticated', modules: {
+        schedule: { state: items.length ? 'ready' : 'empty', source: 'myportal-calendar', fetchedAt: Date.now(), items }
+      }});
+      const labels = { 'workspace.scheduleChooseWeek':'选择日期', 'workspace.schedulePrevious':'上一周',
+        'workspace.scheduleNext':'下一周', 'workspace.scheduleToday':'本周', 'workspace.scheduleClose':'关闭',
+        'workspace.scheduleTime':'时间', 'workspace.scheduleWeekTable':'周课表', 'workspace.scheduleRefresh':'刷新' };
+      const feature = window.campusDataModules.create({ document,
+        api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
+          getCampusScheduleWeek: async query => {
+            window.fixtureCalls.push(query);
+            const monday = window.campusDataModules.weekRange(Date.parse(query.date+'T12:00:00+08:00'), true).start;
+            return snapshot([
+              { id:'a', title:'Synthetic Research Group Meeting', startsAt:monday+15*3600000, endsAt:monday+16.5*3600000, location:'Room A' },
+              { id:'b', title:'Project-driven Collaborative Design — Full Long Course Name', startsAt:monday+16.5*3600000, endsAt:monday+(18+20/60)*3600000, location:'Room B' },
+              { id:'c', title:'Concurrent Seminar', startsAt:monday+16.75*3600000, endsAt:monday+17.5*3600000, location:'Room C' },
+              { id:'d', title:'Short appointment', startsAt:monday+18.5*3600000, endsAt:monday+19*3600000, location:'Room D' },
+            ]);
+          } },
+        translate: (key, values) => key === 'workspace.scheduleWeekRange' ? values.start+'–'+values.end
+          : key === 'workspace.scheduleWeekCount' ? values.count+' 项' : (labels[key] || key),
+        escapeHtml: text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
+        openDeepLink: () => {},
+      });
+      feature.start(); await feature.load();
+      const input=document.getElementById('scheduleDate'); input.value='2027-01-13';
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+    })()`);
+    const settle = async () => {
+      for (let i=0;i<100;i++) {
+        if (await window.webContents.executeJavaScript(`document.getElementById('moduleSchedule').dataset.state === 'ready'`)) return;
+        await new Promise(r=>setTimeout(r,20));
+      }
+      throw new Error('calendar did not become ready');
+    };
+    await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'), '2027-01-13');
+    for (const [width, zoom] of [[440,1], [960,1], [1440,1], [960,1.5]]) {
+      window.setSize(width,850); window.webContents.setZoomFactor(zoom);
+      await new Promise(r=>setTimeout(r,80));
+      const result = await window.webContents.executeJavaScript(`(() => {
+        const rect = el => { const r=el.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
+        return { overflow:document.documentElement.scrollWidth-innerWidth,
+          cards:[...document.querySelectorAll('.week-event')].map(el=>({rect:rect(el), title:rect(el.querySelector('strong')),
+            time:getComputedStyle(el.querySelector('time')).display==='none'?null:rect(el.querySelector('time')),
+            location:el.querySelector('small') && getComputedStyle(el.querySelector('small')).display!=='none'?rect(el.querySelector('small')):null,
+            offset:parseFloat(el.style.top), height:parseFloat(el.style.height)})) };
+      })()`);
+      assert.ok(result.overflow<=1, `no page overflow at ${width}/${zoom}`);
+      assert.equal(result.cards[0].offset, 422, '15:00 is seven hours after 08:00, not rounded to 14:00');
+      assert.equal(result.cards[1].offset, 512);
+      assert.equal(result.cards[0].height, 86);
+      for (let i=0;i<result.cards.length;i++) {
+        const card=result.cards[i];
+        assert.ok(card.title.bottom<=card.rect.bottom+1, 'title is not cut off by card bottom');
+        if(card.time) assert.ok(card.time.bottom<=card.title.top+1, 'time and title do not overlap');
+        if(card.location) assert.ok(card.title.bottom<=card.location.top+1 && card.location.bottom<=card.rect.bottom+1);
+        for(let j=i+1;j<result.cards.length;j++) {
+          const a=card.rect,b=result.cards[j].rect;
+          assert.ok(a.bottom<=b.top || b.bottom<=a.top || a.right<=b.left || b.right<=a.left, 'event cards never cover each other');
+        }
+      }
+      if (process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS) {
+        const output=path.resolve(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS); fs.mkdirSync(output,{recursive:true});
+        await window.webContents.executeJavaScript(`document.querySelector('.week-scroll').scrollTop=360`);
+        await new Promise(r=>setTimeout(r,80));
+        fs.writeFileSync(path.join(output,`schedule-${width}-${zoom}.png`),(await window.webContents.capturePage()).toPNG());
+      }
+    }
+    await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="1"]').click()`); await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'),'2027-01-20');
+    await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="-1"]').click()`); await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'),'2027-01-13');
+    await window.webContents.executeJavaScript(`document.getElementById('scheduleRefresh').click()`); await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).force'),true);
+    await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event')[1].click()`);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelector('dialog').open`),true);
+    assert.match(await window.webContents.executeJavaScript(`document.querySelector('dialog').textContent`),/Full Long Course Name/);
+    window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
+    window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+    await new Promise(r=>setTimeout(r,80));
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelector('dialog').open`),false);
+    await window.webContents.executeJavaScript(`document.querySelector('[data-week-today]').click()`); await settle();
+    assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'), new Date(Date.now()+28800000).toISOString().slice(0,10));
+    process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom)\n');
+  } finally { window.destroy(); }
+}
+run().then(()=>app.quit(),error=>{ process.stderr.write(`${error.stack}\n`); app.exit(1); });

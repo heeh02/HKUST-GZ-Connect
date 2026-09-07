@@ -83,10 +83,22 @@
     const events = segments.map(({ startMinutes, endMinutes, ...segment }) => {
       const slot = Math.floor((startMinutes - slotStart) / WEEK_SLOT_MINUTES);
       const endSlot = Math.max(slot + 1, Math.ceil((endMinutes - slotStart) / WEEK_SLOT_MINUTES));
-      return Object.freeze({ ...segment, slot, span: endSlot - slot });
+      return { ...segment, startMinutes, endMinutes, slot, span: endSlot - slot };
     }).sort((left, right) => left.segmentStart - right.segmentStart);
+    for (let day = 0; day < 7; day++) {
+      let group = [], laneEnds = [], groupEnd = -Infinity;
+      const finish = () => { for (const event of group) event.columns = laneEnds.length; };
+      for (const event of events.filter(item => item.day === day)) {
+        if (event.segmentStart >= groupEnd) { finish(); group = []; laneEnds = []; }
+        let column = laneEnds.findIndex(end => end <= event.segmentStart);
+        if (column < 0) column = laneEnds.length;
+        laneEnds[column] = event.segmentEnd; event.column = column;
+        group.push(event); groupEnd = Math.max(...laneEnds);
+      }
+      finish();
+    }
     return Object.freeze({ ...range, slotStart, slotCount,
-      events: Object.freeze(events), eventCount: intersecting.length });
+      events: Object.freeze(events.map(Object.freeze)), eventCount: intersecting.length });
   }
 
   function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
@@ -101,6 +113,11 @@
     let snapshot = null;
     let lastLoadedAt = 0;
     let scheduleRefreshTimer = null;
+    const campusDate = value => new Date(value + 28_800_000).toISOString().slice(0, 10);
+    let selectedDate = campusDate(Date.now());
+    let followCurrentWeek = true;
+    let scheduleRequest = 0;
+    let visibleEvents = [];
 
     const locale = () => String(doc.documentElement.lang || '').toLowerCase().startsWith('en')
       ? 'en' : 'zh-CN';
@@ -156,10 +173,17 @@
     }
 
     function scheduleHtml(module) {
-      if (!['ready', 'empty'].includes(module.state)) return stateHtml(module, 'schedule');
+      const navigation = `<div class="week-navigation" role="group" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}">`
+        + `<button type="button" data-week-move="-1" aria-label="${escapeHtml(translate('workspace.schedulePrevious'))}">‹</button>`
+        + `<label>${escapeHtml(translate('workspace.scheduleChooseWeek'))}<input id="scheduleDate" type="date" min="0001-01-01" max="9999-12-31" value="${selectedDate}"></label>`
+        + `<button type="button" data-week-move="1" aria-label="${escapeHtml(translate('workspace.scheduleNext'))}">›</button>`
+        + `<button type="button" data-week-today>${escapeHtml(translate('workspace.scheduleToday'))}</button></div>`;
+      if (!['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
       const now = Date.now();
       const campusTime = module.source === 'myportal-calendar';
-      const model = scheduleWeekModel(module.state === 'ready' ? module.items : [], now, campusTime);
+      const model = scheduleWeekModel(module.state === 'ready' ? module.items : [],
+        Date.parse(`${selectedDate}T12:00:00+08:00`), campusTime);
+      visibleEvents = model.events;
       const format = (value, options) => new Intl.DateTimeFormat(locale(), {
         ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
       }).format(new Date(value));
@@ -168,7 +192,8 @@
       const formatTime = value => format(value, { hour: '2-digit', minute: '2-digit', hour12: false });
       const lastDay = model.days.at(-1);
       const weekLabel = translate('workspace.scheduleWeekRange', {
-        start: formatDate(model.start), end: formatDate(lastDay),
+        start: format(model.start, { year: 'numeric', month: 'short', day: 'numeric' }),
+        end: format(lastDay, { year: 'numeric', month: 'short', day: 'numeric' }),
       });
       const headers = model.days.map((day) => {
         const today = sameLocalDay(day, now, campusTime);
@@ -184,30 +209,31 @@
       }).join('');
       const events = model.days.map((_, index) => {
         const dayEvents = model.events.filter(({ day }) => day === index)
-          .map(({ entry, day, slot, span, segmentStart, segmentEnd }) => {
+          .map((event) => {
+        const { entry, day, slot, span, segmentStart, segmentEnd, startMinutes, endMinutes, column, columns } = event;
         const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
         const content = `<time>${escapeHtml(`${formatTime(segmentStart)}–${endLabel}`)}</time>`
           + `<strong>${escapeHtml(entry.title)}</strong>`
           + (entry.location ? `<small>${escapeHtml(entry.location)}</small>` : '');
         const label = `${formatTime(segmentStart)}–${endLabel} ${entry.title}${entry.location ? ` · ${entry.location}` : ''}`;
-        const attrs = `class="week-event" data-day="${day}" data-slot="${slot}" data-span="${span}"`
+        const duration = endMinutes - startMinutes;
+        const attrs = `class="week-event${duration < 80 ? ' is-short' : ''}${duration < 50 ? ' is-tiny' : ''}${duration < 24 ? ' is-micro' : ''}" data-day="${day}" data-slot="${slot}" data-span="${span}"`
+          + ` data-offset="${startMinutes - model.slotStart}" data-duration="${duration}" data-column="${column}" data-columns="${columns}" data-schedule-index="${model.events.indexOf(event)}"`
           + ` title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"`;
-        return entry.url
-          ? `<button type="button" ${attrs} data-entry-url="${escapeHtml(entry.url)}">${content}</button>`
-          : `<div ${attrs} role="gridcell">${content}</div>`;
+        return `<button type="button" ${attrs}>${content}</button>`;
           }).join('');
         return `<div class="week-event-day" data-day="${index}">${dayEvents}</div>`;
       }).join('');
       const empty = model.events.length ? ''
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
-      return `<div class="week-summary"><strong>${escapeHtml(weekLabel)}</strong>`
+      return navigation + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
         + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
         + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
         + `<div class="week-body" data-slot-count="${model.slotCount}">${lanes}${times}${events}${empty}</div></div></div>`
-        + actionHtml('source', 'schedule');
+        + `<dialog id="scheduleDetail" class="week-detail"></dialog>` + actionHtml('source', 'schedule');
     }
 
     function loansHtml(module) {
@@ -238,8 +264,23 @@
       if (!body || !shell) return;
       const safe = validModule(module) ? module : { state: 'source-unavailable', items: [] };
       shell.dataset.state = safe.state;
+      const focus = doc.activeElement;
+      const restoreFocus = focus?.id === 'scheduleDate' ? '#scheduleDate'
+        : focus?.dataset?.weekMove ? `[data-week-move="${focus.dataset.weekMove}"]`
+          : focus?.hasAttribute?.('data-week-today') ? '[data-week-today]' : null;
       body.innerHTML = moduleId === 'schedule' ? scheduleHtml(safe)
         : moduleId === 'loans' ? loansHtml(safe) : newsHtml(safe);
+      if (moduleId === 'schedule') {
+        const grid = body.querySelector?.('.week-body');
+        if (grid) grid.style.gridTemplateRows = `repeat(${grid.dataset.slotCount}, 120px)`;
+        for (const event of body.querySelectorAll?.('.week-event') || []) {
+          event.style.top = `${Number(event.dataset.offset) + 2}px`;
+          event.style.height = `${Math.max(1, Number(event.dataset.duration) - 4)}px`;
+          event.style.left = `calc(${100 * Number(event.dataset.column) / Number(event.dataset.columns)}% + 3px)`;
+          event.style.width = `calc(${100 / Number(event.dataset.columns)}% - 6px)`;
+        }
+        if (restoreFocus) body.querySelector?.(restoreFocus)?.focus({ preventScroll: true });
+      }
     }
 
     function render() {
@@ -289,6 +330,11 @@
         loaded = true;
         lastLoadedAt = Date.now();
         publishCatalog(value?.catalog || null);
+        if (weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
+            typeof api.getCampusScheduleWeek === 'function') {
+          snapshot = { ...value, modules: { ...value.modules, schedule: { state: 'loading', items: [] } } };
+          queueMicrotask(() => { void refreshSchedule(false); });
+        }
         render();
         return value;
       }).catch(() => {
@@ -307,8 +353,12 @@
       return inflight;
     }
 
-    async function refreshSchedule() {
+    async function refreshSchedule(force = true) {
+      if (followCurrentWeek) selectedDate = campusDate(Date.now());
+      const date = selectedDate;
+      const request = ++scheduleRequest;
       if (inflight) await inflight;
+      if (request !== scheduleRequest) return null;
       if (typeof api.refreshCampusSchedule !== 'function') return load(true);
       const previous = snapshot;
       snapshot = {
@@ -320,13 +370,16 @@
       };
       setScheduleRefreshBusy(true);
       renderModule('schedule', snapshot.modules.schedule);
-      const operation = Promise.resolve(api.refreshCampusSchedule()).then((value) => {
+      const operation = Promise.resolve(typeof api.getCampusScheduleWeek === 'function'
+        ? api.getCampusScheduleWeek({ date, force }) : api.refreshCampusSchedule()).then((value) => {
+        if (request !== scheduleRequest) return null;
         snapshot = value;
         loaded = true;
         lastLoadedAt = Date.now();
         render();
         return value;
       }).catch(() => {
+        if (request !== scheduleRequest) return null;
         snapshot = {
           ...(previous || {}),
           modules: {
@@ -340,14 +393,40 @@
         return null;
       }).finally(() => {
         if (inflight === operation) inflight = null;
-        setScheduleRefreshBusy(false);
-        scheduleNextRefresh();
+        if (request === scheduleRequest) { setScheduleRefreshBusy(false); scheduleNextRefresh(); }
       });
       inflight = operation;
       return operation;
     }
 
     function activate(target) {
+      const weekMove = target.closest('[data-week-move]');
+      const today = target.closest('[data-week-today]');
+      if (weekMove || today) {
+        const timestamp = today ? Date.now() : Date.parse(`${selectedDate}T12:00:00+08:00`) + Number(weekMove.dataset.weekMove) * 7 * 86_400_000;
+        const date = campusDate(timestamp);
+        if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u.test(date) && date >= '0001-01-01') {
+          followCurrentWeek = Boolean(today); selectedDate = date; void refreshSchedule(false);
+        }
+        return;
+      }
+      if (target.closest('[data-schedule-close]')) { $('scheduleDetail')?.close(); return; }
+      const card = target.closest('[data-schedule-index]');
+      if (card) {
+        const entry = visibleEvents[Number(card.dataset.scheduleIndex)]?.entry;
+        const dialog = $('scheduleDetail');
+        if (entry && dialog) {
+          const date = value => new Intl.DateTimeFormat(locale(), { timeZone: 'Asia/Shanghai',
+            dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(value);
+          dialog.setAttribute('aria-labelledby', 'scheduleDetailTitle');
+          dialog.innerHTML = `<h3 id="scheduleDetailTitle">${escapeHtml(entry.title)}</h3><p>${escapeHtml(date(entry.startsAt))} – ${escapeHtml(date(entry.endsAt))}</p>`
+            + (entry.location ? `<p>${escapeHtml(entry.location)}</p>` : '')
+            + (entry.url ? `<button type="button" data-entry-url="${escapeHtml(entry.url)}">${escapeHtml(translate('workspace.scheduleSource'))}</button>` : '')
+            + `<button type="button" data-schedule-close>${escapeHtml(translate('workspace.scheduleClose'))}</button>`;
+          dialog.showModal();
+        }
+        return;
+      }
       const entryUrl = target.closest('[data-entry-url]')?.dataset.entryUrl;
       if (entryUrl) { openDeepLink(null, entryUrl); return; }
       const action = target.closest('[data-campus-data-action]');
@@ -370,6 +449,10 @@
         $(body)?.closest('.module')?.addEventListener('click', (event) => activate(event.target));
       }
       $('scheduleRefresh')?.addEventListener('click', () => { void refreshSchedule(); });
+      $('scheduleBody')?.addEventListener('change', (event) => {
+        if (event.target.id !== 'scheduleDate' || !event.target.value || !event.target.validity.valid) return;
+        followCurrentWeek = false; selectedDate = event.target.value; void refreshSchedule(false);
+      });
       doc.addEventListener('app-locale-changed', render);
       render();
       return true;
@@ -377,6 +460,8 @@
 
     function ensureLoaded() {
       if (!loaded) return load(false);
+      if (followCurrentWeek && weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !==
+          weekRange(Date.now(), true).start) return refreshSchedule(false);
       const scheduleState = snapshot?.modules?.schedule?.state;
       const sessionRecovery = snapshot?.sessionState !== 'authenticated' ||
         ['not-authenticated', 'session-expired'].includes(scheduleState);

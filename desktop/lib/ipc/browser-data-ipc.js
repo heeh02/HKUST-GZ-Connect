@@ -1,5 +1,7 @@
 'use strict';
 
+const { calendarWeekQuery } = require('../browser/session/browser-session-manager');
+
 function registerBrowserDataIpc({ register, clearSiteData, translate, campusData = null } = {}) {
   for (const dependency of [register, clearSiteData, translate]) {
     if (typeof dependency !== 'function') {
@@ -35,6 +37,11 @@ function registerBrowserDataIpc({ register, clearSiteData, translate, campusData
     register('refresh-campus-schedule', (_event, ...args) => {
       if (args.length) throw new TypeError('campus schedule refresh must be value-free');
       return campusData.refreshSchedule();
+    });
+    register('get-campus-schedule-week', (_event, ...args) => {
+      if (args.length !== 1) throw new TypeError('calendar selection requires one value');
+      const { date, force } = calendarWeekQuery(args[0]);
+      return campusData.scheduleWeek({ date, force });
     });
   }
 }
