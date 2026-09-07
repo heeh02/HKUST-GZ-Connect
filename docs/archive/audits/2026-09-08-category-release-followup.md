@@ -49,6 +49,32 @@ timing result is retained as an unresolved test-stability risk, not hidden by in
 
 ## Release and rollback boundary
 
+## Dialog redraw follow-up (2026-09-08)
+
+- Runtime: `8d6109a7ec2811ff9df96c87f47bdc58dcf495b4`.
+- Tested tree: `0b345957a7b5460ab288c604426ea82a176b93fd`.
+
+A deterministic regression opens category details and calls the controller's render method.
+Before the repair, replacing the board's innerHTML detached the open dialog. The exploratory
+failure used a Renderer-thrown assertion; this was subsequently changed to explicit Node assertions
+for connected/open/focus state to make future failures diagnosable. This establishes a real redraw
+defect, but does not prove every earlier intermittent dialog failure had the same event sequence.
+
+Rendering now replaces only card-projection children while leaving an open modal continuously
+connected to the top layer. It retains existing event delegation and keyboard focus; it does not
+detach/reinsert the dialog or mount it under a different event owner. Data changes, replacement
+layout documents, loaded layout authority, edit entry and destruction still retire the old dialog.
+No timeout, animation budget, settings, persistent schema, IPC or network behavior was changed.
+
+The final Electron fixture verifies redraw survival at every tested width, actual cross-breakpoint
+resize with an open dialog, focus retention and retirement after data/layout changes. Mac and native
+Windows category and full control-shell fixtures pass. Mac focused Node tests: 26 pass; 5070 Linux
+full Desktop suite: 1269 pass / 6 platform skips / 0 fail. Architecture, install-script, governance,
+staged secret and exact-code syntax gates pass. Native Windows still logs GPU process warnings
+(exit 34, plus invalid GPU-state messages); hardware acceleration remains unverified.
+
+## Updated package boundary
+
 The previously prepared four 2.0.2 installers and their old receipts do **not** contain this runtime
 repair. They must not be published as evidence for this updated source. New exact-source package
 acceptance is required when the release path is authorized. No package was rebuilt, installed or
