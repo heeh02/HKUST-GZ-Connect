@@ -41,7 +41,45 @@ Focused command from desktop:
 node --test test/official-favorite-dialog.test.js test/unit/renderer/official-favorites-behavior.test.js test/unit/renderer/official-favorites-module.test.js test/renderer-contract.test.js
 ```
 
-## Limits and rollback
+## Native ASAR lifecycle follow-up (2026-09-08)
+
+- Base: `54705558b01e71d0854e3cab80d47d6e25151e69`.
+- Harness code: `52c16e2280a1e8312c37ccbc633dc4fec02e00c6`.
+- Verified tree: `91c6ad32518d43020865ef1440d52c57089cbbfb`.
+
+Native Windows exposed a false-green fixture: the loader assertions printed PASS, then deleting
+the still-open Chromium profile failed with EPERM, yet Electron exited 0. Initial setup also
+required a junction to the existing dependency cache; NODE_PATH alone did not resolve the ASAR
+builder. Neither result was treated as a product authentication/permission failure.
+
+The canonical command is now `npm run test:renderer-asar`, which starts a Node parent and a
+bounded Electron child. The parent waits for close, verifies the generated directory's identity,
+deletes it and checks absence before printing lifecycle PASS. The child uses the parent's isolated
+directory (including spaces in its path) and no longer attempts pre-exit cleanup. Unhandled child
+rejections fail explicitly. Normal application, Renderer, IPC and storage code are unchanged.
+
+The runner rejects nonzero exit, missing success marker, unconfirmed close, launch error, timeout,
+interrupt and output overflow. Execution is limited to 20 seconds, with bounded termination/close
+grace; diagnostic capture is capped at 1 MiB of both incoming bytes and printable UTF-8. An output
+fixture caught the initial multibyte-boundary accounting error; decoding is now stream-aware.
+Root cleanup refuses changed identity or symlinks and propagates failure instead of hiding it.
+
+- Mac and native Windows: 3 parent-runner tests pass, exercising real child success, failed exit,
+  timeout and Unicode output overflow, plus cleanup identity/failure cases.
+- Mac, native Windows, and Linux under existing `xvfb-run`: actual ASAR module loading and
+  post-close cleanup both PASS. No sandbox or system permission override was used.
+- 5070 Linux full Desktop: 1284 passed / 6 platform skips / 0 failures.
+- Architecture, exact-tree syntax (480 sources), secrets, install-script and governance gates pass.
+- Native Windows GPU warnings (34) remain; these tests do not certify hardware acceleration.
+
+The original failed Windows fixture directory was separately checked and removed after its process
+had exited. It contained only generated staging/profile data and can be recreated from source.
+The shared dependency cache and installed application data were not removed or changed.
+
+This closes the native Windows/Linux ASAR loader gap for this source, not full installer/signing,
+real-school or production lifecycle acceptance. The earlier Windows-ASAR omission below is historical.
+
+## Original phase limits and rollback
 
 No new lifecycle cancellation/disposal guarantee is claimed. Already-dispatched Main operations,
 shared registry/global-export enforcement, full Windows unit tests, Windows ASAR, native installers,

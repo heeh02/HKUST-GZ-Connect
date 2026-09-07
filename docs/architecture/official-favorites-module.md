@@ -34,3 +34,8 @@ guarantees. The existing revision checks and pending-operation behavior are reta
 fully audited. Lifecycle changes and remaining Renderer globals require independently reviewed work.
 Revert the extraction to restore the previous script factory without changing saved favorites or
 the parent's calendar/category repairs. Evidence is in the dated acceptance receipt under archives.
+
+Run packaged-renderer acceptance through `npm run test:renderer-asar` (Node parent). The parent
+creates the isolated staging/profile directory and removes it only after Electron closes, checking
+directory identity and cleanup completion. Direct execution of the Electron child is rejected;
+callers must not bypass the parent and infer success from an early loader message.
