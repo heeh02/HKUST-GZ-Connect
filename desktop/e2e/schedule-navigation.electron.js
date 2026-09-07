@@ -15,7 +15,7 @@ fs.writeFileSync(path.join(root, 'index.html'), `<!doctype html><html lang="zh-C
 <link rel="stylesheet" href="${uri('design-tokens.css')}"><link rel="stylesheet" href="${uri('styles.css')}"><link rel="stylesheet" href="fixture.css">
 </head><body><main><section class="module module-schedule" id="moduleSchedule"><div class="module-head"><h3>我的周课表</h3>
 <div class="module-head-actions"><span class="module-source">myPortal</span><button id="scheduleRefresh" class="module-refresh">刷新</button></div></div><div id="scheduleBody"></div></section></main>
-<script src="${uri('campus-data-modules.js')}"></script></body></html>`);
+</body></html>`);
 fs.writeFileSync(path.join(root, 'fixture.css'), 'body { display:block; overflow:auto; padding:20px; } main { min-width:0; } .module { padding:16px; }');
 
 async function run() {
@@ -26,6 +26,7 @@ async function run() {
   try {
     await window.loadFile(path.join(root, 'index.html'));
     await window.webContents.executeJavaScript(`(async () => {
+      const campusData = await import(${JSON.stringify(uri('features/campus-data/index.mjs'))});
       window.fixtureCalls = [];
       const snapshot = items => ({ sessionState: 'authenticated', modules: {
         schedule: { state: items.length ? 'ready' : 'empty', source: 'myportal-calendar', fetchedAt: Date.now(), items }
@@ -34,12 +35,12 @@ async function run() {
         'workspace.scheduleNext':'下一周', 'workspace.scheduleToday':'本周', 'workspace.scheduleClose':'关闭',
         'workspace.scheduleTime':'时间', 'workspace.scheduleWeekTable':'周课表', 'workspace.scheduleRefresh':'刷新',
         'workspace.scheduleSource':'打开 myPortal →', 'workspace.scheduleDetails':'安排详情' };
-      const feature = window.campusDataModules.create({ document,
+      const feature = campusData.create({ document,
         api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
           getCampusScheduleWeek: async query => {
             window.fixtureCalls.push(query);
             if(window.fixtureHold) await new Promise((resolve,reject)=>{window.fixtureResolve=resolve;window.fixtureReject=reject;});
-            const monday = window.campusDataModules.weekRange(Date.parse(query.date+'T12:00:00+08:00'), true).start;
+            const monday = campusData.weekRange(Date.parse(query.date+'T12:00:00+08:00'), true).start;
             return snapshot([
               { id:'a', title:'Synthetic Research Group Meeting', startsAt:monday+15*3600000, endsAt:monday+16.5*3600000, location:'Room A' },
               { id:'b', title:'Project-driven Collaborative Design — Full Long Course Name', startsAt:monday+16.5*3600000, endsAt:monday+(18+20/60)*3600000, location:'Room B' },
