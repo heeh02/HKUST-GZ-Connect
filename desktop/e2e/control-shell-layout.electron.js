@@ -550,10 +550,11 @@ async function main() {
       assert.match(personal.placeholder, /我的网站|my sites/iu);
       const personalBoard = await shellSnapshot(window, 'browser');
       assert.equal(personalBoard.boardId, 'browser-personal', `${label}: personal cards use the wrong board`);
-      assert.equal(personalBoard.decks, 2, `${label}: the first category page must keep two stacked slots`);
-      assert.equal(personalBoard.stackCounts.reduce((sum, count) => sum + count, 0), 5,
+      assert.equal(personalBoard.decks, 2, `${label}: the first category page must keep two slots`);
+      // Manual decks remain stacked; automatic decks spread in wide browsing mode.
+      assert.equal(personalBoard.stackCounts.reduce((sum, count) => sum + count, 0), width >= 980 ? 3 : 5,
         `${label}: the first category page lost one of its stacked cards`);
-      assert.equal(personalBoard.personalPagerItems, 6,
+      assert.equal(personalBoard.personalPagerItems, width >= 980 ? 3 : 6,
         `${label}: every personal category must remain reachable through underline pagination`);
       assert.ok(Math.max(...personalBoard.stackCounts) <= 3, `${label}: a deck exceeds three cards`);
       assert.equal(personalBoard.boardEditing, 'false', `${label}: browsing opened in editing mode`);
@@ -561,6 +562,29 @@ async function main() {
       assert.equal(personalBoard.nestedCardScrollers, 0, `${label}: card content owns a permanent inner scrollbar`);
       assert.ok(personalBoard.bodyOverflow <= 0 && personalBoard.contentOverflow <= 0,
         `${label}: personal workspace overflows horizontally`);
+      if (width >= 980) {
+        const reached = await window.webContents.executeJavaScript(`(async () => {
+          const pager = document.getElementById('personalCategoryPager');
+          const controller = window.campusCategoryStacks.activeController();
+          const before = JSON.stringify(controller.snapshot());
+          const expected = controller.snapshot().placements.filter(p =>
+            p.boardId === 'browser-personal' && !p.hidden).map(p => p.placementId).sort();
+          const ids = new Set();
+          const count = pager.querySelectorAll('[data-card-page-index]').length;
+          for (let page = 0; page < count; page++) {
+            pager.querySelector('[data-card-page-index="' + page + '"]').click();
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            document.querySelectorAll('#campusResources [data-card-placement-id]')
+              .forEach(card => ids.add(card.dataset.cardPlacementId));
+          }
+          pager.querySelector('[data-card-page-index="0"]').click();
+          return { ids: [...ids].sort(), expected,
+            stable: before === JSON.stringify(controller.snapshot()) };
+        })()`);
+        assert.equal(reached.expected.length, 6, `${label}: fixture category identity changed`);
+        assert.deepEqual(reached.ids, reached.expected, `${label}: wide pagination lost a category`);
+        assert.equal(reached.stable, true, `${label}: browsing rewrote the saved layout`);
+      }
       await capture(window, output, `${label}-workspace-personal`);
       await window.webContents.executeJavaScript(`document.getElementById('serviceTabOfficial').click()`);
 
