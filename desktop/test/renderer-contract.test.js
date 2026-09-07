@@ -7,7 +7,8 @@ const test = require('node:test');
 
 const rendererDir = path.join(__dirname, '..', 'renderer');
 const html = fs.readFileSync(path.join(rendererDir, 'index.html'), 'utf8');
-const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8');
+const css = fs.readFileSync(path.join(rendererDir, 'styles.css'), 'utf8')
+  + fs.readFileSync(path.join(rendererDir, 'features/campus-data/view.css'), 'utf8');
 const appJs = fs.readFileSync(path.join(rendererDir, 'app.js'), 'utf8');
 const categoryStacksJs = fs.readFileSync(path.join(rendererDir, 'campus-category-stacks.js'), 'utf8');
 const serviceWorkspaceJs = fs.readFileSync(path.join(rendererDir, 'campus-service-workspace.js'), 'utf8');

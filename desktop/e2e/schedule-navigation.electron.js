@@ -10,12 +10,15 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-week-fixture-'));
 app.setPath('userData', path.join(root, 'profile'));
 const renderer = path.join(__dirname, '..', 'renderer');
 const uri = name => pathToFileURL(path.join(renderer, name)).href;
+if (process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) {
+  fs.copyFileSync(path.resolve(process.env.HKUSTGZ_CALENDAR_CSS_BASELINE), path.join(root, 'baseline.css'));
+}
 fs.writeFileSync(path.join(root, 'index.html'), `<!doctype html><html lang="zh-CN"><head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
-<link rel="stylesheet" href="${uri('design-tokens.css')}"><link rel="stylesheet" href="${uri('styles.css')}"><link rel="stylesheet" href="fixture.css">
+<link rel="stylesheet" href="${uri('design-tokens.css')}"><link id="shared-css" rel="stylesheet" href="${uri('styles.css')}"><link id="calendar-css" rel="stylesheet" href="${uri('features/campus-data/view.css')}"><link rel="stylesheet" href="fixture.css">
 </head><body><main><section class="module module-schedule" id="moduleSchedule"><div class="module-head"><h3>我的周课表</h3>
 <div class="module-head-actions"><span class="module-source">myPortal</span><button id="scheduleRefresh" class="module-refresh">刷新</button></div></div><div id="scheduleBody"></div></section></main>
-</body></html>`);
+<div id="outside-schedule" class="week-summary">Sibling sentinel</div></body></html>`);
 fs.writeFileSync(path.join(root, 'fixture.css'), 'body { display:block; overflow:auto; padding:20px; } main { min-width:0; } .module { padding:16px; }');
 
 async function run() {
@@ -25,6 +28,33 @@ async function run() {
   window.webContents.session.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_details, reply) => reply({ cancel: true }));
   try {
     await window.loadFile(path.join(root, 'index.html'));
+    assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('outside-schedule')).display`),
+      'block', 'calendar styling must not leak outside its feature root');
+    const compareBaseline = async label => {
+      if (!process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) return;
+      const snapshot = () => window.webContents.executeJavaScript(`(() => {
+        return [...document.querySelectorAll('#moduleSchedule, #moduleSchedule *')].map(el => {
+          const style=getComputedStyle(el), rect=el.getBoundingClientRect();
+          return { tag:el.tagName, class:el.className,
+            bounds:[rect.x,rect.y,rect.width,rect.height],
+            styles:Object.fromEntries([...style].map(key=>[key,style.getPropertyValue(key)])) };
+        });
+      })()`);
+      const switchStyles = async baseline => {
+        await window.webContents.executeJavaScript(`new Promise((resolve,reject) => {
+          const shared=document.getElementById('shared-css');
+          shared.onload=()=>requestAnimationFrame(()=>requestAnimationFrame(resolve));
+          shared.onerror=()=>reject(new Error('baseline stylesheet failed to load'));
+          document.getElementById('calendar-css').disabled=${baseline};
+          shared.href=${JSON.stringify(baseline ? pathToFileURL(path.join(root, 'baseline.css')).href : uri('styles.css'))};
+        })`);
+      };
+      const current = await snapshot();
+      try {
+        await switchStyles(true);
+        assert.deepEqual(await snapshot(), current, `computed styles and geometry match before extraction: ${label}`);
+      } finally { await switchStyles(false); }
+    };
     await window.webContents.executeJavaScript(`(async () => {
       const campusData = await import(${JSON.stringify(uri('features/campus-data/index.mjs'))});
       window.fixtureCalls = [];
@@ -112,6 +142,7 @@ async function run() {
         await new Promise(r=>setTimeout(r,80));
         fs.writeFileSync(path.join(output,`schedule-${width}-${zoom}.png`),(await window.webContents.capturePage()).toPNG());
       }
+      await compareBaseline(`week ${width}/${zoom}`);
     }
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.length'),1,'resizing only changes presentation, not remote queries');
     await window.webContents.executeJavaScript(`document.querySelector('[data-week-move="1"]').click()`); await settle();
@@ -122,9 +153,11 @@ async function run() {
     await window.webContents.executeJavaScript(`window.fixtureHold=true;window.fixtureTable=document.querySelector('.week-table');document.getElementById('scheduleRefresh').click()`);
     await new Promise(r=>setTimeout(r,80));
     assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.week-table')===window.fixtureTable`),true,'refresh leaves the existing timetable in place');
+    await compareBaseline('refreshing cached week');
     await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureReject(new Error('synthetic offline'))`);await settle();
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event').length`),3);
     assert.ok(await window.webContents.executeJavaScript(`!!document.querySelector('.week-refresh-notice')`));
+    await compareBaseline('failed refresh notice');
     await window.webContents.executeJavaScript(`document.getElementById('scheduleRefresh').click()`);await settle();
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).force'),true);
     await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event')[1].click()`);
@@ -152,6 +185,7 @@ async function run() {
       })()`);
       assert.ok(Math.abs(centered.x-centered.w/2)<2 && Math.abs(centered.y-centered.h/2)<2, `detail centered at width ${width}`);
       assert.ok(centered.left>=16 && centered.right<=centered.w-16 && centered.top>=16 && centered.bottom<=centered.h-16,'long details stay inside viewport');
+      await compareBaseline(`dialog ${width}`);
     }
     window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
     window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
@@ -163,7 +197,9 @@ async function run() {
     await new Promise(r=>setTimeout(r,80));
     const loading=await window.webContents.executeJavaScript(`({height:document.getElementById('moduleSchedule').getBoundingClientRect().height,events:document.querySelectorAll('.week-event').length})`);
     assert.ok(loading.height<280,'uncached week does not create a tall blank card');assert.equal(loading.events,0);
+    await compareBaseline('uncached week loading');
     await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureResolve()`);await settle();
+    if (process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) process.stdout.write('calendar CSS baseline: PASS (all computed styles and geometry, 5 week layouts, 4 dialogs, 3 refresh/loading states)\n');
     process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom)\n');
   } finally { window.destroy(); }
 }
