@@ -42,10 +42,13 @@ async function main() {
       const result=await window.webContents.executeJavaScript(`(()=>{
         const dialog=document.querySelector('.cb-service-overlay');
         return {open:dialog?.open,count:dialog?.querySelectorAll('.cb-site').length,width:dialog?.getBoundingClientRect().width,
+          cx:dialog?.getBoundingClientRect().x+dialog?.getBoundingClientRect().width/2,
+          cy:dialog?.getBoundingClientRect().y+dialog?.getBoundingClientRect().height/2,vw:innerWidth,vh:innerHeight,
           overflow:document.documentElement.scrollWidth-innerWidth};
       })()`);
       assert.equal(result.open,true);assert.equal(result.count,expected);assert.ok(expected<=2);
       assert.ok(result.width<=width);assert.ok(result.overflow<=1);
+      assert.ok(Math.abs(result.cx-result.vw/2)<2 && Math.abs(result.cy-result.vh/2)<2,'category detail is centered');
       window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
       await new Promise(r=>setTimeout(r,80));
       assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.cb-service-overlay').open`),false);

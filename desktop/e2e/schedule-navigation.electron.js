@@ -123,6 +123,27 @@ async function run() {
     assert.match(await window.webContents.executeJavaScript(`document.querySelector('dialog').textContent`),/Full Long Course Name/);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.week-detail-item').length`),3);
     assert.match(await window.webContents.executeJavaScript(`document.querySelector('dialog').textContent`),/Third concurrent course/);
+    const detailBounds = await window.webContents.executeJavaScript(`(()=>{
+      const r=document.querySelector('dialog').getBoundingClientRect();
+      return {cx:r.x+r.width/2,cy:r.y+r.height/2,vw:innerWidth,vh:innerHeight,left:r.left,top:r.top,right:r.right,bottom:r.bottom};
+    })()`);
+    assert.ok(Math.abs(detailBounds.cx-detailBounds.vw/2)<2,'detail dialog must be horizontally centered');
+    assert.ok(Math.abs(detailBounds.cy-detailBounds.vh/2)<2,'detail dialog must be vertically centered');
+    assert.ok(detailBounds.left>=16 && detailBounds.right<=detailBounds.vw-16 && detailBounds.top>=16 && detailBounds.bottom<=detailBounds.vh-16,'detail dialog retains viewport margins');
+    for (const width of [360, 440, 960, 1440]) {
+      await window.webContents.executeJavaScript(`document.querySelector('dialog').close()`);
+      window.webContents.setZoomFactor(1); window.setSize(width,740);
+      await new Promise(r=>setTimeout(r,120));
+      await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event')[1].click()`);
+      const centered = await window.webContents.executeJavaScript(`(()=>{
+        const dialog=document.querySelector('dialog');
+        if(innerWidth===440) for(const title of dialog.querySelectorAll('h4')) title.textContent=title.textContent.repeat(8);
+        const r=dialog.getBoundingClientRect();
+        return {x:r.x+r.width/2,y:r.y+r.height/2,w:innerWidth,h:innerHeight,left:r.left,right:r.right,top:r.top,bottom:r.bottom};
+      })()`);
+      assert.ok(Math.abs(centered.x-centered.w/2)<2 && Math.abs(centered.y-centered.h/2)<2, `detail centered at width ${width}`);
+      assert.ok(centered.left>=16 && centered.right<=centered.w-16 && centered.top>=16 && centered.bottom<=centered.h-16,'long details stay inside viewport');
+    }
     window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
     window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
     await new Promise(r=>setTimeout(r,80));
