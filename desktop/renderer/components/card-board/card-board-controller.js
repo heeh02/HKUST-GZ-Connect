@@ -86,6 +86,7 @@
       pager = null,
       pageSize = 0,
       pagerByCard = false,
+      switchStyle = 'draw',
       renameCards = false,
       onDocument = null,
       onEditingChange = null,
@@ -292,6 +293,24 @@
       if (index < 0 || index === count - 1) return false;
       const deckId = slot.dataset.cardDeckId;
       const startedAt = container.ownerDocument.defaultView?.performance?.now?.() ?? 0;
+      if (switchStyle === 'service') {
+        frontByDeck = { ...frontByDeck, [deckId]: placementId };
+        activePagerPlacementId = placementId;
+        render({ preserveFocus: false });
+        const nextSlot = [...container.querySelectorAll('[data-card-deck-id]')]
+          .find(element => element.dataset.cardDeckId === deckId);
+        nextSlot.classList.add('cb-drawing');
+        const front = nextSlot.querySelector('.is-front');
+        Promise.resolve(motion.animateSwitch(nextSlot, { front, back: nextSlot.querySelector('.is-back') })).finally(() => {
+          nextSlot.classList.remove('cb-drawing');
+          if (destroyed || !nextSlot.isConnected) return;
+          if (focus) front.querySelector('[data-card-action="draw"]')?.focus({ preventScroll: true });
+          container.dispatchEvent(new CustomEvent('card-board-drawn', { bubbles: true,
+            detail: { deckId, placementId, duration: (container.ownerDocument.defaultView?.performance?.now?.() ?? 0) - startedAt } }));
+          announceMessage(strings().drawnToFront.replace('{name}', cardForPlacement(placementId)?.name || placementId));
+        });
+        return true;
+      }
       slot.classList.add('cb-drawing');
 
       const nextOrderIds = [...cards.filter((card) => card.dataset.cardPlacementId !== placementId)
@@ -371,7 +390,7 @@
       closeOverlay();
       const labels = strings();
       const dialog = container.ownerDocument.createElement('dialog');
-      dialog.className = 'cb-overlay';
+      dialog.className = `cb-overlay${switchStyle === 'service' ? ' cb-service-overlay' : ''}`;
       dialog.setAttribute('aria-label', card.name || placementId);
       dialog.innerHTML = `<div class="cb-overlay-head"><h3 class="cb-overlay-title">${escapeHtml(card.name || placementId)}</h3>`
         + `<button class="cb-overlay-close" type="button" aria-label="${escapeHtml(labels.closeOverlay)}">×</button></div>`
@@ -385,6 +404,8 @@
       container.appendChild(dialog);
       overlay = dialog;
       dialog.showModal();
+      if (switchStyle === 'service') void motion.animateSwitch(dialog, { front: dialog });
+      dialog.querySelector('.cb-overlay-close').focus({ preventScroll: true });
     }
 
     function pushDraft(nextDocument, nextOperations, message = strings().draftChanged) {
@@ -559,7 +580,7 @@
         if (slot) drawPlacement(slot, placementId);
         return;
       }
-      if (cardAction === 'show-all' && placementId) {
+      if ((cardAction === 'show-all' || cardAction === 'expand') && placementId) {
         openOverlay(placementId);
         return;
       }
@@ -685,7 +706,12 @@
         const unit = units[unitIndex];
         frontByDeck = { ...frontByDeck, [unit.unitId]: placementId };
         activePagerPlacementId = placementId;
-        render({ preserveFocus: false, animate: true });
+        render({ preserveFocus: false, animate: switchStyle !== 'service' });
+        if (switchStyle === 'service') {
+          const slot = [...container.querySelectorAll('[data-card-deck-id]')]
+            .find(element => element.dataset.cardDeckId === unit.unitId);
+          if (slot) void motion.animateSwitch(slot, { front: slot.querySelector('.is-front'), back: slot.querySelector('.is-back') });
+        }
         pager.querySelector(`[data-card-page-placement="${CSS.escape(placementId)}"]`)
           ?.focus({ preventScroll: true });
         return;
