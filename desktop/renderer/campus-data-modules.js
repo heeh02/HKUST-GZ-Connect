@@ -85,20 +85,36 @@
       const endSlot = Math.max(slot + 1, Math.ceil((endMinutes - slotStart) / WEEK_SLOT_MINUTES));
       return { ...segment, startMinutes, endMinutes, slot, span: endSlot - slot };
     }).sort((left, right) => left.segmentStart - right.segmentStart);
-    for (let day = 0; day < 7; day++) {
-      let group = [], laneEnds = [], groupEnd = -Infinity;
-      const finish = () => { for (const event of group) event.columns = laneEnds.length; };
-      for (const event of events.filter(item => item.day === day)) {
-        if (event.segmentStart >= groupEnd) { finish(); group = []; laneEnds = []; }
-        let column = laneEnds.findIndex(end => end <= event.segmentStart);
-        if (column < 0) column = laneEnds.length;
-        laneEnds[column] = event.segmentEnd; event.column = column;
-        group.push(event); groupEnd = Math.max(...laneEnds);
-      }
-      finish();
-    }
     return Object.freeze({ ...range, slotStart, slotCount,
       events: Object.freeze(events.map(Object.freeze)), eventCount: intersecting.length });
+  }
+
+  function scheduleWeekLayout(model) {
+    let start = model.events.length ? Math.floor(Math.min(...model.events.map(e => e.startMinutes)) / 120) * 120 : 480;
+    let end = model.events.length ? Math.ceil(Math.max(...model.events.map(e => e.endMinutes)) / 120) * 120 : 1200;
+    if (end - start < 240) { start = Math.max(0, start - 120); end = Math.min(1440, start + 240); start = end - 240; }
+    const height = Math.min(300, Math.max(180, (end - start) * .6));
+    const scale = height / (end - start);
+    const groups = [];
+    for (let day = 0; day < 7; day++) {
+      let previous = null;
+      for (const event of model.events.filter(e => e.day === day)) {
+        const top = Math.min(height - 30, (event.startMinutes - start) * scale);
+        const bottom = Math.min(height, Math.max(top + 30, (event.endMinutes - start) * scale));
+        // Group intersecting visual intervals instead of creating unreadable narrow columns.
+        // Very short adjacent entries can share a group too; the detail view retains exact times.
+        if (previous && top < previous.bottom) {
+          previous.bottom = Math.max(previous.bottom, bottom);
+          previous.segmentEnd = Math.max(previous.segmentEnd, event.segmentEnd);
+          previous.members.push(event);
+        } else {
+          previous = { day, top, bottom, segmentStart: event.segmentStart, segmentEnd: event.segmentEnd, members: [event] };
+          groups.push(previous);
+        }
+      }
+    }
+    return Object.freeze({ start, end, height, scale, slotCount: (end - start) / 120,
+      groups: Object.freeze(groups.map(group => Object.freeze({ ...group, members: Object.freeze(group.members) }))) });
   }
 
   function create({ document: doc, api, translate, escapeHtml, openDeepLink, onCatalog = null } = {}) {
@@ -183,7 +199,8 @@
       const campusTime = module.source === 'myportal-calendar';
       const model = scheduleWeekModel(module.state === 'ready' ? module.items : [],
         Date.parse(`${selectedDate}T12:00:00+08:00`), campusTime);
-      visibleEvents = model.events;
+      const layout = scheduleWeekLayout(model);
+      visibleEvents = layout.groups;
       const format = (value, options) => new Intl.DateTimeFormat(locale(), {
         ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
       }).format(new Date(value));
@@ -203,22 +220,23 @@
       const lanes = model.days.map((day, index) => (
         `<div class="week-day-lane${sameLocalDay(day, now, campusTime) ? ' is-today' : ''}" data-day="${index}" aria-hidden="true"></div>`
       )).join('');
-      const times = Array.from({ length: model.slotCount }, (_, index) => {
-        const hour = String(model.slotStart / 60 + index * 2).padStart(2, '0');
+      const times = Array.from({ length: layout.slotCount }, (_, index) => {
+        const hour = String(layout.start / 60 + index * 2).padStart(2, '0');
         return `<time class="week-time" data-slot="${index}" aria-hidden="true">${hour}:00</time>`;
       }).join('');
       const events = model.days.map((_, index) => {
-        const dayEvents = model.events.filter(({ day }) => day === index)
-          .map((event) => {
-        const { entry, day, slot, span, segmentStart, segmentEnd, startMinutes, endMinutes, column, columns } = event;
+        const dayEvents = layout.groups.filter(({ day }) => day === index)
+          .map((group) => {
+        const { day, segmentStart, segmentEnd, top, bottom, members } = group;
         const endLabel = segmentEnd === (model.days[day + 1] ?? model.end) ? '24:00' : formatTime(segmentEnd);
-        const content = `<time>${escapeHtml(`${formatTime(segmentStart)}–${endLabel}`)}</time>`
-          + `<strong>${escapeHtml(entry.title)}</strong>`
-          + (entry.location ? `<small>${escapeHtml(entry.location)}</small>` : '');
-        const label = `${formatTime(segmentStart)}–${endLabel} ${entry.title}${entry.location ? ` · ${entry.location}` : ''}`;
-        const duration = endMinutes - startMinutes;
-        const attrs = `class="week-event${duration < 80 ? ' is-short' : ''}${duration < 50 ? ' is-tiny' : ''}${duration < 24 ? ' is-micro' : ''}" data-day="${day}" data-slot="${slot}" data-span="${span}"`
-          + ` data-offset="${startMinutes - model.slotStart}" data-duration="${duration}" data-column="${column}" data-columns="${columns}" data-schedule-index="${model.events.indexOf(event)}"`
+        const cardHeight = bottom - top - 4;
+        const grouped = members.length > 1;
+        const title = grouped ? translate('workspace.scheduleGrouped', { count: members.length }) : members[0].entry.title;
+        const content = `<time>${escapeHtml(cardHeight < 40 ? formatTime(segmentStart) : `${formatTime(segmentStart)}–${endLabel}`)}</time>`
+          + `<strong>${escapeHtml(title)}</strong>`;
+        const label = `${formatTime(segmentStart)}–${endLabel} ${members.map(e => e.entry.title).join(' · ')}`;
+        const attrs = `class="week-event${cardHeight < 40 ? ' is-inline' : ''}${cardHeight >= 48 ? ' is-tall' : ''}${grouped ? ' is-group' : ''}" data-day="${day}" data-count="${members.length}"`
+          + ` data-offset="${top}" data-height="${cardHeight}" data-schedule-index="${layout.groups.indexOf(group)}"`
           + ` title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"`;
         return `<button type="button" ${attrs}>${content}</button>`;
           }).join('');
@@ -232,7 +250,7 @@
         + `<div class="week-scroll" tabindex="0" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
         + `<div class="week-table" role="grid"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
-        + `<div class="week-body" data-slot-count="${model.slotCount}">${lanes}${times}${events}${empty}</div></div></div>`
+        + `<div class="week-body" data-slot-count="${layout.slotCount}" data-height="${layout.height}">${lanes}${times}${events}${empty}</div></div></div>`
         + `<dialog id="scheduleDetail" class="week-detail"></dialog>` + actionHtml('source', 'schedule');
     }
 
@@ -272,12 +290,14 @@
         : moduleId === 'loans' ? loansHtml(safe) : newsHtml(safe);
       if (moduleId === 'schedule') {
         const grid = body.querySelector?.('.week-body');
-        if (grid) grid.style.gridTemplateRows = `repeat(${grid.dataset.slotCount}, 120px)`;
+        if (grid) {
+          const rowHeight = Number(grid.dataset.height) / Number(grid.dataset.slotCount);
+          grid.style.gridTemplateRows = `repeat(${grid.dataset.slotCount}, ${rowHeight}px)`;
+          grid.style.backgroundSize = `100% ${rowHeight}px`;
+        }
         for (const event of body.querySelectorAll?.('.week-event') || []) {
           event.style.top = `${Number(event.dataset.offset) + 2}px`;
-          event.style.height = `${Math.max(1, Number(event.dataset.duration) - 4)}px`;
-          event.style.left = `calc(${100 * Number(event.dataset.column) / Number(event.dataset.columns)}% + 3px)`;
-          event.style.width = `calc(${100 / Number(event.dataset.columns)}% - 6px)`;
+          event.style.height = `${Number(event.dataset.height)}px`;
         }
         if (restoreFocus) body.querySelector?.(restoreFocus)?.focus({ preventScroll: true });
       }
@@ -413,15 +433,16 @@
       if (target.closest('[data-schedule-close]')) { $('scheduleDetail')?.close(); return; }
       const card = target.closest('[data-schedule-index]');
       if (card) {
-        const entry = visibleEvents[Number(card.dataset.scheduleIndex)]?.entry;
+        const group = visibleEvents[Number(card.dataset.scheduleIndex)];
         const dialog = $('scheduleDetail');
-        if (entry && dialog) {
+        if (group && dialog) {
           const date = value => new Intl.DateTimeFormat(locale(), { timeZone: 'Asia/Shanghai',
             dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(value);
           dialog.setAttribute('aria-labelledby', 'scheduleDetailTitle');
-          dialog.innerHTML = `<h3 id="scheduleDetailTitle">${escapeHtml(entry.title)}</h3><p>${escapeHtml(date(entry.startsAt))} – ${escapeHtml(date(entry.endsAt))}</p>`
-            + (entry.location ? `<p>${escapeHtml(entry.location)}</p>` : '')
-            + (entry.url ? `<button type="button" data-entry-url="${escapeHtml(entry.url)}">${escapeHtml(translate('workspace.scheduleSource'))}</button>` : '')
+          dialog.innerHTML = `<h3 id="scheduleDetailTitle">${escapeHtml(translate('workspace.scheduleDetails'))}</h3>`
+            + group.members.map(({ entry }) => `<article class="week-detail-item"><h4>${escapeHtml(entry.title)}</h4><p>${escapeHtml(date(entry.startsAt))} – ${escapeHtml(date(entry.endsAt))}</p>`
+              + (entry.location ? `<p>${escapeHtml(entry.location)}</p>` : '')
+              + (entry.url ? `<button type="button" data-entry-url="${escapeHtml(entry.url)}">${escapeHtml(translate('workspace.scheduleSource'))}</button>` : '') + '</article>').join('')
             + `<button type="button" data-schedule-close>${escapeHtml(translate('workspace.scheduleClose'))}</button>`;
           dialog.showModal();
         }
@@ -482,5 +503,5 @@
     });
   }
 
-  return Object.freeze({ create, scheduleWeekModel, weekRange });
+  return Object.freeze({ create, scheduleWeekModel, scheduleWeekLayout, weekRange });
 });

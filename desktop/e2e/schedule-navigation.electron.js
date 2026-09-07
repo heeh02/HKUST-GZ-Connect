@@ -13,8 +13,8 @@ const uri = name => pathToFileURL(path.join(renderer, name)).href;
 fs.writeFileSync(path.join(root, 'index.html'), `<!doctype html><html lang="zh-CN"><head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
 <link rel="stylesheet" href="${uri('design-tokens.css')}"><link rel="stylesheet" href="${uri('styles.css')}"><link rel="stylesheet" href="fixture.css">
-</head><body><main><section class="module" id="moduleSchedule"><h2>我的周课表</h2>
-<button id="scheduleRefresh">刷新</button><div id="scheduleBody"></div></section></main>
+</head><body><main><section class="module module-schedule" id="moduleSchedule"><div class="module-head"><h3>我的周课表</h3>
+<div class="module-head-actions"><span class="module-source">myPortal</span><button id="scheduleRefresh" class="module-refresh">刷新</button></div></div><div id="scheduleBody"></div></section></main>
 <script src="${uri('campus-data-modules.js')}"></script></body></html>`);
 fs.writeFileSync(path.join(root, 'fixture.css'), 'body { display:block; overflow:auto; padding:20px; } main { min-width:0; } .module { padding:16px; }');
 
@@ -32,7 +32,8 @@ async function run() {
       }});
       const labels = { 'workspace.scheduleChooseWeek':'选择日期', 'workspace.schedulePrevious':'上一周',
         'workspace.scheduleNext':'下一周', 'workspace.scheduleToday':'本周', 'workspace.scheduleClose':'关闭',
-        'workspace.scheduleTime':'时间', 'workspace.scheduleWeekTable':'周课表', 'workspace.scheduleRefresh':'刷新' };
+        'workspace.scheduleTime':'时间', 'workspace.scheduleWeekTable':'周课表', 'workspace.scheduleRefresh':'刷新',
+        'workspace.scheduleSource':'打开 myPortal →', 'workspace.scheduleDetails':'安排详情' };
       const feature = window.campusDataModules.create({ document,
         api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
           getCampusScheduleWeek: async query => {
@@ -43,10 +44,11 @@ async function run() {
               { id:'b', title:'Project-driven Collaborative Design — Full Long Course Name', startsAt:monday+16.5*3600000, endsAt:monday+(18+20/60)*3600000, location:'Room B' },
               { id:'c', title:'Concurrent Seminar', startsAt:monday+16.75*3600000, endsAt:monday+17.5*3600000, location:'Room C' },
               { id:'d', title:'Short appointment', startsAt:monday+18.5*3600000, endsAt:monday+19*3600000, location:'Room D' },
+              { id:'e', title:'Third concurrent course', startsAt:monday+16.5*3600000, endsAt:monday+(18+20/60)*3600000, location:'Room E' },
             ]);
           } },
         translate: (key, values) => key === 'workspace.scheduleWeekRange' ? values.start+'–'+values.end
-          : key === 'workspace.scheduleWeekCount' ? values.count+' 项' : (labels[key] || key),
+          : key === 'workspace.scheduleWeekCount' || key === 'workspace.scheduleGrouped' ? values.count+' 项安排' : (labels[key] || key),
         escapeHtml: text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
         openDeepLink: () => {},
       });
@@ -69,19 +71,25 @@ async function run() {
       const result = await window.webContents.executeJavaScript(`(() => {
         const rect = el => { const r=el.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
         return { overflow:document.documentElement.scrollWidth-innerWidth,
+          bodyHeight:document.querySelector('.week-body').clientHeight,
+          verticalOverflow:document.querySelector('.week-scroll').scrollHeight-document.querySelector('.week-scroll').clientHeight,
           cards:[...document.querySelectorAll('.week-event')].map(el=>({rect:rect(el), title:rect(el.querySelector('strong')),
+            inline:el.classList.contains('is-inline'), count:Number(el.dataset.count),
             time:getComputedStyle(el.querySelector('time')).display==='none'?null:rect(el.querySelector('time')),
             location:el.querySelector('small') && getComputedStyle(el.querySelector('small')).display!=='none'?rect(el.querySelector('small')):null,
             offset:parseFloat(el.style.top), height:parseFloat(el.style.height)})) };
       })()`);
       assert.ok(result.overflow<=1, `no page overflow at ${width}/${zoom}`);
-      assert.equal(result.cards[0].offset, 422, '15:00 is seven hours after 08:00, not rounded to 14:00');
-      assert.equal(result.cards[1].offset, 512);
-      assert.equal(result.cards[0].height, 86);
+      assert.equal(result.bodyHeight,216, 'only occupied hours, compactly scaled');
+      assert.ok(result.verticalOverflow<=1, 'week must not have a nested vertical scrollbar');
+      assert.equal(result.cards[0].offset, 38, '15:00 is one hour after the fitted 14:00 start');
+      assert.equal(result.cards[1].offset, 92);
+      assert.equal(result.cards[0].height, 50);
+      assert.deepEqual(result.cards.map(card=>card.count),[1,3,1]);
       for (let i=0;i<result.cards.length;i++) {
         const card=result.cards[i];
         assert.ok(card.title.bottom<=card.rect.bottom+1, 'title is not cut off by card bottom');
-        if(card.time) assert.ok(card.time.bottom<=card.title.top+1, 'time and title do not overlap');
+        if(card.time) assert.ok(card.inline ? card.time.right<=card.title.left+1 : card.time.bottom<=card.title.top+1, 'time and title do not overlap');
         if(card.location) assert.ok(card.title.bottom<=card.location.top+1 && card.location.bottom<=card.rect.bottom+1);
         for(let j=i+1;j<result.cards.length;j++) {
           const a=card.rect,b=result.cards[j].rect;
@@ -90,7 +98,6 @@ async function run() {
       }
       if (process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS) {
         const output=path.resolve(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS); fs.mkdirSync(output,{recursive:true});
-        await window.webContents.executeJavaScript(`document.querySelector('.week-scroll').scrollTop=360`);
         await new Promise(r=>setTimeout(r,80));
         fs.writeFileSync(path.join(output,`schedule-${width}-${zoom}.png`),(await window.webContents.capturePage()).toPNG());
       }
@@ -104,6 +111,8 @@ async function run() {
     await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event')[1].click()`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelector('dialog').open`),true);
     assert.match(await window.webContents.executeJavaScript(`document.querySelector('dialog').textContent`),/Full Long Course Name/);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.week-detail-item').length`),3);
+    assert.match(await window.webContents.executeJavaScript(`document.querySelector('dialog').textContent`),/Third concurrent course/);
     window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
     window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
     await new Promise(r=>setTimeout(r,80));

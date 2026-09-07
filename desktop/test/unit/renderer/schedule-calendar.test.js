@@ -1,8 +1,29 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { scheduleWeekModel } = require('../../../renderer/campus-data-modules');
+const { scheduleWeekModel, scheduleWeekLayout } = require('../../../renderer/campus-data-modules');
 const date = (day, hour = 0) => new Date(2027, 0, day, hour).getTime();
+
+test('compact week keeps all three concurrent records readable through one full-width group', () => {
+  const events = [[15,16.5], [16.5,18+20/60], [16.5,18+20/60], [16.5,18+20/60], [18.5,19.5]]
+    .map(([from,to],id)=>({id:String(id),title:`Event ${id}`,startsAt:date(13)+from*3600000,endsAt:date(13)+to*3600000}));
+  const model=scheduleWeekModel(events,date(13)); const layout=scheduleWeekLayout(model);
+  assert.equal(layout.start,14*60); assert.equal(layout.end,20*60);
+  assert.equal(layout.height,216);
+  assert.deepEqual(layout.groups.map(group=>group.members.length),[1,3,1]);
+  // Consecutive non-overlapping courses are not falsely described as concurrent.
+  const exact = scheduleWeekLayout(scheduleWeekModel(events.slice(0,4),date(13)));
+  assert.deepEqual(exact.groups.map(group=>group.members.length),[1,3]);
+  assert.equal(exact.groups.flatMap(group=>group.members).length,4);
+  for(let i=1;i<layout.groups.length;i++)assert.ok(layout.groups[i-1].bottom<=layout.groups[i].top);
+});
+
+test('compact full-day and empty weeks stay bounded without hiding event records', () => {
+  const model=scheduleWeekModel([{startsAt:date(13),endsAt:date(14),title:'All day'}],date(13));
+  const layout=scheduleWeekLayout(model);
+  assert.ok(layout.height<=300);assert.equal(layout.groups[0].members[0].entry.title,'All day');
+  assert.ok(scheduleWeekLayout(scheduleWeekModel([],date(13))).height<=300);
+});
 
 test('campus week and event slots stay stable when the host has not reached Monday', () => {
   const original = process.env.TZ;
