@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const analyze = source => analyzeRendererSource(source, { module: true });
+const { collectRendererScriptEntries } = require('../../../scripts/renderer-html-entrypoints');
 
 test('AST analysis ignores comments and strings but follows direct and literal-key global aliases', () => {
   const result = analyze(`
@@ -277,7 +278,8 @@ test('real architecture CLI fails on globals, private imports, HTML bypass and p
   const fixtureRoot=path.join(root,'desktop');
   try {
     for(const source of [...collectJavaScriptFiles(desktop),
-      ...['renderer/index.html','scripts/architecture-root-debt.json','scripts/renderer-feature-registry.json'].map(file=>path.join(desktop,file))]) {
+      ...[...new Set(collectRendererScriptEntries(desktop).map(entry=>entry.page)),
+        'scripts/architecture-root-debt.json','scripts/renderer-feature-registry.json'].map(file=>path.join(desktop,file))]) {
       const target=path.join(fixtureRoot,path.relative(desktop,source));
       fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(source,target);
     }
@@ -299,6 +301,19 @@ test('real architecture CLI fails on globals, private imports, HTML bypass and p
     const htmlFailure=run(); assert.equal(htmlFailure.status,1);
     assert.match(htmlFailure.stderr,/unapproved HTML module entrypoint/u);
     fs.writeFileSync(htmlFile,html);
+    const browserPage=path.join(fixtureRoot,'renderer/campus-browser.html');
+    const browserHtml=fs.readFileSync(browserPage,'utf8');
+    fs.writeFileSync(browserPage,browserHtml.replace('</body>',
+      '<script src="../lib/browser/session/browser-session-manager.js"></script></body>'));
+    const classicFailure=run(); assert.equal(classicFailure.status,1);
+    assert.match(classicFailure.stderr,/unapproved HTML script entrypoint.*campus-browser/u);
+    fs.writeFileSync(browserPage,browserHtml);
+    const nestedPage=path.join(fixtureRoot,'renderer/extra/nested.html');
+    fs.mkdirSync(path.dirname(nestedPage),{recursive:true});
+    fs.writeFileSync(nestedPage,'<script type="module" src="../features/campus-data/controller.mjs"></script>');
+    const nestedFailure=run(); assert.equal(nestedFailure.status,1);
+    assert.match(nestedFailure.stderr,/unapproved HTML script entrypoint.*nested.html/u);
+    fs.unlinkSync(nestedPage);
     const entry=path.join(fixtureRoot,'renderer/features/official-favorites/index.mjs');
     fs.appendFileSync(entry,'\nexport const accidentalPublicApi = true;\n');
     const apiFailure=run(); assert.equal(apiFailure.status,1);

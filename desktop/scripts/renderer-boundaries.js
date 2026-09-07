@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { analyzeRendererSource } = require('./renderer-source-analysis');
-const { controlModuleEntrypoints } = require('./check-javascript-syntax');
+const { collectRendererScriptEntries, modulePaths } = require('./renderer-html-entrypoints');
 
 const REGISTRY = 'scripts/renderer-feature-registry.json';
 const safePath = value => typeof value === 'string' && /^[a-zA-Z0-9_./-]+$/u.test(value) &&
@@ -53,9 +53,8 @@ function validateRegistry(value) {
   return value;
 }
 
-function analyzeRendererFiles(root, files, sharedSources = []) {
-  const markup = fs.readFileSync(path.join(root, 'renderer/index.html'), 'utf8');
-  const modules = new Set([...controlModuleEntrypoints(markup)].map(file => file.replace(/^desktop\//u, '')));
+function analyzeRendererFiles(root, files, sharedSources = [], entries = collectRendererScriptEntries(root)) {
+  const modules = modulePaths(entries);
   const shared = new Set(sharedSources);
   const result = new Map();
   for (const absolute of files) {
@@ -73,10 +72,18 @@ function analyzeRendererFiles(root, files, sharedSources = []) {
   return result;
 }
 
-function rendererBoundaryErrors(registry, records) {
+function rendererBoundaryErrors(registry, records, entries = []) {
   const errors = [];
   try { validateRegistry(registry); } catch (error) { return [error.message]; }
   const owner = file => registry.features.find(feature => file.startsWith(`${feature.root}/`));
+  for (const entry of entries) {
+    if (!records.has(entry.file) ||
+        (!registry.bootstraps.includes(entry.file) && !Object.hasOwn(registry.legacyGlobals,entry.file))) {
+      errors.push(`unapproved HTML script entrypoint: ${entry.page} -> ${entry.file}`);
+    } else if (records.get(entry.file).module !== entry.module) {
+      errors.push(`HTML script mode mismatch: ${entry.page} -> ${entry.file}`);
+    }
+  }
   const graph = new Map([...records.keys()].map(file => [file, []]));
   for (const file of registry.bootstraps) {
     if (!records.has(file)) errors.push(`missing Renderer bootstrap: ${file}`);
@@ -154,7 +161,10 @@ function checkRendererBoundaries(root, files, sharedSources) {
     if (Buffer.byteLength(source) > 64 * 1024) throw new Error('oversized registry');
     registry = JSON.parse(source);
   } catch { return ['Renderer feature registry is missing or invalid']; }
-  return rendererBoundaryErrors(registry, analyzeRendererFiles(root, files, sharedSources));
+  try {
+    const entries = collectRendererScriptEntries(root);
+    return rendererBoundaryErrors(registry, analyzeRendererFiles(root, files, sharedSources, entries), entries);
+  } catch { return ['Renderer HTML script inventory is missing or invalid']; }
 }
 
 module.exports = { analyzeRendererFiles, checkRendererBoundaries, rendererBoundaryErrors, validateRegistry };
