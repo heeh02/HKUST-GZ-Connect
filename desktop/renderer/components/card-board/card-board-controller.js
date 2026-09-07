@@ -559,15 +559,20 @@
       announceMessage(strings().pinToConnect);
     }
 
+    function revealPlacement(placementId) {
+      const units = visibleUnits();
+      const index = units.findIndex(unit => unit.placements.some(placement => placement.placementId === placementId));
+      if (index < 0) return false;
+      if (pageSize > 0) page = Math.floor(index / pageSize);
+      frontByDeck = { ...frontByDeck, [units[index].unitId]: placementId };
+      activePagerPlacementId = placementId;
+      return true;
+    }
+
     function focusCard(kind, id) {
       const placement = liveDocument().placements.find((candidate) =>
         candidate.boardId === boardId && candidate.card.kind === kind && candidate.card.id === id && !candidate.hidden);
-      if (!placement) return false;
-      const deckId = placement.deckId || placement.placementId;
-      const unitIndex = visibleUnits().findIndex(({ unitId }) => unitId === deckId);
-      if (pageSize > 0 && unitIndex >= 0) page = Math.floor(unitIndex / pageSize);
-      frontByDeck = { ...frontByDeck, [deckId]: placement.placementId };
-      activePagerPlacementId = placement.placementId;
+      if (!placement || !revealPlacement(placement.placementId)) return false;
       render({ preserveFocus: false });
       motion.scrollPlacementIntoView(container, placement.placementId);
       const target = [...container.querySelectorAll('[data-card-placement-id]')]
@@ -728,7 +733,13 @@
       const button = event.target.closest('[data-card-page-index]');
       if (!button) return;
       page = Number(button.dataset.cardPageIndex) || 0;
-      render({ preserveFocus: false, animate: true });
+      render({ preserveFocus: false, animate: !serviceLayout });
+      if (serviceLayout) {
+        for (const slot of container.querySelectorAll('.cb-deck')) {
+          void motion.animateSwitch(slot, { front: slot.querySelector('.is-front'), back: slot.querySelector('.is-back') });
+        }
+        pager.querySelector(`[data-card-page-index="${page}"]`)?.focus({ preventScroll: true });
+      }
     };
     pager?.addEventListener('click', handlePagerClick);
     dragFeature = drag.attach({
@@ -744,7 +755,13 @@
       model: responsiveModel,
       current: () => ({ columns }),
       onChange: (next) => {
+        const focused = container.ownerDocument.activeElement;
+        const anchor = serviceLayout && next.columns !== columns
+          ? (container.contains(focused) ? focused?.closest('[data-card-placement-id]')?.dataset.cardPlacementId : null)
+            || container.querySelector('.cb-card.is-front')?.dataset.cardPlacementId || activePagerPlacementId
+          : null;
         columns = next.columns;
+        if (anchor) revealPlacement(anchor);
         if (next.measureOnly) layoutBoard();
         else render({ animate: next.animate === true });
       },

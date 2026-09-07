@@ -83,6 +83,63 @@ async function main() {
       host.querySelector('.cb-card.is-back [data-card-action="draw"]').click();
     })`);
     assert.ok(reduced.duration<100);
+    await window.webContents.executeJavaScript(`(()=>{
+      const groups=Array.from({length:6},(_,i)=>({id:'many-'+i,name:'Collection '+i,resourceIds:[]}));
+      window.campusCategoryStacks.render({resources:[],groups,translate:key=>key,escapeHtml:String});
+      const controller=window.campusCategoryStacks.activeController();
+      controller.setDocument({schemaVersion:1,revision:0,placements:[],decks:[]});
+      window.savedCategoryLayout=JSON.stringify(controller.snapshot());
+    })()`);
+    window.setSize(1200,740);await new Promise(r=>setTimeout(r,220));
+    await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+    assert.equal(await window.webContents.executeJavaScript(`window.campusCategoryStacks.focusCard('user-collection','many-5')`),true);
+    assert.equal(await window.webContents.executeJavaScript(`
+      document.querySelector('#campusResources .cb-card.is-front[data-card-ref-id="many-5"]') !== null
+    `), true, 'focus must reveal the requested later-page category, not just report success');
+    const widePager=await window.webContents.executeJavaScript(`(()=>{
+      const pager=document.getElementById('personalCategoryPager');
+      const count=pager.querySelectorAll('button').length;
+      pager.querySelector('[data-card-page-index="0"]').click();
+      return {count,focus:document.activeElement?.dataset.cardPageIndex,
+        animations:document.querySelector('#campusResources .cb-card.is-front').getAnimations().map(a=>a.effect.getTiming().duration)};
+    })()`);
+    assert.equal(widePager.count,3,'six wide cards form three two-card pages');
+    assert.equal(widePager.focus,'0','paging retains keyboard focus');
+    assert.ok(widePager.animations.includes(240),'wide pagination uses service-style motion too');
+    await window.webContents.executeJavaScript(`window.campusCategoryStacks.focusCard('user-collection','many-5')`);
+    for(const width of [1200,440,1200]) {
+      window.setSize(width,740);await new Promise(r=>setTimeout(r,220));
+      const selection=await window.webContents.executeJavaScript(`(()=>{
+        const host=document.querySelector('#campusResources .cb-board-host');
+        return {ids:[...host.querySelectorAll('.cb-card.is-front')].map(card=>card.dataset.cardRefId),
+          stable:window.savedCategoryLayout===JSON.stringify(window.campusCategoryStacks.activeController().snapshot())};
+      })()`);
+      assert.ok(selection.ids.includes('many-5'),'selected category stays visible across paging and resize');
+      assert.equal(selection.stable,true,'responsive projection must not mutate persisted layout');
+    }
+    await window.webContents.executeJavaScript(`(()=>{
+      const controller=window.campusCategoryStacks.activeController();
+      const before=controller.snapshot();
+      const ids=['many-0','many-1'].map(id=>before.placements.find(p=>p.card.id===id).placementId);
+      const manual=window.cardBoardModel.applyDraftOperation(before,{type:'create-deck',boardId:'browser-personal',placementIds:ids,index:0});
+      window.manualDeckId=manual.decks.find(deck=>deck.deckId.startsWith('deck_')).deckId;
+      controller.setDocument(manual);controller.focusCard('user-collection','many-1');
+      window.savedCategoryLayout=JSON.stringify(controller.snapshot());
+    })()`);
+    for(const width of [1200,440,1200]) {
+      window.setSize(width,740);await new Promise(r=>setTimeout(r,220));
+      const manual=await window.webContents.executeJavaScript(`(()=>{
+        const slot=[...document.querySelectorAll('#campusResources .cb-deck')].find(el=>el.dataset.cardDeckId===window.manualDeckId);
+        return {count:slot?.querySelectorAll('.cb-card').length,
+          stable:window.savedCategoryLayout===JSON.stringify(window.campusCategoryStacks.activeController().snapshot())};
+      })()`);
+      assert.equal(manual.count,2,'a user-created deck is never automatically unstacked');
+      assert.equal(manual.stable,true);
+    }
+    assert.equal(await window.webContents.executeJavaScript(`(()=>{
+      const controller=window.campusCategoryStacks.activeController();controller.setData({categories:[]});
+      return controller.focusCard('user-collection','many-1');
+    })()`),false,'a filtered or removed category cannot report false focus success');
     process.stdout.write('personal category: PASS (small-list expansion, all rows, Escape, narrow/wide, deck and pager shared motion, reduced motion)\n');
   } finally { if(window.webContents.debugger.isAttached())window.webContents.debugger.detach();window.destroy(); }
 }
