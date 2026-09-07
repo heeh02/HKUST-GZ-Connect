@@ -2,10 +2,16 @@
 
 - Status: Current migration procedure
 - Owner: Security and Release maintainers
-- Last verified: 2026-09-07
+- Last verified: 2026-09-08
 - Applies to: transfer from `heeh02/HKUST-GZ-Connect` to `HKUSTGZ-OpenSource`
 
 ## Current readiness
+
+The [2026-09-08 snapshot](2026-09-08-integration-readiness.md) updates the open-work and installed-app
+state. The Mac app is now an unpublished 2.0.2 candidate; the older installed-2.0.0 query below is
+historical evidence, not current installation state. Do not downgrade or replace the current app
+without a separately approved, data-preserving bridge acceptance workflow. Refactor completion is
+not a prerequisite for transfer, but authorization and the explicit preflight/post-transfer gates are.
 
 The destination exists and `heeh02` has active Owner membership, reverified on 2026-09-07.
 Repository ID `1279507615` remains under `heeh02`. Stable v2.0.1 is published from

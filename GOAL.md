@@ -4,7 +4,7 @@
 - Authority: project maintainer
 - Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
-- Last verified: 2026-09-07 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
+- Last verified: 2026-09-08 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
 
@@ -161,6 +161,10 @@ release assumptions.
 
 ## Current external blocker
 
+The [2026-09-08 integration snapshot](docs/governance/2026-09-08-integration-readiness.md) records
+the current eight-PR queue, explicit dependency lane, installed 2.0.2 candidate and remaining
+G0–G4 evidence gaps. Neither local pass counts nor candidate source-size reductions close this goal.
+
 Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
 is still required for transfer, further releases/merges and protection changes. The one-time #104
 merge/publication authorization has been consumed; it is not a standing exception. The bridge is
@@ -169,7 +173,7 @@ the Organization permission decision and a fresh before/after governance snapsho
 ProxyCommand pipe regressions, Renderer seams, compact layouts and date-driven schedule contracts
 independently of these external actions.
 
-## Progress receipt — 2026-09-07
+## Historical progress receipt — 2026-09-07
 
 - PR #104 merged and stable 2.0.1 published; Issue #97 closed. Required cloud checks were not
   spoofed and protections were unchanged; release provenance records the designated-host exception.
