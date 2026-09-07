@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
+const {
+  verifyWindowsFileOwnerOnly,
+} = require('../../../../lib/platform/storage/windows-private-file');
 const {
   commitActiveContextSwitch,
   createPreparedActiveContextSwitch,
@@ -175,8 +179,32 @@ test('journal disappearance and malformed content are never treated as absence',
   }).read(), /disappeared after observation/u);
 
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, '{}', { mode: 0o600 });
-  assert.throws(() => base.read(), /journal is invalid/u);
+  for (const [content, causeType] of [['{!', SyntaxError], ['{}', TypeError]]) {
+    fs.writeFileSync(file, content, { mode: 0o600 });
+    assert.equal(ensureOwnerOnly(file), true, 'malformed fixture must pass the private-file gate');
+    assert.throws(() => base.read(), (error) => {
+      assert.match(error.message, /journal is invalid/u);
+      assert.ok(error.cause instanceof causeType);
+      return true;
+    });
+  }
+});
+
+test('native Windows rejects an inherited journal ACL before parsing malformed content', {
+  skip: process.platform !== 'win32',
+}, (t) => {
+  const { file } = fixture(t);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '{!', { mode: 0o600 });
+  const store = new ActiveContextSwitchJournalStore({ filePath: file });
+  assert.equal(verifyWindowsFileOwnerOnly(file), false);
+  assert.throws(() => store.read(), /journal ACL is invalid/u);
+  assert.equal(ensureOwnerOnly(file), true);
+  assert.throws(() => store.read(), (error) => {
+    assert.match(error.message, /journal is invalid/u);
+    assert.ok(error.cause instanceof SyntaxError);
+    return true;
+  });
 });
 
 test('simulated Windows store protects and verifies every journal generation', (t) => {
