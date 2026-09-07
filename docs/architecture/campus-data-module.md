@@ -17,6 +17,13 @@ The controller retains the existing rendering, in-memory 12-week cache, 24-hour 
 manual refresh, last-good rendering, authentication expiry and clear-display behavior.
 No algorithm or lifecycle changes are included in this extraction.
 
+Calendar presentation is owned by `features/campus-data/view.css`, loaded once after the shared
+shell. Descendant rules use `:where(.module-schedule)` to constrain scope without increasing
+specificity. Existing root-qualified loading/miniature rules retain their selectors. The parent
+workspace's grid placement and the personal-category dialog rules remain in the shared shell.
+The stylesheet has no category selectors or global week rules. Computed-style/geometry comparisons
+cover the current full/miniature table, dialog and refresh/loading states on Mac and Windows.
+
 `app.js` imports the public entrypoint as an ES module. Its trailing authentication UI script
 also uses module scheduling so it cannot initialize ahead of the application. The authentication
 implementation is unchanged; the ASAR test verifies one auth-challenge subscription.
@@ -34,6 +41,6 @@ if that base changes, without rewriting public history.
 Do not merge it before its base. Reverting the structural commit restores the global facade;
 no data migration or installed-app change is involved.
 
-Shared CSS, the full feature registry, locale ownership and stale-operation lifecycle follow-ups
+The full feature registry, locale ownership and stale-operation lifecycle follow-ups
 remain separate M1 work. This first seam is not a claim that HTML/global ordering is fully removed.
 Native installers, real-school behavior and signing are outside this source-only verification.

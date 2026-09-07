@@ -56,8 +56,6 @@ login, network-mode switch, installed-app replacement or public release was perf
 No GitHub Actions minutes or protection changes were requested. Local/native results do not
 substitute for required CI or independent review.
 
-## Rollback
-
 ## Synchronized source acceptance (2026-09-08)
 
 - Dependency: `aeb691a389159a84fe8738448fdc5ee851c63c90` on PR #106.
@@ -86,6 +84,38 @@ required-check disposition and its base PR. No current Windows/Linux installer, 
 suite, signed/notarized application, real-school canary or public release is claimed. No Actions
 dispatch or installed-app replacement was performed. Reverting only the extraction must preserve
 the dependency's repaired category behavior and user data.
+
+## Calendar stylesheet ownership (2026-09-08)
+
+- Base: `a7004fcce12c2be4d1613b829e9518104acf5a22`.
+- Extraction: `9421d7f61a85563e3a7a0e238c24388a2fd794e4`.
+- Final comparison harness: `f254ba21c21ffeaf64ad62407f68d6525806e789`.
+- Verified tree: `8f529c070fff2140497d808ae6d445a3b3aca4e7`.
+
+The calendar's 173-line stylesheet is now feature-owned. Shared styles shrink from 2155 to 1981
+lines. The parent grid placement and category-dialog centering remain shared. Existing calendar
+declarations are unchanged; zero-specificity scoping prevents them from styling a sibling sentinel.
+Refresh/loading rules are included rather than left behind in the global stylesheet.
+
+The two new ownership tests initially failed on the absent module stylesheet. Both pass after
+extraction. A live Electron A/B test switches between the exact base Git stylesheet and the new
+stylesheets and compares every computed property and bounding rectangle in the calendar subtree.
+Mac and native Windows pass all 5 week layouts, 4 dialogs and 3 refresh/loading states. An initial
+loading-state comparison sampled different phases of the animated status dot; the harness now
+pauses both samples at the same animation time and resumes afterwards. No tolerance was widened,
+no property was excluded and no production animation or timeout was changed.
+
+Mac and Windows style/design/Renderer Node contracts: 23 pass each. 5070 Linux full Desktop:
+1274 pass / 6 platform skips / 0 fail. Native Windows category and full control-shell Electron
+fixtures pass; GPU-process warnings (34) remain. Mac category, full control-shell, ASAR module
+loading, resource-manager and campus-workspace fixtures also pass. Architecture, syntax (474
+sources), secrets, install-script and governance gates pass. Native installers, Windows ASAR and
+real-school behavior were not revalidated; the installed application and release assets are unchanged.
+
+To repeat the A/B proof, set `HKUSTGZ_CALENDAR_CSS_BASELINE` to the exact base commit's exported
+`desktop/renderer/styles.css` and run `electron e2e/schedule-navigation.electron.js`. Without that
+option the ordinary fixture still checks feature isolation and the existing UI contracts, but does
+not claim before/after computed-style equivalence. Baseline files stay in ignored test output.
 
 ## Original extraction rollback
 
