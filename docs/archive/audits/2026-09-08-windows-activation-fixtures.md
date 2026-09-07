@@ -41,6 +41,34 @@ The full Linux command was `umask 022; node --test`. An initial SSH invocation i
 the failures disappeared under the standard non-group-writable test environment. Production
 registry checks were not relaxed to accommodate that setup error.
 
+## Journal fixture follow-up (2026-09-08)
+
+The same test domain contained one more native Windows false failure: the journal disappearance
+test recreated malformed JSON using mode 0600, so it stopped at `journal ACL is invalid` rather
+than reaching content validation. Native RED was 5 passed / 1 failed / 2 POSIX-only skips.
+
+The recreated fixture now passes the existing `ensureOwnerOnly` gate first. Assertions separately
+verify invalid JSON (`SyntaxError`) and invalid journal schema (`TypeError`), both wrapped as
+`journal is invalid`. A native Windows negative test verifies an inherited ACL still blocks parsing;
+only after hardening that same synthetic file does the parser error become observable.
+
+- Code follow-up: `7e499ef8751b18a19de9b14204d4a62a0a2396fd` (test-only);
+  tested tree `371897631959ebffaf9c93520653b6bc2ce094c1`.
+- Mac Node 24.19.0 and native Windows Node 24.20.0 combined activation/journal suites:
+  13 passed / 0 failed / 2 platform-specific skips on each platform.
+- 5070 Linux Node 24.20.0 full suite under `umask 022`: 1238 passed / 0 failed / 8 platform skips.
+- Architecture, install-script, exact-tree syntax, staged secret and governance gates passed.
+- Journal test SHA-256 matched on Mac, Linux and Windows:
+  `a7d6d50b6455ba6ef5b34f3a7ab5c8c4b430ccb7d6ec1383be1fcb735e838264`.
+- Remote tracked source remained at `6a2143f` plus this exact journal-test replacement; intervening
+  local changes were documentation only. No unrelated remote runtime edits were used.
+
+Combined focused command, from `desktop/`:
+
+```sh
+node --test test/unit/switching/active-context/active-context-activation-store.test.js test/unit/switching/active-context/active-context-switch-store.test.js
+```
+
 ## Limits and rollback
 
 This corrects one test domain, not the entire Windows suite. Other Windows fixture portability
