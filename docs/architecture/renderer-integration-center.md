@@ -40,6 +40,10 @@ prepare/refresh/confirm/cancel results, timer/dialog retirement and cancellation
 removing that initializer. In particular, a retired UI must not cancel another context's pending
 export through an unscoped cancellation call. No fix for that lifecycle boundary is claimed here.
 
+The subsequent proposed [Main export-intent repair](integration-export-intents.md) separately
+guards native-target continuations, confirmation cleanup and the final output boundary. Its
+Windows verification remains incomplete, and it does not retire this Renderer initializer.
+
 ## Acceptance
 
 - Mac Node 24.19: existing/new integration Renderer and strict-proxy boundary tests — 16 passed.
