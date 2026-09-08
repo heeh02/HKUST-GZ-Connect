@@ -1,6 +1,6 @@
 # Browser download ownership seam
 
-- Status: Local structural review candidate; not a download behavior fix or release
+- Status: Proposed structural seam; checkpoint evidence, not a behavior fix or release
 - Owner: Desktop / Browser maintainers, issue #80
 - Last verified: 2026-09-08
 - Base: `main@9e1135c05dc21998c66627e25477d4bd799cd5d7`
@@ -71,7 +71,8 @@ parent-owned with cleanup failures propagated before claiming complete native ac
 
 No native download timing reproduction, real-school test, performance/soak run, exact package
 verification, Mac x64 device test or complete Windows unit run was performed in this phase.
-No installed application or release is replaced, no Actions run is triggered, and this local
-candidate is not yet offered as another PR. The existing review queue remains unchanged.
+At this structural checkpoint no installed application or release was replaced, no Actions run
+was triggered and no PR had yet been opened. Current review status belongs to GitHub metadata;
+the dated evidence above is not a live queue snapshot.
 Reverting this isolated change restores the original methods and private policy path without a
 data migration. Existing UI PRs are not imported into or overwritten by this main-based branch.
