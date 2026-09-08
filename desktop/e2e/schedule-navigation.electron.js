@@ -110,6 +110,16 @@ async function run() {
     assert.equal(await window.webContents.executeJavaScript('fixtureCalls.at(-1).date'), '2027-01-13');
     for (const [width, zoom] of [[360,1], [440,1], [960,1], [1440,1], [960,1.5]]) {
       window.setSize(width,850); window.webContents.setZoomFactor(zoom);
+      let stable = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const correct = await window.webContents.executeJavaScript(`(() => {
+          const body=document.getElementById('scheduleBody');
+          return document.querySelector('.week-table').classList.contains('is-mini') === (body.clientWidth < 620);
+        })()`);
+        if (correct) { stable = true; break; }
+        await new Promise(r=>setTimeout(r,20));
+      }
+      assert.ok(stable, 'responsive layout settles before geometry comparison');
       await new Promise(r=>setTimeout(r,80));
       const result = await window.webContents.executeJavaScript(`(() => {
         const rect = el => { const r=el.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,left:r.left,right:r.right}; };
