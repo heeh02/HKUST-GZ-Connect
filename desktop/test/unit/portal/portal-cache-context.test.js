@@ -55,8 +55,8 @@ test('a context retired during the session probe cannot start data source reads'
 
 test('older forced responses cannot overwrite a newer successful snapshot cache', async () => {
   const f=fixture(), pending=deferred(); f.waits.push(pending.promise);
-  const old=f.runtime.snapshot({force:true}); const latest=await f.runtime.snapshot({force:true});
-  pending.resolve(); await old;
+  const old=observe(f.runtime.snapshot({force:true})); const latest=await f.runtime.snapshot({force:true});
+  pending.resolve(); assert.equal((await old).error?.code,'PORTAL_CONTEXT_CHANGED');
   assert.equal(title(await f.runtime.snapshot()),title(latest));
 });
 
@@ -82,8 +82,11 @@ test('same-week readers share one request and an older force response cannot rep
 test('a full refresh retires weekly cache entries and older weekly publication rights', async () => {
   for(const paused of [false,true]) {
     const f=fixture(), pending=deferred(); if(paused)f.waits.push(pending.promise);
-    const old=f.runtime.scheduleWeek({date:'2027-01-11'}); if(!paused)await old;
-    const fresh=await f.runtime.snapshot({force:true}); pending.resolve(); await old;
+    const old=observe(f.runtime.scheduleWeek({date:'2027-01-11'})); if(!paused)await old;
+    const fresh=await f.runtime.snapshot({force:true}); pending.resolve();
+    const prior=await old;
+    if(paused) assert.equal(prior.error?.code,'PORTAL_CONTEXT_CHANGED');
+    else assert.ok(prior.value);
     assert.equal(title(await f.runtime.scheduleWeek({date:'2027-01-11'})),title(fresh));
   }
 });
