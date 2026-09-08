@@ -91,6 +91,14 @@ No claim that these are all caused by, or unrelated to, PR #120 is made from pat
 Follow-up belongs to M5 issue #83: use a proper Windows Git checkout, reconcile PR #107, then audit
 each remaining fixture/implementation without broad Windows skips or weaker permission checks.
 
+A later proper-Git checkout at `3d323e2a0b99b0d89b3bfbf23a1bf21e934c77d5` passed the exact-index
+governance gate and reported **1,412 total / 1,298 passed / 74 failed / 40 skipped**. This confirms
+the missing-index environment failure is removed. PR #107 was then tested separately at
+`095a5eb18cb50e03b874439547ff9e21461e2a46`: its activation/journal and native-C checkout suite passed
+14 with 2 platform-specific skips on both Mac and Windows. It also corrects elevated-session
+fixture creation and fixes C source LF checkout semantics. It is not merged into this review
+chain, so no combined full-suite reduction is claimed. M5 #83 records the remaining attribution.
+
 Windows full-suite, full installer/signature, live-school and actual user-export acceptance remain
 unproven. Targeted success is not a release approval. No Actions build, installed-App replacement,
 merge, release or transfer is claimed.
