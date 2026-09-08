@@ -1295,10 +1295,7 @@ test('downloads ask for a save location and surface failures', async () => {
   const prompts = [];
   const shown = [];
   const dialog = {
-    showSaveDialog: async (_window, options) => {
-      prompts.push(options);
-      return { canceled: false, filePath: '/tmp/课件.pdf' };
-    },
+    showSaveDialog: () => { throw new Error('must use native download picker'); },
     showMessageBox: async () => ({ response: 0 }),
   };
   const { browser, sessions } = createFakeBrowser({
@@ -1312,13 +1309,15 @@ test('downloads ask for a save location and surface failures', async () => {
   await browser.configure(1080, ROUTE_CAMPUS);
   assert.equal(campusSession.listenerCount('will-download'), 1,
     'reconfiguring the same session must not stack download handlers');
+  await browser.createWindow();
 
   const makeItem = (filename) => {
     const item = new EventEmitter();
     item.filename = filename;
     item.getFilename = () => item.filename;
     item.cancel = () => { item.cancelled = true; };
-    item.setSavePath = (savePath) => { item.savePath = savePath; };
+    item.setSaveDialogOptions = options => { prompts.push(options); };
+    item.getSavePath = () => '/tmp/课件.pdf';
     item.getTotalBytes = () => 100;
     item.getReceivedBytes = () => item.received || 0;
     return item;
@@ -1328,7 +1327,6 @@ test('downloads ask for a save location and surface failures', async () => {
   campusSession.emit('will-download', {}, item);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(prompts, [{ defaultPath: '课件.pdf' }]);
-  assert.equal(item.savePath, '/tmp/课件.pdf');
   item.received = 40;
   item.emit('updated');
   assert.deepEqual(browser.downloadState, {
@@ -1348,11 +1346,12 @@ test('downloads ask for a save location and surface failures', async () => {
   });
   assert.deepEqual(shown, ['/tmp/课件.pdf']);
 
-  dialog.showSaveDialog = async () => ({ canceled: true });
   const cancelled = makeItem('取消.zip');
   campusSession.emit('will-download', {}, cancelled);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(cancelled.cancelled, true, 'a cancelled save dialog cancels the download');
+  cancelled.emit('done', {}, 'cancelled');
+  assert.equal(browser.downloadState, null, 'native cancellation clears progress without an error');
+  assert.equal(errors.length, 1);
 
   const bare = new CampusBrowser({});
   const headless = makeItem('no-dialog.bin');
