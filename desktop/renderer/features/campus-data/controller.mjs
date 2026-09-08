@@ -40,6 +40,14 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
   let lastScheduleLayout = null;
   const weekKey = date => weekRange(Date.parse(`${date}T12:00:00+08:00`), true).start;
   const reusable = module => validModule(module) && ['ready', 'empty'].includes(module.state);
+  const revoked = value => value?.sessionState === 'unauthenticated' ||
+    ['not-authenticated', 'session-expired', 'forbidden'].includes(value?.modules?.schedule?.state);
+  function revokeSchedule() {
+    displayEpoch++; inflight = null;
+    clearTimeout(scheduleRefreshTimer); scheduleRefreshTimer = null;
+    weekCache.clear(); scheduleRequest++; lastScheduleLayout = null; scheduleNotice = '';
+    setScheduleRefreshBusy(false);
+  }
   function remember(date, module) {
     if (!reusable(module)) return;
     const key = weekKey(date);
@@ -193,7 +201,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
   function scheduleNextRefresh() {
     if (scheduleRefreshTimer !== null) clearTimeout(scheduleRefreshTimer);
     scheduleRefreshTimer = null;
-    if (!loaded || snapshot?.sessionState !== 'authenticated') return;
+    if (!loaded || snapshot?.sessionState !== 'authenticated' || revoked(snapshot)) return;
     const fetchedAt = Math.max(snapshot?.modules?.schedule?.fetchedAt || lastLoadedAt || Date.now(), lastScheduleAttempt);
     const delay = Math.max(1_000, SCHEDULE_AUTO_REFRESH_MS - (Date.now() - fetchedAt));
     scheduleRefreshTimer = setTimeout(() => {
@@ -222,12 +230,13 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
     inflight = Promise.resolve(method.call(api)).then((value) => {
       if (epoch !== displayEpoch) return null;
       snapshot = value;
-      if (value?.sessionState === 'unauthenticated' || ['not-authenticated', 'session-expired', 'forbidden'].includes(value?.modules?.schedule?.state)) weekCache.clear();
+      const denied = revoked(value);
+      if (denied) revokeSchedule();
       loaded = true;
       lastLoadedAt = Date.now();
       publishCatalog(value?.catalog || null);
-      remember(campusDate(value?.checkedAt || Date.now()), value?.modules?.schedule);
-      if (weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
+      if (!denied) remember(campusDate(value?.checkedAt || Date.now()), value?.modules?.schedule);
+      if (!denied && weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
           typeof api.getCampusScheduleWeek === 'function') {
         snapshot = { ...value, modules: { ...value.modules, schedule: weekCache.get(weekKey(selectedDate)) || { state: 'loading', items: [] } } };
         queueMicrotask(() => { void refreshSchedule(false); });
@@ -254,6 +263,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
 
   async function refreshSchedule(force = true) {
     if (clearing) return null;
+    const epoch = displayEpoch;
     if (followCurrentWeek) selectedDate = campusDate(Date.now());
     const date = selectedDate;
     const request = ++scheduleRequest;
@@ -282,15 +292,16 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
       return typeof api.getCampusScheduleWeek === 'function'
         ? api.getCampusScheduleWeek({ date, force }) : api.refreshCampusSchedule();
     }).then((value) => {
-      if (request !== scheduleRequest) return null;
+      if (epoch !== displayEpoch) return null;
       const module = value?.modules?.schedule;
-      const revoked = ['not-authenticated', 'session-expired', 'forbidden'].includes(module?.state);
-      if (revoked) weekCache.clear();
-      if (!reusable(module) && !revoked && cached) {
+      const denied = revoked(value);
+      if (request !== scheduleRequest && !denied) return null;
+      if (denied) revokeSchedule();
+      if (!reusable(module) && !denied && cached) {
         scheduleNotice = 'workspace.scheduleRefreshFailed';
         snapshot = { ...value, modules: { ...value?.modules, schedule: cached } };
       } else {
-        remember(date, module);
+        if (!denied) remember(date, module);
         snapshot = { ...previous, ...value, modules: { ...previous?.modules, ...value?.modules } };
       }
       loaded = true;

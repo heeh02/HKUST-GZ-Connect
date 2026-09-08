@@ -9,12 +9,12 @@ function harness() {
   const handlers={}; shell.addEventListener=()=>{};
   const body={innerHTML:'',clientWidth:400,closest:()=>shell,querySelector:()=>null,querySelectorAll:()=>[],
     addEventListener:(name, handler)=>{handlers[name]=handler;}};
-  const button={}; let calls=0; let pending;
+  const button={}; let calls=0; let pending; let general;
   button.addEventListener=()=>{};
   const feature=create({document:{documentElement:{lang:'en'},addEventListener:()=>{},getElementById:id=>id==='scheduleBody'?body:id==='scheduleRefresh'?button:null},
-    api:{getCampusData:async()=>value(),refreshCampusSchedule:async()=>value(),getCampusScheduleWeek:()=>{calls++;return pending.promise;}},
+    api:{getCampusData:async()=>general?general.promise:value(),refreshCampusData:async()=>general?general.promise:value(),refreshCampusSchedule:async()=>value(),getCampusScheduleWeek:()=>{calls++;return pending.promise;}},
     translate:(key)=>key,escapeHtml:String,openDeepLink:()=>{}});
-  return {feature,body,button,calls:()=>calls,defer:()=>pending=deferred(),
+  return {feature,body,button,calls:()=>calls,defer:()=>pending=deferred(),deferLoad:()=>general=deferred(),
     choose:date=>handlers.change({target:{id:'scheduleDate',value:date,validity:{valid:true}}})};
 }
 test('an uncached week keeps seven-day geometry without inventing events or an empty result', async () => {
@@ -64,4 +64,56 @@ test('explicit login expiry discards the cached schedule instead of disguising i
     const next=h.defer();const retry=h.feature.refreshSchedule(false);await Promise.resolve();
     assert.equal(h.calls(),2);next.resolve(value());await retry;
   } finally {h.feature.clearDisplay();}
+});
+
+test('late revocation for an earlier week clears the active cache and fences later success', async () => {
+  const h=harness(); try {
+    h.feature.start(); await h.feature.load();
+    const earlier=h.defer(); h.choose('2030-05-17'); await Promise.resolve();
+    const later=h.defer(); h.choose('2030-05-24'); await Promise.resolve();
+    earlier.resolve(value('session-expired')); await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(h.feature.snapshot().modules.schedule.state,'session-expired');
+    assert.equal(h.button.disabled,false);
+    later.resolve(value()); await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(h.feature.snapshot().modules.schedule.state,'session-expired');
+  } finally {h.feature.clearDisplay();}
+});
+
+test('revocation from a cleared display context cannot invalidate the new context', async () => {
+  const h=harness(); try {
+    h.feature.start(); await h.feature.load();
+    const old=h.defer(); h.choose('2030-05-17'); await Promise.resolve();
+    h.feature.clearDisplay(); const current=h.defer();
+    const load=h.feature.load(); await load; await Promise.resolve();
+    old.resolve(value('session-expired')); await new Promise(resolve=>setImmediate(resolve));
+    assert.notEqual(h.feature.snapshot().modules.schedule.state,'session-expired');
+    current.resolve(value('empty')); await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(h.feature.snapshot().modules.schedule.state,'empty');
+  } finally {h.feature.clearDisplay();}
+});
+
+test('a generic load already in flight cannot restore a revoked timetable', async () => {
+  const h=harness(); try {
+    await h.feature.load();
+    const denial=h.defer(); const week=h.feature.refreshSchedule(); await Promise.resolve();
+    const general=h.deferLoad(); const full=h.feature.load(true);
+    denial.resolve(value('session-expired')); await week;
+    general.resolve(value()); await full;
+    assert.equal(h.feature.snapshot().modules.schedule.state,'session-expired');
+    assert.equal(h.button.disabled,false);
+  } finally {h.feature.clearDisplay();}
+});
+
+test('revocation cancels scheduled automatic refresh until a new authorized load', async () => {
+  const savedSet=globalThis.setTimeout, savedClear=globalThis.clearTimeout;
+  const timers=new Set();
+  globalThis.setTimeout=()=>{const timer={unref(){}};timers.add(timer);return timer;};
+  globalThis.clearTimeout=timer=>{timers.delete(timer);};
+  const h=harness(); try {
+    await h.feature.load(); assert.equal(timers.size,1);
+    const d=h.defer(); const work=h.feature.refreshSchedule();
+    d.resolve(value('session-expired')); await work;
+    assert.equal(timers.size,0);
+    await h.feature.load(); assert.equal(timers.size,1);
+  } finally {h.feature.clearDisplay();globalThis.setTimeout=savedSet;globalThis.clearTimeout=savedClear;}
 });
