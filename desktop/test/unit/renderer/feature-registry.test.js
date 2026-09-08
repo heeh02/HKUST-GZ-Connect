@@ -63,6 +63,16 @@ test('cleanup failure never prevents retirement of another feature', () => {
   assert.equal(registry.dispose(), false);
 });
 
+test('a failing lifecycle target removal still retires mounted owners', () => {
+  const events=[];
+  const target={addEventListener(){},removeEventListener(){throw new Error('Synthetic listener removal failure');}};
+  const registry=registryFactory()({definitions:[define('one',events)],target});
+  registry.mount('one',{});
+  assert.throws(()=>registry.dispose(),error=>error instanceof AggregateError);
+  assert.ok(events.some(([op,id])=>op==='dispose'&&id==='one'));
+  assert.equal(registry.dispose(),false);
+});
+
 test('pagehide disposes once and removes the registry listener', () => {
   const events = [], target = new EventTarget();
   const registry = registryFactory()({definitions:[define('one',events)],target}); registry.mount('one', {});

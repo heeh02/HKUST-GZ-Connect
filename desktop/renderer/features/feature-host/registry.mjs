@@ -29,7 +29,8 @@ export function createFeatureRegistry({ definitions, target } = {}) {
 
   function retireAll(errors) {
     disposed = true;
-    target?.removeEventListener('pagehide', dispose);
+    try { target?.removeEventListener('pagehide', dispose); }
+    catch (error) { errors.push(error); }
     const records = [...mounted.values()].reverse();
     mounted.clear();
     for (const record of records) retire(record, errors);
