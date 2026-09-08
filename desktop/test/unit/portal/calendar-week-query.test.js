@@ -92,3 +92,18 @@ test('late calendar data cannot cross partition change or invalidation', async (
     assert.equal(f.runtime.calendarCache.size, 0);
   }
 });
+
+test('signed-out status remains cacheable without retaining personal week caches', async () => {
+  const f=fixture(); await f.runtime.scheduleWeek({date:'2027-01-11'});
+  let probes=0;
+  f.runtime.getSessionUrlHint=()=>null;
+  f.runtime.electronSession.fromPartition=()=>({fetch:async()=>{
+    probes++;return {status:401,url:'https://myportal.hkust-gz.edu.cn/'};
+  }});
+  const denied=await f.runtime.snapshot({force:true});
+  assert.equal(denied.sessionState,'unauthenticated');
+  assert.equal(f.runtime.calendarCache.size,0);
+  assert(Object.values(f.runtime.cached.modules).every(module=>module.items.length===0));
+  await f.runtime.snapshot(); assert.equal(probes,1);
+  await f.runtime.snapshot({force:true}); assert.equal(probes,2);
+});
