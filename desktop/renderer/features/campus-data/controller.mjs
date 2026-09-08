@@ -242,8 +242,9 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
       if (denied) revokeSchedule();
       loaded = true;
       lastLoadedAt = Date.now();
+      const publicationEpoch = displayEpoch;
       publishCatalog(value?.catalog || null);
-      if (epoch !== displayEpoch) return null;
+      if (publicationEpoch !== displayEpoch) return null;
       if (!denied) remember(campusDate(value?.checkedAt || Date.now()), value?.modules?.schedule);
       if (!denied && weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
           typeof api.getCampusScheduleWeek === 'function') {
