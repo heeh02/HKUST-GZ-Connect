@@ -96,7 +96,7 @@ test('a generic load already in flight cannot restore a revoked timetable', asyn
   const h=harness(); try {
     await h.feature.load();
     const denial=h.defer(); const week=h.feature.refreshSchedule(); await Promise.resolve();
-    const general=h.deferLoad(); const full=h.feature.load(true);
+    const general=h.deferLoad(); const full=h.feature.load(false);
     denial.resolve(value('session-expired')); await week;
     general.resolve(value()); await full;
     assert.equal(h.feature.snapshot().modules.schedule.state,'session-expired');
@@ -116,4 +116,18 @@ test('revocation cancels scheduled automatic refresh until a new authorized load
     assert.equal(timers.size,0);
     await h.feature.load(); assert.equal(timers.size,1);
   } finally {h.feature.clearDisplay();globalThis.setTimeout=savedSet;globalThis.clearTimeout=savedClear;}
+});
+
+test('explicit full revalidation fences older week success and denial', async () => {
+  for(const state of ['ready','session-expired']) {
+    const h=harness(); try {
+      await h.feature.load();
+      const prior=h.defer(); const week=h.feature.refreshSchedule(); await Promise.resolve();
+      const general=h.deferLoad(); const full=h.feature.load(true);
+      general.resolve(value('empty')); await full;
+      prior.resolve(value(state)); await week;
+      assert.equal(h.feature.snapshot().modules.schedule.state,'empty');
+      assert.equal(h.button.disabled,false);
+    } finally {h.feature.clearDisplay();}
+  }
 });
