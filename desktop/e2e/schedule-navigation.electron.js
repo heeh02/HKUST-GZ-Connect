@@ -112,9 +112,11 @@ async function run() {
       window.setSize(width,850); window.webContents.setZoomFactor(zoom);
       let stable = false;
       for (let attempt = 0; attempt < 100; attempt++) {
-        const correct = await window.webContents.executeJavaScript(`(() => {
+        const contentWidth = window.getContentSize()[0];
+        const correct = window.getSize()[0] === width && await window.webContents.executeJavaScript(`(() => {
           const body=document.getElementById('scheduleBody');
-          return document.querySelector('.week-table').classList.contains('is-mini') === (body.clientWidth < 620);
+          return Math.abs(innerWidth * ${zoom} - ${contentWidth}) < 2 &&
+            document.querySelector('.week-table').classList.contains('is-mini') === (body.clientWidth < 620);
         })()`);
         if (correct) { stable = true; break; }
         await new Promise(r=>setTimeout(r,20));
