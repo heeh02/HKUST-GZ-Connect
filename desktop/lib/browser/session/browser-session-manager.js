@@ -908,8 +908,8 @@ class MyPortalDataRuntime {
   async readSnapshot(context, moduleId = null) {
     this.calendarCache.clear(); this.calendarInflight.clear();
     const operation = this.readNow({ moduleId }).then(value => {
-      this.assertContext(context);
-      if (this.inflight === operation) this.cached = value;
+      const accepted = this.acceptDataResult(context, value);
+      if (accepted && this.inflight === operation) this.cached = value;
       return value;
     });
     this.inflight = operation;
@@ -925,8 +925,8 @@ class MyPortalDataRuntime {
     if (!query.force && cached && this.cacheFresh(cached)) return cached;
     if (!query.force && this.calendarInflight.has(key)) return this.calendarInflight.get(key);
     const operation = this.readWeek(context, query).then(value => {
-      this.assertContext(context);
-      if (this.calendarInflight.get(key) === operation && ['ready', 'empty'].includes(value.modules.schedule.state)) {
+      const accepted = this.acceptDataResult(context, value);
+      if (accepted && this.calendarInflight.get(key) === operation && ['ready', 'empty'].includes(value.modules.schedule.state)) {
         this.calendarCache.delete(key); this.calendarCache.set(key, value);
         if (this.calendarCache.size > 12) this.calendarCache.delete(this.calendarCache.keys().next().value);
       }
@@ -949,6 +949,17 @@ class MyPortalDataRuntime {
     const result = await this.readNow({ moduleId: 'schedule', scheduleWeekStart: query.start });
     this.assertContext(context);
     return Object.freeze({ ...result, scheduleWeek: { start: query.start, end: query.end } });
+  }
+
+  acceptDataResult(context, value) {
+    this.assertContext(context);
+    if (value.sessionState === 'unauthenticated' ||
+        ['not-authenticated', 'session-expired', 'forbidden'].includes(value.modules.schedule.state)) {
+      // Return this authoritative denial, but invalidate every older cache/flight.
+      this.invalidate();
+      return false;
+    }
+    return true;
   }
 
   invalidate() {

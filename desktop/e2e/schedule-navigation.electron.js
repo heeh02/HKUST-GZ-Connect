@@ -80,6 +80,7 @@ async function run() {
           getCampusScheduleWeek: async query => {
             window.fixtureCalls.push(query);
             if(window.fixtureHold) await new Promise((resolve,reject)=>{window.fixtureResolve=resolve;window.fixtureReject=reject;});
+            if(window.fixtureExpired) return {sessionState:'authenticated',modules:{schedule:{state:'session-expired',source:'myportal-calendar',fetchedAt:Date.now(),items:[]}}};
             const monday = campusData.weekRange(Date.parse(query.date+'T12:00:00+08:00'), true).start;
             return snapshot([
               { id:'a', title:'Synthetic Research Group Meeting', startsAt:monday+15*3600000, endsAt:monday+16.5*3600000, location:'Room A' },
@@ -229,7 +230,15 @@ async function run() {
     await compareBaseline('uncached week loading');
     await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureResolve()`);await settle();
     if (process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) process.stdout.write('calendar CSS baseline: PASS (all computed styles and geometry, 5 week layouts, 4 dialogs, 3 refresh/loading states)\n');
-    process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom)\n');
+    await window.webContents.executeJavaScript(`window.fixtureExpired=true;document.getElementById('scheduleRefresh').click()`);
+    for(let i=0;i<100;i++) {
+      if(await window.webContents.executeJavaScript(`document.getElementById('moduleSchedule').dataset.state==='session-expired' && !document.getElementById('scheduleRefresh').disabled`)) break;
+      await new Promise(r=>setTimeout(r,20));
+    }
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('moduleSchedule').dataset.state`),'session-expired');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.week-event').length`),0,'explicit expiry removes prior events');
+    await window.webContents.executeJavaScript(`window.fixtureExpired=false;document.getElementById('scheduleRefresh').click()`);await settle();
+    process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom, expiry recovery)\n');
   } finally { window.destroy(); }
 }
 run().then(()=>app.quit(),error=>{ process.stderr.write(`${error.stack}\n`); app.exit(1); });
