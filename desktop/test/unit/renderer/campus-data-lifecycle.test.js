@@ -19,7 +19,7 @@ const value=()=>({sessionState:'authenticated',checkedAt:Date.now(),catalog:{sta
   }]},
 }});
 function harness(){
-  const nodes=new Map(),doc=new Target(),win=new Target(),observers=[],published=[],calls=[];
+  const nodes=new Map(),doc=new Target(),win=new Target(),observers=[],published=[],calls=[],hooks={};
   for(const id of ['scheduleBody','loansBody','newsBody','scheduleRefresh','scheduleDetail'])nodes.set(id,new Target());
   for(const id of ['scheduleBody','loansBody','newsBody'])nodes.get(id).shell=new Target();
   Object.assign(nodes.get('scheduleDetail'),{open:true,close(){this.open=false;}});
@@ -29,9 +29,9 @@ function harness(){
   const feature=create({document:doc,api:{
     getCampusData:()=>{calls.push('load');return load.promise;},refreshCampusData:()=>{calls.push('full');return load.promise;},
     refreshCampusSchedule:()=>{calls.push('refresh');return week.promise;},getCampusScheduleWeek:()=>{calls.push('week');return week.promise;},
-  },translate:key=>key,escapeHtml:String,openDeepLink:()=>calls.push('open'),onCatalog:item=>published.push(item)});
+  },translate:key=>key,escapeHtml:String,openDeepLink:()=>calls.push('open'),onCatalog:item=>{published.push(item);hooks.onCatalog?.();}});
   const targets=[doc,win,...nodes.values(),...['scheduleBody','loansBody','newsBody'].map(id=>nodes.get(id).shell)];
-  return {feature,load,week,nodes,doc,win,observers,published,calls,listenerCount:()=>targets.reduce((n,t)=>n+t.count(),0)};
+  return {feature,load,week,nodes,doc,win,observers,published,calls,hooks,listenerCount:()=>targets.reduce((n,t)=>n+t.count(),0)};
 }
 
 test('campus-data start is idempotent and disposal removes only owned listeners',()=>{
@@ -89,4 +89,13 @@ test('dispose cancels automatic refresh and makes an already queued timer inert'
     h.feature.dispose();assert.equal(timers.size,0);callback();await Promise.resolve();
     assert.deepEqual(h.calls,['load']);assert.equal(h.feature.snapshot(),null);
   } finally {h.feature.dispose();globalThis.setTimeout=savedSet;globalThis.clearTimeout=savedClear;}
+});
+
+test('catalog publication can retire the owner without retaining or returning its data afterwards',async()=>{
+  const h=harness(),reply=value(),modules=reply.modules;let retired=false,readsAfterRetirement=0;
+  Object.defineProperty(reply,'modules',{get(){if(retired)readsAfterRetirement++;return modules;}});
+  h.hooks.onCatalog=()=>{h.feature.dispose();retired=true;};
+  h.feature.start();h.load.resolve(reply);const result=await h.feature.load();
+  assert.equal(result,null);assert.equal(readsAfterRetirement,0);
+  assert.equal(h.feature.snapshot(),null);assert.equal(h.listenerCount(),0);
 });

@@ -243,6 +243,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
       loaded = true;
       lastLoadedAt = Date.now();
       publishCatalog(value?.catalog || null);
+      if (epoch !== displayEpoch) return null;
       if (!denied) remember(campusDate(value?.checkedAt || Date.now()), value?.modules?.schedule);
       if (!denied && weekRange(Date.parse(`${selectedDate}T12:00:00+08:00`), true).start !== weekRange(Date.now(), true).start &&
           typeof api.getCampusScheduleWeek === 'function') {
