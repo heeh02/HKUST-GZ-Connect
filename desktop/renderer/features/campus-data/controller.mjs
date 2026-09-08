@@ -214,6 +214,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
   async function load(force = false) {
     if (clearing) return null;
     if (inflight) return inflight;
+    if (force) { displayEpoch++; scheduleRequest++; }
     const epoch = displayEpoch;
     const previous = snapshot;
     const method = force ? api.refreshCampusData : api.getCampusData;

@@ -906,6 +906,10 @@ class MyPortalDataRuntime {
   }
 
   async readSnapshot(context, moduleId = null) {
+    this.assertContext(context);
+    // A new source read supersedes prior week requests, including late denials.
+    this.calendarEpoch++;
+    context = this.captureContext();
     this.calendarCache.clear(); this.calendarInflight.clear();
     const operation = this.readNow({ moduleId }).then(value => {
       const accepted = this.acceptDataResult(context, value);
