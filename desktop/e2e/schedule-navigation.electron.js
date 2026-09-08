@@ -33,7 +33,8 @@ async function run() {
       const labels = { 'workspace.scheduleChooseWeek':'选择日期', 'workspace.schedulePrevious':'上一周',
         'workspace.scheduleNext':'下一周', 'workspace.scheduleToday':'本周', 'workspace.scheduleClose':'关闭',
         'workspace.scheduleTime':'时间', 'workspace.scheduleWeekTable':'周课表', 'workspace.scheduleRefresh':'刷新',
-        'workspace.scheduleSource':'打开 myPortal →', 'workspace.scheduleDetails':'安排详情' };
+        'workspace.scheduleSource':'打开 myPortal →', 'workspace.scheduleDetails':'安排详情',
+        'workspace.scheduleLoadingWeek':'正在同步所选周…', 'workspace.scheduleRefreshing':'刷新中…' };
       const feature = window.campusDataModules.create({ document,
         api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
           getCampusScheduleWeek: async query => {
@@ -160,8 +161,15 @@ async function run() {
     assert.equal(await window.webContents.executeJavaScript(`document.getElementById('scheduleDate').value`), new Date(Date.now()+28800000).toISOString().slice(0,10));
     await window.webContents.executeJavaScript(`window.fixtureHold=true;document.querySelector('[data-week-move="1"]').click()`);
     await new Promise(r=>setTimeout(r,80));
-    const loading=await window.webContents.executeJavaScript(`({height:document.getElementById('moduleSchedule').getBoundingClientRect().height,events:document.querySelectorAll('.week-event').length})`);
-    assert.ok(loading.height<280,'uncached week does not create a tall blank card');assert.equal(loading.events,0);
+    const loading=await window.webContents.executeJavaScript(`({height:document.getElementById('moduleSchedule').getBoundingClientRect().height,events:document.querySelectorAll('.week-event').length,
+      days:document.querySelectorAll('.week-day-head').length,busy:document.querySelector('.week-table')?.getAttribute('aria-busy'),
+      oldLoading:!!document.querySelector('.module-state.is-loading'),empty:!!document.querySelector('.week-empty'),
+      overflow:document.querySelector('.week-scroll').scrollWidth-document.querySelector('.week-scroll').clientWidth})`);
+    if(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS) fs.writeFileSync(path.join(path.resolve(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS),'schedule-pending.png'),(await window.webContents.capturePage()).toPNG());
+    assert.ok(loading.height<500,`pending calendar stays compact: ${JSON.stringify(loading)}`);assert.equal(loading.events,0);
+    assert.equal(loading.days,7);assert.equal(loading.busy,'true');assert.equal(loading.oldLoading,false);
+    assert.equal(loading.empty,false,'pending is not an empty result');assert.ok(loading.overflow<=1);
+    if(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS) fs.writeFileSync(path.join(path.resolve(process.env.HKUSTGZ_SCHEDULE_SCREENSHOTS),'schedule-pending.png'),(await window.webContents.capturePage()).toPNG());
     await window.webContents.executeJavaScript(`window.fixtureHold=false;window.fixtureResolve()`);await settle();
     process.stdout.write('schedule navigation: PASS (date, adjacent weeks, today, refresh, detail, keyboard, minute geometry, overlap, narrow/wide/zoom)\n');
   } finally { window.destroy(); }

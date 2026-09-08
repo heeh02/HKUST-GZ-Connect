@@ -143,6 +143,7 @@
     let scheduleNotice = '';
     let lastScheduleAttempt = 0;
     let scheduleViewKey = null;
+    let lastScheduleLayout = null;
     const weekKey = date => weekRange(Date.parse(`${date}T12:00:00+08:00`), true).start;
     const reusable = module => validModule(module) && ['ready', 'empty'].includes(module.state);
     function remember(date, module) {
@@ -156,7 +157,7 @@
       displayEpoch++; scheduleRequest++; clearing = pending;
       clearTimeout(scheduleRefreshTimer); scheduleRefreshTimer = null;
       weekCache.clear(); inflight = null; snapshot = null; loaded = false; visibleEvents = [];
-      scheduleNotice = ''; scheduleViewKey = null; $('scheduleDetail')?.close?.();
+      scheduleNotice = ''; scheduleViewKey = null; lastScheduleLayout = null; $('scheduleDetail')?.close?.();
       render(); setScheduleRefreshBusy(pending); publishCatalog(null);
     }
 
@@ -220,12 +221,21 @@
         + `<button type="button" data-week-move="1" aria-label="${escapeHtml(translate('workspace.scheduleNext'))}">›</button>`
         + `<button type="button" data-week-today>${escapeHtml(translate('workspace.scheduleToday'))}</button></div>`;
       visibleEvents = [];
-      if (!['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
+      const pending = module.state === 'loading';
+      if (!pending && !['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
       const now = Date.now();
-      const campusTime = module.source === 'myportal-calendar';
+      const campusTime = pending || module.source === 'myportal-calendar';
       const model = scheduleWeekModel(module.state === 'ready' ? module.items : [],
         Date.parse(`${selectedDate}T12:00:00+08:00`), campusTime);
-      const layout = scheduleWeekLayout(model, miniature);
+      let layout = scheduleWeekLayout(model, miniature);
+      if (pending) {
+        // Keep geometry, never the previous week's personal events, during a first read.
+        layout = { ...layout, ...(lastScheduleLayout || {}), groups: [],
+          height: Math.min(lastScheduleLayout?.height || 180, miniature ? 140 : 180) };
+      } else {
+        const { start, end, height, slotCount } = layout;
+        lastScheduleLayout = { start, end, height, slotCount };
+      }
       visibleEvents = layout.groups;
       const format = (value, options) => new Intl.DateTimeFormat(locale(), {
         ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
@@ -270,13 +280,13 @@
           }).join('');
         return `<div class="week-event-day" data-day="${index}">${dayEvents}</div>`;
       }).join('');
-      const empty = model.events.length ? ''
+      const empty = pending || model.events.length ? ''
         : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
           + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
       return navigation + (scheduleNotice ? `<p class="week-refresh-notice" role="status">${escapeHtml(translate(scheduleNotice))}</p>` : '') + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
-        + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
+        + `<span role="status">${escapeHtml(pending ? translate('workspace.scheduleLoadingWeek') : translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
         + `<div class="week-scroll" role="region" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
-        + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid"><div class="week-head" role="row">`
+        + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid" aria-busy="${pending}"><div class="week-head" role="row">`
         + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
         + `<div class="week-body" data-slot-count="${layout.slotCount}" data-height="${layout.height}">${lanes}${times}${events}${empty}</div></div></div>`
         + `<dialog id="scheduleDetail" class="week-detail"></dialog>` + actionHtml('source', 'schedule');
