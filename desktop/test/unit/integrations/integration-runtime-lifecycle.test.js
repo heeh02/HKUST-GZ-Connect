@@ -133,3 +133,22 @@ test('a duplicate confirmation without pending material cannot revoke the accept
   await assert.rejects(f.runtime.confirm(preview),{code:'INTEGRATION_TARGET_CHANGED'});
   gate.resolve();assert.equal((await accepted).ok,true);assert.deepEqual(f.writes,[['copy']]);
 });
+
+test('the coordinator requires an explicit synchronous authority guard before consuming a handle',async()=>{
+  const f=fixture(),preview=await f.prepare('copy');
+  for(const assertCurrent of [undefined,null,async()=>{}]) {
+    assert.throws(()=>f.coordinator.confirm({confirmationHandle:preview.confirmationHandle,
+      currentBinding:f.runtime.getContext().bindingFor('clash_mihomo_yaml',1),assertCurrent}),/synchronous export authority guard/);
+  }
+  assert.equal(f.coordinator.transactionOwner.snapshot().confirmationHandle,preview.confirmationHandle);
+  await f.runtime.confirm(preview);assert.deepEqual(f.writes,[['copy']]);
+});
+
+test('promise-returning authority checks cannot silently authorize an export',async()=>{
+  const f=fixture(),preview=await f.prepare('copy');
+  assert.throws(()=>f.coordinator.confirm({confirmationHandle:preview.confirmationHandle,
+    currentBinding:f.runtime.getContext().bindingFor('clash_mihomo_yaml',1),
+    assertCurrent:()=>Promise.reject(new Error('synthetic asynchronous check'))}),/must return synchronously/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.coordinator.transactionOwner.snapshot(),null);assert.deepEqual(f.writes,[]);
+});
