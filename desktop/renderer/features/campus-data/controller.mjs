@@ -37,6 +37,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
   let scheduleNotice = '';
   let lastScheduleAttempt = 0;
   let scheduleViewKey = null;
+  let lastScheduleLayout = null;
   const weekKey = date => weekRange(Date.parse(`${date}T12:00:00+08:00`), true).start;
   const reusable = module => validModule(module) && ['ready', 'empty'].includes(module.state);
   function remember(date, module) {
@@ -50,7 +51,7 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
     displayEpoch++; scheduleRequest++; clearing = pending;
     clearTimeout(scheduleRefreshTimer); scheduleRefreshTimer = null;
     weekCache.clear(); inflight = null; snapshot = null; loaded = false; visibleEvents = [];
-    scheduleNotice = ''; scheduleViewKey = null; $('scheduleDetail')?.close?.();
+    scheduleNotice = ''; scheduleViewKey = null; lastScheduleLayout = null; $('scheduleDetail')?.close?.();
     render(); setScheduleRefreshBusy(pending); publishCatalog(null);
   }
 
@@ -110,7 +111,8 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
   function scheduleHtml(module) {
     visibleEvents = [];
     return renderSchedule(module, { selectedDate, clockNow: () => Date.now(), miniature, locale,
-      translate, escapeHtml, stateHtml, actionHtml, scheduleNotice,
+      translate, escapeHtml, stateHtml, actionHtml, scheduleNotice, lastScheduleLayout,
+      onLayout: geometry => { lastScheduleLayout = geometry; },
       onGroups: groups => { visibleEvents = groups; } });
   }
 

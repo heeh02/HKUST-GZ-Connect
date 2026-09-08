@@ -171,3 +171,4 @@
 :where(.module-schedule) .week-event[data-span="10"] { grid-row-end: span 10; }
 :where(.module-schedule) .week-event[data-span="11"] { grid-row-end: span 11; }
 :where(.module-schedule) .week-event[data-span="12"] { grid-row-end: span 12; }
+.module-schedule .week-table[aria-busy="true"] .week-body { opacity: .45; }
