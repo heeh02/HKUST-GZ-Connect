@@ -155,4 +155,3 @@ export function start({ target, document: doc, api, i18n } = {}) {
   }).catch(() => {});
   return feature;
 }
-
