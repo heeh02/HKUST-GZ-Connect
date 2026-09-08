@@ -33,8 +33,9 @@ function fixture() {
     getPortalUrl: () => 'https://myportal.hkust-gz.edu.cn/',
     getSessionUrlHint: () => 'https://myportal.hkust-gz.edu.cn/', now: () => f.now,
     getSources: () => ({ schedule: { read: async context => {
+      const state = f.state || 'empty';
       f.reads.push(context.scheduleWeekStart); if (f.pause) await f.pause;
-      return { state: 'empty', source: 'myportal-calendar', fetchedAt: f.now, stale: false, items: [] };
+      return { state, source: 'myportal-calendar', fetchedAt: f.now, stale: false, items: [] };
     } } }),
   });
   return f;
@@ -57,6 +58,28 @@ test('week caches are separate, expire daily, allow manual refresh and remain bo
   }
   assert.equal(f.runtime.calendarCache.size, 12);
   f.runtime.invalidate(); assert.equal(f.runtime.calendarCache.size, 0);
+});
+
+test('authoritative calendar revocation evicts all weeks and fences older results', async () => {
+  for (const state of ['session-expired', 'not-authenticated', 'forbidden']) for (const request of ['week','snapshot','refresh']) {
+    const f=fixture();
+    await f.runtime.snapshot();
+    await f.runtime.scheduleWeek({date:'2027-01-11'});
+    await f.runtime.scheduleWeek({date:'2027-01-18'});
+    let resolve;
+    f.pause=new Promise(done=>{resolve=done;});
+    const pending=f.runtime.scheduleWeek({date:'2027-01-25'});
+    f.pause=null; f.state=state;
+    const denied=await (request==='week' ? f.runtime.scheduleWeek({date:'2027-01-11',force:true})
+      : request==='snapshot' ? f.runtime.snapshot({force:true}) : f.runtime.refreshSchedule());
+    assert.equal(denied.modules.schedule.state,state);
+    assert.equal(f.runtime.calendarCache.size,0,'other cached weeks must lose authorization');
+    assert.equal(f.runtime.cached,null,'the current-week snapshot must not bypass revocation');
+    resolve(); await assert.rejects(pending,/context changed/);
+    f.state='empty'; const count=f.reads.length;
+    await f.runtime.scheduleWeek({date:'2027-01-18'});
+    assert.equal(f.reads.length,count+1,'a previous cache hit must now revalidate');
+  }
 });
 
 test('late calendar data cannot cross partition change or invalidation', async () => {
