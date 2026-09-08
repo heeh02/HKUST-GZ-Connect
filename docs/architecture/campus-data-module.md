@@ -3,7 +3,7 @@
 - Status: Proposed; not merged, installed or released
 - Owner: Desktop Renderer maintainers
 - Last verified: 2026-09-08
-- Applies to: Issue #79, structural follow-up to PR #106 at `aeb691a`
+- Applies to: Issue #79, structural follow-up to PR #106 at `86a245c`
 
 ## Public contract
 
@@ -16,6 +16,12 @@ The internal calendar model owns week boundaries, cross-day segments and compact
 The controller retains the existing rendering, in-memory 12-week cache, 24-hour refresh interval,
 manual refresh, last-good rendering, authentication expiry and clear-display behavior.
 No algorithm or lifecycle changes are included in this extraction.
+
+The delivered pending-week correction in PR #106 is preserved: an uncached week keeps seven
+day columns and a compact busy grid, never the previous week's events or a false empty result.
+The controller retains only numeric layout bounds for that transition and clears them with its
+display state. The view receives/returns those bounds through explicit internal parameters;
+the public feature API remains unchanged. See the [preservation receipt](../archive/audits/2026-09-08-calendar-fix-preservation.md).
 
 The internal `calendar-view.mjs` owns table/navigation/summary markup. It receives the selected
 date, size mode, clock callback, localization/escaping functions, state/source rendering callbacks
