@@ -107,3 +107,13 @@ test('signed-out status remains cacheable without retaining personal week caches
   await f.runtime.snapshot(); assert.equal(probes,1);
   await f.runtime.snapshot({force:true}); assert.equal(probes,2);
 });
+
+test('a fresh full revalidation fences denial from an older week request', async () => {
+  const f=fixture(); let resolve;
+  f.state='session-expired'; f.pause=new Promise(done=>{resolve=done;});
+  const old=f.runtime.scheduleWeek({date:'2027-01-11'});
+  f.pause=null; f.state='empty';
+  await f.runtime.snapshot({force:true});
+  resolve(); await assert.rejects(old,/context changed/);
+  assert.equal(f.runtime.cached.modules.schedule.state,'empty');
+});
