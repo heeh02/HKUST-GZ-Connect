@@ -957,6 +957,9 @@ class MyPortalDataRuntime {
         ['not-authenticated', 'session-expired', 'forbidden'].includes(value.modules.schedule.state)) {
       // Return this authoritative denial, but invalidate every older cache/flight.
       this.invalidate();
+      // A signed-out snapshot contains no personal items; retain that status to avoid
+      // repeatedly probing SSO. Forced refresh still revalidates after user login.
+      if (value.sessionState === 'unauthenticated') this.cached = value;
       return false;
     }
     return true;
