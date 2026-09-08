@@ -69,7 +69,59 @@ Combined focused command, from `desktop/`:
 node --test test/unit/switching/active-context/active-context-activation-store.test.js test/unit/switching/active-context/active-context-switch-store.test.js
 ```
 
-## Limits and rollback
+## 2026-09-09 revalidation: Git checkout, C bytes and elevated fixture ownership
+
+The earlier results above are historical. Revalidation used native Windows Node 24.20 through the
+designated host, not WSL interop, with separate Git worktrees for the current review chain and this PR.
+No PR was merged. GitHub direct clone timed out and ended; a read-only local object source and an
+incremental bundle were then used. `git bundle verify` validated prerequisite availability, and
+checkout/readback established the exact requested HEAD and clean tracked files. The original
+Windows checkout was not changed; shared object-source directories must remain available while
+these temporary validation clones exist.
+
+On review-chain `3d323e2a0b99b0d89b3bfbf23a1bf21e934c77d5`, exact-index governance now passes.
+The proper-Git Windows full run reports **1,412 total / 1,298 passed / 74 failed / 40 skipped**.
+The previous source-archive probe reported 75 failures, including the confirmed missing-Git-index
+environment error. This removes that harness error; it does not turn the remaining failures into
+accepted behavior or prove all are fixture defects. M5 issue #83 owns their separate attribution.
+
+Two additional fixture/reproducibility issues were reproduced and corrected in this PR:
+
+1. `* text=auto` without a C-specific LF rule permits native C checkout as CRLF, even with
+   `core.autocrlf=false` when the effective EOL is CRLF. The helper source was 6,658 bytes / 150 CRLF
+   sequences versus the committed 6,508 LF bytes; normalized contents matched. `*.c text eol=lf`
+   now fixes native-source byte identity. A real temporary Git checkout test was RED before the
+   rule and passes for `false/crlf`, `true/crlf` and `input/lf` settings. No global Git setting changed.
+2. A temporary-file ownership probe confirmed this elevated session's default owner is
+   Administrators, not the current user SID. The old fixture's `ensureOwnerOnly` therefore correctly
+   refused to tighten it. These test-owned, newly created synthetic files now use the existing
+   Windows **creation** protection API; POSIX fixtures retain `ensureOwnerOnly`. Production ownership,
+   DACL, symlink and source-authority checks are unchanged. Do not copy this fixture initialization
+   into a production existing-file read/migration path to seize foreign-owned material.
+
+Revalidation source: `095a5eb18cb50e03b874439547ff9e21461e2a46`; C EOL regression first added at
+`df9e9e0c62ff702fc4fb022d14ac4d96ba09eddd`. On native Windows the earlier fixture version failed
+eight preparation assertions; the corrected combined activation/journal/C-checkout suite passed
+**14 / 0 failures / 2 POSIX-only skips**. Mac Node 24.19 passed **14 / 2 Windows-only skips**.
+Linux Node 24.20 full suite passed **1,239 / 8 skips / 0 failures** under `umask 022`.
+The inherited-ACL negative tests still reject before activation/parsing; malformed JSON/schema
+tests still assert their distinct causes after correct fixture preparation.
+
+The fixed PR's native C checkout SHA-256 matches its committed source and the verified helper's
+source: `9341aba8971b5b45b73adad9a7eb48c505559214d4f14ad5b1d3ae9f6d0e8af8`.
+The reused Windows test helper reported `ec-private-file 1`, SHA-256
+`43448327e29d9054cdd65d2c822d216d880de922a97c72e71d17e15c4b0f5d9c`.
+The current review-chain baseline built its own helper before the full run because its raw C
+checkout was CRLF. Do not conflate a Git blob, working-tree bytes and binary identity.
+
+The two activation/journal test files and their persistence/switching/storage/profile production
+domains are unchanged between the current review chain and the main baseline, apart from this
+separate proposed fixture repair. The five corresponding baseline failure locations are covered
+by this passing scoped run; no combined full-suite reduction is claimed without an authorized
+integration and rerun. No new Windows full-suite, application, installer, live-school, release,
+transfer, protection or Actions claim follows from these scoped results.
+
+## Rollback boundary
 
 This corrects one test domain, not the entire Windows suite. Other Windows fixture portability
 failures remain separately tracked. No full Windows green-suite, package, live-school or new release
