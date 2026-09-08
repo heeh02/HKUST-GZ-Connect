@@ -2,18 +2,27 @@ import { weekRange, sameLocalDay, scheduleWeekModel, scheduleWeekLayout } from '
 
 export function renderSchedule(module, {
   selectedDate, clockNow, miniature, locale, translate, escapeHtml, stateHtml, actionHtml, onGroups, scheduleNotice,
+  lastScheduleLayout = null, onLayout = () => {},
 }) {
   const navigation = `<div class="week-navigation" role="group" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}">`
     + `<button type="button" data-week-move="-1" aria-label="${escapeHtml(translate('workspace.schedulePrevious'))}">‹</button>`
     + `<label><span class="week-date-label">${escapeHtml(translate('workspace.scheduleChooseWeek'))}</span><input id="scheduleDate" type="date" aria-label="${escapeHtml(translate('workspace.scheduleChooseWeek'))}" min="0001-01-01" max="9999-12-31" value="${selectedDate}"></label>`
     + `<button type="button" data-week-move="1" aria-label="${escapeHtml(translate('workspace.scheduleNext'))}">›</button>`
     + `<button type="button" data-week-today>${escapeHtml(translate('workspace.scheduleToday'))}</button></div>`;
-  if (!['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
+  const pending = module.state === 'loading';
+  if (!pending && !['ready', 'empty'].includes(module.state)) return navigation + stateHtml(module, 'schedule');
   const now = clockNow();
-  const campusTime = module.source === 'myportal-calendar';
+  const campusTime = pending || module.source === 'myportal-calendar';
   const model = scheduleWeekModel(module.state === 'ready' ? module.items : [],
     Date.parse(`${selectedDate}T12:00:00+08:00`), campusTime);
-  const layout = scheduleWeekLayout(model, miniature);
+  let layout = scheduleWeekLayout(model, miniature);
+  if (pending) {
+    layout = { ...layout, ...(lastScheduleLayout || {}), groups: [],
+      height: Math.min(lastScheduleLayout?.height || 180, miniature ? 140 : 180) };
+  } else {
+    const { start, end, height, slotCount } = layout;
+    onLayout({ start, end, height, slotCount });
+  }
   onGroups(layout.groups);
   const format = (value, options) => new Intl.DateTimeFormat(locale(), {
     ...options, ...(campusTime ? { timeZone: 'Asia/Shanghai' } : {}),
@@ -58,13 +67,13 @@ export function renderSchedule(module, {
       }).join('');
     return `<div class="week-event-day" data-day="${index}">${dayEvents}</div>`;
   }).join('');
-  const empty = model.events.length ? ''
+  const empty = pending || model.events.length ? ''
     : `<div class="week-empty" role="status"><strong>${escapeHtml(translate('workspace.scheduleWeekEmpty'))}</strong>`
       + `<span>${escapeHtml(translate('workspace.scheduleWeekEmptyHint'))}</span></div>`;
   return navigation + (scheduleNotice ? `<p class="week-refresh-notice" role="status">${escapeHtml(translate(scheduleNotice))}</p>` : '') + `<div class="week-summary" aria-live="polite"><strong>${escapeHtml(weekLabel)}${model.start === weekRange(now, campusTime).start ? ` · ${escapeHtml(translate('workspace.scheduleToday'))}` : ''}</strong>`
-    + `<span>${escapeHtml(translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
+    + `<span role="status">${escapeHtml(pending ? translate('workspace.scheduleLoadingWeek') : translate('workspace.scheduleWeekCount', { count: model.eventCount }))}</span></div>`
     + `<div class="week-scroll" role="region" aria-label="${escapeHtml(translate('workspace.scheduleWeekTable'))}">`
-    + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid"><div class="week-head" role="row">`
+    + `<div class="week-table${miniature ? ' is-mini' : ''}" role="grid" aria-busy="${pending}"><div class="week-head" role="row">`
     + `<div class="week-time-head" role="columnheader">${escapeHtml(translate('workspace.scheduleTime'))}</div>${headers}</div>`
     + `<div class="week-body" data-slot-count="${layout.slotCount}" data-height="${layout.height}">${lanes}${times}${events}${empty}</div></div></div>`
     + `<dialog id="scheduleDetail" class="week-detail"></dialog>` + actionHtml('source', 'schedule');

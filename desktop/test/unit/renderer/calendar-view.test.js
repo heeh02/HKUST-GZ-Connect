@@ -43,7 +43,7 @@ test('calendar view keeps miniature empty weeks bounded and exposes all seven da
 });
 
 test('non-ready views preserve navigation and delegate state copy without reading a clock or binding events', () => {
-  for(const state of ['loading','failed','session-expired','forbidden']) {
+  for(const state of ['failed','session-expired','forbidden']) {
     const html = renderSchedule({state,items:[]},options({
       clockNow:()=>{throw new Error('non-ready view read clock');},
       onGroups:()=>{throw new Error('non-ready view emitted stale detail groups');},
@@ -52,4 +52,21 @@ test('non-ready views preserve navigation and delegate state copy without readin
     assert.ok(html.endsWith('STATE:'+state));
     assert.doesNotMatch(html,/class="week-table/u);
   }
+});
+
+test('pending view keeps only bounded geometry and never reuses prior event groups', () => {
+  for (const miniature of [false,true]) {
+    let groups;
+    const html=renderSchedule({state:'loading',items:[]},options({miniature,
+      lastScheduleLayout:{start:840,end:1200,height:300,slotCount:3},
+      onGroups:value=>{groups=value;},onLayout:()=>{throw new Error('pending cannot publish ready geometry');}}));
+    assert.deepEqual(groups,[]);
+    assert.equal((html.match(/role="columnheader"/gu)||[]).length,8);
+    assert.match(html,/aria-busy="true"/u);
+    assert.match(html,new RegExp(`data-height="${miniature?140:180}"`));
+    assert.doesNotMatch(html,/week-empty|data-schedule-index|STATE:loading/u);
+  }
+  let geometry;
+  renderSchedule({state:'empty',items:[]},options({onLayout:value=>{geometry=value;}}));
+  assert.deepEqual(Object.keys(geometry).sort(),['end','height','slotCount','start']);
 });
