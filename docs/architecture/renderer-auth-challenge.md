@@ -1,11 +1,15 @@
 # Interactive-auth Renderer boundary
 
-- Status: Proposed structural review candidate; not merged, installed or released
+- Status: Historical structural review record for PR #117; not deployed
 - Owner: Desktop / authentication UI maintainers
 - Verified: 2026-09-08
 - Applies to: M1, stacked after localization ownership PR #116
 
 ## Public ownership
+
+The following records the separately proposed structural step. Its compatibility startup is
+superseded in the subsequent proposed [lifecycle unit](renderer-auth-challenge-lifecycle.md), which
+owns disposal and explicit host activation. Do not treat the old facade description as current code.
 
 `desktop/renderer/features/auth-challenge/index.mjs` exports `createAuthChallengeFeature`,
 `MAX_RESPONSE_BYTES` and `start`. Importing this native entrypoint has no global export or automatic
