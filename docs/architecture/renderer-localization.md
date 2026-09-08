@@ -50,3 +50,27 @@ syntax, secrets, control-shell layout and browser-toolbar native tests for this 
 
 Rollback reverts the locale files, bridge, matching HTML loading declarations and policy/tests
 together. No persisted schema, account, session, credentials, routes or Engine source changes.
+
+## Review evidence
+
+- Base: `cc41fb44dfb6b961f917915821a3cc8a9c1d30e1` (official-favorites lifecycle, PR #115).
+- Runtime source: `de0c10abeb7999da4751e5696e67b4d84f1d4fa6`.
+- Acceptance source: `abdcbcf30db6038b6e3ae83968b8d4dd79fa8311`; the intervening commit only updates
+  old source-string tests to use the strict script inventory and retain the same ordering assertions.
+- One-off comparison against the base: all 715 zh/en values and all zh/en/unknown-locale translator
+  outputs matched, including representative interpolation variables. No copy rewrite is intended.
+- Mac Node 24.19: locale/source-policy suite 46 passed; updated Renderer contract 17 passed.
+- 5070 Linux Node 24.20: `node --test` 1,360 passed / 6 platform skips, zero failures. The initial
+  run had 5 legacy exact-tag failures after adding defer; no product assertion was removed.
+- 5070 Windows Node 24.20: locale, HTML source and Renderer contract tests 38 passed.
+- `node e2e/renderer-module-asar.js`: Mac, native Windows and Linux/Xvfb passed both languages,
+  with confirmed child exit and temporary-profile cleanup. Windows still emitted the known GPU
+  process exit-code 34 warning; it is not resolved by this change.
+- Mac native `control-shell-layout`, `resource-manager-layout`, `campus-workspace-layout` and
+  `campus-browser-toolbar` Electron fixtures passed. Toolbar's intentional port-1 failure is synthetic.
+- Architecture, 508-file exact-tree JavaScript syntax, staged-secret, install-script and repository
+  governance gates passed. Mac used Node 24.19; heavy full-suite work ran on 5070.
+
+No full Windows Desktop suite, installer rebuild, real-school/MFA canary, public release, GitHub
+merge, Organization transfer or protection change is claimed. The installed Mac archive remained
+`705d83f90356cf3b1973d723f4d785765cba4adbba53843394d32c5a013baf0c`; this proposal is not deployed.
