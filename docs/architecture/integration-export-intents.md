@@ -1,10 +1,11 @@
 # Integration export intents and effect-boundary validation
 
-- Status: Proposed Main behavior repair; Windows acceptance incomplete; not merged or deployed
+- Status: Proposed Main repair; Windows targeted checks passed, repository-wide gate red; not deployed
 - Owner: Desktop / integration maintainers, issues #79 and #81
 - Verified: 2026-09-09
 - Base: PR #119, `f520db3acfc83ead950431ff36445bbc61104639`
 - Tested source: `e94c642539c99d1bdbf428c18d85cd45ed87453a`
+- Native path-fixture acceptance: `95902b015b1ac8a9d03e0c4813e2c670827d0532` (runtime unchanged)
 
 ## Why Main must be repaired before Renderer retirement
 
@@ -59,15 +60,40 @@ zeroization. Confirmation TTL semantics and Renderer lifecycle are not replaced 
 - Architecture, install-script, repository-governance and secret gates passed. Exact HEAD syntax
   passed 517 source files. Main dependency/line budgets did not increase.
 
-Windows is **not accepted** for this unit. Native RBMS SSH initially worked, but a fresh helper
-build for the isolated source checkout failed with `Visual C++ environment initialization failed`, before the tests started.
-Read-only discovery found the existing Build Tools installation; a process-local environment retry
-could not connect to the Windows SSH endpoint. A second bounded hostname probe also timed out,
-while WSL remained reachable. No compiler installation, system setting, network change, host restart
-or privilege change was attempted. No test process was started by either timed-out SSH attempt.
-Resume native helper/test verification when direct Windows access is restored; Linux results are
-not a substitute. Full Windows, installer/signature, live-school and actual user-export acceptance
-remain absent. No Actions build, installed-App replacement, merge, release or transfer is claimed.
+### Windows follow-up on 2026-09-09
+
+The earlier helper-build failure and SSH outage are historical, not the current targeted-test state.
+SSH returned without host/network changes. Initializing the existing `VsDevCmd.bat -arch=x64` in
+the test process allowed the fresh native helper build to complete; automatic environment discovery
+in the standalone build script was not changed. No compiler installation or persistent environment
+change was made. The helper reported `ec-private-file 1`, SHA-256
+`43448327e29d9054cdd65d2c822d216d880de922a97c72e71d17e15c4b0f5d9c`.
+
+The first native scoped run passed 33/34; its failing default-path assertion assumed POSIX spelling.
+The full-suite probe also found a VS Code fixture supplying noncanonical POSIX paths on Windows.
+Both integration fixtures now use native absolute paths, including spaces. Assertions still require
+the exact default filename/parent, only one supported save dialog, cancellation rejection, secret
+exclusion and generated-payload validation. No production path validator or ACL check was relaxed.
+
+Native Windows Node 24.20 then passed **37/37** runtime, transaction, adapter and IPC tests, including
+real owner-only writes in test-owned temporary directories using the compiled helper. Linux was
+rerun on the same source: **1,406 passed / 6 skips**; the expanded **37/37** also passed on Mac.
+Runtime code remains byte-identical to the
+tested `e94c642` implementation; these follow-up commits change fixtures only.
+
+**The repository-wide Windows gate is still not accepted.** An exploratory full run on the final
+source archive reported **1,412 tests: 1,297 passed, 75 failed, 40 skipped**. The prior probe before
+the second fixture correction had 76 failures. One failure is explicitly a harness limitation:
+the archive lacks `.git`, so the exact-index governance test cannot run there. Other failures span
+storage/migration, switching, profiles, resources and Engine tests. Some active-context fixtures
+overlap existing PR #107; not all failures have been attributed or proven to be production bugs.
+No claim that these are all caused by, or unrelated to, PR #120 is made from path comparison alone.
+Follow-up belongs to M5 issue #83: use a proper Windows Git checkout, reconcile PR #107, then audit
+each remaining fixture/implementation without broad Windows skips or weaker permission checks.
+
+Windows full-suite, full installer/signature, live-school and actual user-export acceptance remain
+unproven. Targeted success is not a release approval. No Actions build, installed-App replacement,
+merge, release or transfer is claimed.
 
 ## Remaining work and rollback
 

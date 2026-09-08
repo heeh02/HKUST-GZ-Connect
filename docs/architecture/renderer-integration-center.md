@@ -42,7 +42,8 @@ export through an unscoped cancellation call. No fix for that lifecycle boundary
 
 The subsequent proposed [Main export-intent repair](integration-export-intents.md) separately
 guards native-target continuations, confirmation cleanup and the final output boundary. Its
-Windows verification remains incomplete, and it does not retire this Renderer initializer.
+Windows targeted checks now pass while the repository-wide gate remains red; it does not retire
+this Renderer initializer.
 
 ## Acceptance
 
