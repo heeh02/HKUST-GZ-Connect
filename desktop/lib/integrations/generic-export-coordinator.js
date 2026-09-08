@@ -26,7 +26,10 @@ class GenericExportCoordinator {
     return this.transactionOwner.prepare(value);
   }
 
-  confirm({ confirmationHandle, currentBinding } = {}) {
+  confirm({ confirmationHandle, currentBinding, assertCurrent = () => {} } = {}) {
+    if (typeof assertCurrent !== 'function') throw new TypeError('export authority guard is invalid');
+    try { assertCurrent(); }
+    catch (error) { this.cancel(confirmationHandle); throw error; }
     return this.transactionOwner.execute({
       confirmationHandle,
       currentBinding,
@@ -35,6 +38,7 @@ class GenericExportCoordinator {
           throw new Error('generated integration payload failed validation');
         }
         await this.beforePerform({ adapterId, action });
+        assertCurrent();
         if (action === 'copy') {
           let text = payload.toString('utf8');
           try {
@@ -52,8 +56,8 @@ class GenericExportCoordinator {
     });
   }
 
-  cancel() {
-    return this.transactionOwner.cancel();
+  cancel(confirmationHandle) {
+    return this.transactionOwner.cancel(confirmationHandle);
   }
 }
 

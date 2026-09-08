@@ -7,6 +7,7 @@ const {
 const {
   ACTIVE_INTEGRATION_ADAPTER_IDS,
   createIntegrationAdapterView,
+  validateIntegrationBinding,
 } = require('./integration-schema');
 const {
   AtomicExportFileTransaction,
@@ -21,6 +22,7 @@ function integrationError(code, cause = null) {
 }
 
 class IntegrationCenterRuntime {
+  #intent = 0;
   constructor({
     getContext,
     selectTarget,
@@ -60,16 +62,18 @@ class IntegrationCenterRuntime {
         (adapterId === 'vscode_remote_ssh' && action !== 'copy')) {
       throw integrationError('INTEGRATION_ADAPTER_UNAVAILABLE');
     }
-    const context = this.getContext(adapterId);
+    const intent = ++this.#intent;
+    const initialBinding = validateIntegrationBinding(this.getContext(adapterId).bindingFor(adapterId, 1));
     let preview;
     if (GENERIC.has(adapterId)) {
       const targetFile = action === 'save'
         ? await this.#target(adapterId, action, null)
         : null;
+      const { context, binding } = this.#current(intent, adapterId, initialBinding);
       preview = this.genericCoordinator.prepare({
         adapterId,
         action,
-        binding: context.bindingFor(adapterId, 1),
+        binding,
         networkRules: context.networkRules,
         port: context.port,
         credential: context.credential,
@@ -77,7 +81,11 @@ class IntegrationCenterRuntime {
         credentialFile: this.credentialFile,
         targetFile,
       });
-      this.pending = { kind: 'generic', adapterId };
+      if (intent !== this.#intent) {
+        this.genericCoordinator.cancel(preview.confirmationHandle);
+        throw integrationError('INTEGRATION_TARGET_CHANGED');
+      }
+      this.pending = { kind: 'generic', adapterId, confirmationHandle: preview.confirmationHandle };
       return preview;
     }
     throw integrationError('INTEGRATION_ADAPTER_UNAVAILABLE');
@@ -85,23 +93,39 @@ class IntegrationCenterRuntime {
 
   async confirm({ confirmationHandle } = {}) {
     const pending = this.pending;
-    this.pending = null;
     if (!pending) throw integrationError('INTEGRATION_TARGET_CHANGED');
+    this.pending = null;
+    const intent = ++this.#intent;
     try {
       const context = this.getContext(pending.adapterId);
-      return await this.genericCoordinator.confirm({ confirmationHandle, currentBinding: context.bindingFor(
-        pending.adapterId, 1,
-      ) });
+      const binding = validateIntegrationBinding(context.bindingFor(pending.adapterId, 1));
+      if (intent !== this.#intent) throw integrationError('INTEGRATION_TARGET_CHANGED');
+      return await this.genericCoordinator.confirm({ confirmationHandle, currentBinding: binding,
+        assertCurrent: () => { this.#current(intent, pending.adapterId, binding); },
+      });
     } catch (error) {
-      this.cancel();
+      // An older continuation has no authority over a replacement preview.
+      this.genericCoordinator.cancel(pending.confirmationHandle);
       throw error;
     }
   }
 
   cancel() {
-    const changed = this.genericCoordinator.cancel();
+    this.#intent++;
     this.pending = null;
-    return changed;
+    return this.genericCoordinator.cancel();
+  }
+
+  #current(intent, adapterId, expected) {
+    if (intent !== this.#intent) throw integrationError('INTEGRATION_TARGET_CHANGED');
+    let context, binding;
+    try {
+      context = this.getContext(adapterId);
+      binding = validateIntegrationBinding(context.bindingFor(adapterId, 1));
+    } catch (error) { throw integrationError('INTEGRATION_PROFILE_STALE', error); }
+    if (intent !== this.#intent) throw integrationError('INTEGRATION_TARGET_CHANGED');
+    if (binding.bindingDigest !== expected.bindingDigest) throw integrationError('INTEGRATION_PROFILE_STALE');
+    return { context, binding };
   }
 
   async #target(adapterId, action, existingTarget) {
