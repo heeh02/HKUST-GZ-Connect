@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
-const { verifyWindowsFileOwnerOnly } = require('../../../../lib/platform/storage/windows-private-file');
+const { protectWindowsFileOwnerOnly, verifyWindowsFileOwnerOnly } = require('../../../../lib/platform/storage/windows-private-file');
 const { ActiveContextActivationStore } = require('../../../../lib/switching/active-context/active-context-activation-store');
 const {
   createPreparedActiveContextSwitch,
@@ -35,8 +35,10 @@ function context(profileId, profileSeed, accountSeed, workspaceSeed, epoch) {
 function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   fs.writeFileSync(file, `${JSON.stringify(value)}\n`, { mode: 0o600 });
-  // POSIX mode bits do not establish the protected current-user DACL on Windows.
-  assert.equal(ensureOwnerOnly(file), true, 'fixture must satisfy the real private-file boundary');
+  // These are newly created synthetic files. Elevated Windows can assign Administrators
+  // as their default owner; creation protection is distinct from tightening an existing file.
+  assert.equal(process.platform === 'win32' ? protectWindowsFileOwnerOnly(file) : ensureOwnerOnly(file),
+    true, 'fixture must satisfy the real private-file boundary');
 }
 
 function fixture(t) {

@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
 const {
+  protectWindowsFileOwnerOnly,
   verifyWindowsFileOwnerOnly,
 } = require('../../../../lib/platform/storage/windows-private-file');
 const {
@@ -181,7 +182,10 @@ test('journal disappearance and malformed content are never treated as absence',
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   for (const [content, causeType] of [['{!', SyntaxError], ['{}', TypeError]]) {
     fs.writeFileSync(file, content, { mode: 0o600 });
-    assert.equal(ensureOwnerOnly(file), true, 'malformed fixture must pass the private-file gate');
+    // This test owns this synthetic file; do not use the foreign-owner-preserving read helper
+    // to initialize an elevated Windows fixture whose default owner can be Administrators.
+    assert.equal(process.platform === 'win32' ? protectWindowsFileOwnerOnly(file) : ensureOwnerOnly(file),
+      true, 'malformed fixture must pass the private-file gate');
     assert.throws(() => base.read(), (error) => {
       assert.match(error.message, /journal is invalid/u);
       assert.ok(error.cause instanceof causeType);
@@ -199,7 +203,7 @@ test('native Windows rejects an inherited journal ACL before parsing malformed c
   const store = new ActiveContextSwitchJournalStore({ filePath: file });
   assert.equal(verifyWindowsFileOwnerOnly(file), false);
   assert.throws(() => store.read(), /journal ACL is invalid/u);
-  assert.equal(ensureOwnerOnly(file), true);
+  assert.equal(protectWindowsFileOwnerOnly(file), true);
   assert.throws(() => store.read(), (error) => {
     assert.match(error.message, /journal is invalid/u);
     assert.ok(error.cause instanceof SyntaxError);
