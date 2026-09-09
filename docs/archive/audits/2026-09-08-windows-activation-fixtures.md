@@ -121,6 +121,53 @@ by this passing scoped run; no combined full-suite reduction is claimed without 
 integration and rerun. No new Windows full-suite, application, installer, live-school, release,
 transfer, protection or Actions claim follows from these scoped results.
 
+## 2026-09-09 follow-up: bottom-level private-file fixtures
+
+Source `c02af45eba9414f64fd44d10c87772b736a09584` corrects two more preparation errors in
+`private-file.test.js` and `windows-private-file.test.js`. The native Windows RED run reported
+9 passed / 2 failed: both success fixtures attempted to tighten a newly created file whose default
+owner in the elevated session was Administrators, not the current user. Production correctly
+refused them. No production C/JS file or security policy was changed.
+
+A test-only helper under `test/unit/platform/storage/support/` now establishes current ownership
+on newly created synthetic files, independently confirms that owner through PowerShell, and adds
+a broad Users read ACE. Verification must reject that broad DACL before the actual `tighten` or
+`ensureOwnerOnly` assertion runs. This preserves a real hardening test rather than replacing the
+operation under test with the creation-protection API. Existing broad-DACL preparation reuses the
+same helper. Special-character paths, independent PowerShell verification, missing/directory,
+hardlink and symlink checks remain in place.
+
+A new native negative test explicitly assigns Administrators ownership to its own synthetic
+temporary file. Native tightening, PowerShell tightening and the descriptor wrapper must all
+reject it without changing the complete security descriptor or contents. This test ran and passed
+under the designated elevated RBMS session. On a non-elevated Windows runner, only this new
+foreign-owner fixture test reports a named skip because creating that fixture requires elevation;
+no existing failure is skipped. No machine privilege, account, user file or global configuration
+was changed. Expected PowerShell rejection text appears in the native negative-test log.
+
+Validation of the exact source above:
+
+- Mac Node 24.19 full `node --test`: **1,249 total / 1,240 passed / 9 skipped / 0 failed**.
+- 5070 Linux Node 24.20 full `node --test`, `umask 022`: the same counts. The total includes
+  Node's discovery of the side-effect-free support module; it is not an extra behavioral assertion.
+- Native Windows Node 24.20, two private-file suites: **12 passed / 0 skipped / 0 failed**.
+- Combined private-file, C-checkout, activation and journal suites: native Windows
+  **26 passed / 2 POSIX-only skips**; Mac **21 passed / 7 Windows-only skips**, no failures.
+- Architecture, exact-HEAD JavaScript syntax (464 files), indexed secret, install-script and
+  repository-governance gates passed. Tracked source was transferred through verified Git bundles
+  into the existing separate Windows and Linux PR #107 worktrees.
+
+Combined command, from `desktop/`:
+
+```sh
+node --test test/unit/platform/storage/private-file.test.js test/unit/platform/storage/windows-private-file.test.js test/unit/platform/storage/native-source-checkout.test.js test/unit/switching/active-context/active-context-activation-store.test.js test/unit/switching/active-context/active-context-switch-store.test.js
+```
+
+The earlier review-chain full-Windows baseline remains **74 failures, not remeasured here**.
+These two reproduced failure sites are resolved in this isolated PR; do not subtract them from a
+different tree's full-run count without a combined rerun. No installed application, package,
+real-school, release, transfer or GitHub merge claim follows from these fixture-only changes.
+
 ## Rollback boundary
 
 This corrects one test domain, not the entire Windows suite. Other Windows fixture portability
