@@ -170,6 +170,20 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native legacy input and retirement fixtures — 2026-09-09
+
+Commit `50e8b790` prepares owner-only ACLs on newly created synthetic legacy source files before
+collecting migration receipts. It also prepares the newly created empty rotated log and unexpected
+source fixtures, so those cases reach content/absence checks rather than fail on setup permissions.
+Production migration readers, retirement rules, receipt equality and deletion ordering are unchanged.
+
+The `legacy-flat-source-retirement.test.js` and `legacy-migration-inputs.test.js` suites passed
+**9 tests / 2 existing POSIX-only skips / 0 failures** on native Windows Node 24.20. The same exact
+commit passed **11/11** on Mac Node 24.19 and 5070 Linux Node 24.20. Prior combined Windows
+`f597bfa` had nine failures in these suites; no combined total is inferred without a fresh full run.
+Fixtures cover receipt mismatch, unexpected sources, interrupted retirement/resumption, empty
+diagnostics versus authoritative payloads, and zeroizing owners without using real user data.
+
 ### Native card/favorite storage fixtures — 2026-09-09
 
 Commit `1c8b45db` changes only three test files. Four failures in the combined Windows run
