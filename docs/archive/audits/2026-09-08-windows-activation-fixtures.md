@@ -170,6 +170,18 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native account/workspace authority fixtures — 2026-09-09
+
+Commit `eee766dd` prepares owner-only ACLs when creating synthetic account/workspace JSON and
+credential fixtures. Rewrites of an existing fixture do not reassign ownership. Production readers
+and cross-account/Gateway binding assertions are unchanged. Three formerly failing Windows cases
+now reach their intended read/binding paths instead of failing on setup permissions.
+
+`profile-workspace-runtime-authority.test.js` passed **4 tests / 1 existing platform skip / zero
+failures** on 5070 native Windows Node 24.20, and **5/5** on Mac Node 24.19 and 5070 Linux Node 24.20.
+This covers credential-free accounts, exact authority loading without decryption, and preserved
+cross-account/Gateway rejection. It does not establish full release or user-data migration acceptance.
+
 ### Native startup recovery fixtures — 2026-09-09
 
 Commit `7a5343b2` prepares private ACLs on freshly created synthetic legacy startup files and
