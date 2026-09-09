@@ -170,6 +170,28 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Combined release-tree full rerun — 2026-09-09
+
+Local integration `7f896c1fb4d89ade4d88681bd590054a5f8a59f6`, tree
+`5bfbef837a92a66710eccd885650a10b4ac45bec`, combines PR #107 through `8ba228b` with PR #106
+`020fa42`, PR #88 `35a9c8b` and PR #95 `cdc0398`. It is a local acceptance commit, not main or a tag.
+All hosts checked out that same source. Full `node --test` results:
+
+- Mac Node 24.19: 1,306 total / 1,292 passed / 14 platform skips / **0 failed**.
+- 5070 Linux Node 24.20, umask 022: identical counts.
+- 5070 native Windows Node 24.20: 1,306 total / 1,266 passed / 40 platform skips / **0 failed**.
+
+This supersedes the earlier combined 46- and 27-failure results for the measured full run; it is
+not arithmetic subtraction of scoped tests. Architecture, indexed secret, install-script and
+exact-HEAD syntax gates passed (474 JavaScript files). Existing platform skips were not expanded.
+Logs are named `hkustgz-202-consolidated-*-full-20260909.log` on Mac and
+`hkustgz-202-consolidated-full-20260909.log` in the designated hosts' work directories.
+
+No runtime code changed in these fixture follow-ups. No administrator merge, tag, published asset,
+installed-App replacement or live-school test occurred. Exact-main packaging, signatures/digests,
+release review and installation acceptance remain separate requirements. A passing test run does
+not waive unresolved findings from other reviews.
+
 ### Native provisioning and coordinator fixtures — 2026-09-09
 
 Commit `5a662ef` replaces POSIX-only success assertions with real native ACL verification on
