@@ -170,6 +170,21 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native probe environment fixture follow-up — 2026-09-09
+
+Test-only commit `1d9b2454` corrects two macOS probe fixtures which selected a macOS executable
+and expected `TMPDIR` but implicitly inherited the Windows host platform. The native combined
+release run at `f597bfa` reproduced both environment assertion failures. They now explicitly select
+`darwin`; three additional cases independently assert the `darwin`, `linux` and `win32` environment
+allowlists through the runner's injected spawn boundary. Proxy, certificate and token overrides
+remain excluded. No production environment forwarding policy was changed.
+
+`node --test test/unit/profiles/onboarding/gateway-probe-runner.test.js` passed **8/8**, without
+skips, on Mac Node 24.19 and designated 5070 native Windows/Linux Node 24.20 at this exact commit.
+These synthetic child tests do not contact a Gateway. They do not establish a green full Windows
+suite or eliminate any other release gate. The combined release tree has not yet incorporated
+this follow-up, so its earlier full-suite count remains unchanged.
+
 This corrects one test domain, not the entire Windows suite. Other Windows fixture portability
 failures remain separately tracked. No full Windows green-suite, package, live-school or new release
 claim is made. No application data or credentials were read; all modified files were synthetic
