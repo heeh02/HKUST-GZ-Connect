@@ -7,6 +7,8 @@ Applies to: 2.0.2
 
 ## 中文
 
+- 修复停止/重连时旧连接失效后关闭确认被丢弃的问题，避免不必要的关闭请求超时；仍需确认引擎正常退出，不跳过清理失败保护。
+- 修复部分 Windows 权限环境下无法安全写入连接进程归属记录、首次连接误报会话清理失败的问题；未正常退出时的重连保护仍保留。
 - 周课表支持任选日期、上一周/下一周及回到本周。
 - 按周保留最近 12 周的会话内缓存，24 小时内优先显示缓存；手动刷新保留已有课表，不再整卡变成加载占位。网络失败时保留上次结果并明确提示，未读取过的周使用紧凑加载状态。
 - 相同内容刷新后不重建课表，避免闪烁和打断详情查看。缓存仅在内存中保存；退出应用、切换账户或清除校园浏览器数据后重新读取。登录失效不会当作普通网络失败继续展示旧缓存。
@@ -18,6 +20,8 @@ Applies to: 2.0.2
 
 ## English
 
+- Preserve replies to the owned Engine's pending shutdown after connection invalidation, avoiding unnecessary control-request timeouts while retaining clean-exit and cleanup-failure checks.
+- Fix secure Engine ownership-record creation in affected Windows permission environments, which could incorrectly stop initial connection with a cleanup warning. Unclean-exit reconnect protection remains enabled.
 - Select any calendar week, move between weeks, or return to the current week.
 - Keep up to 12 weeks in session memory, reuse results for 24 hours, and refresh without clearing the timetable. Failed updates retain the last result with an explicit notice; uncached weeks have a compact loading state.
 - Unchanged results preserve the existing timetable DOM and open details. Cache is not persisted to disk and is retired on app exit, account switching or browser-data clearing. Explicit authentication expiry revokes cached results.

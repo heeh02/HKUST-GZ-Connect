@@ -46,6 +46,8 @@ async function main() {
         if(!expand)throw new Error('small category has no expand control');
         expand.focus();expand.click();
         const dialog = document.querySelector('.cb-service-overlay');
+        // Exercise delayed compositor start without changing the production motion.
+        for (const animation of dialog.getAnimations()) animation.effect.updateTiming({ delay: 300, fill: 'backwards' });
         const focus = document.activeElement;
         window.campusCategoryStacks.activeController().render();
         return { count, connected: dialog.isConnected, open: dialog.open,
@@ -55,7 +57,17 @@ async function main() {
       assert.equal(expanded.connected, true, 'layout redraw detached the category dialog');
       assert.equal(expanded.open, true, 'layout redraw closed the category dialog');
       assert.equal(expanded.focusRetained, true, 'layout redraw moved focus out of the dialog');
-      await new Promise(r=>setTimeout(r,260));
+      await window.webContents.executeJavaScript(`(async()=>{
+        const dialog=document.querySelector('.cb-service-overlay');
+        let timer;
+        try {
+          await Promise.race([
+            Promise.all(dialog.getAnimations().map(animation=>animation.finished)),
+            new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('category animation did not finish')),1500);}),
+          ]);
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        } finally { clearTimeout(timer); }
+      })()`);
       const result=await window.webContents.executeJavaScript(`(()=>{
         const dialog=document.querySelector('.cb-service-overlay');
         return {open:dialog?.open,count:dialog?.querySelectorAll('.cb-site').length,width:dialog?.getBoundingClientRect().width,
@@ -65,7 +77,8 @@ async function main() {
       })()`);
       assert.equal(result.open,true);assert.equal(result.count,expected);assert.ok(expected<=2);
       assert.ok(result.width<=width);assert.ok(result.overflow<=1);
-      assert.ok(Math.abs(result.cx-result.vw/2)<2 && Math.abs(result.cy-result.vh/2)<2,'category detail is centered');
+      assert.ok(Math.abs(result.cx-result.vw/2)<2 && Math.abs(result.cy-result.vh/2)<2,
+        `category detail is centered: ${JSON.stringify({ requestedWidth: width, ...result })}`);
       window.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});window.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
       await new Promise(r=>setTimeout(r,80));
       assert.equal(await window.webContents.executeJavaScript(`document.querySelector('.cb-service-overlay').open`),false);
