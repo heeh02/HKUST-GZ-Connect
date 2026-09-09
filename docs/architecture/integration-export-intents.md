@@ -4,7 +4,8 @@
 - Owner: Desktop / integration maintainers, issues #79 and #81
 - Verified: 2026-09-09
 - Base: PR #119, `f520db3acfc83ead950431ff36445bbc61104639`
-- Tested source: `e94c642539c99d1bdbf428c18d85cd45ed87453a`
+- Initial intent repair: `e94c642539c99d1bdbf428c18d85cd45ed87453a`
+- Scoped-cancellation source: `65065b422044bb2a00a56264eec6c518a8b9f934`
 - Native path-fixture acceptance: `95902b015b1ac8a9d03e0c4813e2c670827d0532` (runtime unchanged)
 
 ## Why Main must be repaired before Renderer retirement
@@ -31,8 +32,9 @@ Production supplies it from the runtime's current intent/binding owner; standalo
 explicitly provide their stable synthetic assertion.
 
 Internal `cancel(handle)` only clears matching prepared material. Old failure cleanup therefore
-cannot erase a newer preview. The existing no-argument global cancellation and public IPC shape
-remain unchanged; scoped cancellation is not exposed to Renderer by this unit. Existing invalid
+cannot erase a newer preview. The initial repair left public IPC unchanged; the additive
+scoped-cancellation follow-up below exposes the same ownership boundary through the existing channel.
+Existing invalid
 **execute**-handle behavior still fails closed and invalidates prepared material, as its regression
 contract requires; this change must not be read as altering that policy.
 
@@ -43,13 +45,59 @@ output is not retroactively reported as canceled or rolled back. Preparation eff
 does not claim to dismiss the OS save dialog; its late answer becomes inert. The existing cancel
 return value still describes whether prepared material was cleared, not native-window closure.
 
-No configuration format, public IPC argument, credential storage schema, routing, Engine or
-system-network behavior is changed. Main still owns raw generated content; Renderer sees only
+No configuration format, credential storage schema, routing, Engine or system-network behavior
+is changed. Main still owns raw generated content; Renderer sees only
 metadata/handles. Executing payloads are zeroed in the existing transaction finally path, including
 guard failure after preparation; save regressions observe a nonempty borrowed buffer before testing
 zeroization. Confirmation TTL semantics and Renderer lifecycle are not replaced by this repair.
 
-## Evidence
+## Scoped cancellation follow-up — 2026-09-09
+
+The Renderer cannot safely retire an old dialog using only global cancellation: a late callback
+could revoke a newer preview or a newer native target-selection intent. The existing
+`cancelIntegration()` remains the unchanged value-free global operation. An additive
+`cancelIntegration({ confirmationHandle })` now uses the same trusted `cancel-integration` channel,
+the existing closed handle-request validator and status-only responses. Null, arrays, missing or
+overlong handles and unknown fields fail validation; none fall back to global cancellation.
+No new channel, generic invocation method or generated-content projection is introduced.
+
+Runtime scoped cancellation never increments the global intent. It clears only a matching prepared
+record or revokes the matching accepted confirmation's private guard. This matters when an old
+preview still exists while a newer native save dialog is pending: canceling the old handle must
+not invalidate the new selection. An accepted operation is checked again at the existing synchronous
+effect boundary; its finally cleanup can retire only its own guard, never a newer confirmation.
+Unknown/stale handles are no-ops and the old invalid-confirm/execute fail-closed behavior remains.
+
+For an accepted operation, `cancelled: true` means its logical confirmation authority was revoked;
+it does not mean the OS dialog was dismissed, committed output was rolled back, or an unresolved
+preparation Promise was interrupted. Borrowed payload bytes are zeroed by the transaction's existing
+finally path when execution settles. These limitations apply equally to copy and save.
+
+Source `65065b4` validation:
+
+- RED before implementation: 30 passed / 8 failed across lifecycle, IPC and Preload tests.
+- GREEN with the additional accepted-operation/new-target race: **39/39** on Mac Node 24.19 and
+  native 5070 Windows Node 24.20. Tests verify cancellation alone blocks copy/save (not merely a
+  subsequent prepare), malformed requests never call the runtime, stale handles preserve newer
+  previews/accepted confirmations, and old cleanup preserves new file-selection intents.
+- Mac and 5070 Linux full Desktop suites: **1,421 total / 1,415 passed / 6 skips / 0 failures**.
+- Main composition and dependency budgets are unchanged; architecture passes.
+- Exact-source syntax (517 files), secret, install-script and governance gates pass. Mac native
+  Renderer ASAR smoke passes, including confirmed Electron exit and fixture retirement. Its first
+  attempt could not resolve the shared ASAR dependency; a temporary link to existing dependencies
+  corrected that test environment and was removed afterward. No dependency was downloaded.
+  The ASAR fixture uses synthetic APIs, so it does not prove a real Main export or the new optional
+  Preload argument in an Electron IPC round trip. That argument is covered by the Preload/IPC unit
+  contracts; a full packaged/native-save-dialog acceptance remains outstanding.
+
+The current Renderer still calls the legacy no-argument operation. This establishes the safe
+cross-process prerequisite; it does **not** complete GUI retirement, host mounting, timer/listener
+cleanup or the user-visible async fix. That follow-up must use scoped cancellation and prove late
+prepare/confirm/refresh publication is inert. No application installation or release is implied.
+The security/ownership contract is recorded as a proposed addendum to
+[ADR-0005](../adr/0005-external-tool-integration-center.md), pending independent review.
+
+## Initial intent-repair evidence (historical)
 
 - Mac Node 24.19: 34 runtime/coordinator/transaction/IPC tests passed, including 18 new lifecycle
   and guard cases. Save-success regression writes only a test-owned temporary file; clipboard is
@@ -110,7 +158,7 @@ terminal disposal and async publication fences. In particular, an obsolete UI mu
 late unscoped cancel against another operation. This Main repair is a prerequisite, not completion
 of the whole Integration Center lifecycle or issue #79.
 
-Revert runtime/coordinator/transaction changes and their tests together. Internal coordinator
+Revert runtime/coordinator/transaction, IPC/Preload extensions and their tests together. Internal coordinator
 callers then return to the prior guard signature. No persisted-data migration is involved. The
 separate Renderer structural PR can remain; unchanged user sessions and installed packages need
 no rollback for this uninstalled candidate.
