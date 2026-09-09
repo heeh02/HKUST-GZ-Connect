@@ -170,6 +170,20 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native provisioning and coordinator fixtures — 2026-09-09
+
+Commit `5a662ef` replaces POSIX-only success assertions with real native ACL verification on
+Windows and prepares newly created conflicting targets/legacy migration inputs before exercising
+content rejection. Production materialization, index, deletion and migration rules are unchanged.
+Five failure sites from combined Windows `949bd0b` are covered by this correction.
+
+The custom-profile-storage and migration-coordinator suites passed **18 tests / 3 existing Windows
+skips / zero failures** on 5070 native Windows Node 24.20; Mac Node 24.19 and 5070 Linux Node 24.20
+each passed **21/21**. Conflict/no-overwrite, prepared-journal retention, indexed crash recovery,
+Browser cleanup failure, index-last retirement and old-to-new migration assertions remain intact.
+All corrections must still be combined and tested as one release tree; scoped totals are not
+subtracted from a prior full-suite result to claim Windows completion.
+
 ### Native school-selection fixtures — 2026-09-09
 
 Commit `af460491` prepares owner-only ACLs only when creating new synthetic GlobalSettings and
