@@ -170,6 +170,17 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native workspace upgrade fixture — 2026-09-09
+
+Commit `e4926182` prepares real owner-only ACLs for fresh synthetic upgrade files and uses the
+host adapter for folder creation/reopen. `profile-workspace-upgrade.test.js` passed **2/2 without
+skips** on Mac Node 24.19 and 5070 native Windows/Linux Node 24.20. One case previously failed in
+combined Windows `949bd0b` during activity-file permission validation.
+
+Existing assertions retain URLs, favorites, recents, hidden resources, routing, unchanged original
+favorites bytes and reopened folder membership. Package identity assertions are configuration
+checks only, not an executed installer upgrade. Production code and user data are unchanged.
+
 ### Native account/workspace authority fixtures — 2026-09-09
 
 Commit `eee766dd` prepares owner-only ACLs when creating synthetic account/workspace JSON and
