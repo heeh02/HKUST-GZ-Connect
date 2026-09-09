@@ -4,7 +4,7 @@
 - Authority: project maintainer
 - Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
-- Last verified: 2026-09-08 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
+- Last verified: 2026-09-09 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
 
@@ -46,7 +46,8 @@ high-risk rules. No instruction file is treated as a substitute for review or te
 5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
    policies are active, but one administrator and no independent reviewer prevent full enforcement.
 6. `HKUSTGZ-OpenSource` (ID `325204819`) and `heeh02` active Owner membership were reverified
-   on 2026-09-07. No same-name destination repository exists. The Organization currently has no
+   on 2026-09-09. The 2026-09-07 snapshot found no same-name destination repository; recheck before
+   transfer. The Organization currently has no
    teams and a `write` default repository permission; confirm the permission plan before transfer.
    Transfer, installation acceptance and the final governance snapshot remain pending, not the
    Organization name or bridge publication. See the [readback receipt](docs/governance/2026-09-07-transfer-readiness.md).
@@ -161,15 +162,20 @@ release assumptions.
 
 ## Current external blocker
 
-The [2026-09-08 integration snapshot](docs/governance/2026-09-08-integration-readiness.md) records
-the current eight-PR queue, explicit dependency lane, installed 2.0.2 candidate and remaining
-G0–G4 evidence gaps. Neither local pass counts nor candidate source-size reductions close this goal.
+The [2026-09-08 integration snapshot](docs/governance/2026-09-08-integration-readiness.md) is
+historical. On 2026-09-09 the open queue contains 18 PRs: #88, #89, #95 and #106–#120.
+The 2.0.2 release lane is #88/#95/#106/#107; #89 is governance, and #108–#120 remain separate
+modularization/acceptance drafts. Preserve their explicit base-branch dependencies. Neither local
+pass counts nor candidate source-size reductions close G0–G4 or make a draft part of stable.
 
 Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
-is still required for transfer, further releases/merges and protection changes. The one-time #104
-merge/publication authorization has been consumed; it is not a standing exception. The bridge is
-published and the name is available. Remaining transfer gates are installed-package acceptance,
-the Organization permission decision and a fresh before/after governance snapshot. Continue
+is still required for transfer, unrelated merges/releases and protection changes. The maintainer
+separately authorized the necessary 2.0.2 merges/publication and a one-time administrator exception
+for missing independent review/cloud checks after final local/native acceptance. This does not
+change protections, fabricate checks, waive actual defects or authorize optional modularization
+merges. The #104 exception remains consumed and is not standing authority.
+Stable remains 2.0.1; 2.0.2 has not been published. Remaining transfer gates are installed-package
+acceptance, the Organization permission decision and a fresh before/after governance snapshot. Continue
 ProxyCommand pipe regressions, Renderer seams, compact layouts and date-driven schedule contracts
 independently of these external actions.
 
