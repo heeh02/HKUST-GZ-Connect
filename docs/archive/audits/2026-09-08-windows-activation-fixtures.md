@@ -170,6 +170,20 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native migration/runtime selection fixtures — 2026-09-09
+
+Commit `90deca4d` replaces host-inconsistent `darwin` storage parameters in migration/runtime
+fixtures with the host platform, and prepares private ACLs only on newly created synthetic legacy
+files before migration. The orphaned-credential fixture also gets a valid ACL so the test reaches
+the intended orphan-authority rejection. Production migration, recovery and data retirement remain
+unchanged; simulated Windows adapter-call coverage remains separately injected.
+
+The migration-runtime and pre-ready-selection suites passed **8/8, no skips**, on Mac Node 24.19
+and 5070 native Windows/Linux Node 24.20. Six of these cases failed in combined Windows `949bd0b`.
+The successful runs retain assertions for complete/credential-free migration, orphan rejection,
+interrupted retirement recovery and verified destination selection during credential mismatch.
+These synthetic filesystem cases are not user-data migration or a full Windows release gate.
+
 ### Native path fixtures — 2026-09-09
 
 Commit `7ba6f912` corrects three host-path assumptions reproduced by combined candidate `949bd0b`:
