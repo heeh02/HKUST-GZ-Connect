@@ -59,6 +59,25 @@ stop/resume regression and the maintainer's original disconnect remain to be ver
 
 ## Delivery and rollback
 
+### Real child-pipe follow-up
+
+Test source `93861624524c081e6c75a528969e67ccac7825c0` adds a real local Node child process
+speaking the bounded synthetic control protocol over stdin/stdout. The actual Supervisor, Runtime
+and ControlRegistry are composed together. After acknowledgement, the child deliberately remains
+alive: the stop Promise must remain pending and process ownership must remain held. Only a later
+child close finishes stopping. Exit 0 yields `cleanExit: true`; exit 7 yields `cleanExit: false`.
+Neither case may fall back to an OS signal. Cleanup awaits the owned child's close; no other PID,
+file, socket, credential or school session is involved.
+
+A negative-control run restored the old drop-all-stale-output condition only in the test process;
+both cases failed after the control timeout. The normal implementation passed both on Mac and
+native Windows; Windows combined with the four reply-boundary cases passed **6/6**. Mac/Linux full
+suites at this checkpoint passed **1,287 / 11 skips / 0 failures** (1,298 total). Architecture,
+syntax (472 files), secret, install-script and governance gates passed. Runtime code is unchanged
+from `9738381`; this is stronger process/pipe evidence, not real Rust/provider logout evidence.
+Command: `node --test test/unit/connection/engine/shutdown-pipe-close.test.js`.
+Windows repository-wide acceptance and the real user disconnect reproduction remain incomplete.
+
 No installed App, process, connection or user login data was changed during investigation. The new
 candidate has not been packaged, installed, merged or released; existing 2.0.2 test packages do not
 automatically contain it. No Actions build or Organization/protection operation was triggered.
