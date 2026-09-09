@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 const {
   createIntegrationTargetSelector,
@@ -8,23 +9,25 @@ const {
 } = require('../../../lib/ipc/integration-center-suite');
 
 test('target selector writes only one user-selected Clash / Mihomo export file', async () => {
+  const homeDirectory = path.resolve('/Users/student');
+  const selectedFile = path.join(homeDirectory, 'campus.yaml');
   const calls = [];
   const results = [
-    { canceled: false, filePath: '/Users/student/campus.yaml' },
+    { canceled: false, filePath: selectedFile },
   ];
   const dialog = {
     showSaveDialog: async (...args) => { calls.push(['save', args]); return results.shift(); },
   };
   const select = createIntegrationTargetSelector({
-    dialog, getParentWindow: () => null, homeDirectory: '/Users/student',
+    dialog, getParentWindow: () => null, homeDirectory,
   });
   assert.equal(await select({ adapterId: 'clash_mihomo_yaml', action: 'save' }),
-    '/Users/student/campus.yaml');
+    selectedFile);
   assert.equal(await select({ adapterId: 'mihomo_yaml', action: 'save' }), null);
   assert.equal(await select({ adapterId: 'openssh_proxy_command', action: 'install' }), null);
   assert.equal(await select({ adapterId: 'clash_verge_rev_managed', action: 'install' }), null);
   assert.equal(calls[0][1].length, 1, 'dialog without a live parent gets options only');
-  assert.equal(calls[0][1][0].defaultPath, '/Users/student/campus-connect-clash-mihomo.yaml');
+  assert.equal(calls[0][1][0].defaultPath, path.join(homeDirectory, 'campus-connect-clash-mihomo.yaml'));
   assert.equal(calls.every(([method]) => method === 'save'), true);
   assert.equal(selectedIntegrationTargetFile({ canceled: false, filePaths: ['/one', '/two'] }), null);
 });
