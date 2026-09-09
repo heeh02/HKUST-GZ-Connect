@@ -170,6 +170,20 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native school-selection fixtures — 2026-09-09
+
+Commit `af460491` prepares owner-only ACLs only when creating new synthetic GlobalSettings and
+school/account/workspace JSON fixtures. Existing fixture rewrites do not reassign ownership.
+The pre-ready-profile-resolution and profile-candidate-directory suites passed **7 tests / 1
+existing Windows skip / zero failures** on native Windows Node 24.20 and **8/8** on Mac Node 24.19
+and 5070 Linux Node 24.20. Six cases previously failed in combined Windows `949bd0b`.
+
+Linux initially rejected the isolated checkout's group-writable directories (mode 775); the
+owner-created temporary verification worktree was tightened to remove group/other writes and the
+same source reran successfully. No application validation was bypassed or production data changed.
+Assertions still cover custom-school startup, unknown-school rejection, separate browser partitions
+and alternating reviewed/custom authorities without inheriting another school's workspace state.
+
 ### Native workspace upgrade fixture — 2026-09-09
 
 Commit `e4926182` prepares real owner-only ACLs for fresh synthetic upgrade files and uses the
