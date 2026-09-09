@@ -74,6 +74,24 @@ no plaintext credential or direct persistence capability.
 
 ## Deferred work
 
+### Proposed precision addendum (2026-09-09; independent review pending)
+
+The PR #106 candidate requests native `bigint` path/descriptor stats for private-file reads,
+permission hardening and receipt collection. Device/inode identity is compared without Number
+conversion; receipt version checks retain reported mtime/ctime nanoseconds. A numeric adapter may
+provide only safe integer identities; unsafe numeric identities fail closed instead of inventing
+lost bits. Native Node supplies nanoseconds; legacy injected numeric timestamp snapshots retain
+only their reported millisecond precision. This does not assert filesystem timestamp granularity
+or eliminate every possible inode-reuse race.
+
+Bounded sizes, modes/link counts and compatibility display timestamps remain numbers. Receipt and
+credential schemas are unchanged: file identities and nanoseconds never enter receipt JSON,
+Renderer DTOs or stored credentials. Windows ACL and POSIX no-follow/link/permission policies remain
+mandatory. The internal private-read stat projection now carries BigInt identity/time fields;
+callers needing display time retain numeric `mtimeMs`. Compatibility and replacement/hash-race
+fixtures must pass before adoption. This is a proposed implementation clarification, not authority
+to publish or migrate user data.
+
 P3c must gate all flat writers, complete the existing credential/settings recovery first, collect receipts,
 write the full destination tree, re-encrypt the legacy credential in memory, verify destination receipts and
 drive the ADR-0007 journal through all-old/all-new recovery. Legacy authorization-store retirement and rollback
