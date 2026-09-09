@@ -23,6 +23,7 @@ function integrationError(code, cause = null) {
 
 class IntegrationCenterRuntime {
   #intent = 0;
+  #confirming = null;
   constructor({
     getContext,
     selectTarget,
@@ -96,23 +97,45 @@ class IntegrationCenterRuntime {
     if (!pending) throw integrationError('INTEGRATION_TARGET_CHANGED');
     this.pending = null;
     const intent = ++this.#intent;
+    const accepted = { confirmationHandle: pending.confirmationHandle };
+    this.#confirming = accepted;
     try {
       const context = this.getContext(pending.adapterId);
       const binding = validateIntegrationBinding(context.bindingFor(pending.adapterId, 1));
-      if (intent !== this.#intent) throw integrationError('INTEGRATION_TARGET_CHANGED');
+      if (intent !== this.#intent || this.#confirming !== accepted) throw integrationError('INTEGRATION_TARGET_CHANGED');
       return await this.genericCoordinator.confirm({ confirmationHandle, currentBinding: binding,
-        assertCurrent: () => { this.#current(intent, pending.adapterId, binding); },
+        assertCurrent: () => {
+          if (this.#confirming !== accepted) throw integrationError('INTEGRATION_TARGET_CHANGED');
+          this.#current(intent, pending.adapterId, binding);
+        },
       });
     } catch (error) {
       // An older continuation has no authority over a replacement preview.
       this.genericCoordinator.cancel(pending.confirmationHandle);
       throw error;
+    } finally {
+      if (this.#confirming === accepted) this.#confirming = null;
     }
   }
 
-  cancel() {
+  cancel(confirmationHandle) {
+    if (confirmationHandle !== undefined) {
+      // Revoking an older owned handle must not revoke a newer target-selection intent.
+      if (typeof confirmationHandle !== 'string' || !confirmationHandle) return false;
+      let cancelled = false;
+      if (this.pending?.confirmationHandle === confirmationHandle) {
+        this.pending = null;
+        cancelled = this.genericCoordinator.cancel(confirmationHandle);
+      }
+      if (this.#confirming?.confirmationHandle === confirmationHandle) {
+        this.#confirming = null;
+        cancelled = true;
+      }
+      return cancelled;
+    }
     this.#intent++;
     this.pending = null;
+    this.#confirming = null;
     return this.genericCoordinator.cancel();
   }
 

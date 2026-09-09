@@ -152,3 +152,68 @@ test('promise-returning authority checks cannot silently authorize an export',as
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.coordinator.transactionOwner.snapshot(),null);assert.deepEqual(f.writes,[]);
 });
+
+test('retired preview cancellation cannot consume a replacement preview',async()=>{
+  const f=fixture(),old=await f.prepare('copy'),next=await f.prepare('copy');
+  for(const value of [old.confirmationHandle,null,{},'', 'export-'+'f'.repeat(32)]) {
+    assert.equal(f.runtime.cancel(value),false);
+    assert.equal(f.coordinator.transactionOwner.snapshot()?.confirmationHandle,next.confirmationHandle);
+  }
+  assert.equal((await f.runtime.confirm(next)).ok,true);assert.deepEqual(f.writes,[['copy']]);
+});
+
+test('matching preview cancellation clears only its material and zeroes its payload',async()=>{
+  const f=fixture(),preview=await f.prepare('save');
+  assert.equal(f.runtime.cancel(preview.confirmationHandle),true);
+  assert.equal(f.runtime.cancel(preview.confirmationHandle),false);
+  assert.equal(f.coordinator.transactionOwner.snapshot(),null);
+  assert.equal(f.borrowed.length,1);assert.ok(f.borrowed[0].every(byte=>byte===0));
+  await assert.rejects(f.runtime.confirm(preview),{code:'INTEGRATION_TARGET_CHANGED'});
+  assert.deepEqual(f.writes,[]);
+});
+
+test('cancelling the old preview does not invalidate a newer native target selection',async()=>{
+  const f=fixture(),old=await f.prepare('copy'),gate=deferred();f.runtime.selectTarget=()=>gate.promise;
+  const work=f.prepare('save');assert.equal(f.runtime.cancel(old.confirmationHandle),true);
+  gate.resolve(f.target);const next=await work;
+  assert.equal((await f.runtime.confirm(next)).ok,true);assert.deepEqual(f.writes,[['save',f.target]]);
+});
+
+for(const action of ['copy','save']) {
+  test(`scoped cancellation alone revokes accepted ${action} before commit and permits a later export`,async()=>{
+    const f=fixture(),gate=deferred(),entered=deferred(),target=deferred();
+    f.coordinator.beforePerform=()=>{entered.resolve();return gate.promise;};
+    const preview=await f.prepare(action),work=f.runtime.confirm(preview);await entered.promise;
+    assert.equal(f.runtime.cancel(preview.confirmationHandle),true);
+    assert.equal(f.runtime.cancel(preview.confirmationHandle),false);
+    gate.resolve();await assert.rejects(work,{code:'INTEGRATION_TARGET_CHANGED'});
+    assert.deepEqual(f.writes,[]);
+    if(action==='save') {assert.equal(f.borrowed.length,1);assert.ok(f.borrowed[0].every(byte=>byte===0));}
+    f.runtime.selectTarget=()=>target.promise;const nextWork=f.prepare('save');
+    target.resolve(f.target);const next=await nextWork;
+    f.coordinator.beforePerform=()=>{};assert.equal((await f.runtime.confirm(next)).ok,true);
+    assert.deepEqual(f.writes,[['save',f.target]]);
+  });
+}
+
+test('old confirmation cleanup and scoped cancellation cannot revoke a newer accepted confirmation',async()=>{
+  const f=fixture(),oldGate=deferred(),oldEntered=deferred(),nextGate=deferred(),nextEntered=deferred();
+  f.coordinator.beforePerform=()=>{oldEntered.resolve();return oldGate.promise;};
+  const old=await f.prepare('copy'),oldWork=f.runtime.confirm(old);await oldEntered.promise;
+  f.coordinator.beforePerform=()=>{nextEntered.resolve();return nextGate.promise;};
+  const next=await f.prepare('copy'),nextWork=f.runtime.confirm(next);await nextEntered.promise;
+  assert.equal(f.runtime.cancel(old.confirmationHandle),false);
+  oldGate.resolve();await assert.rejects(oldWork,{code:'INTEGRATION_TARGET_CHANGED'});
+  nextGate.resolve();assert.equal((await nextWork).ok,true);assert.deepEqual(f.writes,[['copy']]);
+});
+
+test('scoped cancellation of an older accepted export preserves a newer target-selection intent',async()=>{
+  const f=fixture(),gate=deferred(),entered=deferred(),target=deferred();
+  f.coordinator.beforePerform=()=>{entered.resolve();return gate.promise;};
+  const old=await f.prepare('copy'),oldWork=f.runtime.confirm(old);await entered.promise;
+  f.runtime.selectTarget=()=>target.promise;const nextWork=f.prepare('save');
+  assert.equal(f.runtime.cancel(old.confirmationHandle),true);
+  gate.resolve();await assert.rejects(oldWork,{code:'INTEGRATION_TARGET_CHANGED'});
+  target.resolve(f.target);const next=await nextWork;f.coordinator.beforePerform=()=>{};
+  assert.equal((await f.runtime.confirm(next)).ok,true);assert.deepEqual(f.writes,[['save',f.target]]);
+});
