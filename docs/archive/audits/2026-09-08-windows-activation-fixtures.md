@@ -170,6 +170,19 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native path fixtures — 2026-09-09
+
+Commit `7ba6f912` corrects three host-path assumptions reproduced by combined candidate `949bd0b`:
+the VS Code export now receives canonical Windows paths with spaces on Windows; the native resource
+fixture and save-dialog default use host-native path construction. No production normalizer, export
+adapter, clipboard, file write or executable resolution rule changed.
+
+The generic-export-adapters, engine-process and integration-center-suite tests passed **8 tests /
+2 existing Windows skips / 0 failures** on native Windows Node 24.20. Mac Node 24.19 and 5070 Linux
+Node 24.20 each passed **10/10**. These are synthetic path/export assertions, not an installed
+VS Code, SSH server, package or live-school canary. The prior combined full count remains 27 failures
+until this follow-up is integrated and the full suite reruns.
+
 ### Credential/configuration rejection fixtures — 2026-09-09
 
 Commit `d3726b45` establishes real owner-only ACLs on three newly created synthetic fixtures:
