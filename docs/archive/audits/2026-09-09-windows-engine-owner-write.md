@@ -67,6 +67,10 @@ Windows credential vault. No production persistence/credential policy was weaken
 
 The fixture-only full Windows checkpoint at `52a4a76` was **1,288 total / 1,192 passed / 56 failed /
 40 skips**. Keep these dated snapshots separate rather than assuming all failing paths have one cause.
+Failure-set comparison also found `replacement between lstat and opened descriptor fails closed`
+failed in that intermediate run but passed in the subsequent full run. Its production/test files
+were not changed here; that instability needs separate investigation and is not credited to the
+owner-record repair. The 52-failure snapshot is not a stability or release acceptance claim.
 
 ## Remaining acceptance and rollback
 
