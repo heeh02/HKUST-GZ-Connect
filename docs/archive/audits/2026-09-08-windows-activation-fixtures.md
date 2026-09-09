@@ -170,6 +170,19 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native startup recovery fixtures — 2026-09-09
+
+Commit `7a5343b2` prepares private ACLs on freshly created synthetic legacy startup files and
+uses the host platform consistently in the startup, crashing credential and crashing settings
+adapters. Production state transitions and recovery logic are unchanged. The fixture retains
+checks for credential replacement/clear, failure before Account commit, recovered credentials,
+settings redo and transaction-file removal.
+
+`profile-workspace-startup-runtime.test.js` passed **3/3 without skips** on Mac Node 24.19 and
+5070 native Windows/Linux Node 24.20. All three failed during platform/permission setup in combined
+Windows `949bd0b`. The exact commit now reaches the intended simulated interruption and recovery
+paths. This is not a real user migration, full Windows acceptance or package/release evidence.
+
 ### Native migration/runtime selection fixtures — 2026-09-09
 
 Commit `90deca4d` replaces host-inconsistent `darwin` storage parameters in migration/runtime
