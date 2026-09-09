@@ -90,7 +90,7 @@ Source `65065b4` validation:
   Preload argument in an Electron IPC round trip. That argument is covered by the Preload/IPC unit
   contracts; a full packaged/native-save-dialog acceptance remains outstanding.
 
-The current Renderer still calls the legacy no-argument operation. This establishes the safe
+At that checkpoint the Renderer still called the legacy no-argument operation. This established the safe
 cross-process prerequisite; it does **not** complete GUI retirement, host mounting, timer/listener
 cleanup or the user-visible async fix. That follow-up must use scoped cancellation and prove late
 prepare/confirm/refresh publication is inert. No application installation or release is implied.
@@ -153,10 +153,10 @@ merge, release or transfer is claimed.
 
 ## Remaining work and rollback
 
-The [Renderer integration owner](renderer-integration-center.md) still needs explicit startup,
-terminal disposal and async publication fences. In particular, an obsolete UI must not issue a
-late unscoped cancel against another operation. This Main repair is a prerequisite, not completion
-of the whole Integration Center lifecycle or issue #79.
+The subsequent [Renderer lifetime repair](integration-renderer-lifecycle.md) now implements explicit
+host startup, terminal disposal and scoped async publication on this review branch. Its receipt
+separates native evidence from unperformed package/user acceptance. Neither stage completes issue
+#79 or authorizes a release.
 
 Revert runtime/coordinator/transaction, IPC/Preload extensions and their tests together. Internal coordinator
 callers then return to the prior guard signature. No persisted-data migration is involved. The
