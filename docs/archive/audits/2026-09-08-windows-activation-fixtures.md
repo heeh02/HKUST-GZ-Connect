@@ -170,6 +170,20 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Native card/favorite storage fixtures — 2026-09-09
+
+Commit `1c8b45db` changes only three test files. Four failures in the combined Windows run
+at `f597bfa` used an explicit `darwin` file adapter on the Windows filesystem. Success paths now
+use the actual host adapter and assert real Windows owner-only ACLs, or POSIX mode bits on POSIX.
+The newly created synthetic v1 favorite document receives and verifies a private ACL before
+testing schema migration. Existing user files are not touched; production ownership validation,
+negative tests and persisted schemas are unchanged.
+
+The card-board store, card-board Main runtime and favorite-group store suites passed **7/7**
+with zero skips on Mac Node 24.19 and 5070 native Windows/Linux Node 24.20 at this commit.
+This proves the scoped storage roundtrips and tests, not a green combined Windows release suite.
+The combined integration branch and installed application have not yet consumed this follow-up.
+
 ### Native probe environment fixture follow-up — 2026-09-09
 
 Test-only commit `1d9b2454` corrects two macOS probe fixtures which selected a macOS executable
