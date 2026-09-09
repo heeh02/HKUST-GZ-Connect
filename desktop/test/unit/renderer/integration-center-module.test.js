@@ -57,4 +57,8 @@ test('compatibility entry and native owners remain bounded and HTML loading is e
     assert.ok(fs.readFileSync(path.join(renderer,file),'utf8').trimEnd().split('\n').length<=limit,file);
   }
   assert.doesNotMatch(fs.readFileSync(path.join(renderer,'index.html'),'utf8'),/src="integration-center.js"/);
+  const verifier=fs.readFileSync(path.resolve(renderer,'../build/verify-package.js'),'utf8');
+  for(const name of ['index','model','controller','lifecycle','lifetime']) {
+    assert.ok(verifier.includes(`/renderer/features/integration-center/${name}.mjs`));
+  }
 });
