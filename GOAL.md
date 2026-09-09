@@ -4,6 +4,7 @@
 - Authority: project maintainer
 - Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
+- Last verified: 2026-09-08 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
 
@@ -38,14 +39,17 @@ high-risk rules. No instruction file is treated as a substitute for review or te
    and `independent/src/bin/ec-engine.rs` are concurrency hot spots.
 3. Renderer feature files still depend on global `window.*` names and HTML script order that the
    CommonJS architecture graph cannot see.
-4. Stable `v2.0.0` was rebuilt from `5287c86842a506cd595e22b95d023b6a7e02cbea` and
-   published with four platform assets. The repository-ID updater is merged through PR #78
-   on the 2.0.1 development line, but is not included in the published 2.0.0 packages.
+4. Stable `v2.0.1` is published from `main@9e1135c05dc21998c66627e25477d4bd799cd5d7`
+   after PR #104. Four designated-host installers retain build source `fafcb6c`; the Release's
+   build/source receipts explain the CI/test-only difference. The repository-ID updater is now
+   published. The 2.0.0 installed updater and 2.0.1 packaged updater both discover this release.
 5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
    policies are active, but one administrator and no independent reviewer prevent full enforcement.
-6. The maintainer selected `HKUSTGZ-OpenSource`. On 2026-09-05, GitHub reports the Organization
-   exists and `heeh02` has active admin membership. Transfer still needs separate authorization
-   and a published updater bridge; these do not block offline implementation and tests.
+6. `HKUSTGZ-OpenSource` (ID `325204819`) and `heeh02` active Owner membership were reverified
+   on 2026-09-07. No same-name destination repository exists. The Organization currently has no
+   teams and a `write` default repository permission; confirm the permission plan before transfer.
+   Transfer, installation acceptance and the final governance snapshot remain pending, not the
+   Organization name or bridge publication. See the [readback receipt](docs/governance/2026-09-07-transfer-readiness.md).
 
 ## Completion outcomes
 
@@ -157,8 +161,25 @@ release assumptions.
 
 ## Current external blocker
 
+The [2026-09-08 integration snapshot](docs/governance/2026-09-08-integration-readiness.md) records
+the current eight-PR queue, explicit dependency lane, installed 2.0.2 candidate and remaining
+G0–G4 evidence gaps. Neither local pass counts nor candidate source-size reductions close this goal.
+
 Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
-is still required for transfer, release, merge and protection changes. The published updater bridge,
-destination-name conflict check and governance receipt remain transfer preconditions. Continue
+is still required for transfer, further releases/merges and protection changes. The one-time #104
+merge/publication authorization has been consumed; it is not a standing exception. The bridge is
+published and the name is available. Remaining transfer gates are installed-package acceptance,
+the Organization permission decision and a fresh before/after governance snapshot. Continue
 ProxyCommand pipe regressions, Renderer seams, compact layouts and date-driven schedule contracts
 independently of these external actions.
+
+## Historical progress receipt — 2026-09-07
+
+- PR #104 merged and stable 2.0.1 published; Issue #97 closed. Required cloud checks were not
+  spoofed and protections were unchanged; release provenance records the designated-host exception.
+- The open PR queue is #88 (ProxyCommand), #89 (governance records), #95 (compatibility default).
+  Former drafts #90–94/#96 were closed as deferred, not merged; their exact revisions remain in
+  Issue #60. Dependency updates #98–103 are deferred in #105 with archived source refs.
+- M1–M5 remain incomplete. Local combination evidence does not make those candidates part of
+  main or stable 2.0.1. Keep structure and behavior changes independently reviewable.
+- Repository ownership is still `heeh02`; G4 is not complete. The goal remains Active.

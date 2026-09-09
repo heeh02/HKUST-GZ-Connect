@@ -1,9 +1,18 @@
 # 发布流程 / Release Process
 
 本文档记录 HKUST(GZ) Connect 当前的实际发布流程。发布构建完全由
-GitHub Actions 云端完成；本地脚本只用于开发自测。
+GitHub Actions 云端完成；本地脚本通常用于开发自测。2.0.1 的维护者授权例外见下文。
 
 [中文](#中文) · [English](#english)
+
+## 2.0.1 指定主机构建 / designated-host build
+
+维护者于 2026-09-07 指定：Windows/Linux 验收和打包只在 5070 运行，macOS 只在 Mac 构建并校验安装包。此版本使用同一源码提交的手动构建收据和 SHA-256 清单，不把本地结果冒充 GitHub Actions 检查，也不改变 main 分支保护。
+
+Windows 新增 `npm run build:windows-private-file`，需要 Windows x64 Visual C++ 或 GCC 编译器。`npm run test:windows` 和 `npm run dist:win` 自动先构建此组件。直接调用 electron-builder 也必须先构建；包校验拒绝缺失组件的 Windows 包。C 源码位于 `desktop/lib/platform/storage/native/`，不进入 app.asar。
+
+For 2.0.1, the maintainer designated 5070 for Windows/Linux tests and packaging and a Mac for macOS builds and package verification only. Record one source commit, native package verification, actual signing state and artifact hashes. Local receipts do not impersonate required Actions checks or alter branch protection. Build the Windows private-file helper before invoking electron-builder directly.
+
 
 ---
 
