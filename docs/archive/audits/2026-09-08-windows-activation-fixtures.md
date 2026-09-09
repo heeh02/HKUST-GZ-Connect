@@ -170,6 +170,19 @@ real-school, release, transfer or GitHub merge claim follows from these fixture-
 
 ## Rollback boundary
 
+### Credential/configuration rejection fixtures — 2026-09-09
+
+Commit `d3726b45` establishes real owner-only ACLs on three newly created synthetic fixtures:
+the malformed encrypted credential, valid custom Engine configuration and conflicting destination.
+This makes the assertions exercise decryption, compiled Profile binding and content conflict rather
+than fail during permission setup. The credential case additionally asserts one decryption call
+and still proves no replacement/new entropy. No production code or rejection rule changed.
+
+The external proxy credential, custom Engine config and destination-files suites passed **13 tests /
+4 existing platform skips / 0 failures** on 5070 native Windows Node 24.20; Mac Node 24.19 and
+5070 Linux Node 24.20 each passed **17/17**. These three failure sites were present in combined
+Windows `f597bfa`. Full combined acceptance, installed-App and package checks remain separate.
+
 ### Native legacy input and retirement fixtures — 2026-09-09
 
 Commit `50e8b790` prepares owner-only ACLs on newly created synthetic legacy source files before
