@@ -2,8 +2,8 @@
 
 - Status: Proposed review candidate; not merged to main, installed or released
 - Owner: Desktop Renderer maintainers
-- Last verified: 2026-09-08
-- Applies to: Issue #79, structural follow-up to PR #108 at `40dc7f4`
+- Last verified: 2026-09-10
+- Applies to: Issue #79, structural follow-up to PR #108 at `649397b6df436624b0db90463b00807987550a86`
 
 ## Public contract
 
@@ -25,7 +25,7 @@ changes are part of this extraction. The module map records the public entrypoin
 
 ## Limits and review order
 
-This is one feature extraction, stacked on PR #108 and transitively PR #106. Review the diff
+This is one feature extraction, stacked on PR #108 above published 2.0.2; PR #106 is already merged. Review the diff
 against its parent branch; revalidate a changed parent before landing it. No GitHub PR merge or
 release is authorized by the local tests.
 
