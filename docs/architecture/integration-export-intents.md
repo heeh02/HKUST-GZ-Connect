@@ -1,6 +1,6 @@
 # Integration export intents and effect-boundary validation
 
-- Status: Proposed Main repair; current native acceptance incomplete; not deployed
+- Status: Proposed Main repair; three-platform source acceptance passed; installers unverified; not deployed
 - Owner: Desktop / integration maintainers, issues #79 and #81
 - Last verified: 2026-09-11
 - Base: PR #119, `5b59c270ede8988e752d220b54ab3873a173b042`
@@ -15,6 +15,8 @@ The dated Windows full-suite failures below remain historical evidence, not a ne
 post-2.0.2 integration tree. Platform acceptance is tied to the exact tested source in that receipt.
 The later exact-source Windows follow-up in that receipt now records a full-suite pass on
 `7beadca7332bbd20ac0603273a67c92f2ddeb2d9`; historical failure logs below are retained, not current status.
+The same code also passed the Linux full suite and native ASAR follow-up. See that receipt for
+platform counts and the missing-Acorn environment correction; full installers remain unverified.
 
 The previous runtime captured a context before awaiting a native save target and did not revoke
 that continuation on cancel. Its confirmation catch also called global cancellation, which could

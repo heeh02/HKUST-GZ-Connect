@@ -97,3 +97,25 @@ limitations of earlier sources. Linux full-chain, full installers, real-user exp
 MFA remain unverified here. No installed application, user data, system setting, repository protection,
 release or Organization transfer was changed. Local temporary transfer archives were removed;
 the remote test logs and isolated tooling are retained for reproducibility.
+
+## Exact-source Linux follow-up — 2026-09-11
+
+Code commit: `7beadca7332bbd20ac0603273a67c92f2ddeb2d9`, the same as the Windows follow-up.
+Reuse the existing 5070 WSL Git checkout, verified clean except its existing dependency symlink.
+A 157 KiB incremental bundle advanced it from `95902b015b1ac8a9d03e0c4813e2c670827d0532`.
+
+The initial Linux run reported 1,416 passed / 2 failed / 14 skipped (1,432 total); both failures
+were test-file loading errors for missing Acorn, not failing assertions. Process-local NODE_PATH
+then referenced the same lockfile-verified Acorn 8.18.0 already installed in the isolated Windows
+tooling directory through WSL's mounted filesystem. No additional package download, source edit,
+skip or assertion change was needed.
+
+Node v24.20.0 with umask 022 passed the full Linux suite: **1,452 passed / 14 platform skips /
+zero failures (1,466 total)**. Native architecture and `xvfb-run -a node e2e/renderer-module-asar.js`
+passed, including child-close and fixture-removal confirmation, without a no-sandbox override.
+Together with the preceding Mac and Windows receipts, this establishes full-suite source acceptance
+on all three designated platforms for the code commit above, not full installer/signing acceptance.
+
+Real export, campus MFA, long-soak and distribution-package checks remain outside these results.
+No installed application, repository protection or Organization ownership changed. The initial
+failure and successful retest logs remain on 5070; temporary transfer bundles were removed.
