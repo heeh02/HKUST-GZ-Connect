@@ -2,26 +2,23 @@
 
 - Status: Current migration procedure
 - Owner: Security and Release maintainers
-- Last verified: 2026-09-08
+- Last verified: 2026-09-10
 - Applies to: transfer from `heeh02/HKUST-GZ-Connect` to `HKUSTGZ-OpenSource`
 
 ## Current readiness
 
-The [2026-09-08 snapshot](2026-09-08-integration-readiness.md) updates the open-work and installed-app
-state. The Mac app is now an unpublished 2.0.2 candidate; the older installed-2.0.0 query below is
-historical evidence, not current installation state. Do not downgrade or replace the current app
-without a separately approved, data-preserving bridge acceptance workflow. Refactor completion is
-not a prerequisite for transfer, but authorization and the explicit preflight/post-transfer gates are.
+The [transfer-first plan](2026-09-10-transfer-first-plan.md) supersedes old readiness assumptions.
+Stable 2.0.2 is published at `39850415c901aeaa77ecb86cd3ce49a2e75290a8`; its four installers,
+receipt and hashes are uploaded. The installed Mac app remains an older candidate; do not interrupt
+its live connection without approval. Neither replacing that app nor completing refactors is a
+prerequisite for repository transfer. Authorization, effective permissions and pre/post-transfer
+identity/protection/release checks are the relevant gates.
 
-The destination exists and `heeh02` has active Owner membership, reverified on 2026-09-07.
-Repository ID `1279507615` remains under `heeh02`. Stable v2.0.1 is published from
-`9e1135c05dc21998c66627e25477d4bd799cd5d7` and contains the repository-ID updater.
-The original designated-host artifacts and the release's CI/test-only source delta are recorded
-in `BUILD_RECEIPT.json` and `RELEASE_SOURCE_RECEIPT.json`; this is not a fresh cloud build.
-Both installed 2.0.0 and verified 2.0.1 package update modules successfully queried the live
-stable channel. Installed 2.0.1 GUI acceptance and post-transfer checks are still pending.
-The Organization currently has no teams, no conflicting repository name, and default repository
-permission `write`. Confirm that permission decision before transfer; do not change it implicitly.
+The destination exists and `heeh02` has active Owner membership, reverified on 2026-09-10.
+Repository ID `1279507615` remains under `heeh02`. The shipped 2.0.1/2.0.2 repository-ID updater
+satisfies the bridge-publication prerequisite; no new release is needed simply to transfer ownership.
+The Organization has no teams and default repository permission `write`. Confirm that permission
+decision and recheck destination name availability before transfer; do not change permissions implicitly.
 See the [dated readiness receipt](2026-09-07-transfer-readiness.md). Transfer and protection
 changes require separate maintainer authorization; offline development continues independently.
 
@@ -42,7 +39,8 @@ the bridge before transfer and keep a manual download path for clients that have
 
 1. The maintainer supplies the exact Organization login; agents never invent the public identity.
 2. Confirm `heeh02` is an Organization owner.
-3. Create teams for maintainers, architecture, Desktop, UI, Engine, Security, Release and triage.
+3. Agree initial accountable maintainers and explicit access. Specialist teams may be created after
+   transfer as actual contributors join; empty teams are not a transfer prerequisite.
 4. Confirm the destination has no conflicting `HKUST-GZ-Connect` repository.
 5. Record Organization plan and policy constraints without purchasing or upgrading a plan unless
    separately authorized.
@@ -58,8 +56,9 @@ the bridge before transfer and keep a manual download path for clients that have
 3. Publish `v2.0.1` from the exact reviewed `main` commit. Completed via the maintainer-authorized
    one-time #104 administrator merge; this does not waive ordinary future review/check requirements.
 4. Verify all four package assets, digests, signing state and release notes.
-5. Install the published macOS artifact and verify the application still reports 2.0.1.
-6. From the published code, query the repository-ID endpoint and confirm that 2.0.1 is the selected
+5. Verify the published artifact's updater; replacing the maintainer's running app is a separate
+   acceptance task and must not interrupt a campus connection without permission.
+6. From the published code, query the repository-ID endpoint and confirm that 2.0.2 is the selected
    stable Release.
 7. From a 2.0.0 installation before transfer, confirm that the new release is visible.
 
@@ -89,7 +88,7 @@ the bridge before transfer and keep a manual download path for clients that have
 - Old clone/fetch URL redirects without credential leakage.
 - New clone/fetch/push URL works for the intended roles.
 - `main`, all tags, all Releases, assets/digests and Actions history are present.
-- 2.0.1 update discovery resolves the Organization Release URL.
+- Shipped 2.0.1/2.0.2 update discovery resolves the Organization Release URL.
 - A clean PR on the Organization repository passes every required check.
 - A dry-run patch tag is not created; tag protection is verified through Ruleset readback rather
   than by publishing a fake version.

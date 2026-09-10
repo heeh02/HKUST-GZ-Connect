@@ -4,7 +4,7 @@
 - Authority: project maintainer
 - Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
-- Last verified: 2026-09-09 (`main@9e1135c05dc21998c66627e25477d4bd799cd5d7`)
+- Last verified: 2026-09-10 (`main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`)
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
 
@@ -39,18 +39,20 @@ high-risk rules. No instruction file is treated as a substitute for review or te
    and `independent/src/bin/ec-engine.rs` are concurrency hot spots.
 3. Renderer feature files still depend on global `window.*` names and HTML script order that the
    CommonJS architecture graph cannot see.
-4. Stable `v2.0.1` is published from `main@9e1135c05dc21998c66627e25477d4bd799cd5d7`
-   after PR #104. Four designated-host installers retain build source `fafcb6c`; the Release's
-   build/source receipts explain the CI/test-only difference. The repository-ID updater is now
-   published. The 2.0.0 installed updater and 2.0.1 packaged updater both discover this release.
+4. Stable `v2.0.2` is published from `main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`.
+   PRs #88, #95, #106 and #107 are merged. Four platform installers, a build receipt and SHA-256
+   manifest are uploaded. The repository-ID updater is shipped; the historical 2.0.1 bridge
+   requirement is satisfied. Published packages and the currently installed Mac candidate are
+   distinct evidence, not interchangeable versions.
 5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
    policies are active, but one administrator and no independent reviewer prevent full enforcement.
 6. `HKUSTGZ-OpenSource` (ID `325204819`) and `heeh02` active Owner membership were reverified
-   on 2026-09-09. The 2026-09-07 snapshot found no same-name destination repository; recheck before
-   transfer. The Organization currently has no
+   on 2026-09-10. The same-day repository listing found no same-name destination repository; recheck
+   immediately before transfer. The Organization currently has no
    teams and a `write` default repository permission; confirm the permission plan before transfer.
-   Transfer, installation acceptance and the final governance snapshot remain pending, not the
-   Organization name or bridge publication. See the [readback receipt](docs/governance/2026-09-07-transfer-readiness.md).
+   Transfer and final governance readback remain pending, not the Organization name or bridge
+   publication. Installed-app acceptance is separate. See the
+   [transfer-first plan](docs/governance/2026-09-10-transfer-first-plan.md).
 
 ## Completion outcomes
 
@@ -107,12 +109,21 @@ high-risk rules. No instruction file is treated as a substitute for review or te
 
 ## Delivery sequence
 
-1. Documentation truth and obsolete-document removal.
-2. Agent/contributor/security/ownership contracts.
-3. Machine-enforced repository and module rules.
-4. GitHub settings and Organization migration.
-5. Renderer, Browser, Desktop Main and Rust modularization waves.
-6. Final cross-platform, upgrade, security and release-governance audit.
+1. Reconcile published release truth and capture the minimal transfer preflight.
+2. Confirm the destination permission decision and bounded transfer authorization, then transfer
+   the existing repository without renaming, recreating or republishing it.
+3. Verify repository identity, redirects, releases, update discovery and effective protections.
+4. In the Organization, converge governance through the existing PR and review existing module
+   stacks in dependency order, rather than opening more speculative branches.
+5. Complete Renderer, Browser, Desktop Main and Rust modularization in bounded waves.
+6. Finish cross-platform, upgrade, security and governance acceptance; clean only proven redundant
+   generated artifacts/worktrees after preserving unmerged work and shared dependencies.
+
+This transfer-first sequence does not require M1–M5 completion, an empty PR queue, replacement of
+the maintainer's running Mac app, or creation of every future team. Those are separate outcomes.
+Missing independent reviewers still block ordinary protected merges, not repository transfer.
+See the [proposed transfer-first convergence plan](docs/governance/2026-09-10-transfer-first-plan.md)
+for the current PR dependency lanes, minimum migration checks and bounded worktree cleanup rules.
 
 ## Pull-request boundaries
 
@@ -160,24 +171,26 @@ release assumptions.
 - PR #78 provides the repository-ID-based 2.0.1 transition patch so update discovery remains bound
   to the same public, enabled repository across owner transfer without trusting arbitrary redirects.
 
-## Current external blocker
+## Current decision boundary
 
 The [2026-09-08 integration snapshot](docs/governance/2026-09-08-integration-readiness.md) is
-historical. On 2026-09-09 the open queue contains 18 PRs: #88, #89, #95 and #106–#120.
-The 2.0.2 release lane is #88/#95/#106/#107; #89 is governance, and #108–#120 remain separate
-modularization/acceptance drafts. Preserve their explicit base-branch dependencies. Neither local
+historical. The 2.0.2 release lane #88/#95/#106/#107 is merged and published; #89 is governance,
+and #108–#120 remain separate modularization/acceptance work. Preserve their explicit base-branch
+dependencies. Neither local
 pass counts nor candidate source-size reductions close G0–G4 or make a draft part of stable.
 
 Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
 is still required for transfer, unrelated merges/releases and protection changes. The maintainer
-separately authorized the necessary 2.0.2 merges/publication and a one-time administrator exception
-for missing independent review/cloud checks after final local/native acceptance. This does not
+separately authorized the necessary 2.0.2 merges/publication and a one-time administrator exception,
+now consumed, for missing independent review/cloud checks after local/native acceptance. This does not
 change protections, fabricate checks, waive actual defects or authorize optional modularization
 merges. The #104 exception remains consumed and is not standing authority.
-Stable remains 2.0.1; 2.0.2 has not been published. Remaining transfer gates are installed-package
-acceptance, the Organization permission decision and a fresh before/after governance snapshot. Continue
-ProxyCommand pipe regressions, Renderer seams, compact layouts and date-driven schedule contracts
-independently of these external actions.
+Stable is 2.0.2. Transfer preparation must verify destination access/name availability, agree the
+effective permission policy, snapshot the source identity/protection/release state and check the
+shipped updater. The running Mac app must not be interrupted without permission, but replacing it
+is not a transfer prerequisite. Post-transfer checks must precede the next release. The current
+request authorizes multi-agent analysis and a proposed convergence plan, not an implicit change
+to Organization-wide permissions or blanket merging of the remaining drafts.
 
 ## Historical progress receipt — 2026-09-07
 
