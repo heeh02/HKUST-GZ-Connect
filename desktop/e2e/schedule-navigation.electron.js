@@ -8,7 +8,9 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-week-fixture-'));
 app.setPath('userData', path.join(root, 'profile'));
-const renderer = path.join(__dirname, '..', 'renderer');
+// An installed ASAR can be checked with synthetic data, without its user profile or school API.
+const renderer = process.env.HKUSTGZ_SCHEDULE_RENDERER
+  ? path.resolve(process.env.HKUSTGZ_SCHEDULE_RENDERER) : path.join(__dirname, '..', 'renderer');
 const uri = name => pathToFileURL(path.join(renderer, name)).href;
 if (process.env.HKUSTGZ_CALENDAR_CSS_BASELINE) {
   fs.copyFileSync(path.resolve(process.env.HKUSTGZ_CALENDAR_CSS_BASELINE), path.join(root, 'baseline.css'));
@@ -76,7 +78,10 @@ async function run() {
         'workspace.scheduleSource':'打开 myPortal →', 'workspace.scheduleDetails':'安排详情',
         'workspace.scheduleLoadingWeek':'正在同步所选周…', 'workspace.scheduleRefreshing':'刷新中…' };
       const feature = campusData.create({ document,
-        api: { getCampusData: async () => snapshot([]), refreshCampusSchedule: async () => snapshot([]),
+        api: { getCampusData: async () => {
+          await new Promise(resolve => { window.fixtureInitialResolve = resolve; });
+          return snapshot([]);
+        }, refreshCampusSchedule: async () => snapshot([]),
           getCampusScheduleWeek: async query => {
             window.fixtureCalls.push(query);
             if(window.fixtureHold) await new Promise((resolve,reject)=>{window.fixtureResolve=resolve;window.fixtureReject=reject;});
@@ -96,7 +101,19 @@ async function run() {
         escapeHtml: text => String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
         openDeepLink: () => {},
       });
-      feature.start(); await feature.load();
+      feature.start(); const initialLoad = feature.load();
+      window.fixtureInitialLoad = initialLoad;
+    })()`);
+    const initial = await window.webContents.executeJavaScript(`({
+      days:document.querySelectorAll('.week-day-head').length,
+      busy:document.querySelector('.week-table')?.getAttribute('aria-busy'),
+      oldLoading:!!document.querySelector('.module-state.is-loading'),
+      events:document.querySelectorAll('.week-event').length
+    })`);
+    assert.deepEqual(initial,{days:7,busy:'true',oldLoading:false,events:0},
+      'first load must retain a seven-day grid, not the old loading placeholder');
+    await window.webContents.executeJavaScript(`(async () => {
+      window.fixtureInitialResolve(); await window.fixtureInitialLoad;
       const input=document.getElementById('scheduleDate'); input.value='2027-01-13';
       input.dispatchEvent(new Event('change',{bubbles:true}));
     })()`);

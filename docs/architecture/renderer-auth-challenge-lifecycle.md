@@ -2,9 +2,9 @@
 
 - Status: Proposed behavior review candidate; not merged, installed or released
 - Owner: Desktop / authentication UI maintainers, issue #79
-- Verified: 2026-09-08
-- Base: PR #117, `3e44771eec3cd77cb7f0f339ec6305974e999183`
-- Tested runtime: `aa2e09c29649f29285b0ed3bb6ea1ce3c32356e3`
+- Last verified: 2026-09-11
+- Base: PR #117, `425ffde827aa1877894cae834c0bdff8517984f8`
+- Applies to: post-2.0.2 Renderer auth lifecycle, Issue #79
 
 ## Actual behavior change
 
@@ -47,7 +47,7 @@ still finish, and Main/Engine retain transaction and account authority. These Re
 not add protocol identifiers, bypass MFA or prove real-school SMS/popup support. No IPC schema,
 credential storage, Browser Session, Profile, account, routing or Engine source is changed.
 
-## Acceptance evidence
+## Historical acceptance — 2026-09-08
 
 The first five regression tests failed on the parent implementation (new-challenge error pollution,
 late errors after clearing, missing disposal, disabled actions reaching Main, non-idempotent start).
@@ -76,3 +76,24 @@ No Actions build, merge, tag, release, installed-App replacement, transfer or pr
 Revert this behavior unit as a whole: restore the facade/HTML declaration, old controller API,
 registry ownership and old package-required path together. PR #117's structural extraction can
 remain. No persisted data migration or Engine rollback is needed. User sessions remain untouched.
+
+## Current parent synchronization — 2026-09-11
+
+Previous candidate: `4818009`. The parent above synchronized without conflicts or public-history
+rewriting and includes published 2.0.2 fixes. Desktop lib, Rust, workflows, package manifest and
+lockfile match that parent; the package verifier's changed required auth asset paths remain an
+explicit review and full-package acceptance concern.
+
+Tested integration tree before this documentation update:
+`c1ff918659f103a7041bf69aa4a5e3095fde9de0`.
+Mac Node 24 full Desktop suite: 1,408 passed, 14 platform skips, zero failures (1,422 total).
+Node-owned native ASAR and control-shell fixtures passed. ASAR verifies both launch languages,
+synthetic submission/input clearing, pagehide retirement with zero auth listeners, ignored late
+events and confirmed child-close/fixture removal. Two macOS task-policy warnings occurred during
+the ASAR run; they are not treated as a clean operating-system diagnostic result.
+Architecture, install-script and diff checks passed without budget/dependency increases.
+
+Windows/Linux native acceptance, full installers, real-school/MFA and long-soak tests were not
+rerun for this tree. Older receipts retain their exact-source scope. No account password, real OTP,
+installed app, user data, network setting, repository protection or Organization ownership changed.
+Renderer retirement still does not cancel an already-issued Main operation or prove provider MFA.
