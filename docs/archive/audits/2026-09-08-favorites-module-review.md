@@ -89,3 +89,27 @@ accounts, sessions, credentials and the installed app were not changed.
 The parent feature repairs must be preserved when reverting only this extraction. The contribution
 remains a draft for independent review and required-check disposition. No Actions dispatch, GitHub
 PR merge, tag, release, repository transfer or protection change was performed.
+
+## Post-release parent synchronization — 2026-09-10
+
+Parent: PR #108 at `649397b6df436624b0db90463b00807987550a86`, including published
+main `39850415c901aeaa77ecb86cd3ce49a2e75290a8`. Previous candidate:
+`88813e0f3994eba0673439017926de9fde7fd3d5`.
+Tested integration tree: `88b98766ba62aed4a57bbefc0d414ced02f08f60`.
+
+The parent merged locally without conflicts or history rewriting. The remaining 16-file difference
+is the official-favorites entrypoint, its tests/ASAR runner and review records. Desktop lib, Rust,
+workflows and dependency lockfile match the parent exactly. The package manifest adds only the
+existing ASAR fixture command, not a dependency or release-version change.
+
+Mac Node 24 full Desktop suite: 1,317 passed, 14 platform skips, zero failures (1,331 total).
+Architecture and install-script checks passed. The Node-owned native ASAR runner passed both module
+assertions and child-close/fixture-retirement checks. Resource-manager and campus-workspace Electron
+layout tests passed. Tests reused the existing dependency cache without installation.
+
+This synchronization does not import the separate #115 save-continuation lifecycle behavior into
+the structural PR. Parent calendar, security-storage and ProxyCommand repairs remain preserved.
+Windows/Linux native validation, installers and real-school canaries were not rerun for this tree;
+earlier receipts do not stand in for new exact-source platform acceptance. No installed app, user
+data, GitHub protections, release or repository ownership changed. Revert only the favorites
+extraction on the current parent to retain its already-delivered repairs.
