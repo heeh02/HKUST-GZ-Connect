@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { readPrivateFileBounded, ensureOwnerOnly } = require('../../../../lib/platform/storage/private-file');
 const { collectPrivateFileReceipt } = require('../../../../lib/persistence/migration/legacy-hkust/legacy-flat-source-receipts');
+const { privatePathStat, privateDescriptorStat } = require('../../../../lib/platform/storage/private-file');
 const first = 2n ** 53n, second = first + 1n;
 function fixture(t, { replace = true, timeField = null } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-exact-stat-'));
@@ -62,4 +63,29 @@ test('an adapter returning unsafe numeric identities fails closed instead of inv
   assert.throws(()=>readPrivateFileBounded(f.file,{maxBytes:32,fileSystem:f.io}),e=>e.privateFileInvalid===true);
   assert.equal(ensureOwnerOnly(f.file,{fileSystem:f.io,windowsAcl:f.windowsAcl}),false);
   assert.equal(f.reads(),0);assert.equal(f.mutations(),0);
+});
+
+test('native snapshots preserve exact identity and reported timestamps without changing numeric bounds', t => {
+  const f = fixture(t, { replace: false });
+  const descriptor = fs.openSync(f.file, 'r');
+  try {
+    const expected = fs.fstatSync(descriptor, { bigint: true });
+    for (const actual of [privatePathStat(fs, f.file), privateDescriptorStat(fs, descriptor)]) {
+      for (const key of ['dev', 'ino', 'mtimeNs', 'ctimeNs']) assert.equal(actual[key], expected[key]);
+      for (const key of ['size', 'mode', 'nlink']) assert.equal(actual[key], Number(expected[key]));
+      assert.equal(Object.isFrozen(actual), true);
+      assert.equal(Number.isFinite(actual.mtimeMs), true);
+    }
+  } finally { fs.closeSync(descriptor); }
+});
+
+test('stat adapters reject unrepresentable allocation bounds before reading', t => {
+  for (const size of [-1n, 2n ** 53n]) {
+    const f = fixture(t, { replace: false });
+    const original = f.io.lstatSync;
+    f.io.lstatSync = (...args) => ({ ...original(...args), size });
+    assert.throws(() => readPrivateFileBounded(f.file, { maxBytes: 32, fileSystem: f.io }),
+      error => error.privateFileInvalid === true);
+    assert.equal(f.reads(), 0);
+  }
 });
