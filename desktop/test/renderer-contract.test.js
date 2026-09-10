@@ -137,7 +137,9 @@ test('Campus Workspace data modules use isolated state projections without porta
   assert.match(campusDataModulesJs, /api\.refreshCampusSchedule/u);
   assert.match(css, /\.module-refresh\s*\{/u);
   assert.match(css, /\.module-schedule\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/u);
-  assert.match(css, /\.week-scroll\s*\{[^}]*overflow-x:\s*auto/u);
+  assert.match(css, /\.week-scroll\s*\{[^}]*overflow-x:\s*hidden/u);
+  assert.match(css, /\.week-table\s*\{[^}]*min-width:\s*0/u);
+  assert.match(css, /\.week-table\.is-mini\s+\.week-body\s*\{[^}]*grid-template-columns:\s*0 repeat\(7, minmax\(0, 1fr\)\)/u);
   assert.doesNotMatch(campusDataModulesJs, /style="/u);
   assert.doesNotMatch(campusDataModulesJs, /cookie|password|localStorage/iu);
   assert.match(appJs, /campusDataFeature\?\.ensureLoaded/u);

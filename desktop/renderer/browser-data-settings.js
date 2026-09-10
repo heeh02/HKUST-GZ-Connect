@@ -5,7 +5,7 @@
 })(typeof self !== 'undefined' ? self : globalThis, function () {
   'use strict';
 
-  function start({ api, document, translate } = {}) {
+  function start({ api, document, translate, onClearState = () => {} } = {}) {
     if (typeof api?.clearBrowserData !== 'function' ||
         typeof document?.getElementById !== 'function' || typeof translate !== 'function') {
       throw new TypeError('browser data settings dependencies are incomplete');
@@ -30,6 +30,7 @@
         return;
       }
       busy = true;
+      onClearState(true);
       button.disabled = true;
       status.textContent = translate('settings.clearingBrowserData');
       try {
@@ -40,11 +41,12 @@
       } catch {
         status.textContent = translate('settings.browserDataClearFailed');
       } finally {
+        onClearState(false);
         busy = false;
         reset({ clearStatus: false });
       }
     });
-    document.addEventListener?.('app-locale-changed', () => reset());
+    document.addEventListener?.('app-locale-changed', () => { if (!busy) reset(); });
     reset();
     return Object.freeze({ reset });
   }
