@@ -6,6 +6,21 @@ const path = require('node:path');
 const os = require('node:os');
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'hkustgz-category-fixture-')));
 
+async function resizeCategories(window, width) {
+  window.setSize(width, 740);
+  const deadline = Date.now() + 2000;
+  let observed;
+  while (Date.now() < deadline) {
+    observed = await window.webContents.executeJavaScript(`(()=>{
+      const host=document.querySelector('#campusResources .cb-board-host');
+      return {width:innerWidth,columns:Number(host?.style.getPropertyValue('--cb-columns'))};
+    })()`);
+    if (observed.width === width && observed.columns === (width >= 980 ? 2 : 1)) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  assert.fail(`category resize did not settle: ${JSON.stringify({requestedWidth:width,...observed})}`);
+}
+
 async function main() {
   await app.whenReady();
   const window = new BrowserWindow({ width: 1000, height: 740, show: true, webPreferences: {
@@ -30,7 +45,7 @@ async function main() {
     })()`);
     await new Promise(r=>setTimeout(r,120));
     for(const width of [440,1000,1440,440,1000]) {
-      window.setSize(width,740); await new Promise(r=>setTimeout(r,220));
+      await resizeCategories(window, width);
       const layout=await window.webContents.executeJavaScript(`(()=>{
         const host=document.querySelector('#campusResources .cb-board-host');
         return {front:host.querySelectorAll('.cb-card.is-front').length,back:host.querySelectorAll('.cb-card.is-back').length,
@@ -88,7 +103,7 @@ async function main() {
       window.resizeDetail = document.querySelector('.cb-service-overlay');
       window.resizeDetailFocus = document.activeElement;
     })()`);
-    window.setSize(440,740); await new Promise(r=>setTimeout(r,220));
+    await resizeCategories(window, 440);
     assert.deepEqual(await window.webContents.executeJavaScript(`(()=>{
       const dialog=window.resizeDetail;
       const result={connected:dialog.isConnected,open:dialog.open,
@@ -124,7 +139,7 @@ async function main() {
       controller.setDocument({schemaVersion:1,revision:0,placements:[],decks:[]});
       window.savedCategoryLayout=JSON.stringify(controller.snapshot());
     })()`);
-    window.setSize(1200,740);await new Promise(r=>setTimeout(r,220));
+    await resizeCategories(window, 1200);
     await window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
     assert.equal(await window.webContents.executeJavaScript(`window.campusCategoryStacks.focusCard('user-collection','many-5')`),true);
     assert.equal(await window.webContents.executeJavaScript(`
@@ -142,7 +157,7 @@ async function main() {
     assert.ok(widePager.animations.includes(240),'wide pagination uses service-style motion too');
     await window.webContents.executeJavaScript(`window.campusCategoryStacks.focusCard('user-collection','many-5')`);
     for(const width of [1200,440,1200]) {
-      window.setSize(width,740);await new Promise(r=>setTimeout(r,220));
+      await resizeCategories(window, width);
       const selection=await window.webContents.executeJavaScript(`(()=>{
         const host=document.querySelector('#campusResources .cb-board-host');
         return {ids:[...host.querySelectorAll('.cb-card.is-front')].map(card=>card.dataset.cardRefId),
@@ -161,7 +176,7 @@ async function main() {
       window.savedCategoryLayout=JSON.stringify(controller.snapshot());
     })()`);
     for(const width of [1200,440,1200]) {
-      window.setSize(width,740);await new Promise(r=>setTimeout(r,220));
+      await resizeCategories(window, width);
       const manual=await window.webContents.executeJavaScript(`(()=>{
         const slot=[...document.querySelectorAll('#campusResources .cb-deck')].find(el=>el.dataset.cardDeckId===window.manualDeckId);
         return {count:slot?.querySelectorAll('.cb-card').length,
