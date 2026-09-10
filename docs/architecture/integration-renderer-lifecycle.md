@@ -73,3 +73,27 @@ on this tree. The earlier Windows baseline is historical and is not implicitly r
 PR #107's fixtures into the source. Full native/package checks remain required for this Main/IPC/
 Preload and package-path change. No installed app, user configuration, release, protection or
 Organization ownership changed. Completed clipboard/file effects cannot be retroactively undone.
+
+## Exact-source Windows follow-up — 2026-09-11
+
+Code commit: `7beadca7332bbd20ac0603273a67c92f2ddeb2d9`.
+The existing proper-Git Windows full-suite inspection checkout was updated from historical
+`3d323e2a0b99b0d89b3bfbf23a1bf21e934c77d5` using a 157 KiB incremental bundle. The native private-file
+helper was rebuilt with the existing x64 compiler; no compiler, Electron or installer was installed.
+
+The first Node v24.20.0 run reported 1,390 passed / 2 failed / 40 skipped (1,432 total): two test
+files could not load because the reused dependency cache lacked declared dev dependency Acorn.
+The Acorn 8.18.0 registry tarball was checked against the lockfile's SHA-512 integrity, then extracted
+to an isolated tooling directory and exposed only through process-local NODE_PATH. No tracked
+source, dependency declaration, assertion or platform skip changed.
+
+The same code then passed the complete Windows suite: **1,426 passed / 40 platform skips /
+zero failures (1,466 total)**. Native architecture and Node-owned ASAR module/lifecycle checks
+passed, including confirmed child exit and fixture removal. One GPU process exit warning (34)
+remains; clean hardware acceleration is not claimed.
+
+This supersedes the historical Windows full-suite failure state for this exact commit, not the
+limitations of earlier sources. Linux full-chain, full installers, real-user export and real-school
+MFA remain unverified here. No installed application, user data, system setting, repository protection,
+release or Organization transfer was changed. Local temporary transfer archives were removed;
+the remote test logs and isolated tooling are retained for reproducibility.

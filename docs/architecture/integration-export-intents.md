@@ -12,7 +12,9 @@
 
 Current-source results are recorded in the [Renderer lifetime synchronization receipt](integration-renderer-lifecycle.md).
 The dated Windows full-suite failures below remain historical evidence, not a new run on the
-post-2.0.2 integration tree. The current Mac suite passes; full Windows acceptance remains open.
+post-2.0.2 integration tree. Platform acceptance is tied to the exact tested source in that receipt.
+The later exact-source Windows follow-up in that receipt now records a full-suite pass on
+`7beadca7332bbd20ac0603273a67c92f2ddeb2d9`; historical failure logs below are retained, not current status.
 
 The previous runtime captured a context before awaiting a native save target and did not revoke
 that continuation on cancel. Its confirmation catch also called global cancellation, which could
