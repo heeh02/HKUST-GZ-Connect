@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   getCampusData: () => ipcRenderer.invoke('get-campus-data'),
   refreshCampusData: () => ipcRenderer.invoke('refresh-campus-data'),
   refreshCampusSchedule: () => ipcRenderer.invoke('refresh-campus-schedule'),
+  getCampusScheduleWeek: (selection) => ipcRenderer.invoke('get-campus-schedule-week', selection),
   openBookmarkManager: () => ipcRenderer.invoke('open-bookmark-manager'),
   openResource: (resourceId) => ipcRenderer.invoke('open-resource', { resourceId }),
   getCardBoardLayout: () => ipcRenderer.invoke('get-card-board-layout'),
