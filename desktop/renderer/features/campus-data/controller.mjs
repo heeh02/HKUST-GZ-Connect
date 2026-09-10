@@ -401,7 +401,8 @@ export function create({ document: doc, api, translate, escapeHtml, openDeepLink
     const errors = [];
     const attempt = effect => { try { effect(); } catch (error) { errors.push(error); } };
     const dialog = $('scheduleDetail');
-    attempt(() => { if (dialog?.open) dialog.close(); if (dialog) dialog.innerHTML = ''; });
+    attempt(() => { if (dialog?.open) dialog.close(); });
+    attempt(() => { if (dialog) dialog.innerHTML = ''; });
     attempt(() => sizeObserver?.disconnect()); sizeObserver = null;
     for (const remove of unlisten.splice(0).reverse()) attempt(remove);
     for (const { body } of Object.values(MODULES)) attempt(() => { const node = $(body); if (node) node.innerHTML = ''; });

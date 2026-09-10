@@ -2,7 +2,7 @@
 
 - Status: Proposed structural review candidate; not merged, installed or released
 - Owner: Desktop / authentication UI maintainers
-- Verified: 2026-09-08
+- Last verified: 2026-09-11
 - Applies to: M1, stacked after localization ownership PR #116
 
 ## Public ownership
@@ -35,7 +35,7 @@ The next independently reviewed behavior unit must own listener/timer teardown, 
 clearing, late async completion and explicit bootstrap activation before retiring the facade.
 No claim that these pre-existing lifecycle gaps have been fixed is made here.
 
-## Evidence and limitations
+## Historical evidence — 2026-09-08
 
 - Base: `90937ab2b6ea2d96dcbeae6c3a1d4314c1d940e6` (PR #116).
 - Tested source: `3d009c201dc301041bc41a0e3a079f547e2ac038`; the final review commit only adds
@@ -59,3 +59,23 @@ is authorized by this receipt. Installed user settings, sessions and credentials
 
 Rollback reverts the controller/entrypoint extraction, compatibility facade and matching registry
 and tests together. No data migration or Engine rollback is required.
+
+## Current synchronization — 2026-09-11
+
+Parent #116: `c5c89dc841c3e811c27494841c48d3d50a2b5136`, above published 2.0.2 main.
+Previous candidate: `3e44771`. Parent synchronization was conflict-free and preserved public history.
+The ten-file difference remains the auth module/facade, registry, tests and review records; Desktop
+lib, Rust, workflows, manifest and lockfile match the parent exactly. The separate #118 lifecycle
+work is not included or represented as fixed by this extraction.
+
+Tested integration tree before this documentation update:
+`de9fd2e9caea49dfd1e6e5e1051c71be004df531`.
+Mac Node 24 full Desktop suite: 1,391 passed, 14 platform skips, zero failures (1,405 total).
+Node-owned native ASAR checks passed bilingual startup, one auth listener, synthetic modal/input
+submission and input clearing, plus child-close/fixture-cleanup confirmation. Control-shell layout
+also passed. Architecture, install-script and diff checks passed without increased budgets or
+dependency installation. Existing caches were reused and the temporary dependency link removed.
+
+Windows/Linux native acceptance, installers and real-campus/MFA tests were not rerun on this tree;
+earlier results remain historical. No real password, OTP or school response was used. No installed
+app, user data, settings, release, Organization transfer or protection change occurred.
