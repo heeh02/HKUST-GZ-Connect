@@ -2,7 +2,7 @@
 
 - Status: Proposed review candidate; not merged or installed
 - Owner: Desktop / Renderer maintainers
-- Verified: 2026-09-08
+- Last verified: 2026-09-11
 - Applies to: M1 Renderer localization extraction, stacked after official-favorites lifecycle
 
 ## Contract
@@ -51,7 +51,7 @@ syntax, secrets, control-shell layout and browser-toolbar native tests for this 
 Rollback reverts the locale files, bridge, matching HTML loading declarations and policy/tests
 together. No persisted schema, account, session, credentials, routes or Engine source changes.
 
-## Review evidence
+## Historical review evidence — 2026-09-08
 
 - Base: `cc41fb44dfb6b961f917915821a3cc8a9c1d30e1` (official-favorites lifecycle, PR #115).
 - Runtime source: `de0c10abeb7999da4751e5696e67b4d84f1d4fa6`.
@@ -74,3 +74,27 @@ together. No persisted schema, account, session, credentials, routes or Engine s
 No full Windows Desktop suite, installer rebuild, real-school/MFA canary, public release, GitHub
 merge, Organization transfer or protection change is claimed. The installed Mac archive remained
 `705d83f90356cf3b1973d723f4d785765cba4adbba53843394d32c5a013baf0c`; this proposal is not deployed.
+
+## Current parent synchronization — 2026-09-11
+
+Parent #115: `be82601c2db7f11cc120a3b66d39dd921bdd862e`, above published 2.0.2 main.
+Previous localization candidate: `90937ab`.
+The old dictionary/global facade conflicted with the parent. Preserve the four-line module bridge
+and move the parent's four updated strict-proxy summary/hint values into the corresponding locale
+domain files. A new regression first failed on obsolete default-on wording and passes after carrying
+the shipped default-off copy forward. This does not change settings or the actual proxy policy.
+
+A fresh key-by-key comparison against the exact parent's effective dictionaries matches all 715
+keys and values in each language; object property insertion order is not the equivalence criterion.
+Tested integration tree before this documentation update:
+`45fec330f209844b4fe5a0d28330502d9377317b`.
+Mac Node 24 full Desktop suite: 1,385 passed, 14 platform skips, zero failures (1,399 total).
+Native ASAR bilingual startup/retirement checks, control-shell layout and campus-browser toolbar
+tests passed. The toolbar test intentionally requests an invalid port and also emitted GPU mailbox
+warnings during teardown; clean GPU operation is not claimed. Architecture, exact-tree syntax
+(514 files), install-script and diff checks passed. Existing dependency caches were reused.
+
+Windows/Linux native, installers, long soak and real-school/MFA tests were not rerun on this tree.
+Desktop lib, Rust, workflows, manifest and lockfile match the parent. No installed app, user settings,
+repository protections or Organization ownership changed. The legacy translation facade/deferred
+loading contract still needs independent review and later retirement; full M1 completion is not claimed.

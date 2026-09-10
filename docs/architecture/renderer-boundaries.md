@@ -2,7 +2,7 @@
 
 - Status: Proposed review candidate; not merged to main or executed in remote CI
 - Owner: Architecture and Desktop maintainers; policy changes require independent review
-- Verified: 2026-09-08
+- Last verified: 2026-09-11
 - Applies to: Renderer JavaScript, the two explicitly shared browser helpers and static Renderer HTML
 
 ## Enforcement

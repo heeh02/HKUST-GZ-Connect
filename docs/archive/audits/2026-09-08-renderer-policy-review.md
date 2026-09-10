@@ -72,3 +72,27 @@ Security/Release review; no protections, Actions runs, merges, tags or releases 
 
 Revert the tooling commit to remove the gate and its dev dependency without changing application
 data or the parent feature implementations. Parsed strings and fixtures contain no real secrets.
+
+## Parent synchronization and negative-gate recheck — 2026-09-11
+
+Parent #109: `59a46a6b67b8b99c180b39a3bc9a31b45b4bb8d4`, above published 2.0.2 main
+`39850415c901aeaa77ecb86cd3ce49a2e75290a8`. Previous candidate:
+`f1f6fa83cb421d39427d258f9e8b2bc4b892ba03`.
+Tested integration tree: `52e882d08fc7acea3d5d040d7e3b3b693323768d`.
+
+The existing parent synchronized cleanly, without rewriting public history. The 15-file contribution
+remains dev tooling, its pinned Acorn 8.18.0 dev dependency, Renderer instructions, tests and records.
+Runtime feature sources, application/bootstrap HTML, Desktop lib, Rust and workflows match the
+parent exactly. No frozen export exception or budget was expanded to obtain a pass.
+
+Mac Node 24 full Desktop suite: 1,346 passed, 14 platform skips, zero failures (1,360 total).
+Focused Renderer-boundary/HTML tests: 28 passed. These include isolated-copy mutation tests where
+the real architecture CLI must reject injected globals, private imports, HTML entrypoint bypass
+and public-API drift; passing current source alone is not treated as proof of enforcement.
+Architecture, exact integration-tree syntax (491 files), install-script and diff checks passed.
+The already-installed Acorn cache was read back as exactly 8.18.0; no dependency installation occurred.
+
+Native Windows/Linux, Electron GUI and installers were not rerun for this dev-only integration.
+Earlier platform/parent receipts retain their original scope. No runtime behavior, installed app,
+release, repository protection or Organization ownership changed. Independent policy review remains
+required; this static guard is not a runtime lifecycle registry or a security sandbox.

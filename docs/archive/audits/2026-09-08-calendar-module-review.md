@@ -153,3 +153,55 @@ markup again without reverting the base's cache/category/dialog repairs.
 Revert the structural commit on its stated base. No persisted format or user data changes.
 Temporary dependency links reuse the existing cache; removing a link does not remove that cache.
 The unrelated root checkout and earlier candidates remain unchanged.
+
+## Post-release synchronization — 2026-09-10
+
+Source baseline: published main `39850415c901aeaa77ecb86cd3ce49a2e75290a8`.
+Previous candidate: `14bac36e26770ebab6f637114340007833430e65`.
+Tested integration tree before this documentation addendum:
+`8eb011241c102144e91212f301548ade6c84609a`.
+
+Seven merge conflicts were resolved locally without rewriting public history. Preserve main's
+category resize-settling fixture; preserve feature imports, scoped styles, layout comparisons and
+all initial/uncached-week cases in the structural candidate. The obsolete global facade stays
+removed. Desktop lib, Rust, workflows, package manifest and lockfile match published main exactly.
+
+Mac Node 24 full Desktop suite: 1,310 passed, 14 platform skips, zero failures (1,324 total).
+Focused calendar/model/view/cache/style contracts: 26 passed. Architecture and install-script gates
+passed. Native Electron schedule navigation passed date/week/today, refresh, details, keyboard,
+minute geometry, overlap, narrow/wide/zoom and expiry recovery. The ASAR module fixture passed
+seven-day rendering, absence of the old global and one authentication subscription.
+Control-shell, resource-manager and campus-workspace Electron layout fixtures also passed.
+Exact integration-tree JavaScript syntax passed for 482 files; repository governance passed.
+
+The initial ASAR launch could not resolve a dependency through NODE_PATH; its owned process was
+stopped, then an existing dependency cache was linked temporarily and the fixture passed. No
+dependency installation or version change was performed. This environment failure is not a
+successful first run or a production bug.
+
+Windows/Linux native tests, installers, real-school authentication and live connection behavior
+were not rerun for this integration tree. Earlier platform evidence remains historical. No PR
+merge, remote push, release, Organization transfer, protection or installed-app change is claimed.
+
+## Native-host follow-up — 2026-09-10
+
+This follow-up supersedes only the platform omissions above that are explicitly covered here.
+Exact code commit: `d8fdc451cfde9c9ed9f70ae408587282c7d1ae66`.
+
+Linux on the designated 5070 WSL host reused the existing calendar Git checkout and dependency
+cache. Git readback matched the exact commit. With Node v24.20.0 and umask 022, `node --test`
+from `desktop` passed 1,310 tests, skipped 14 platform cases, and failed zero (1,324 total).
+Repository-governance and architecture checks also passed. No dependencies were installed.
+
+Windows used an isolated source-only snapshot under the existing calendar inspection directory.
+Its Git-exported source tar SHA-256 was independently checked before extraction:
+`31d00278e7099d556ae0c107579575f007ef50febb9b2bed0e6f3ad8e93a8305`.
+Node v24.20.0 ran `calendar-view`, `campus-data-module`, `campus-data-styles`, `schedule-cache`
+and `schedule-calendar` unit files: 26 passed, no failures or skips. The existing native Electron
+runtime ran `e2e/schedule-navigation.electron.js`: PASS, including arbitrary weeks, refresh,
+details, keyboard, minute geometry, overlap, narrow/wide/zoom and expiry recovery.
+One GPU-process exit warning (code 34) occurred; clean hardware acceleration is not established.
+
+The Windows full suite, Linux Electron layouts, cross-platform installers and real-school canaries
+remain unverified for this commit. Mac evidence is in the preceding synchronization section.
+No release, installation, Organization permission or repository-transfer operation was performed.

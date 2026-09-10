@@ -2,8 +2,9 @@
 
 - Status: Proposed behavior/lifecycle contribution, not installed or released
 - Owner: Desktop Renderer maintainers, issue #79
-- Base: PR #114 at `9ad3dd127bc51a1a272beed326453783fe48263b`
-- Verified: 2026-09-08, source `b9d4cc6a9bad3d5d175353c60f28d9ffd8f5b788`
+- Base: PR #114 at `b5fcef731f37e3f380c5f1307f75eb4120382494`
+- Last verified: 2026-09-11
+- Applies to: Issue #79, post-2.0.2 favorites lifecycle candidate
 
 ## Behavior contract
 
@@ -46,7 +47,7 @@ the prior IDs finds multiple new groups, the dialog reports failure instead of g
 A future backend creation receipt is needed for seamless concurrent group creation. The normal
 single-creation and existing/ungrouped-folder flows remain supported and tested.
 
-## Evidence and rollback
+## Historical evidence — 2026-09-08
 
 - RED cases reproduced stale group publication, an older save unlocking a newer one, and missing
   disposal. Additional tests cover entry/locale mutation, reentrant setters, delayed native close,
@@ -64,3 +65,24 @@ live-school checks were not run. No installed App, credentials, user-data schema
 network settings changed. This is independently reviewable after its base; it is not a merge or
 release authorization. Reverting the contribution restores manual favorite startup and the earlier
 save races, without reverting the separate calendar fixes or requiring a data migration.
+
+## Current parent synchronization — 2026-09-11
+
+Previous candidate: `20062e2b4c7345642a383cdc0957a82c4075cfff`.
+The parent above, including published 2.0.2 main and the detail-close cleanup regression, synchronized
+without conflicts or public-history rewriting. This remains the separate favorites behavior PR;
+no lifecycle behavior is backported into the structural extraction. Desktop lib, Rust, workflows,
+package manifest and lockfile match the parent exactly.
+
+Tested integration tree before this documentation update:
+`e04a4dd8de1bf0ff51b94b2bba3c4ee499aaa3f0`.
+Mac Node 24 full Desktop suite: 1,379 passed, 14 platform skips, zero failures (1,393 total).
+Focused favorites behavior/module/feature-registry tests passed. Native Node-owned ASAR checks
+passed both module pagehide retirement and child-close/fixture-cleanup verification. Control-shell
+layout passed, including the synthetic favorite/new-folder workflow. Architecture, install-script,
+exact integration-tree syntax (495 files) and diff checks passed; no budgets or dependencies increased.
+
+Windows/Linux native acceptance, installers and live-school/MFA canaries were not rerun on this
+tree. Earlier receipts retain their exact-source scope. Reused dependency caches are unchanged;
+no installed app, user data, system network, GitHub protection or Organization ownership changed.
+The multi-step save still cannot roll back a Main mutation that has already been dispatched.

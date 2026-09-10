@@ -91,6 +91,20 @@ test('dispose cancels automatic refresh and makes an already queued timer inert'
   } finally {h.feature.dispose();globalThis.setTimeout=savedSet;globalThis.clearTimeout=savedClear;}
 });
 
+test('dialog close failure does not retain personal detail markup or skip other cleanup',()=>{
+  const h=harness();h.feature.start();
+  const dialog=h.nodes.get('scheduleDetail');
+  dialog.innerHTML='Synthetic private event detail';
+  dialog.close=()=>{throw new Error('synthetic dialog close failure');};
+  assert.throws(()=>h.feature.dispose(),error=>error instanceof AggregateError &&
+    error.errors.some(cause=>cause.message==='synthetic dialog close failure'));
+  assert.equal(dialog.innerHTML,'');
+  assert.equal(h.listenerCount(),0);
+  assert.equal(h.observers[0].disconnections,1);
+  assert.equal(h.feature.snapshot(),null);
+  assert.equal(h.feature.dispose(),false);
+});
+
 test('catalog publication can retire the owner without retaining or returning its data afterwards',async()=>{
   const h=harness(),reply=value(),modules=reply.modules;let retired=false,readsAfterRetirement=0;
   Object.defineProperty(reply,'modules',{get(){if(retired)readsAfterRetirement++;return modules;}});

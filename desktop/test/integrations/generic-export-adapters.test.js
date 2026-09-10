@@ -77,9 +77,15 @@ test('custom Profile export never inherits HKUST names domains CIDRs or routes',
 
 test('VS Code export is a copy-only ProxyCommand snippet without embedded credentials', () => {
   const rules = createProfileNetworkRules({ profileDocument: reviewed });
+  const helperPath = process.platform === 'win32'
+    ? 'C:\\Program Files\\Campus Connect\\ec-proxy-command.exe'
+    : '/Applications/Campus Connect.app/Contents/Resources/ec-proxy-command';
+  const credentialFile = process.platform === 'win32'
+    ? 'C:\\Users\\student\\AppData\\Roaming\\Campus Connect\\proxy-credential'
+    : '/Users/student/Library/Application Support/Campus Connect/proxy-credential';
   const snippet = buildVscodeRemoteSshSnippet({
-    helperPath: '/Applications/Campus Connect.app/Contents/Resources/ec-proxy-command',
-    credentialFile: '/Users/student/Library/Application Support/Campus Connect/proxy-credential',
+    helperPath,
+    credentialFile,
     networkRules: rules,
   });
   assert.match(snippet, /^Host campus-connect-server$/mu);
@@ -90,8 +96,8 @@ test('VS Code export is a copy-only ProxyCommand snippet without embedded creden
   const generated = buildGenericExport({
     adapterId: 'vscode_remote_ssh',
     networkRules: rules,
-    helperPath: '/Applications/Campus Connect.app/Contents/Resources/ec-proxy-command',
-    credentialFile: '/Users/student/Library/Application Support/Campus Connect/proxy-credential',
+    helperPath,
+    credentialFile,
   });
   assert.equal(generated.containsLocalProxyCredential, false);
   assert.equal(generated.warningCode, 'INTEGRATION_CREDENTIAL_SIDECAR_PRIVATE');
