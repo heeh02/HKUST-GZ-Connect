@@ -45,3 +45,31 @@ No GitHub merge, release, tag or Organization transfer occurred. Windows/Linux i
 rebuilt. No manual school authentication, API probing or new-week live canary was performed.
 The later native Renderer extraction PRs still need this behavior change carried across their
 separate module boundary before integration; do not overwrite it with the older view implementation.
+
+## Installed-artifact readback after repeated loading report
+
+On 2026-09-08 the installed archive still matched `705d83f9…13baf0c`; the running process
+started at 15:09:57, after the archive's 15:07:11 modification time. This rules out a process
+started before that replacement, but does not date the user's screenshot or prove live API behavior.
+
+The navigation fixture now accepts `HKUSTGZ_SCHEDULE_RENDERER` so the exact installed ASAR's
+Renderer JS and CSS can be tested without extracting another app or accessing the user's profile.
+It also holds the very first data request and asserts seven day headers, `aria-busy`, zero
+invented events and absence of the old loading placeholder before releasing that request.
+
+Executed from `desktop/` with the existing Electron 43.2 binary:
+
+```text
+HKUSTGZ_SCHEDULE_RENDERER=/Applications/hkustgzconnect.app/Contents/Resources/app.asar/renderer electron e2e/schedule-navigation.electron.js
+node --test test/unit/renderer/schedule-cache.test.js test/unit/renderer/schedule-calendar.test.js
+node scripts/check-architecture.js
+node --check e2e/schedule-navigation.electron.js
+```
+
+Installed-artifact native navigation passed; checkout unit tests passed 18/18. Architecture and
+syntax checks passed. Navigation covers cached refresh, failed refresh, uncached week, date,
+details, keyboard, 360/440/960/1440 widths and 150% zoom. All data is synthetic, HTTP(S) requests
+are denied by the fixture, and a separate temporary profile is used. Screenshots are under
+`/tmp/hkustgz-installed-calendar-readback/`. No production source, installed app, user data or
+release was changed in this readback. The real-session reproduction remains unconfirmed and
+requires the maintainer's bounded live-canary authorization; offline success is not that evidence.

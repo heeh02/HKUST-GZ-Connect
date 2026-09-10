@@ -1,14 +1,18 @@
 # Integration export intents and effect-boundary validation
 
-- Status: Proposed Main repair; Windows targeted checks passed, repository-wide gate red; not deployed
+- Status: Proposed Main repair; current native acceptance incomplete; not deployed
 - Owner: Desktop / integration maintainers, issues #79 and #81
-- Verified: 2026-09-09
-- Base: PR #119, `f520db3acfc83ead950431ff36445bbc61104639`
+- Last verified: 2026-09-11
+- Base: PR #119, `5b59c270ede8988e752d220b54ab3873a173b042`
 - Initial intent repair: `e94c642539c99d1bdbf428c18d85cd45ed87453a`
 - Scoped-cancellation source: `65065b422044bb2a00a56264eec6c518a8b9f934`
 - Native path-fixture acceptance: `95902b015b1ac8a9d03e0c4813e2c670827d0532` (runtime unchanged)
 
 ## Why Main must be repaired before Renderer retirement
+
+Current-source results are recorded in the [Renderer lifetime synchronization receipt](integration-renderer-lifecycle.md).
+The dated Windows full-suite failures below remain historical evidence, not a new run on the
+post-2.0.2 integration tree. The current Mac suite passes; full Windows acceptance remains open.
 
 The previous runtime captured a context before awaiting a native save target and did not revoke
 that continuation on cancel. Its confirmation catch also called global cancellation, which could

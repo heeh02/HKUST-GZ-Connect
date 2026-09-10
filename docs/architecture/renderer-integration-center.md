@@ -2,9 +2,9 @@
 
 - Status: Proposed structural review candidate; not merged, installed or released
 - Owner: Desktop / integration maintainers, issue #79
-- Verified: 2026-09-08
-- Base: PR #118, `4818009c12b62f78a8db043ba8ff7c56074081a8`
-- Tested source: `32c032919cf9a7ef416dbe7b403a0a18e89cafd4`
+- Last verified: 2026-09-11
+- Base: PR #118, `e2f0bd5ba6d1932f3b6a140ced111fa5b5192888`
+- Applies to: Issue #79, post-2.0.2 Integration Center structural extraction
 
 ## Public boundary
 
@@ -42,10 +42,10 @@ export through an unscoped cancellation call. No fix for that lifecycle boundary
 
 The subsequent proposed [Main export-intent repair](integration-export-intents.md) separately
 guards native-target continuations, confirmation cleanup and the final output boundary. Its
-Windows targeted checks now pass while the repository-wide gate remains red; it does not retire
+historical Windows targeted checks passed while the repository-wide gate was red; it does not retire
 this Renderer initializer.
 
-## Acceptance
+## Historical acceptance — 2026-09-08
 
 - Mac Node 24.19: existing/new integration Renderer and strict-proxy boundary tests — 16 passed.
 - 5070 Linux Node 24.20: full `node --test` — 1,388 passed / 6 platform skips, zero failures.
@@ -70,3 +70,22 @@ Mac archive remained `705d83f90356cf3b1973d723f4d785765cba4adbba53843394d32c5a01
 Revert the native files, compatibility bridge, HTML module declaration and matching registry/tests
 together. The facade/package path is unchanged. No data schema, Main, Preload, routing, Session,
 credential storage or Engine migration is involved. Other feature lifecycle repairs can remain.
+
+## Current parent synchronization — 2026-09-11
+
+Previous candidate: `f520db3`. The parent above synchronized without conflict or public-history
+rewriting and includes published 2.0.2 plus the preceding reviewed candidates. The remaining
+twelve-file difference is the native model/controller, bounded bridge, matching tests/registry
+and review records. Desktop lib, Rust, workflows, manifest and lockfile match the parent exactly.
+Separate #120 export-intent/cancellation lifecycle changes are not included in this extraction.
+
+Tested integration tree before this documentation update:
+`dc8ebbf883005694cd2834e22a5da773ec6c2b27`.
+Mac Node 24 full Desktop suite: 1,413 passed, 14 platform skips, zero failures (1,427 total).
+Native Node-owned ASAR startup/synthetic preview-confirm/child-close/cleanup and control-shell
+layout checks passed. Architecture, install-script and diff checks passed with no budget or
+dependency increase. Existing dependency caches were reused, not reinstalled.
+
+Windows/Linux native, full installers, live-school/MFA and actual clipboard/configuration exports
+were not rerun for this tree. Earlier receipts retain their original scope. No installed app,
+user settings, file export, repository protection, release or Organization transfer occurred.

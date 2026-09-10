@@ -8,6 +8,15 @@ const root = path.resolve(__dirname, '../../../../renderer/features/localization
 const native = require(root + '/index.mjs');
 const { composeLocale, assertMatchingKeys } = require(root + '/compose.mjs');
 
+test('proxy authentication copy preserves the shipped compatibility default in both languages', () => {
+  assert.equal(native.createT('zh')('tower.strictProxyAuthSummary'),
+    '新安装默认关闭，兼容 Clash、SSH 等本地代理客户端。');
+  assert.equal(native.createT('en')('tower.strictProxyAuthSummary'),
+    'Off by default on new installations for compatibility with Clash, SSH and other local proxy clients.');
+  assert.match(native.createT('zh')('tower.strictProxyAuthHint'), /^默认关闭/);
+  assert.match(native.createT('en')('tower.strictProxyAuthHint'), /^Off by default/);
+});
+
 test('locale chunks have one matching domain owner per language and matching keys per domain', async () => {
   const names = ['account','browser','common','connection','control-tower','resources','settings','workspace'];
   for (const locale of ['zh','en']) {

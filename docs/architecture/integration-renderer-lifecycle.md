@@ -2,7 +2,7 @@
 
 - Status: Proposed behavior repair in PR #120; not merged, installed or released
 - Owner: Desktop maintainers, #79 / #81
-- Verified: 2026-09-09
+- Last verified: 2026-09-11
 - Runtime: `612a9dfb` (full SHA in Git); acceptance: `ea1620c4e9e7510bbe55abba18a251b28c27b424`
 - Prerequisite: [Main scoped cancellation](integration-export-intents.md)
 
@@ -23,7 +23,7 @@ accumulation. The unchanged layout, bilingual descriptions and copy/save-only su
 The package verifier now requires all five native integration files. Main composition and Renderer
 bootstrap line budgets did not increase; the controller remains below its 250-line ratchet.
 
-## Evidence
+## Historical evidence — 2026-09-09
 
 - RED: all eight initial lifetime regressions failed before implementation.
 - Twelve focused lifetime cases cover stale prepare/cancel/confirm/read, malformed/expired preview,
@@ -49,5 +49,27 @@ full-suite baseline remains unaccepted; no reduction is claimed from this scoped
 
 This completes the proposed integration host/controller retirement path, not the whole Renderer
 migration, 2.0.2 release or governance goal. Keep this optional modularization stack separate from
-the minimal 2.0.2 candidate. Revert native lifecycle/controller, bootstrap, registry, removed bridge,
+the published 2.0.2 release. Revert native lifecycle/controller, bootstrap, registry, removed bridge,
 package requirements and tests together. There is no persisted-data or credential migration.
+
+## Current parent synchronization — 2026-09-11
+
+Parent #119: `5b59c270ede8988e752d220b54ab3873a173b042`, above published 2.0.2 main.
+Previous candidate: `64dd9ada67dc072ba267ce2b97ac6e5f63da1e7b`.
+Conflicts in the two native-path fixtures retained synthetic absolute paths, spaces, the exact
+default filename/parent, unsupported-adapter rejection and canceled-dialog assertions. Historical
+documentation was reconciled without treating old Windows failures as a current run. No source
+guard, ACL validator or global-export exception was weakened. Public history was preserved.
+
+Tested integration tree before this documentation update:
+`0d5aa6f64e3ba61bd3c2303ea5ce22cb069ecda0`.
+Mac Node 24 full Desktop suite: 1,452 passed, 14 platform skips, zero failures (1,466 total).
+Native Node-owned ASAR (synthetic export preview, host retirement, child close and fixture cleanup)
+and control-shell layout passed. Architecture, install-script and diff checks passed without
+dependency installation or budget increases. Existing dependency caches were reused.
+
+Windows/Linux native acceptance, full installers and real user export/MFA tests were not rerun
+on this tree. The earlier Windows baseline is historical and is not implicitly repaired by merging
+PR #107's fixtures into the source. Full native/package checks remain required for this Main/IPC/
+Preload and package-path change. No installed app, user configuration, release, protection or
+Organization ownership changed. Completed clipboard/file effects cannot be retroactively undone.
