@@ -65,3 +65,23 @@ acceptance and still requires the pending permission/transfer decision.
 
 No new implementation branch, dependency cache, build artifact, Actions run, PR merge or release
 was created. Local inspection objects are reproducible from the recorded input commits.
+
+## Whole-combination Linux follow-up — 2026-09-12
+
+The existing designated 5070 WSL inspection checkout advanced detached to
+`dfc75d463cda4c1dc9c03f1bd8b6a9ad3c8ff1fc`; readback verified tree
+`8a59beb8a115258d8921dbce94d0296dcbac2a00`, identical to the Mac combination.
+Node v24.20.0 with umask 022 passed **1,471 tests, 14 platform skips, zero failures (1,485 total)**.
+Native architecture checks and all three Node-owned fixtures passed under `xvfb-run -a`:
+DownloadItem completion/cancellation/retirement, popup MFA assertions/cleanup, and Renderer ASAR
+startup/retirement. Each runner confirmed child closure and fixture removal; no no-sandbox override
+was used. All fixture data is synthetic or loopback-only.
+
+Existing Linux dependencies were reused; process-local NODE_PATH referenced the previously
+lockfile-verified Acorn tooling through WSL. No dependency download or package build was performed.
+The pre-existing dependency symlink remains the only untracked checkout path; temporary transfer
+bundles on both hosts were removed and the full-suite log remains on 5070 for audit.
+
+This closes Linux full-combination source/fixture acceptance, not Windows combination, distribution
+packages, real-school behavior or independent review. Those remain outstanding. No installed app,
+credentials, user files, repository protection, release or Organization transfer was changed.
