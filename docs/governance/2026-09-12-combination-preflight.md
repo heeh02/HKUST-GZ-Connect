@@ -147,3 +147,24 @@ reduce a stated gap; it must not continually recreate/revalidate the already-tes
 Before production integration, preserve independent review, package acceptance and explicit
 authorization. Candidate acceptance does not change published main or make a new release necessary
 for the repository transfer itself.
+
+## M3 update-notification seam combination — 2026-09-12
+
+Combine the original four-lane inspection commit `dfc75d463cda4c1dc9c03f1bd8b6a9ad3c8ff1fc`
+with local update-notification candidate `82ac2adf1ad7fc431a68e2849787c7a96fbae114` in the existing
+detached inspection worktree. Only the architecture line-budget conflict required resolution:
+retain the lower Main limit 1,682 and lower Renderer limit 562. Neither bound was increased.
+Resolved tested tree: `79f681ea0c45247dba4b40c151e92598d0b5d863`.
+
+Mac Node 24 full suite: **1,482 passed, 14 platform skips, zero failures (1,496 total)**.
+Native Renderer ASAR startup/cleanup and synthetic verified-update Main/Preload roundtrip passed.
+Architecture, install-script and repository-governance checks passed; exact-tree syntax passed
+533 sources. The new Main count is 1,682, while direct/transitive dependency limits remain 36/170.
+The prior four-lane tree and its three-platform evidence are unchanged historical inputs, not
+three-platform validation of this extended tree.
+
+No new PR or implementation branch, installed-app update, dependency installation, package build,
+real GitHub update request, release or Organization transfer occurred. The existing untracked
+historical inspection note remains untouched. This combination includes the separately reviewable
+verified-link prerequisite; it must not be mislabeled wholly structural. Windows/Linux extended
+combination, distribution packages and independent review remain outstanding.
