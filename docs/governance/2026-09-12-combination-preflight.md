@@ -85,3 +85,26 @@ bundles on both hosts were removed and the full-suite log remains on 5070 for au
 This closes Linux full-combination source/fixture acceptance, not Windows combination, distribution
 packages, real-school behavior or independent review. Those remain outstanding. No installed app,
 credentials, user files, repository protection, release or Organization transfer was changed.
+
+## Whole-combination Windows follow-up — 2026-09-12
+
+The existing 5070 native Windows Git inspection directory was verified clean and switched detached
+to `dfc75d463cda4c1dc9c03f1bd8b6a9ad3c8ff1fc`. Independent `git show -s --format=%T HEAD`
+readback confirmed `8a59beb8a115258d8921dbce94d0296dcbac2a00`, identical to Mac/Linux.
+The initial diagnostic command lost its caret under CMD escaping; that failed tree print was not
+used as evidence. Initial SSH handshakes timed out; access recovered without host/service changes.
+
+Node v24.20.0 full suite: **1,445 passed, 40 platform skips, zero failures (1,485 total)**.
+Architecture passed. The Node-owned native DownloadItem, popup-MFA and Renderer-ASAR fixtures all
+passed with child-close and temporary-profile removal confirmed. Four GPU exit-code-34 warnings
+occurred during popup/ASAR execution; clean hardware acceleration is not established.
+
+The existing native private-file helper and dependency cache were reused; Acorn came from the
+previously verified isolated tooling via process-local NODE_PATH. No dependency/compiler install,
+package build, actual user export or real-school authentication occurred. Synthetic fixture
+downloads used only temporary destinations. Temporary local transfer bundles were removed.
+
+All three platforms now have full-suite and these native fixture results for the same combined
+source tree. Distribution packages, signing, real-school behavior, independent review and the
+authorized Organization transfer remain separate unfinished requirements. No PR/main merge,
+tag, release, protection or installed-app change was performed.
