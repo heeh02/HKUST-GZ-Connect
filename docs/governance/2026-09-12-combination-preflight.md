@@ -188,3 +188,24 @@ No runtime source was changed by this combination. Main/Renderer limits remain 1
 Locked-dependency full-suite, native GUI, Windows/Linux and package acceptance of this expanded
 tree remain pending. No new implementation branch, PR, release, Organization or permission
 operation was performed. The pre-existing untracked inspection note remains untouched.
+
+## Locked Linux dependency follow-up — 2026-09-12
+
+Exact M5 combination commit: `f229f26b6917d1d62f2a870a7009ca227c394711`, tree
+`0dae54ef1d49efde65e051531ebefe3b1d295b43`. An isolated 5070 WSL inspection checkout reused Git
+objects but installed its own dependencies with `npm ci --ignore-scripts --no-audit --no-fund`.
+The lockfile installed 274 packages; actual resolution verified js-yaml 4.3.2 and Acorn 8.18.0.
+Node v24.20.0 full suite passed **1,492 tests, 14 platform skips, zero failures (1,506 total)**.
+This supersedes the earlier cache-mixed full-suite limitation for this Linux source run only.
+
+WSL SSH initially timed out. Windows-host readback proved the target directory still empty before
+retrying via a fixed WSL shell script, so no duplicate install/test job was started. No shared
+dependency directory, host service or network setting changed. The isolated remote dependencies
+occupy 415 MiB; the only untracked source-checkout path is the synthetic test log. The local
+transfer bundle was removed. Remote tooling and logs remain for subsequent acceptance.
+
+Lifecycle/install scripts and npm vulnerability auditing were deliberately not executed. npm emitted
+existing deprecation warnings; this result does not establish vulnerability-free dependencies,
+native binaries, Electron package installation, GUI or distribution readiness. No package build,
+real-school operation, new PR, merge, release or Organization transfer occurred. Mac/Windows locked
+dependency acceptance and full installers remain pending for this expanded combination.
