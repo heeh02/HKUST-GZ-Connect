@@ -4,7 +4,7 @@
 - Authority: project maintainer
 - Baseline: `main@15738338ff2a280300b66e98a1823659f24630a4`
 - Started: 2026-09-04
-- Last verified: 2026-09-10 (`main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`)
+- Last verified: 2026-09-12 (`main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`)
 - Scope: repository governance, documentation truth, agent instructions, module boundaries,
   contributor workflow, GitHub protections and organization migration
 
@@ -122,6 +122,10 @@ high-risk rules. No instruction file is treated as a substitute for review or te
 This transfer-first sequence does not require M1–M5 completion, an empty PR queue, replacement of
 the maintainer's running Mac app, or creation of every future team. Those are separate outcomes.
 Missing independent reviewers still block ordinary protected merges, not repository transfer.
+Execution correction: freeze new decomposition branches/PRs until the existing queue is reviewed;
+allow at most two active code lanes, with one merge-ready PR per lane. Pending migration decisions
+must not become a reason to accumulate speculative refactors or repeat unchanged full-suite runs.
+The transfer procedure records this bounded convergence cycle; no additional parallel goal is needed.
 See the [proposed transfer-first convergence plan](docs/governance/2026-09-10-transfer-first-plan.md)
 for the current PR dependency lanes, minimum migration checks and bounded worktree cleanup rules.
 

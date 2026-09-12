@@ -2,7 +2,7 @@
 
 - Status: Proposed; local review, not executed migration authority
 - Owner: project maintainer
-- Last verified: 2026-09-10
+- Last verified: 2026-09-12
 - Applies to: `main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`, stable `v2.0.2`, G0–G4 and M1–M5
 - Supersedes: unpublished-2.0.2 assumptions in earlier readiness snapshots
 
@@ -33,6 +33,42 @@ not upgrade old clients automatically; retain a manual download path for 2.0.0 u
 | Local installation | Installed Mac ASAR differs from published package | App replacement and a live connection interruption are separate decisions |
 
 ## Minimum transfer gate
+
+### Execution correction — 2026-09-12
+
+The transfer-first sequence already existed, but continued local extraction and combination
+work did not advance ownership migration. Do not turn that work into new transfer prerequisites.
+Live readback still places main at `39850415c901aeaa77ecb86cd3ce49a2e75290a8`; stable 2.0.2 is
+published with four installers and two provenance assets. There are 83 local worktrees.
+The latest local combination is not main or a released product.
+
+For the next convergence cycle:
+
+- Freeze new decomposition branches, PRs and speculative module extraction. Finish migration
+  preflight and the permission decision first; do not rebuild 2.0.2 for a namespace change.
+- Keep one migration/governance owner and at most two active code lanes. Each lane has at most
+  one merge-ready PR; dependent drafts remain preserved rather than being worked simultaneously.
+- If the maintainer decision is pending, limit work to the existing PR inventory and bounded
+  review corrections. Do not repeatedly run full suites on unchanged sources or create another
+  dated plan. A pending transfer decision does not require expanding architecture work.
+- After transfer, reconcile #89 and then drain existing dependency lanes before starting another
+  extraction wave. Squashed parents require explicit descendant diff/base reconciliation.
+- Accept modularization by public contracts, lifecycle/resource ownership and regression evidence;
+  smaller entrypoint files alone are not completion. Keep line budgets as regression guards.
+- Maintain this procedure, GOAL, the status index and module map as the current navigation set.
+  Keep exact-source receipts as evidence; do not copy all historical results into each plan.
+
+This is a proposed execution constraint, not authorization to change Organization permissions,
+merge drafts, remove worktrees or publish another version.
+
+Read-only metadata capture at 2026-09-12 08:29:20 UTC succeeded for 16 endpoint groups:
+20 tag refs, 12 releases with asset identities/digests where supplied by GitHub, 14 open PRs,
+main protection, the effective tag ruleset, two environments, Actions permissions, collaborators,
+webhook metadata (zero hooks), and repository/environment Secret names only. The private local
+snapshot is outside the tracked tree, with owner-only file permissions; no Secret values or
+webhook URLs were captured. All ten PR dependency edges match their parent head SHA exactly.
+This is a pre-transfer comparison baseline, not asset-byte verification, role-based push testing
+or post-transfer acceptance. Recheck mutable state immediately before an authorized operation.
 
 1. Immediately before transfer recheck source ID, destination membership and same-name availability.
 2. Agree effective access: recommend read-only Organization base plus explicit repository grants.
