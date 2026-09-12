@@ -224,3 +224,23 @@ Deprecation warnings remain maintenance signals and are not identical to advisor
 An advisory database's zero result is dated evidence, not proof of absence of unknown vulnerabilities.
 Install scripts, native package artifacts, additional platform acceptance and independent review
 remain separate gates. No automatic fix, cloud workflow, release or Organization operation ran.
+
+## Test-placement combination — 2026-09-12
+
+Combine M5 inspection `f229f26b6917d1d62f2a870a7009ca227c394711` with test-placement candidate
+`7725c04`. Resolve governance conflict by retaining schema-2 module coverage plus the zero-root-test
+manifest check, not restoring the older textual module parser. Preserve current native feature
+imports in relocated auth/favorites/integration/strict-proxy tests and adjust their relative depth.
+
+The first run exposed two additional path failures after automatic merging: Main settings contract
+looked under test/contracts/lib, and Renderer contract imported its script parser from an obsolete
+relative location. Only those paths were corrected; no assertions or test cases were removed.
+Final tested tree: `526add30dc4104b964b02a8cbe88306a33f5ea81`.
+Mac Node 24 source tests: **1,495 passed, 14 platform skips, zero failures (1,509 total)**.
+Governance passes both coverage and an empty root-test debt list; Git inventory confirms zero
+root JS/CJS/MJS test files. Architecture remains within 1,682 Main / 562 Renderer line budgets.
+
+This local run reuses the existing inspection dependency cache, so it is not locked-dependency
+acceptance; the earlier isolated Linux run is on the preceding tree. Windows/Linux relocated-test
+and full distribution-package acceptance remain pending. No production logic, user data, existing
+untracked inspection note, remote PR, release or Organization settings were changed.
