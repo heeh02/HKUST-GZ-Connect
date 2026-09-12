@@ -54,3 +54,18 @@ was performed. M1–M5 and the full goal are not complete merely because ownersh
 Keep the old path unoccupied so redirects remain intact. Legacy 2.0.0 users should manually install
 a current release if update discovery fails. Repair any later migration discrepancy in place;
 do not automatically transfer back or recreate published tags/assets.
+
+## Security-settings follow-up — 2026-09-12 11:38 UTC
+
+The live governance capture reports repository Secret scanning and Push protection both disabled.
+Private vulnerability reporting and Dependabot security updates remain enabled. Repository admin
+permission is available; the public Organization uses the Free plan and its corresponding defaults
+for new repositories are false. The immediate transfer snapshots did not comprehensively capture
+these security-and-analysis fields, so their change cannot be attributed to transfer from this
+evidence. The earlier identity/asset/protection equality claims do not establish security parity.
+
+This contradicts the maintained governance contract and is an outstanding security-control gap.
+Enabling these two repository-level controls requires the maintainer's explicit settings approval;
+do not change Organization-wide defaults or branch/tag protections implicitly. Required review is
+also still outstanding: #89 remains Draft with REVIEW_REQUIRED and no check results. No new source
+or release should be described as fully governance-qualified on the basis of migration alone.
