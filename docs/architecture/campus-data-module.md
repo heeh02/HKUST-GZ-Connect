@@ -71,3 +71,12 @@ button and requires fresh two-click confirmation before retrying. A failure befo
 operation prevents that operation from running. Tests inject only synthetic errors and display data;
 they do not clear the user's browser session. Both new regressions failed before the corresponding
 fix and passed afterwards. No IPC, storage format, network or release change is included.
+
+Mac Electron verification on 2026-09-12 uses production source `5f73088` and the expanded
+`e2e/schedule-navigation.electron.js` fixture, with isolated temporary userData and HTTP(S) blocked.
+The fixture passes date/week navigation, cached/manual refresh, grouped details, keyboard closure,
+expiry recovery, 360/440/960/1440-pixel windows and 150% zoom. Seven days remain in bounds without
+horizontal or nested vertical overflow; detail dialogs remain centered. An injected native-dialog
+close failure still scrubs and detaches the prior detail DOM and retires a pending week reply.
+Narrow and wide synthetic screenshots were inspected. This is Mac source/fixture evidence only,
+not a packaged-app, real-school or Windows/Linux acceptance claim. The installed app was untouched.
