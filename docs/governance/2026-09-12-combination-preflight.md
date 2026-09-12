@@ -276,3 +276,20 @@ No new branch, PR, dependency build/download, installed binary, release or Organ
 occurred. The pre-existing untracked inspection note remains preserved. The separate later M5
 check-vocabulary correction is not yet included in this tree; integration and cross-platform
 acceptance must retain that outstanding item rather than silently declaring all M5 work complete.
+
+## Close recorded combination omissions — 2026-09-12
+
+The existing detached inspection combines the reviewed display-clear repair `b8848cb` with the
+previously omitted M5 check-vocabulary correction `e011dd7`. Both merges are conflict-free; the
+browser-data settings regression follows its relocated unit-test path without restoring root debt.
+Tested tree: `9f49c3ea5c2899ef86363994d1dc26c840f39a44`. Thirty focused governance/lifecycle tests
+and the Mac full source suite pass: **1,498 passed, 14 platform skips, zero failures (1,512 total)**.
+The Mac native schedule fixture also passes, including dialog-close failure and pending-reply
+retirement. Architecture, exact-tree syntax and secret checks pass; Main/Renderer remain 1,682/562.
+
+The first full run omitted the required Acorn lookup path and failed to load tooling. Reusing the
+existing Acorn through process-local NODE_PATH resolves it; no dependency or gate was changed.
+The inspection still resolves its older local js-yaml 4.3.1 cache. Thus this is not a clean locked
+dependency run. The separate #114 Windows/Linux evidence does not qualify this expanded whole tree;
+full combined native/package and independent-review gates remain open. The pre-existing untracked
+note, published main/tag, PR bases and installed app were untouched. No new worktree or public PR.
