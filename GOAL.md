@@ -178,6 +178,9 @@ historical. The 2.0.2 release lane #88/#95/#106/#107 is merged and published; #8
 and #108–#120 remain separate modularization/acceptance work. Preserve their explicit base-branch
 dependencies. Neither local
 pass counts nor candidate source-size reductions close G0–G4 or make a draft part of stable.
+The [2026-09-12 combination receipt](docs/governance/2026-09-12-combination-preflight.md) records
+the exact four-lane tree and three-platform full-suite/native-fixture results. This closes source
+combination testing for that tree, not independent review, distribution packaging or G0–G4.
 
 Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
 is still required for transfer, unrelated merges/releases and protection changes. The maintainer

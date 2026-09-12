@@ -1,6 +1,6 @@
 # Candidate combination preflight
 
-- Status: Historical read-only integration evidence; not merge acceptance
+- Status: Dated combination source/fixture acceptance evidence; not merge or release approval
 - Owner: project maintainers
 - Last verified: 2026-09-12
 - Applies to: published main `39850415c901aeaa77ecb86cd3ce49a2e75290a8` and the exact candidates below
@@ -32,13 +32,20 @@ The combined difference from published main spans 139 files; this is not a small
 The existing exact-tree JavaScript syntax gate passed 531 sources on the final tree, and its
 exact-tree secret scan passed. These checks inspect the combined blobs, not a different checkout.
 
-## Remaining acceptance
+## Current acceptance summary
 
-No whole-combination unit suite, native GUI, native package or live-campus test was run by these
-merge-tree checks. Earlier per-lane evidence must not be added together to claim combined success.
-Next use the exact final tree in an isolated existing integration checkout, verify production
-boundaries and run full tests plus both download/MFA fixtures. Source checks cannot substitute for
-Windows/Linux/native package evidence or independent review of Main/IPC/security changes.
+The merge-tree preflight alone proved no runtime behavior. The separate whole-combination runs
+recorded below now cover this exact tree on all three designated platforms:
+
+| Platform | Full suite | Native DownloadItem / popup MFA / Renderer ASAR |
+| --- | --- | --- |
+| Mac | 1,471 passed / 14 skipped / 0 failed | Passed with child-close and cleanup confirmation |
+| Linux 5070 | 1,471 passed / 14 skipped / 0 failed | Passed under Xvfb with cleanup confirmation |
+| Windows 5070 | 1,445 passed / 40 skipped / 0 failed | Passed with cleanup confirmation; GPU warnings remain |
+
+These are actual whole-combination runs, not sums of per-lane evidence. Full distribution packages,
+signing, real-school behavior and independent review of Main/IPC/security changes remain open.
+No tested candidate has been merged to main. Revalidate any changed source after review or squash.
 
 ## Whole-combination Mac follow-up — 2026-09-12
 
@@ -54,9 +61,9 @@ three confirmed child closure and temporary-data removal. Tests use synthetic/lo
 These are whole-combination results, not sums of per-lane test counts.
 The native control-shell layout fixture also passed on the same tree.
 
-Full Windows/Linux combination tests, distribution packages, live-school behavior and independent
-review remain outstanding. The earlier three-platform #120 results exclude the Browser/governance
-combination and cannot substitute for them. No dependency installation or installed-app update ran.
+At this Mac checkpoint Windows/Linux combination tests were outstanding; the later sections record
+their completion. Distribution packages, live-school behavior and independent review remain open.
+The earlier #120 results alone exclude this combination. No dependency installation or installed-app update ran.
 
 The package manifest still says 2.0.2. That is inherited source metadata, not authorization to
 replace the already-published immutable 2.0.2 tag or assets. Any future release needs its own version,
@@ -82,8 +89,8 @@ lockfile-verified Acorn tooling through WSL. No dependency download or package b
 The pre-existing dependency symlink remains the only untracked checkout path; temporary transfer
 bundles on both hosts were removed and the full-suite log remains on 5070 for audit.
 
-This closes Linux full-combination source/fixture acceptance, not Windows combination, distribution
-packages, real-school behavior or independent review. Those remain outstanding. No installed app,
+This closes Linux full-combination source/fixture acceptance; Windows completion is recorded in the
+next section. Distribution packages, real-school behavior and independent review remain open. No installed app,
 credentials, user files, repository protection, release or Organization transfer was changed.
 
 ## Whole-combination Windows follow-up — 2026-09-12
