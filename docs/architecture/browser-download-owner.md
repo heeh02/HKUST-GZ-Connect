@@ -24,6 +24,10 @@ independently reviewable seam, not completion of the 600-line Browser ownership 
 
 ## Deliberately unresolved behavior
 
+This section records the structure-only checkpoint at `b484809`. The separate proposed
+[native behavior repair](../engineering/native-browser-downloads.md) addresses the defects below;
+it must not be conflated with the extraction's unchanged-behavior evidence.
+
 The legacy algorithm awaits `showSaveDialog` before `DownloadItem.setSavePath`. This extraction
 preserves that algorithm; EventEmitter tests do not prove Electron's native callback timing.
 The [Electron DownloadItem contract](https://www.electronjs.org/docs/latest/api/download-item#downloaditemsetsavepathpath)
