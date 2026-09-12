@@ -115,3 +115,35 @@ All three platforms now have full-suite and these native fixture results for the
 source tree. Distribution packages, signing, real-school behavior, independent review and the
 authorized Organization transfer remain separate unfinished requirements. No PR/main merge,
 tag, release, protection or installed-app change was performed.
+
+## Goal gap audit — 2026-09-12
+
+Measured from Git blobs (line counts exclude trailing blank lines), not worktree intent:
+
+| Requirement / metric | Published main | Tested combination | Conclusion |
+| --- | ---: | ---: | --- |
+| Desktop Main lines; M3 final 500–700 | 1,719 | 1,719 | M3 incomplete |
+| Rust ec-engine entry lines; M4 below 800 | 2,485 | 2,485 | M4 incomplete |
+| Campus Browser lines; M2 owner target at most 600 | 1,854 | 1,804 | Extraction helps, M2 incomplete |
+| Renderer app lines | 563 | 562 | Not proof of full bootstrap separation |
+| Shared Renderer CSS lines | 2,156 | 1,981 | Partial ownership improvement |
+| Legacy i18n facade lines | 1,524 | 4 | Locale extraction present in candidate only |
+| Root-level Desktop test files | 59 | 59 | M5 placement migration incomplete |
+
+The combination registers six native feature domains but retains 29 legacy owners with 106
+export/top-level-binding exceptions. M1's no-hidden-HTML-order exit condition is therefore not
+proved. Removing a facade or passing the static guard is not completion of all Renderer ownership.
+
+G0/G1/G2 have a baseline on main and proposed improvements in #89/the candidate stack. G3/M1–M5
+remain partial. G4 remains incomplete: repository owner is still the personal account; branch
+readback requires one approval and seven named contexts, with admin enforcement disabled. The
+configured post-transfer target additionally requires code-owner/last-push approval, release
+reviewers and restricted tag creation; none is claimed implemented by this source test receipt.
+
+Issues #60, #79–#84 and #105 remain open. Do not close them on test counts or move their outcomes
+into an implicit deferral. Organization authority gates only external actions, not remaining
+offline implementation. The next implementation work must select an existing owned seam and
+reduce a stated gap; it must not continually recreate/revalidate the already-tested combination.
+Before production integration, preserve independent review, package acceptance and explicit
+authorization. Candidate acceptance does not change published main or make a new release necessary
+for the repository transfer itself.
