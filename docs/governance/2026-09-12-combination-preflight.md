@@ -293,3 +293,19 @@ The inspection still resolves its older local js-yaml 4.3.1 cache. Thus this is 
 dependency run. The separate #114 Windows/Linux evidence does not qualify this expanded whole tree;
 full combined native/package and independent-review gates remain open. The pre-existing untracked
 note, published main/tag, PR bases and installed app were untouched. No new worktree or public PR.
+
+## Locked Linux check of the closed combination — 2026-09-12
+
+The existing isolated 5070 dependency checkout now runs exact commit
+`4d116b0e43fb2f551b5c8e870d89715593934cf3`, tree `9f49c3ea5c2899ef86363994d1dc26c840f39a44`.
+The transfer bundle's SHA-256 was verified before fetching, and checkout preserved the two existing
+untracked synthetic audit/test logs. Actual dependency resolution is js-yaml 4.3.2 / Acorn 8.18.0;
+lock SHA-256 remains `dc03ba243406af81e4e01587e765c24b20c94e79781b7713a0238f5d3903e223`.
+Linux Node passes **1,498 tests, 14 platform skips, zero failures (1,512 total)**; architecture and
+governance checks also pass. No dependency install or manifest/lock change occurred. The exact-run
+log remains in the remote checkout's local Git metadata, outside the source tree.
+
+This closes the Linux locked-dependency source-test omission for that combination, not Windows
+whole-tree acceptance, native distribution packages, signing, independent review or migration.
+Published 2.0.2 and all GitHub branches/settings remain unchanged; temporary transfer files are
+removed after verification while the reusable remote checkout and dependency cache remain intact.
