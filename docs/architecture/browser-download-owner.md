@@ -2,8 +2,8 @@
 
 - Status: Proposed structural seam; checkpoint evidence, not a behavior fix or release
 - Owner: Desktop / Browser maintainers, issue #80
-- Last verified: 2026-09-08
-- Base: `main@9e1135c05dc21998c66627e25477d4bd799cd5d7`
+- Last verified: 2026-09-11
+- Base: `main@39850415c901aeaa77ecb86cd3ce49a2e75290a8` (published 2.0.2)
 
 ## Scope
 
@@ -80,3 +80,22 @@ was triggered and no PR had yet been opened. Current review status belongs to Gi
 the dated evidence above is not a live queue snapshot.
 Reverting this isolated change restores the original methods and private policy path without a
 data migration. Existing UI PRs are not imported into or overwritten by this main-based branch.
+
+## Post-release synchronization — 2026-09-11
+
+Previous candidate: `7a84073`. The published main above merged without conflicts or public-history
+rewriting. Nine-file contribution remains the download ownership seam, open-request normalization
+relocation, tests and documentation. The separate Renderer stack is not imported, and the known
+native download timing/lifecycle behavior remains assigned to #113 rather than claimed fixed here.
+
+Tested integration tree before this documentation update:
+`377c2af85ed247721520a90eba75329f50b56178`.
+Mac Node 24 full Desktop suite: 1,306 passed, 14 platform skips, zero failures (1,320 total).
+Native campus-browser toolbar regression passed; its intentional invalid-port request is synthetic.
+Architecture, install-script and diff checks passed without increasing the Main dependency cap.
+Existing dependency cache was used via NODE_PATH; no dependency installation or package build.
+
+Windows/Linux native, real DownloadItem timing, popup-MFA cleanup and full installer acceptance
+were not rerun for this synchronized tree. The historical table retains its original source scope.
+No installed app, user browser data, network configuration, release, protection or Organization
+ownership changed. Review/rollback remains limited to this structural seam on published main.

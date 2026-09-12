@@ -2,9 +2,8 @@
 
 - Status: Proposed behavior repair; not a released capability claim
 - Owner: Desktop / Browser maintainers, related to issue #80
-- Last verified: 2026-09-08
-- Structural base: `6ec66aae5c24e697c9c930da6268c1199131ee9a`
-- Tested runtime: `baf4814bb5717dec17b47360237c2e9a083e5216`
+- Last verified: 2026-09-12
+- Structural base: PR #112 at `96248191857cffa25887d9f9fde83f7cb5b7b06f`
 - Applies to: Browser download owner, manager disposal and synthetic download acceptance
 
 ## Reproduction and behavior
@@ -36,7 +35,7 @@ The owner is 155 lines, within the 600-line target. CampusBrowser remains 1,804 
 complete. Main's direct/transitive dependency caps remain 36/170. No Renderer, credential storage,
 Profile schema, routing policy, live-school API or system network setting is changed.
 
-## Exact-source evidence
+## Historical exact-source evidence — 2026-09-08
 
 Run from `desktop/`, reusing existing designated-host dependencies:
 
@@ -78,3 +77,22 @@ replacement, repository transfer or branch-protection change is included.
 Rollback reverts this behavior change to the structural base, restoring its old download algorithm
 and removing manager retirement wiring; no user data migration is needed. That rollback also restores
 the reproduced timing/stale-callback defects, which must remain recorded as unresolved.
+
+## Current synchronization — 2026-09-12
+
+Previous candidate: `6a66ccfa335045da6210fe494269cc5bf51a4f95`. The structural parent above
+synchronized without conflicts or history rewriting and contains published 2.0.2 main.
+Tested integration tree before this documentation update:
+`d8ee1bf24c11a8d3ee97a3c70dfd5ff4bab7e363`.
+
+Mac Node 24 full Desktop suite: 1,317 passed, 14 platform skips, zero failures (1,331 total).
+The Node-owned native DownloadItem fixture passed completed byte verification, silent cancellation
+and retirement during active transfer; child closure and temporary-directory removal were confirmed.
+It used only a loopback synthetic server and test-owned destination, not a school endpoint or user
+Downloads directory. No real OS file-picker choice or hardware acceleration acceptance is implied.
+Architecture, install-script and diff checks passed without increased budgets or dependencies.
+
+Windows/Linux native downloads, full installers, popup-MFA cleanup and live-school canaries were
+not rerun for this synchronized tree. Older receipts retain their original source scope. No installed
+app, saved credentials, user browser data, network settings, release, protection or Organization
+ownership changed. The Renderer candidate chain is not imported into this main-based Browser lane.
