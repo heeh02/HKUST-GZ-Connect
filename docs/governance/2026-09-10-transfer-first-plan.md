@@ -1,12 +1,17 @@
 # Transfer-first convergence plan
 
-- Status: Proposed; local review, not executed migration authority
+- Status: Transfer executed 2026-09-12; subsequent convergence plan remains active
 - Owner: project maintainer
 - Last verified: 2026-09-12
 - Applies to: `main@39850415c901aeaa77ecb86cd3ce49a2e75290a8`, stable `v2.0.2`, G0–G4 and M1–M5
 - Supersedes: unpublished-2.0.2 assumptions in earlier readiness snapshots
 
 ## Decision
+
+Update: original-repository transfer and Organization default `read` were explicitly authorized
+and completed on 2026-09-12. The [migration receipt](2026-09-12-organization-transfer-receipt.md)
+supersedes preflight-only and pending-authorization statements below. The dated baseline is retained
+for comparison; remaining work is PR/module and post-transfer governance convergence.
 
 Transfer the existing repository to `HKUSTGZ-OpenSource` after a minimal identity, access,
 permission and release-integrity preflight. Continue modularization inside the Organization.

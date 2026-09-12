@@ -46,13 +46,12 @@ high-risk rules. No instruction file is treated as a substitute for review or te
    distinct evidence, not interchangeable versions.
 5. Repository Rulesets, CODEOWNERS, templates, Dependabot, release Environment and immutable Action
    policies are active, but one administrator and no independent reviewer prevent full enforcement.
-6. `HKUSTGZ-OpenSource` (ID `325204819`) and `heeh02` active Owner membership were reverified
-   on 2026-09-10. The same-day repository listing found no same-name destination repository; recheck
-   immediately before transfer. The Organization currently has no
-   teams and a `write` default repository permission; confirm the permission plan before transfer.
-   Transfer and final governance readback remain pending, not the Organization name or bridge
-   publication. Installed-app acceptance is separate. See the
-   [transfer-first plan](docs/governance/2026-09-10-transfer-first-plan.md).
+6. The original repository transferred to `HKUSTGZ-OpenSource` on 2026-09-12 with explicit maintainer
+   authorization. Organization default permission is now `read`. Repository ID, main, tags,
+   releases/assets and PR heads/bases are preserved. Existing Organization Owner `HernanJiang`
+   inherits admin alongside `heeh02`; no membership was created. Ownership transfer is complete,
+   while team/reviewer and post-transfer governance convergence remain open. See the
+   [migration receipt](docs/governance/2026-09-12-organization-transfer-receipt.md).
 
 ## Completion outcomes
 
@@ -186,18 +185,13 @@ The [2026-09-12 combination receipt](docs/governance/2026-09-12-combination-pref
 the exact four-lane tree and three-platform full-suite/native-fixture results. This closes source
 combination testing for that tree, not independent review, distribution packaging or G0–G4.
 
-Destination and Owner membership are verified for `HKUSTGZ-OpenSource`. Separate authorization
-is still required for transfer, unrelated merges/releases and protection changes. The maintainer
-separately authorized the necessary 2.0.2 merges/publication and a one-time administrator exception,
-now consumed, for missing independent review/cloud checks after local/native acceptance. This does not
-change protections, fabricate checks, waive actual defects or authorize optional modularization
-merges. The #104 exception remains consumed and is not standing authority.
-Stable is 2.0.2. Transfer preparation must verify destination access/name availability, agree the
-effective permission policy, snapshot the source identity/protection/release state and check the
-shipped updater. The running Mac app must not be interrupted without permission, but replacing it
-is not a transfer prerequisite. Post-transfer checks must precede the next release. The current
-request authorizes multi-agent analysis and a proposed convergence plan, not an implicit change
-to Organization-wide permissions or blanket merging of the remaining drafts.
+The maintainer authorized the original-repository transfer and Organization default `read` on
+2026-09-12; both are executed and read back. Continue ordinary PR review and M1–M5 inside the
+Organization. This authorization does not waive independent review or required checks, authorize
+another release, or change branch/tag protections. Previous #104/2.0.2 administrator exceptions
+remain consumed. Stable remains 2.0.2; installed-app replacement and real-school validation remain
+separate operations. The migration receipt distinguishes completed identity checks from remaining
+role-specific workflow, team and release governance work.
 
 ## Historical progress receipt — 2026-09-07
 

@@ -7,6 +7,11 @@
 
 ## Current readiness
 
+Transfer completed on 2026-09-12 with Organization default permission `read`; see the
+[migration receipt](2026-09-12-organization-transfer-receipt.md). The following readiness narrative
+records pre-transfer conditions, not current blockers. Phase D and role-specific Phase E checks
+remain open and must not silently change protections or memberships.
+
 The [transfer-first plan](2026-09-10-transfer-first-plan.md) supersedes old readiness assumptions.
 Stable 2.0.2 is published at `39850415c901aeaa77ecb86cd3ce49a2e75290a8`; its four installers,
 receipt and hashes are uploaded. The installed Mac app remains an older candidate; do not interrupt
