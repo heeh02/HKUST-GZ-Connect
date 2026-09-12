@@ -80,3 +80,16 @@ horizontal or nested vertical overflow; detail dialogs remain centered. An injec
 close failure still scrubs and detaches the prior detail DOM and retires a pending week reply.
 Narrow and wide synthetic screenshots were inspected. This is Mac source/fixture evidence only,
 not a packaged-app, real-school or Windows/Linux acceptance claim. The installed app was untouched.
+
+Designated-host follow-up on 2026-09-12 checks source `64911bd30f1f3e0d8d8a03191dedd01c6e2f661f`.
+The selected Renderer, tests and fixture archive was hash-verified before extraction on 5070
+(SHA-256 `04a455b17bc6ebf21fdd77ea3a11e5711c7db616a09747e25b9c16e96d5d6dee`).
+Windows Node and WSL Linux Node each pass all 29 targeted tests with no skips: browser-data settings,
+campus-data lifecycle, schedule cache, calendar view and the native module contract. Both native
+Electron runtimes pass `schedule-navigation.electron.js`, including the real-DOM close-failure
+regression; Linux runs under Xvfb. Windows logs one GPU-process exit (code 34), so hardware
+acceleration health is not established. The Linux Renderer-only tests use the extracted source on
+the Windows-mounted filesystem; they do not verify Linux private-file or installation behavior.
+Existing runtimes were reused with no dependency installation, build, cloud workflow or execution
+policy change. These results close the targeted Windows/Linux omissions above, not the full suite,
+package/signing, live-school or independent-review gates. No published source or artifact changed.
