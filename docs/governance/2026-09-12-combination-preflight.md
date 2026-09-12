@@ -168,3 +168,23 @@ real GitHub update request, release or Organization transfer occurred. The exist
 historical inspection note remains untouched. This combination includes the separately reviewable
 verified-link prerequisite; it must not be mislabeled wholly structural. Windows/Linux extended
 combination, distribution packages and independent review remain outstanding.
+
+## M5 coverage combination — 2026-09-12
+
+The M3 combination `aa476e5288816e91a8622775e4ece3c01aed7cd3` combined without conflicts with
+the existing module-map candidate `5fe6047`. Tested tree:
+`0dae54ef1d49efde65e051531ebefe3b1d295b43`. Coverage finds one owner for all 308 in-scope
+production paths and no missing/stale public entrypoints. This scope does not cover every test
+or prove dependency direction; `dependencyEnforcement: inventory-only` remains explicit.
+
+Mac source tests: 1,492 passed, 14 platform skips, zero failures (1,506 total). Architecture,
+exact-tree syntax (535 sources) and staged secret checks passed. The existing inspection
+node_modules resolves js-yaml 4.3.1 before NODE_PATH; these full-suite results therefore are not
+locked-dependency acceptance. A separate bounded VM loaded the unchanged coverage checker with
+only the verified 4.3.2 parser injected and passed the same 308-path coverage. This separate
+parser check is not a rerun of the full suite with 4.3.2. Existing dependencies were not modified.
+
+No runtime source was changed by this combination. Main/Renderer limits remain 1,682/562.
+Locked-dependency full-suite, native GUI, Windows/Linux and package acceptance of this expanded
+tree remain pending. No new implementation branch, PR, release, Organization or permission
+operation was performed. The pre-existing untracked inspection note remains untouched.
