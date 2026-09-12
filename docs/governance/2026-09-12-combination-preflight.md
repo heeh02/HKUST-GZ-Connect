@@ -244,3 +244,17 @@ This local run reuses the existing inspection dependency cache, so it is not loc
 acceptance; the earlier isolated Linux run is on the preceding tree. Windows/Linux relocated-test
 and full distribution-package acceptance remain pending. No production logic, user data, existing
 untracked inspection note, remote PR, release or Organization settings were changed.
+
+## Relocated tests with locked Linux dependencies — 2026-09-12
+
+Exact commit `c7366247f8c61cf460358a4ac5ab9fbe1755c230`, tree
+`526add30dc4104b964b02a8cbe88306a33f5ea81`, ran in the existing isolated 5070 dependency checkout.
+The lockfile is unchanged from the preceding clean install; no npm install was repeated.
+Actual resolution reports js-yaml 4.3.2 and Acorn 8.18.0. Node v24.20.0 with umask 022 passed
+**1,495 tests, 14 platform skips, zero failures (1,509 total)**. Module-coverage/root-test-debt
+governance and architecture checks also passed. Manifest and lockfile remain unmodified.
+
+This supplies Linux locked-dependency source acceptance for the relocated tests, not Windows,
+native GUI, install scripts or distribution packages. Existing synthetic logs were preserved;
+temporary transfer bundles on Mac and WSL were removed. No new dependency cache, installed-app
+change, public branch update, merge, release or Organization operation occurred.
