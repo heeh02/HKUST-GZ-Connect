@@ -93,3 +93,13 @@ the Windows-mounted filesystem; they do not verify Linux private-file or install
 Existing runtimes were reused with no dependency installation, build, cloud workflow or execution
 policy change. These results close the targeted Windows/Linux omissions above, not the full suite,
 package/signing, live-school or independent-review gates. No published source or artifact changed.
+
+## Organization review handoff — 2026-09-12
+
+The verified repair is submitted through the existing #114 branch in `HKUSTGZ-OpenSource`, not a
+new PR. Its base remains #110; #115 is the direct descendant. A read-only merge-tree check against
+#115 is conflict-free, but that does not update or validate the descendant: synchronize it once
+the parent review checkpoint is agreed. No downstream branch history is rewritten by this handoff.
+The batch uses `[skip ci]` to respect the maintainer's Actions budget. Required checks remain
+unfulfilled rather than being represented as passed; independent review and release authority
+remain separate. The production/test delta is unchanged from the recorded native validation.
