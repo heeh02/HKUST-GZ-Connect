@@ -57,3 +57,17 @@ no data migration or installed-app change is involved.
 The full feature registry, locale ownership and stale-operation lifecycle follow-ups
 remain separate M1 work. This first seam is not a claim that HTML/global ordering is fully removed.
 Native installers, real-school behavior and signing are outside this source-only verification.
+
+## Lifecycle follow-up — PR #114
+
+The structural contract above describes #108; the separate lifecycle contribution owns start,
+dispose and stale-result fencing. Its 2026-09-12 review also covers explicit browser-data clearing:
+`clearDisplay` revokes cached state and pending publications before attempting UI effects. A failed
+detail-dialog close must not prevent clearing its markup, the other module surfaces or the catalog.
+Cleanup failures remain reported as an aggregate rather than being silently treated as success.
+
+The browser-data settings consumer catches failures in either clear-state callback, restores the
+button and requires fresh two-click confirmation before retrying. A failure before the Main clear
+operation prevents that operation from running. Tests inject only synthetic errors and display data;
+they do not clear the user's browser session. Both new regressions failed before the corresponding
+fix and passed afterwards. No IPC, storage format, network or release change is included.
