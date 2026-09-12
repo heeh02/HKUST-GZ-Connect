@@ -209,3 +209,18 @@ existing deprecation warnings; this result does not establish vulnerability-free
 native binaries, Electron package installation, GUI or distribution readiness. No package build,
 real-school operation, new PR, merge, release or Organization transfer occurred. Mac/Windows locked
 dependency acceptance and full installers remain pending for this expanded combination.
+
+## Locked dependency advisory follow-up — 2026-09-12
+
+On the same isolated Linux checkout at `f229f26b6917d1d62f2a870a7009ca227c394711`, `npm audit
+--json` returned exit zero, report version 2, and zero info/low/moderate/high/critical findings
+(274 dependency records). The project's `npm run audit:ci` also passed with `npm, total=0`;
+no OSV fallback was needed. Manifest/lockfile diff stayed empty; lockfile SHA-256 is
+`dc03ba243406af81e4e01587e765c24b20c94e79781b7713a0238f5d3903e223`.
+
+The structured audit output and synthetic unit-test log remain untracked on 5070; no dependency
+was upgraded or installed this turn. This supersedes only the earlier npm-advisory-audit omission.
+Deprecation warnings remain maintenance signals and are not identical to advisory findings.
+An advisory database's zero result is dated evidence, not proof of absence of unknown vulnerabilities.
+Install scripts, native package artifacts, additional platform acceptance and independent review
+remain separate gates. No automatic fix, cloud workflow, release or Organization operation ran.
