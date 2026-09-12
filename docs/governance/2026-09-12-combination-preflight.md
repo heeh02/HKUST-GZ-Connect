@@ -40,6 +40,24 @@ Next use the exact final tree in an isolated existing integration checkout, veri
 boundaries and run full tests plus both download/MFA fixtures. Source checks cannot substitute for
 Windows/Linux/native package evidence or independent review of Main/IPC/security changes.
 
+## Whole-combination Mac follow-up — 2026-09-12
+
+The existing `goal-combination-check` worktree was switched detached to inspection commit
+`dfc75d463cda4c1dc9c03f1bd8b6a9ad3c8ff1fc`, and its tree was verified as the exact final tree above.
+Its pre-existing untracked historical receipt and existing dependency directory were preserved.
+No implementation branch was created or moved.
+
+Mac Node 24 full `node --test`: **1,471 passed, 14 platform skips, zero failures (1,485 total)**.
+Architecture, install-script and repository-governance checks passed. Existing Electron 43.2.0
+ran the Node-owned native DownloadItem, popup-MFA and Renderer-ASAR fixtures successfully; all
+three confirmed child closure and temporary-data removal. Tests use synthetic/loopback data only.
+These are whole-combination results, not sums of per-lane test counts.
+The native control-shell layout fixture also passed on the same tree.
+
+Full Windows/Linux combination tests, distribution packages, live-school behavior and independent
+review remain outstanding. The earlier three-platform #120 results exclude the Browser/governance
+combination and cannot substitute for them. No dependency installation or installed-app update ran.
+
 The package manifest still says 2.0.2. That is inherited source metadata, not authorization to
 replace the already-published immutable 2.0.2 tag or assets. Any future release needs its own version,
 exact-source acceptance and authorization. Organization transfer is independent of this whole-stack
