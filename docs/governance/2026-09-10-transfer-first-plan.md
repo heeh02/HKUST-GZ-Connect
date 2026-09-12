@@ -28,7 +28,7 @@ not upgrade old clients automatically; retain a manual download path for 2.0.0 u
 | Permissions | Free plan, default repository permission `write`, no teams | Explicit permission decision needed; do not change Organization-wide defaults silently |
 | Main protection | One approving review, seven required status contexts; admin enforcement off | Preserve effective protection; previous release exception is not ordinary merge authority |
 | Open work | 14 draft PRs: #89 and #108–#120; eight open planning/backlog issues | Preserve unfinished work; migration does not require merging it first |
-| Local footprint | 83 worktrees; some share dependency caches | Inventory before cleanup; count is not proof of disposable data |
+| Local footprint | 74 worktrees after verified cleanup on 2026-09-12; some share dependency caches | Inventory before cleanup; count is not proof of disposable data |
 | Main hot spots | `desktop/main.js` 1,719 lines; `ec-engine.rs` 2,485 lines | Candidate refactors are not yet shipped architecture |
 | Local installation | Installed Mac ASAR differs from published package | App replacement and a live connection interruption are separate decisions |
 
@@ -130,6 +130,15 @@ Before deleting a worktree, record branch/head, dirty paths, unique commits, PR 
 symlink/dependency consumers. Remove only owned generated outputs and clean worktrees with a
 verified preserved reference. Unmerged patches, private-review notes, installed app data and shared
 dependency caches are not garbage. Avoid blanket branch deletion and broad recursive cleanup.
+
+The first bounded cleanup removed nine obsolete Renderer checkout copies on 2026-09-12, reducing
+83 worktrees to 74. Every target was clean including ignored/untracked files, outside active PR
+heads/bases, and had its exact commit preserved by its own branch and a descendant branch. No open
+files or incoming filesystem symlinks targeted those directories. Branches and commits remain
+intact and can recreate each checkout; no force option, remote deletion, shared-cache cleanup or
+installed-app operation was used. Local metadata records the nine exact paths/SHAs. The removed
+directories accounted for about 127 MiB in `du`; this is not a measurement of immediately reclaimed
+APFS storage. Dirty, detached and dependency-bearing worktrees were preserved.
 
 ## Completion checkpoints
 
