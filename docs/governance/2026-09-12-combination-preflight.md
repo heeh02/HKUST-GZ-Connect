@@ -258,3 +258,21 @@ This supplies Linux locked-dependency source acceptance for the relocated tests,
 native GUI, install scripts or distribution packages. Existing synthetic logs were preserved;
 temporary transfer bundles on Mac and WSL were removed. No new dependency cache, installed-app
 change, public branch update, merge, release or Organization operation occurred.
+
+## M4 private argument-owner combination — 2026-09-12
+
+Input combination `c7366247f8c61cf460358a4ac5ab9fbe1755c230` plus Engine argument-owner candidate
+`b0be6ca8b0212f3931bd6bb7ba478e683a2b64e1` produced conflict-free tree
+`93b1734a856554ecf676c7461a0075d675c07b85`. The map includes `independent/src/bin/engine_app/**`;
+the Engine entrypoint now has 2,110 lines, while Main remains 1,682. M3/M4 final targets remain unmet.
+
+Exact Git comparison confirms the entire independent directory matches the Engine candidate and
+the Desktop directory matches the preceding combination. Seventeen coverage/governance tests,
+pinned Rust formatting and indexed secret checks passed on the combined source. This focused
+verification does not claim a fresh combined Cargo/GUI/native-package run. The candidate's Linux
+Rust evidence remains tied to its recorded source; Desktop and Cargo ownership were not conflated.
+
+No new branch, PR, dependency build/download, installed binary, release or Organization mutation
+occurred. The pre-existing untracked inspection note remains preserved. The separate later M5
+check-vocabulary correction is not yet included in this tree; integration and cross-platform
+acceptance must retain that outstanding item rather than silently declaring all M5 work complete.
