@@ -2,12 +2,23 @@
 
 - Status: Proposed test-gate repair; not a product MFA change
 - Owner: Desktop / Browser maintainers, related to issue #80
-- Last verified: 2026-09-08
+- Last verified: 2026-09-12
 - Applies to: `desktop/e2e/campus-popup-mfa-safety*` and its Node test support
-- Base: `main@9e1135c05dc21998c66627e25477d4bd799cd5d7`
+- Base: `main@39850415c901aeaa77ecb86cd3ce49a2e75290a8` (published 2.0.2)
 - Tested source: `03e81dd3af8703c788be0effd91d8ec989b964ff`
 
 ## Failure and correction
+
+Current synchronization: previous candidate `ebd3284584ba998ed93fcc967bcc7997711e2f35`
+merged the published main above without conflict or history rewriting. Tested tree before this
+documentation update: `2d4cd05ff8314a5e5ec8a0e3d54e40401b2461d9`.
+Mac Node 24 full Desktop suite passed 1,304 tests, skipped 14 platform cases, failed zero (1,318 total).
+The native Node-owned popup fixture passed assertions, child closure and temporary-profile removal;
+architecture and install-script checks passed. Production Desktop lib, Renderer, Rust, workflows
+and lockfile match main exactly. The manifest changes only the existing test runner command.
+No dependency installation, installed-app change or live-school login occurred. Windows/Linux
+native cleanup and full installers were not rerun on this synchronized tree; older results below
+retain their original source scope. This is a test-gate repair, not product MFA acceptance.
 
 The prior Windows native run printed PASS before its asynchronous fixture cleanup tried to remove
 an Electron profile that Chromium still held open. Cleanup threw EPERM, the rejection was unhandled,
